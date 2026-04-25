@@ -9,9 +9,11 @@
 
 - `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_server.yml` — основной playbook.
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_and_deploy_aw.yml` — full-stack playbook для Proxmox.
+- `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый full-stack playbook (несколько CT).
 - `/home/igor/tmp/AWatch-rus/ansible/inventory.example.ini` — шаблон inventory.
 - `/home/igor/tmp/AWatch-rus/ansible/group_vars/all.example.yml` — шаблон переменных.
 - `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.example.yml` — шаблон переменных CT в Proxmox.
+- `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox-matrix.example.yml` — шаблон матрицы CT.
 
 ## Быстрый запуск
 
@@ -38,6 +40,18 @@ ansible-playbook -i inventory.ini deploy_aw_server.yml
 ```bash
 cd /home/igor/tmp/AWatch-rus/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
+```
+
+## Массовый запуск (матрица CT)
+
+1. Подготовьте матрицу:
+   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox-matrix.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox-matrix.yml`
+2. Заполните `proxmox-matrix.yml`.
+3. Запустите:
+
+```bash
+cd /home/igor/tmp/AWatch-rus/ansible
+ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 ```
 
 ## Результат

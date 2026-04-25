@@ -19,6 +19,7 @@
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/browser-domains-native-collector.ps1`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_aw_server.yml`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/provision_proxmox_ct_and_deploy_aw.yml`
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
 
 ---
 
@@ -74,6 +75,13 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 - установку ActivityWatch Server;
 - применение RU Web UI patch;
 - проверку API.
+
+Для массового режима (несколько CT):
+
+```bash
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible
+ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
+```
 
 ### 2.1 Создать LXC контейнер
 

@@ -1,0 +1,47 @@
+---
+- name: Provision Proxmox CT matrix and deploy AWatch-rus with RU patch
+  hosts: proxmox
+  gather_facts: false
+
+  vars:
+    proxmox_bootstrap_dir: "/tmp/aw-rus-bootstrap"
+    aw_bootstrap_files:
+      - install_aw_server.sh
+      - apply_webui_ru_patch.sh
+      - activitywatch-server.service
+      - aw-server.env.example
+      - aw-ru-patch.js
+      - aw-sw-cleanup.js
+
+  tasks:
+    - name: Validate CT matrix is provided
+      ansible.builtin.assert:
+        that:
+          - proxmox_ct_matrix is defined
+          - proxmox_ct_matrix | length > 0
+        fail_msg: "Define proxmox_ct_matrix in group_vars/proxmox-matrix.yml"
+
+    - name: Execute provisioning workflow for each CT
+      ansible.builtin.include_tasks: tasks/provision_ct_and_deploy_aw.yml
+      vars:
+        ct_id: "{{ item.id }}"
+        ct_hostname: "{{ item.hostname }}"
+        ct_storage: "{{ item.storage }}"
+        ct_template: "{{ item.template }}"
+        ct_rootfs_size: "{{ item.rootfs_size }}"
+        ct_cores: "{{ item.cores }}"
+        ct_memory: "{{ item.memory }}"
+        ct_swap: "{{ item.swap }}"
+        ct_bridge: "{{ item.bridge }}"
+        ct_ip: "{{ item.ip }}"
+        ct_gw: "{{ item.gw }}"
+        ct_vlan: "{{ item.vlan | default('') }}"
+        ct_nameserver: "{{ item.nameserver | default('') }}"
+        ct_searchdomain: "{{ item.searchdomain | default('') }}"
+        ct_password: "{{ item.password }}"
+        ct_unprivileged: "{{ item.unprivileged }}"
+        ct_onboot: "{{ item.onboot }}"
+        ct_features: "{{ item.features }}"
+      loop: "{{ proxmox_ct_matrix }}"
+      loop_control:
+        label: "ct={{ item.id }} host={{ item.hostname }} ip={{ item.ip }}"

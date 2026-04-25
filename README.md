@@ -30,6 +30,7 @@
 Для полного Ansible-сценария “с нуля” в Proxmox используйте:
 
 - `ansible/provision_proxmox_ct_and_deploy_aw.yml`
+- `ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` (массово по матрице CT)
 
 Скрипты `proxmox/create-ct.sh` и `proxmox/push-aw-artifacts.sh` по умолчанию читают:
 

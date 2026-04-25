@@ -9,6 +9,13 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 
 Этот playbook создаёт CT в Proxmox и полностью разворачивает ActivityWatch внутри контейнера.
 
+Массовый вариант по матрице CT:
+
+```sh
+cd /home/igor/tmp/AWatch-rus/ansible
+ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
+```
+
 ## 1. Подготовить env-файлы
 
 На рабочей машине оператора:

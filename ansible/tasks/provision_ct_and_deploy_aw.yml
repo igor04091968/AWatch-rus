@@ -1,0 +1,217 @@
+---
+- name: Validate required per-CT variables
+  ansible.builtin.assert:
+    that:
+      - ct_id is defined
+      - ct_hostname is defined
+      - ct_storage is defined
+      - ct_template is defined
+      - ct_rootfs_size is defined
+      - ct_cores is defined
+      - ct_memory is defined
+      - ct_swap is defined
+      - ct_bridge is defined
+      - ct_ip is defined
+      - ct_gw is defined
+      - ct_password is defined
+      - ct_unprivileged is defined
+      - ct_onboot is defined
+      - ct_features is defined
+      - aw_repo_root is defined
+      - aw_server_version is defined
+      - aw_server_download_url is defined
+      - aw_server_bind_host is defined
+      - aw_server_port is defined
+      - aw_server_webui_dir is defined
+      - aw_server_data_dir is defined
+      - aw_server_log_dir is defined
+      - aw_server_user is defined
+      - aw_server_group is defined
+    fail_msg: "Missing required variables for CT provisioning/deploy."
+
+- name: Build CT network string
+  ansible.builtin.set_fact:
+    ct_net0: >-
+      name=eth0,bridge={{ ct_bridge }},ip={{ ct_ip }},gw={{ ct_gw }}{% if (ct_vlan | default('') | string | length) > 0 %},tag={{ ct_vlan }}{% endif %}
+
+- name: Check whether CT already exists
+  ansible.builtin.command:
+    argv:
+      - pct
+      - status
+      - "{{ ct_id }}"
+  register: ct_status_check
+  failed_when: false
+  changed_when: false
+
+- name: Create CT when absent
+  ansible.builtin.command:
+    argv:
+      - pct
+      - create
+      - "{{ ct_id }}"
+      - "{{ ct_template }}"
+      - --hostname
+      - "{{ ct_hostname }}"
+      - --cores
+      - "{{ ct_cores }}"
+      - --memory
+      - "{{ ct_memory }}"
+      - --swap
+      - "{{ ct_swap }}"
+      - --rootfs
+      - "{{ ct_storage }}:{{ ct_rootfs_size }}"
+      - --password
+      - "{{ ct_password }}"
+      - --unprivileged
+      - "{{ ct_unprivileged }}"
+      - --onboot
+      - "{{ ct_onboot }}"
+      - --features
+      - "{{ ct_features }}"
+      - --net0
+      - "{{ ct_net0 }}"
+      - --nameserver
+      - "{{ ct_nameserver | default('') }}"
+      - --searchdomain
+      - "{{ ct_searchdomain | default('') }}"
+      - --ostype
+      - debian
+  when: ct_status_check.rc != 0
+
+- name: Check current CT runtime state
+  ansible.builtin.command:
+    argv:
+      - pct
+      - status
+      - "{{ ct_id }}"
+  register: ct_runtime_status
+  changed_when: false
+
+- name: Start CT when stopped
+  ansible.builtin.command:
+    argv:
+      - pct
+      - start
+      - "{{ ct_id }}"
+  when: "'stopped' in ct_runtime_status.stdout"
+
+- name: Ensure bootstrap directory on Proxmox host
+  ansible.builtin.file:
+    path: "{{ proxmox_bootstrap_dir }}"
+    state: directory
+    mode: "0700"
+
+- name: Copy AW bootstrap files to Proxmox host temp
+  ansible.builtin.copy:
+    src: "{{ aw_repo_root }}/aw-server/{{ item }}"
+    dest: "{{ proxmox_bootstrap_dir }}/{{ item }}"
+    mode: "0644"
+  loop: "{{ aw_bootstrap_files }}"
+
+- name: Bootstrap CT OS dependencies
+  ansible.builtin.command:
+    argv:
+      - pct
+      - exec
+      - "{{ ct_id }}"
+      - --
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update
+        apt-get install -y curl ca-certificates bash unzip xz-utils jq rsync openssh-server
+        mkdir -p /root/bootstrap /etc/activitywatch
+        systemctl enable ssh || true
+        systemctl restart ssh || true
+
+- name: Push bootstrap files into CT
+  ansible.builtin.command:
+    argv:
+      - pct
+      - push
+      - "{{ ct_id }}"
+      - "{{ proxmox_bootstrap_dir }}/{{ item }}"
+      - "/root/bootstrap/{{ item }}"
+  loop: "{{ aw_bootstrap_files }}"
+
+- name: Write AW server env file on Proxmox host temp
+  ansible.builtin.copy:
+    dest: "{{ proxmox_bootstrap_dir }}/aw-server.env"
+    mode: "0600"
+    content: |
+      AW_SERVER_VERSION={{ aw_server_version }}
+      AW_SERVER_DOWNLOAD_URL={{ aw_server_download_url }}
+      AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
+      AW_SERVER_PORT={{ aw_server_port }}
+      AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
+      AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
+      AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
+      AW_SERVER_USER={{ aw_server_user }}
+      AW_SERVER_GROUP={{ aw_server_group }}
+
+- name: Push AW server env into CT
+  ansible.builtin.command:
+    argv:
+      - pct
+      - push
+      - "{{ ct_id }}"
+      - "{{ proxmox_bootstrap_dir }}/aw-server.env"
+      - /etc/activitywatch/aw-server.env
+
+- name: Set mode for env inside CT
+  ansible.builtin.command:
+    argv:
+      - pct
+      - exec
+      - "{{ ct_id }}"
+      - --
+      - chmod
+      - "0600"
+      - /etc/activitywatch/aw-server.env
+
+- name: Install server and apply RU patch inside CT
+  ansible.builtin.command:
+    argv:
+      - pct
+      - exec
+      - "{{ ct_id }}"
+      - --
+      - bash
+      - -lc
+      - |
+        set -euo pipefail
+        chmod +x /root/bootstrap/install_aw_server.sh /root/bootstrap/apply_webui_ru_patch.sh
+        bash /root/bootstrap/install_aw_server.sh
+        bash /root/bootstrap/apply_webui_ru_patch.sh
+        systemctl restart activitywatch-server.service
+
+- name: Validate AW API from inside CT
+  ansible.builtin.command:
+    argv:
+      - pct
+      - exec
+      - "{{ ct_id }}"
+      - --
+      - bash
+      - -lc
+      - "curl -fsS http://127.0.0.1:{{ aw_server_port }}/api/0/info >/dev/null"
+
+- name: Validate RU patch hooks in index
+  ansible.builtin.command:
+    argv:
+      - pct
+      - exec
+      - "{{ ct_id }}"
+      - --
+      - bash
+      - -lc
+      - "grep -q 'ru-patch-v5.js' {{ aw_server_webui_dir }}/index.html && grep -q 'sw-cleanup.js' {{ aw_server_webui_dir }}/index.html"
+
+- name: Show final endpoint
+  ansible.builtin.debug:
+    msg:
+      - "CT {{ ct_id }} is provisioned and configured."
+      - "ActivityWatch endpoint: http://{{ ct_ip | regex_replace('/[0-9]+$', '') }}:{{ aw_server_port }}"
