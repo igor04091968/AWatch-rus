@@ -1,0 +1,115 @@
+[CmdletBinding()]
+param(
+    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
+    [string]$ServerHost,
+    [int]$ServerPort,
+    [ValidateSet('http', 'https')]
+    [string]$ServerScheme,
+    [string[]]$Users,
+    [string]$UserListPath,
+    [string]$Domain,
+    [string]$InstallRoot,
+    [string]$StateRoot,
+    [int]$PollSeconds,
+    [int]$PulseSeconds,
+    [int]$RecoveryIntervalSeconds,
+    [string]$CustomRulesPath,
+    [switch]$RepairPackage,
+    [string]$Version,
+    [string]$PackageUrl,
+    [string]$PackageZipPath
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+$modulePath = Join-Path $PSScriptRoot 'ActivityWatch.Windows.Common.psm1'
+Import-Module $modulePath -Force
+
+Assert-Administrator
+
+$existingConfig = $null
+if (Test-Path -LiteralPath $ConfigPath) {
+    $existingConfig = Read-ActivityWatchDeploymentConfig -Path $ConfigPath
+}
+
+if (-not $existingConfig -and (-not $ServerHost)) {
+    throw 'deployment-config.json is missing. Provide -ServerHost and user parameters, or run a deploy script first.'
+}
+
+$effectiveStateRoot = if ($StateRoot) { $StateRoot } elseif ($existingConfig) { [string]$existingConfig.paths.stateRoot } else { 'C:\ProgramData\ActivityWatch' }
+$effectiveInstallRoot = if ($InstallRoot) { $InstallRoot } elseif ($existingConfig) { [string]$existingConfig.paths.installRoot } else { 'C:\Program Files\ActivityWatch' }
+$effectiveLogsRoot = if ($existingConfig) { [string]$existingConfig.paths.logsRoot } else { Join-Path $effectiveStateRoot 'logs' }
+$effectiveConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $effectiveStateRoot 'deployment-config.json' }
+$effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
+$effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
+$effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
+$effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
+
+$effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
+$effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
+$effectiveServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($existingConfig) { [string]$existingConfig.server.scheme } else { 'http' }
+$effectivePollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($existingConfig) { [int]$existingConfig.collector.pollSeconds } else { 5 }
+$effectivePulseSeconds = if ($PSBoundParameters.ContainsKey('PulseSeconds')) { $PulseSeconds } elseif ($existingConfig) { [int]$existingConfig.collector.pulseSeconds } else { 30 }
+$effectiveRecoveryInterval = if ($PSBoundParameters.ContainsKey('RecoveryIntervalSeconds')) { $RecoveryIntervalSeconds } elseif ($existingConfig) { [int]$existingConfig.recovery.intervalSeconds } else { 180 }
+$effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
+
+$effectiveUsers = if ($Users -or $UserListPath) {
+    Normalize-ActivityWatchUsers -Users $Users -UserListPath $UserListPath -Domain $Domain
+}
+elseif ($existingConfig) {
+    @($existingConfig.userTasks | ForEach-Object { [string]$_.userId })
+}
+else {
+    throw 'Target users are missing.'
+}
+
+New-ActivityWatchDirectory -Path $effectiveStateRoot
+New-ActivityWatchDirectory -Path $effectiveLogsRoot
+
+if ($RepairPackage) {
+    $workingRoot = Join-Path $env:TEMP 'activitywatch-windows-deploy'
+    $backupRoot = Join-Path $effectiveStateRoot 'backups'
+    $archivePath = Get-ActivityWatchArchive -PackageZipPath $PackageZipPath -PackageUrl $PackageUrl -Version $effectiveVersion -WorkingRoot $workingRoot
+    Install-ActivityWatchPackage -ArchivePath $archivePath -InstallRoot $effectiveInstallRoot -WorkingRoot $workingRoot -BackupRoot $backupRoot | Out-Null
+}
+
+Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
+
+$assetResult = Copy-ActivityWatchCollectorAssets `
+    -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
+    -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
+    -StateRoot $effectiveStateRoot `
+    -CustomRulesSource $CustomRulesPath
+
+$taskDefinitions = New-ActivityWatchUserTaskDefinitions -Users $effectiveUsers
+Write-ActivityWatchLaunchScript -Path $effectiveLaunchScript -ConfigPath $effectiveConfigPath
+Write-ActivityWatchRecoveryScript -Path $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
+
+$config = New-ActivityWatchDeploymentConfig `
+    -ServerHost $effectiveServerHost `
+    -ServerPort $effectiveServerPort `
+    -ServerScheme $effectiveServerScheme `
+    -InstallRoot $effectiveInstallRoot `
+    -StateRoot $effectiveStateRoot `
+    -LogsRoot $effectiveLogsRoot `
+    -CollectorScript $effectiveCollector `
+    -RulesPath $effectiveRules `
+    -PollSeconds $effectivePollSeconds `
+    -PulseSeconds $effectivePulseSeconds `
+    -RecoveryIntervalSeconds $effectiveRecoveryInterval `
+    -LaunchScriptPath $effectiveLaunchScript `
+    -RecoveryScriptPath $effectiveRecoveryScript `
+    -UserTasks $taskDefinitions `
+    -PackageVersion $effectiveVersion
+
+Write-ActivityWatchDeploymentConfig -Config $config -Path $effectiveConfigPath
+Remove-LegacyActivityWatchEntries
+Set-ActivityWatchAcl -InstallRoot $effectiveInstallRoot -StateRoot $effectiveStateRoot -LogsRoot $effectiveLogsRoot
+Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptPath $effectiveLaunchScript -ConfigPath $effectiveConfigPath
+Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
+Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
+
+Write-Host 'ActivityWatch hardening/recovery completed.'
+Write-Host "Config: $effectiveConfigPath"
+Write-Host "Users repaired: $($effectiveUsers -join ', ')"

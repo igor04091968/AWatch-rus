@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "description": "Override or extend built-in ActivityWatch web categorization rules.",
+  "rules": [
+    {
+      "name": "work_crm",
+      "group": "work",
+      "domains": [
+        "crm.example.com",
+        "portal.example.org"
+      ]
+    },
+    {
+      "name": "work_erp",
+      "group": "work",
+      "domains": [
+        "erp.example.com",
+        "bi.example.com"
+      ]
+    },
+    {
+      "name": "neutral_training",
+      "group": "neutral",
+      "domains": [
+        "wiki.example.net",
+        "kb.example.net"
+      ]
+    },
+    {
+      "name": "personal_social",
+      "group": "personal",
+      "domains": [
+        "social.example.net"
+      ]
+    }
+  ]
+}

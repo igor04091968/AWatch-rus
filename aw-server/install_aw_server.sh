@@ -1,0 +1,86 @@
+#!/bin/bash
+set -euo pipefail
+
+ENV_FILE="/etc/activitywatch/aw-server.env"
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "missing env file: $ENV_FILE" >&2
+  exit 1
+fi
+
+source "$ENV_FILE"
+
+required_vars=(
+  AW_SERVER_VERSION
+  AW_SERVER_DOWNLOAD_URL
+  AW_SERVER_BIND_HOST
+  AW_SERVER_PORT
+  AW_SERVER_WEBUI_DIR
+  AW_SERVER_DATA_DIR
+  AW_SERVER_LOG_DIR
+  AW_SERVER_USER
+  AW_SERVER_GROUP
+)
+
+for var_name in "${required_vars[@]}"; do
+  if [[ -z "${!var_name:-}" ]]; then
+    echo "missing required variable: $var_name" >&2
+    exit 1
+  fi
+done
+
+export DEBIAN_FRONTEND=noninteractive
+apt-get update
+apt-get install -y curl ca-certificates unzip jq
+
+if ! getent group "$AW_SERVER_GROUP" >/dev/null; then
+  groupadd --system "$AW_SERVER_GROUP"
+fi
+
+if ! id "$AW_SERVER_USER" >/dev/null 2>&1; then
+  useradd --system --gid "$AW_SERVER_GROUP" --home-dir "$AW_SERVER_DATA_DIR" --shell /usr/sbin/nologin "$AW_SERVER_USER"
+fi
+
+install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" /opt/activitywatch/bin
+install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" /opt/activitywatch/releases
+install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$AW_SERVER_WEBUI_DIR"
+install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$AW_SERVER_DATA_DIR"
+install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$AW_SERVER_LOG_DIR"
+
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+
+curl -fL "$AW_SERVER_DOWNLOAD_URL" -o "$tmp_dir/aw-server.zip"
+unzip -q "$tmp_dir/aw-server.zip" -d "$tmp_dir/unpacked"
+
+server_bin=$(find "$tmp_dir/unpacked" -type f \( -name 'aw-server-rust' -o -name 'aw-server' \) | head -n 1)
+webui_dir=$(find "$tmp_dir/unpacked" -type d \( -name 'webui' -o -name 'aw-webui' \) | head -n 1 || true)
+
+if [[ -z "$server_bin" || ! -f "$server_bin" ]]; then
+  echo "aw-server binary not found in archive" >&2
+  exit 1
+fi
+
+release_dir="/opt/activitywatch/releases/aw-server-rust-v${AW_SERVER_VERSION}"
+rm -rf "$release_dir"
+install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$release_dir"
+install -m 0755 -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$server_bin" "$release_dir/aw-server-rust"
+ln -sfn "$release_dir/aw-server-rust" /opt/activitywatch/bin/aw-server-rust
+
+if [[ -n "$webui_dir" && -d "$webui_dir" ]]; then
+  rm -rf "$AW_SERVER_WEBUI_DIR"
+  mkdir -p "$AW_SERVER_WEBUI_DIR"
+  cp -a "$webui_dir"/. "$AW_SERVER_WEBUI_DIR"/
+  chown -R "$AW_SERVER_USER:$AW_SERVER_GROUP" "$AW_SERVER_WEBUI_DIR"
+fi
+
+sed \
+  -e "s#__AW_SERVER_USER__#$AW_SERVER_USER#g" \
+  -e "s#__AW_SERVER_GROUP__#$AW_SERVER_GROUP#g" \
+  -e "s#__AW_SERVER_DATA_DIR__#$AW_SERVER_DATA_DIR#g" \
+  /root/bootstrap/activitywatch-server.service > /etc/systemd/system/activitywatch-server.service
+chmod 0644 /etc/systemd/system/activitywatch-server.service
+
+systemctl daemon-reload
+systemctl enable activitywatch-server.service
+systemctl restart activitywatch-server.service
+systemctl --no-pager --full status activitywatch-server.service || true
