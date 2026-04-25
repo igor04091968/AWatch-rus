@@ -27,6 +27,10 @@
 8. Развернуть Windows-клиентов через `windows/deploy-ensemble.ps1`.
 9. Проверить итог через `windows/validate-deployment.ps1`.
 
+Для полного Ansible-сценария “с нуля” в Proxmox используйте:
+
+- `ansible/provision_proxmox_ct_and_deploy_aw.yml`
+
 Скрипты `proxmox/create-ct.sh` и `proxmox/push-aw-artifacts.sh` по умолчанию читают:
 
 - `secrets/deploy.secrets.env`

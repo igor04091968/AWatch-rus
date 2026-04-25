@@ -1,5 +1,14 @@
 # Deployment
 
+## 0. Ansible full-stack вариант (рекомендуется)
+
+```sh
+cd /home/igor/tmp/AWatch-rus/ansible
+ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
+```
+
+Этот playbook создаёт CT в Proxmox и полностью разворачивает ActivityWatch внутри контейнера.
+
 ## 1. Подготовить env-файлы
 
 На рабочей машине оператора:

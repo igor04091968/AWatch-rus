@@ -18,6 +18,7 @@
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/validate-deployment.ps1`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/browser-domains-native-collector.ps1`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_aw_server.yml`
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/provision_proxmox_ct_and_deploy_aw.yml`
 
 ---
 
@@ -50,6 +51,29 @@ cp /mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env.examp
 ---
 
 ## 2) Развёртывание сервера в Proxmox
+
+### 2.0 Ansible full-stack (создание CT + установка AW)
+
+Подготовьте:
+
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/inventory.ini`
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/group_vars/all.yml`
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/group_vars/proxmox.yml`
+
+Запуск:
+
+```bash
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible
+ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
+```
+
+Этот сценарий полностью закрывает:
+
+- создание CT в Proxmox;
+- bootstrap пакетов в CT;
+- установку ActivityWatch Server;
+- применение RU Web UI patch;
+- проверку API.
 
 ### 2.1 Создать LXC контейнер
 
