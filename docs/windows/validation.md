@@ -73,6 +73,7 @@ Invoke-WebRequest https://aw.example.local/api/0/info
 - `aw-watcher-window_<hostname>`
 - `aw-watcher-web-edge_<hostname>` или другой browser bucket
 - `aw-detmir-web-category_<hostname>`
+- `aw-dlp-endpoint-signals_<hostname>`
 - `aw-dlp-incidents_<hostname>` (при срабатывании policy rule с `action=alert|block|quarantine`)
 
 Проверка через API:

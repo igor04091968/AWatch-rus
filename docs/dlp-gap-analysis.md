@@ -25,11 +25,12 @@
 - Incident generation в отдельный AW bucket.
 - Incident cooldown/dedup.
 
-### Phase 2 (следующий шаг)
+### Phase 2 (внедрено частично)
 
-- USB/print/clipboard collectors.
-- File-operation telemetry (create/copy/archive/upload hints).
-- Central incident aggregation/export.
+- USB/print/clipboard collectors (endpoint signals) — внедрено.
+- Incident pipeline расширен на endpoint события — внедрено.
+- File-operation telemetry (create/copy/archive/upload hints) — в backlog.
+- Central incident aggregation/export — в backlog.
 
 ### Phase 3
 

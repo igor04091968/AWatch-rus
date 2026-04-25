@@ -45,6 +45,7 @@ $effectiveConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $effect
 $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
 $effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
 $effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
+$effectiveEndpointCollector = Join-Path $effectiveStateRoot 'dlp-endpoint-signals-collector.ps1'
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 
@@ -80,6 +81,7 @@ Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
 
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
+    -EndpointCollectorScriptSource (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
     -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
@@ -87,6 +89,7 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -CustomPolicySource $CustomPolicyPath
 
 $effectivePolicy = [string]$assetResult.ActivePolicy
+$effectiveEndpointCollector = [string]$assetResult.EndpointCollectorScript
 
 $taskDefinitions = New-ActivityWatchUserTaskDefinitions -Users $effectiveUsers
 Write-ActivityWatchLaunchScript -Path $effectiveLaunchScript -ConfigPath $effectiveConfigPath
@@ -100,6 +103,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -StateRoot $effectiveStateRoot `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
+    -EndpointCollectorScript $effectiveEndpointCollector `
     -RulesPath $effectiveRules `
     -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `

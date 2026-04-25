@@ -241,6 +241,8 @@ function Copy-ActivityWatchCollectorAssets {
         [Parameter(Mandatory = $true)]
         [string]$CollectorScriptSource,
         [Parameter(Mandatory = $true)]
+        [string]$EndpointCollectorScriptSource,
+        [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
         [Parameter(Mandatory = $true)]
         [string]$ExamplePolicySource,
@@ -253,12 +255,14 @@ function Copy-ActivityWatchCollectorAssets {
     New-ActivityWatchDirectory -Path $StateRoot
 
     $collectorTarget = Join-Path $StateRoot 'browser-domains-native-collector.ps1'
+    $endpointCollectorTarget = Join-Path $StateRoot 'dlp-endpoint-signals-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
     $examplePolicyTarget = Join-Path $StateRoot 'dlp-policy.example.json'
     $policyTarget = Join-Path $StateRoot 'dlp-policy.json'
 
     Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
+    Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
     Copy-Item -LiteralPath $ExampleRulesSource -Destination $exampleRulesTarget -Force
     Copy-Item -LiteralPath $ExamplePolicySource -Destination $examplePolicyTarget -Force
 
@@ -276,11 +280,12 @@ function Copy-ActivityWatchCollectorAssets {
     }
 
     return [pscustomobject]@{
-        CollectorScript = $collectorTarget
-        ExampleRules    = $exampleRulesTarget
-        ActiveRules     = $rulesTarget
-        ExamplePolicy   = $examplePolicyTarget
-        ActivePolicy    = $policyTarget
+        CollectorScript         = $collectorTarget
+        EndpointCollectorScript = $endpointCollectorTarget
+        ExampleRules            = $exampleRulesTarget
+        ActiveRules             = $rulesTarget
+        ExamplePolicy           = $examplePolicyTarget
+        ActivePolicy            = $policyTarget
     }
 }
 
@@ -300,6 +305,8 @@ function New-ActivityWatchDeploymentConfig {
         [string]$LogsRoot,
         [Parameter(Mandatory = $true)]
         [string]$CollectorScript,
+        [Parameter(Mandatory = $true)]
+        [string]$EndpointCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
         [Parameter(Mandatory = $true)]
@@ -332,6 +339,7 @@ function New-ActivityWatchDeploymentConfig {
             stateRoot      = $StateRoot
             logsRoot       = $LogsRoot
             collectorScript = $CollectorScript
+            endpointCollectorScript = $EndpointCollectorScript
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -418,11 +426,11 @@ function Test-ProcessInSession {
 
 function Test-CollectorRunning {
     param(
-        [string]`$CollectorScript,
+        [string]`$ScriptPath,
         [int]`$SessionId
     )
 
-    `$escapedCollector = [Regex]::Escape(`$CollectorScript)
+    `$escapedCollector = [Regex]::Escape(`$ScriptPath)
     `$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
         Where-Object {
             (`$_.Name -ieq 'powershell.exe' -or `$_.Name -ieq 'pwsh.exe') -and
@@ -433,10 +441,36 @@ function Test-CollectorRunning {
     return [bool](`$processes | Select-Object -First 1)
 }
 
+function Start-CollectorScriptIfNeeded {
+    param(
+        [string]`$ScriptPath,
+        [string]`$ConfigPath,
+        [string]`$PowerShellExe,
+        [int]`$SessionId
+    )
+
+    if (-not (Test-Path -LiteralPath `$ScriptPath)) {
+        return
+    }
+
+    if (Test-CollectorRunning -ScriptPath `$ScriptPath -SessionId `$SessionId) {
+        return
+    }
+
+    Start-Process -FilePath `$PowerShellExe -ArgumentList @(
+        '-NoProfile',
+        '-WindowStyle', 'Hidden',
+        '-ExecutionPolicy', 'Bypass',
+        '-File', `$ScriptPath,
+        '-ConfigPath', `$ConfigPath
+    ) -WindowStyle Hidden
+}
+
 `$config = Get-DeploymentConfig -Path `$ConfigPath
 `$sessionId = (Get-Process -Id `$PID).SessionId
 `$installRoot = [string]`$config.paths.installRoot
 `$collectorScript = [string]`$config.paths.collectorScript
+`$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { '' }
 `$afkExe = Join-Path `$installRoot 'aw-watcher-afk\aw-watcher-afk.exe'
 `$windowExe = Join-Path `$installRoot 'aw-watcher-window\aw-watcher-window.exe'
 `$serverArgs = @('--host', [string]`$config.server.host, '--port', [string]`$config.server.port)
@@ -458,15 +492,8 @@ if (-not (Test-ProcessInSession -Name 'aw-watcher-window' -SessionId `$sessionId
     Start-Process -FilePath `$windowExe -ArgumentList `$serverArgs -WindowStyle Hidden
 }
 
-if ((Test-Path -LiteralPath `$collectorScript) -and -not (Test-CollectorRunning -CollectorScript `$collectorScript -SessionId `$sessionId)) {
-    Start-Process -FilePath `$powershellExe -ArgumentList @(
-        '-NoProfile',
-        '-WindowStyle', 'Hidden',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', `$collectorScript,
-        '-ConfigPath', `$ConfigPath
-    ) -WindowStyle Hidden
-}
+Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 "@
 
     Set-Content -LiteralPath $Path -Value $content -Encoding UTF8

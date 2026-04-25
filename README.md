@@ -14,7 +14,7 @@
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation.
-- `windows/` — PowerShell toolkit + phase-1 DLP policy/incident pipeline (`aw-dlp-incidents_*`).
+- `windows/` — PowerShell toolkit + phase-2 DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
 
 ## Базовый сценарий

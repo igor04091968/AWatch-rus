@@ -8,6 +8,7 @@
 - `windows/hardening-recovery.ps1` — повторная регистрация задач, ACL и recovery-loop.
 - `windows/validate-deployment.ps1` — машинная проверка состояния и JSON-отчёт.
 - `windows/browser-domains-native-collector.ps1` — native collector доменов браузера с категоризацией.
+- `windows/dlp-endpoint-signals-collector.ps1` — phase-2 collector (clipboard/USB/print signals).
 - `windows/web-category-rules.example.json` — пример кастомных правил категоризации.
 - `windows/dlp-policy.example.json` — пример DLP-политики (phase-1: alerting incidents).
 
@@ -124,6 +125,7 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
 - `C:\ProgramData\ActivityWatch\launch-watchers.ps1` — per-user launcher.
 - `C:\ProgramData\ActivityWatch\recovery-loop.ps1` — system recovery loop.
 - `C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1` — runtime collector.
+- `C:\ProgramData\ActivityWatch\dlp-endpoint-signals-collector.ps1` — runtime endpoint collector.
 - `C:\ProgramData\ActivityWatch\dlp-policy.json` — активная DLP-политика.
 - `C:\ProgramData\ActivityWatch\logs\` — логи collector'а.
 

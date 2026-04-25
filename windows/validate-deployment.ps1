@@ -13,6 +13,7 @@ $config = Read-ActivityWatchDeploymentConfig -Path $ConfigPath
 $installRoot = [string]$config.paths.installRoot
 $stateRoot = [string]$config.paths.stateRoot
 $collectorScript = [string]$config.paths.collectorScript
+$endpointCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$config.paths.endpointCollectorScript } else { Join-Path $stateRoot 'dlp-endpoint-signals-collector.ps1' }
 $rulesPath = [string]$config.paths.rulesPath
 $policyPath = if ($config.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$config.paths.policyPath } else { Join-Path $stateRoot 'dlp-policy.json' }
 $launchScript = [string]$config.paths.launchScript
@@ -22,6 +23,7 @@ $requiredFiles = @(
     (Join-Path $installRoot 'aw-watcher-afk\aw-watcher-afk.exe'),
     (Join-Path $installRoot 'aw-watcher-window\aw-watcher-window.exe'),
     $collectorScript,
+    $endpointCollectorScript,
     $rulesPath,
     $policyPath,
     $launchScript,
