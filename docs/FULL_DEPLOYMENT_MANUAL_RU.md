@@ -13,8 +13,11 @@
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/aw-server/apply_webui_ru_patch.sh`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/deploy-single-user.ps1`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/deploy-domain-users.ps1`
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/deploy-ensemble.ps1`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/hardening-recovery.ps1`
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/validate-deployment.ps1`
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/browser-domains-native-collector.ps1`
+- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_aw_server.yml`
 
 ---
 
@@ -154,6 +157,21 @@ C:\Deploy\ActivityWatch-Russian\windows\deploy-domain-users.ps1 `
 - `-Users 'CONTOSO\user01','CONTOSO\user02'`
 - `-UserListPath <txt|csv>`
 
+### 3.2.1 Ensemble orchestration (рекомендуется для production)
+
+```powershell
+C:\Deploy\ActivityWatch-Russian\windows\deploy-ensemble.ps1 `
+  -ServerHost aw.example.local `
+  -ServerPort 5600 `
+  -Domain CONTOSO `
+  -Users user1,user2,user3,user4,user5 `
+  -ValidateAfterDeploy
+```
+
+Отчёт сохраняется в:
+
+- `C:\ProgramData\ActivityWatch\ensemble-report-YYYYMMDD-HHMMSS.json`
+
 ### 3.3 Single-user развёртывание
 
 ```powershell
@@ -169,6 +187,14 @@ C:\Deploy\ActivityWatch-Russian\windows\deploy-single-user.ps1 `
 ```powershell
 C:\Deploy\ActivityWatch-Russian\windows\hardening-recovery.ps1 `
   -ConfigPath C:\ProgramData\ActivityWatch\deployment-config.json
+```
+
+### 3.5 Валидация deployment-а (PowerShell report)
+
+```powershell
+$report = C:\Deploy\ActivityWatch-Russian\windows\validate-deployment.ps1 `
+  -ConfigPath C:\ProgramData\ActivityWatch\deployment-config.json
+$report | ConvertTo-Json -Depth 12
 ```
 
 ---

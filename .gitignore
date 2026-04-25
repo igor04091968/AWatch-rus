@@ -1,0 +1,12 @@
+# Local secrets
+secrets/deploy.secrets.env
+
+# Runtime / reports
+*.log
+*.tmp
+*.bak
+windows/*.report.json
+
+# IDE
+.idea/
+.vscode/

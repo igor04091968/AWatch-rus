@@ -1,5 +1,17 @@
 # Windows validation
 
+## Автоматическая проверка (рекомендуется)
+
+```powershell
+$report = .\windows\validate-deployment.ps1 `
+  -ConfigPath C:\ProgramData\ActivityWatch\deployment-config.json
+$report | ConvertTo-Json -Depth 12
+```
+
+Критерий:
+
+- `overallOk = true`
+
 ## Базовая проверка после развёртывания
 
 ### 1. Проверить установленные файлы
@@ -59,7 +71,7 @@ Invoke-WebRequest https://aw.example.local/api/0/info
 
 - `aw-watcher-window_<hostname>`
 - `aw-watcher-web-edge_<hostname>` или другой browser bucket
-- `aw-watcher-web-category_<hostname>`
+- `aw-detmir-web-category_<hostname>`
 
 Проверка через API:
 

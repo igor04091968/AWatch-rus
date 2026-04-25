@@ -1,0 +1,11 @@
+aw_server_version: "v0.13.2"
+aw_server_download_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-linux-x86_64.zip"
+aw_server_bind_host: "0.0.0.0"
+aw_server_port: 5600
+aw_server_webui_dir: "/opt/activitywatch/webui-ru"
+aw_server_data_dir: "/var/lib/activitywatch"
+aw_server_log_dir: "/var/log/activitywatch"
+aw_server_user: "activitywatch"
+aw_server_group: "activitywatch"
+
+aw_repo_root: "/home/igor/tmp/AWatch-rus"

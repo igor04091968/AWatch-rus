@@ -4,7 +4,9 @@
 
 - `windows/deploy-single-user.ps1` — развёртывание для одного пользователя.
 - `windows/deploy-domain-users.ps1` — массовое развёртывание по списку пользователей.
+- `windows/deploy-ensemble.ps1` — orchestration-скрипт полного цикла (deploy + hardening + validation).
 - `windows/hardening-recovery.ps1` — повторная регистрация задач, ACL и recovery-loop.
+- `windows/validate-deployment.ps1` — машинная проверка состояния и JSON-отчёт.
 - `windows/browser-domains-native-collector.ps1` — native collector доменов браузера с категоризацией.
 - `windows/web-category-rules.example.json` — пример кастомных правил категоризации.
 
@@ -87,6 +89,21 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
 ```
 
 Если список уже содержит `DOMAIN\user`, параметр `-Domain` не нужен.
+
+## Ensemble deploy (production workflow)
+
+```powershell
+.\windows\deploy-ensemble.ps1 `
+  -ServerHost aw.example.local `
+  -ServerPort 5600 `
+  -Domain CONTOSO `
+  -Users user1,user2,user3,user4,user5 `
+  -ValidateAfterDeploy
+```
+
+Итоговый отчёт:
+
+- `C:\ProgramData\ActivityWatch\ensemble-report-YYYYMMDD-HHMMSS.json`
 
 ## Категоризация доменов
 

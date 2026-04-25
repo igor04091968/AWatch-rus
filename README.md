@@ -1,4 +1,4 @@
-# ActivityWatch-Russian
+# AWatch-rus
 
 Практический каркас проекта для повторного развёртывания ActivityWatch Server в новом окружении с LXC-контейнером на Proxmox, русифицированным Web UI, systemd-юнитами, шаблонными скриптами деплоя и эксплуатационной документацией.
 
@@ -8,8 +8,11 @@
 - `docs/deployment.md` — пошаговый деплой LXC и ActivityWatch Server.
 - `docs/runbook.md` — быстрый runbook для оператора.
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
+- `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
+- `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
+- `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation.
 
 ## Базовый сценарий
 
@@ -20,6 +23,8 @@
 5. Внутри контейнера выполнить `aw-server/install_aw_server.sh`.
 6. Применить русификацию Web UI через `aw-server/apply_webui_ru_patch.sh`.
 7. Проверить API, Web UI и состояние systemd по `docs/runbook.md`.
+8. Развернуть Windows-клиентов через `windows/deploy-ensemble.ps1`.
+9. Проверить итог через `windows/validate-deployment.ps1`.
 
 Скрипты `proxmox/create-ct.sh` и `proxmox/push-aw-artifacts.sh` по умолчанию читают:
 
@@ -42,15 +47,17 @@
 
 ## Ограничения
 
-- Windows-клиенты и watcher-автоматизация в этой части каркаса не описываются.
 - Интеграции с InfluxDB/Grafana/LDAP оставлены как следующий слой, не как обязательная база.
 
 ## Быстрые ссылки
 
 - `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/docs/FULL_DEPLOYMENT_MANUAL_RU.md`
+- `/home/igor/tmp/AWatch-rus/docs/windows/ensemble.md`
 - `docs/preparation.md`
 - `docs/deployment.md`
 - `docs/runbook.md`
 - `docs/operations.md`
 - `proxmox/create-ct.sh`
 - `aw-server/install_aw_server.sh`
+- `windows/deploy-ensemble.ps1`
+- `windows/validate-deployment.ps1`
