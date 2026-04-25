@@ -64,6 +64,28 @@ Start-ScheduledTask -TaskName 'ActivityWatch Launch [CONTOSO_user01]'
 
 - Если сервер и пользователи уже есть в `deployment-config.json`, дополнительные параметры не нужны.
 
+### Ошибка `InvalidVariableReferenceWithDrive` (в строке `Server: http://...`)
+
+Симптом:
+
+- деплой падает на выводе URL сервера с ошибкой о недопустимой ссылке на переменную.
+
+Решение:
+
+- обновить скрипты до версии, где используется `${ServerScheme}` в строке вывода;
+- перезалить `deploy-single-user.ps1` / `deploy-domain-users.ps1` на целевой хост.
+
+### Ошибка `LogonType InteractiveToken` при регистрации задач
+
+Симптом:
+
+- `Register-ActivityWatchUserTasks` падает с ошибкой преобразования enum для `LogonType`.
+
+Решение:
+
+- использовать версию `ActivityWatch.Windows.Common.psm1`, где `LogonType` задан как `Interactive`;
+- повторно запустить deploy/hardening после обновления модуля.
+
 ## Диагностика
 
 Проверить задачи:

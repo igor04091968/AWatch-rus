@@ -85,7 +85,7 @@ Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -Recovery
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
 Write-Host "ActivityWatch deployed for $TargetUser"
-Write-Host "Server: $ServerScheme://$ServerHost`:$ServerPort"
+Write-Host "Server: ${ServerScheme}://$ServerHost`:$ServerPort"
 Write-Host "Install root: $InstallRoot"
 Write-Host "State root: $StateRoot"
 Write-Host "Rules file: $($assetResult.ActiveRules)"

@@ -88,6 +88,6 @@ Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $co
 
 Write-Host 'ActivityWatch deployed for users:'
 $targetUsers | ForEach-Object { Write-Host " - $_" }
-Write-Host "Server: $ServerScheme://$ServerHost`:$ServerPort"
+Write-Host "Server: ${ServerScheme}://$ServerHost`:$ServerPort"
 Write-Host "State root: $StateRoot"
 Write-Host "Policy file: $($assetResult.ActivePolicy)"

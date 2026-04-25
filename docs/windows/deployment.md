@@ -21,6 +21,7 @@
 - Создаёт системную задачу `ActivityWatch Recovery`, которая циклически перезапускает per-user launch tasks.
 - Применяет ACL к `C:\Program Files\ActivityWatch`, `C:\ProgramData\ActivityWatch` и каталогу логов.
 - Не содержит хардкодов инфраструктуры: сервер, домен, список пользователей и правила передаются параметрами.
+- Корректно регистрирует задачи через `-LogonType Interactive` (совместимо с Windows Server, где `InteractiveToken` не поддерживается).
 
 ## Предпосылки
 
@@ -95,6 +96,35 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
 
 Если список уже содержит `DOMAIN\user`, параметр `-Domain` не нужен.
 
+## Рекомендуемый phased rollout (изолированный профиль)
+
+Для безопасного параллельного запуска рядом с legacy-инсталляцией используйте отдельные пути:
+
+```powershell
+.\windows\deploy-domain-users.ps1 `
+  -ServerHost 10.10.10.13 `
+  -ServerPort 5600 `
+  -Domain SHARKON2025 `
+  -Users user2,user3,user4,user5 `
+  -InstallRoot 'C:\Program Files\ActivityWatch-Phase2-u2u5' `
+  -StateRoot 'C:\ProgramData\ActivityWatch-Phase2-u2u5' `
+  -CustomRulesPath C:\Deploy\AWatch-rus\windows\web-category-rules.example.json `
+  -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json
+```
+
+Single-user pilot в таком же стиле:
+
+```powershell
+.\windows\deploy-single-user.ps1 `
+  -ServerHost 10.10.10.13 `
+  -ServerPort 5600 `
+  -TargetUser 'SHARKON2025\user1' `
+  -InstallRoot 'C:\Program Files\ActivityWatch-Phase2' `
+  -StateRoot 'C:\ProgramData\ActivityWatch-Phase2-user1' `
+  -CustomRulesPath C:\Deploy\AWatch-rus\windows\web-category-rules.example.json `
+  -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json
+```
+
 ## Ensemble deploy (production workflow)
 
 ```powershell
@@ -128,6 +158,8 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
 - `C:\ProgramData\ActivityWatch\dlp-endpoint-signals-collector.ps1` — runtime endpoint collector.
 - `C:\ProgramData\ActivityWatch\dlp-policy.json` — активная DLP-политика.
 - `C:\ProgramData\ActivityWatch\logs\` — логи collector'а.
+
+Для phased rollout те же файлы формируются в каталоге `StateRoot`, переданном параметром.
 
 ## Повторный прогон
 

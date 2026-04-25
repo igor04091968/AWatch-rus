@@ -8,6 +8,8 @@ $report = .\windows\validate-deployment.ps1 `
 $report | ConvertTo-Json -Depth 12
 ```
 
+Примечание: валидатор проверяет задачи через полный список Task Scheduler и корректно обрабатывает имена с квадратными скобками (`ActivityWatch Launch [DOMAIN_user]`).
+
 Критерий:
 
 - `overallOk = true`
@@ -37,6 +39,13 @@ Get-ScheduledTask -TaskName 'ActivityWatch*' |
 
 - по одной задаче `ActivityWatch Launch [...]` на пользователя;
 - одна задача `ActivityWatch Recovery`.
+
+Точечная проверка:
+
+```powershell
+Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Launch [SHARKON2025_user1]'
+Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Recovery'
+```
 
 ### 3. Проверить процессы после логина пользователя
 
@@ -98,6 +107,22 @@ Invoke-WebRequest http://aw.example.local:5600/api/0/buckets | Select-Object -Ex
 
 ```powershell
 Get-Content "C:\ProgramData\ActivityWatch\logs\dlp-incidents-$env:USERNAME.log" -Tail 50
+```
+
+## Проверка phase-2 endpoint signals
+
+1. Скопируйте любой текст в буфер обмена.
+2. Отправьте тестовую печать (любой принтер/виртуальный PDF).
+3. Проверьте endpoint bucket:
+
+```powershell
+Invoke-WebRequest http://aw.example.local:5600/api/0/buckets/aw-dlp-endpoint-signals_<hostname>/events?limit=20
+```
+
+4. Проверьте локальный лог:
+
+```powershell
+Get-Content "C:\ProgramData\ActivityWatch\logs\endpoint-signals-$env:USERNAME.log" -Tail 50
 ```
 
 ## Проверка восстановления

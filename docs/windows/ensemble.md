@@ -20,8 +20,10 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 C:\Deploy\AWatch-rus\windows\deploy-ensemble.ps1 `
   -ServerHost 10.10.10.13 `
   -ServerPort 5600 `
-  -Domain AD `
+  -Domain SHARKON2025 `
   -Users user1,user2,user3,user4,user5 `
+  -InstallRoot 'C:\Program Files\ActivityWatch-Phase2' `
+  -StateRoot 'C:\ProgramData\ActivityWatch-Phase2' `
   -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json `
   -ValidateAfterDeploy
 ```
@@ -32,13 +34,13 @@ C:\Deploy\AWatch-rus\windows\deploy-ensemble.ps1 `
 2. Вызывает массовый деплой `deploy-domain-users.ps1`.
 3. Применяет hardening/recovery (`hardening-recovery.ps1`), если не задан `-SkipHardening`.
 4. Опционально запускает контроль (`validate-deployment.ps1`) при `-ValidateAfterDeploy`.
-5. Пишет итоговый JSON-отчёт в `C:\ProgramData\ActivityWatch\ensemble-report-*.json`.
+5. Пишет итоговый JSON-отчёт в `<StateRoot>\ensemble-report-*.json`.
 
 ## Быстрый health-check
 
 ```powershell
 $report = C:\Deploy\AWatch-rus\windows\validate-deployment.ps1 `
-  -ConfigPath C:\ProgramData\ActivityWatch\deployment-config.json
+  -ConfigPath C:\ProgramData\ActivityWatch-Phase2\deployment-config.json
 $report | ConvertTo-Json -Depth 12
 ```
 

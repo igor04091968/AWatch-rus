@@ -572,7 +572,7 @@ function Register-ActivityWatchUserTasks {
 
         $action = New-ScheduledTaskAction -Execute $powershellExe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$LaunchScriptPath`" -ConfigPath `"$ConfigPath`""
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $definition.UserId
-        $principal = New-ScheduledTaskPrincipal -UserId $definition.UserId -LogonType InteractiveToken -RunLevel Highest
+        $principal = New-ScheduledTaskPrincipal -UserId $definition.UserId -LogonType Interactive -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 
         Register-ScheduledTask -TaskName $definition.LaunchTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null

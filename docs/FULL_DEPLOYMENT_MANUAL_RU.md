@@ -6,20 +6,22 @@
 
 ## 0) Структура проекта (полные пути)
 
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/create-ct.sh`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/push-aw-artifacts.sh`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/aw-server/install_aw_server.sh`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/aw-server/apply_webui_ru_patch.sh`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/deploy-single-user.ps1`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/deploy-domain-users.ps1`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/deploy-ensemble.ps1`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/hardening-recovery.ps1`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/validate-deployment.ps1`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/browser-domains-native-collector.ps1`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_aw_server.yml`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/provision_proxmox_ct_and_deploy_aw.yml`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
+- `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`
+- `/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh`
+- `/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh`
+- `/home/igor/tmp/AWatch-rus/aw-server/install_aw_server.sh`
+- `/home/igor/tmp/AWatch-rus/aw-server/apply_webui_ru_patch.sh`
+- `/home/igor/tmp/AWatch-rus/windows/deploy-single-user.ps1`
+- `/home/igor/tmp/AWatch-rus/windows/deploy-domain-users.ps1`
+- `/home/igor/tmp/AWatch-rus/windows/deploy-ensemble.ps1`
+- `/home/igor/tmp/AWatch-rus/windows/hardening-recovery.ps1`
+- `/home/igor/tmp/AWatch-rus/windows/validate-deployment.ps1`
+- `/home/igor/tmp/AWatch-rus/windows/browser-domains-native-collector.ps1`
+- `/home/igor/tmp/AWatch-rus/windows/dlp-endpoint-signals-collector.ps1`
+- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_server.yml`
+- `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_and_deploy_aw.yml`
+- `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
+- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows_phase2.yml`
 
 ---
 
@@ -37,11 +39,11 @@
 Скопируйте шаблон:
 
 ```bash
-cp /mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env.example \
-   /mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env
+cp /home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env.example \
+   /home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env
 ```
 
-Заполните в файле `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env`:
+Заполните в файле `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`:
 
 - все `CT_*` параметры контейнера;
 - все `AW_SERVER_*` параметры сервера;
@@ -57,14 +59,14 @@ cp /mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env.examp
 
 Подготовьте:
 
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/inventory.ini`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/group_vars/all.yml`
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/group_vars/proxmox.yml`
+- `/home/igor/tmp/AWatch-rus/ansible/inventory.ini`
+- `/home/igor/tmp/AWatch-rus/ansible/group_vars/all.yml`
+- `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.yml`
 
 Запуск:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible
+cd /home/igor/tmp/AWatch-rus/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 ```
 
@@ -79,7 +81,7 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 Для массового режима (несколько CT):
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible
+cd /home/igor/tmp/AWatch-rus/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 ```
 
@@ -88,25 +90,25 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 На узле Proxmox:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
-/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/create-ct.sh
+cd /home/igor/tmp/AWatch-rus
+/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh
 ```
 
 По умолчанию читается:
 
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env`
+- `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`
 
 При необходимости можно передать другой путь:
 
 ```bash
-/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/create-ct.sh /absolute/path/to/deploy.secrets.env
+/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh /absolute/path/to/deploy.secrets.env
 ```
 
 ### 2.2 Загрузить bootstrap-артефакты и env внутрь CT
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
-/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/push-aw-artifacts.sh
+cd /home/igor/tmp/AWatch-rus
+/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh
 ```
 
 Скрипт загружает в CT:
@@ -158,7 +160,7 @@ grep -n 'aw-ru-patch\|aw-sw-cleanup' /opt/activitywatch/webui-ru/index.html
 
 Скопируйте каталог:
 
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows`
+- `/home/igor/tmp/AWatch-rus/windows`
 
 например в:
 
@@ -315,11 +317,11 @@ pct exec <CT_ID> -- tar -C / -czf /root/activitywatch-config-backup.tgz \
 ### 6.2 Обновление сервера
 
 1. Обновить `AW_SERVER_VERSION` и `AW_SERVER_DOWNLOAD_URL` в  
-   `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env`
+   `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`
 2. Выполнить:
 
 ```bash
-/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/push-aw-artifacts.sh
+/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh
 pct enter <CT_ID>
 bash /root/bootstrap/install_aw_server.sh
 bash /root/bootstrap/apply_webui_ru_patch.sh
@@ -347,7 +349,7 @@ systemctl restart activitywatch-server.service
 
 ## 7) Безопасность
 
-- Не хранить реальные секреты вне `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env`.
+- Не хранить реальные секреты вне `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`.
 - Не открывать `5600/tcp` в интернет напрямую.
 - Публиковать через VPN или reverse proxy с ограничением доступа.
 - Перед изменениями всегда делать backup.
@@ -356,9 +358,9 @@ systemctl restart activitywatch-server.service
 
 ## 8) Короткий чек-лист ввода в эксплуатацию
 
-1. Заполнен `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/secrets/deploy.secrets.env`.
-2. Выполнен `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/create-ct.sh`.
-3. Выполнен `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/push-aw-artifacts.sh`.
+1. Заполнен `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`.
+2. Выполнен `/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh`.
+3. Выполнен `/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh`.
 4. В CT выполнены `/root/bootstrap/install_aw_server.sh` и `/root/bootstrap/apply_webui_ru_patch.sh`.
 5. Сервер API/порт/UI проверены.
 6. На Windows выполнен `deploy-domain-users.ps1`.

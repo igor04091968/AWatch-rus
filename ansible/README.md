@@ -4,16 +4,19 @@
 
 - деплой на уже существующий Debian host/CT;
 - полный цикл с нуля в Proxmox: создание CT + bootstrap + установка ActivityWatch + RU patch.
+- централизованный деплой Windows phase-2 collectors по WinRM.
 
 ## Файлы
 
 - `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_server.yml` — основной playbook.
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_and_deploy_aw.yml` — full-stack playbook для Proxmox.
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый full-stack playbook (несколько CT).
+- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows_phase2.yml` — WinRM playbook для развёртывания phase-2 Windows collector'ов.
 - `/home/igor/tmp/AWatch-rus/ansible/inventory.example.ini` — шаблон inventory.
 - `/home/igor/tmp/AWatch-rus/ansible/group_vars/all.example.yml` — шаблон переменных.
 - `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.example.yml` — шаблон переменных CT в Proxmox.
 - `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox-matrix.example.yml` — шаблон матрицы CT.
+- `/home/igor/tmp/AWatch-rus/ansible/group_vars/windows.example.yml` — шаблон переменных Windows phase-2.
 
 ## Быстрый запуск
 
@@ -53,6 +56,26 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 cd /home/igor/tmp/AWatch-rus/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 ```
+
+## Windows phase-2 rollout (WinRM)
+
+1. Подготовьте inventory и vars:
+   - `cp /home/igor/tmp/AWatch-rus/ansible/inventory.example.ini /home/igor/tmp/AWatch-rus/ansible/inventory.ini`
+   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/windows.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/windows.yml`
+2. Заполните `inventory.ini` (секция `[aw_windows]`) и `group_vars/windows.yml`.
+3. Запустите:
+
+```bash
+cd /home/igor/tmp/AWatch-rus/ansible
+ansible-playbook -i inventory.ini deploy_aw_windows_phase2.yml
+```
+
+Playbook:
+
+- выгружает `windows/*` toolkit на целевой хост в `C:\Deploy\AWatch-rus\windows`;
+- выполняет `deploy-domain-users.ps1` с phase-2 policy/rules;
+- запускает `validate-deployment.ps1`;
+- забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation` по умолчанию).
 
 ## Результат
 

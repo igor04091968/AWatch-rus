@@ -46,7 +46,7 @@ $taskNames += [string]$config.recovery.taskName
 $taskNames = $taskNames | Sort-Object -Unique
 
 $tasks = foreach ($taskName in $taskNames) {
-    $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    $task = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -eq $taskName } | Select-Object -First 1
     if ($task) {
         [pscustomobject]@{
             taskName = $task.TaskName
