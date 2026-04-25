@@ -6,7 +6,9 @@ param(
     [ValidateSet('http', 'https')]
     [string]$ServerScheme,
     [string]$RulesPath,
+    [string]$PolicyPath,
     [string]$LogPath,
+    [string]$IncidentLogPath,
     [int]$PollSeconds,
     [int]$PulseSeconds
 )
@@ -51,10 +53,12 @@ $resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
 $resolvedRulesPath = if ($RulesPath) { $RulesPath } elseif ($deploymentConfig) { [string]$deploymentConfig.paths.rulesPath } else { 'C:\ProgramData\ActivityWatch\web-category-rules.json' }
+$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig) { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\ActivityWatch\dlp-policy.json' }
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
 $resolvedPulseSeconds = if ($PSBoundParameters.ContainsKey('PulseSeconds')) { $PulseSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pulseSeconds } else { 30 }
 $resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("browser-domains-{0}.log" -f $env:USERNAME) }
+$resolvedIncidentLogPath = if ($IncidentLogPath) { $IncidentLogPath } else { Join-Path $resolvedLogsRoot ("dlp-incidents-{0}.log" -f $env:USERNAME) }
 
 if (-not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
@@ -65,6 +69,15 @@ $script:Hostname = $env:COMPUTERNAME
 $script:SessionId = (Get-Process -Id $PID).SessionId
 $script:KnownBuckets = @{}
 $script:LogPath = $resolvedLogPath
+$script:IncidentLogPath = $resolvedIncidentLogPath
+$script:IncidentState = @{}
+$script:DlpRules = @()
+$script:DlpDefaults = [ordered]@{
+    enabled = $false
+    cooldownSeconds = 300
+    action = 'log'
+    severity = 'low'
+}
 $script:BrowserMap = @{
     msedge  = 'edge'
     chrome  = 'chrome'
@@ -91,6 +104,16 @@ function Write-CollectorLog {
 
     try {
         Add-Content -LiteralPath $script:LogPath -Value ('{0} {1}' -f (Get-Date -Format s), $Message)
+    }
+    catch {
+    }
+}
+
+function Write-DlpIncidentLog {
+    param([string]$Message)
+
+    try {
+        Add-Content -LiteralPath $script:IncidentLogPath -Value ('{0} {1}' -f (Get-Date -Format s), $Message)
     }
     catch {
     }
@@ -255,6 +278,248 @@ function Get-WebCategory {
     }
 }
 
+function Test-DomainListMatch {
+    param(
+        [string]$Host,
+        [string[]]$Domains
+    )
+
+    if (-not $Domains -or $Domains.Count -eq 0) {
+        return $false
+    }
+
+    foreach ($domain in $Domains) {
+        if (Test-DomainMatch -Host $Host -RuleDomain $domain) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-DlpRuleTimeWindow {
+    param(
+        [int]$CurrentHour,
+        [AllowNull()][int]$HourFrom,
+        [AllowNull()][int]$HourTo
+    )
+
+    if ($null -eq $HourFrom -or $null -eq $HourTo) {
+        return $true
+    }
+
+    if ($HourFrom -eq $HourTo) {
+        return $true
+    }
+
+    if ($HourFrom -lt $HourTo) {
+        return ($CurrentHour -ge $HourFrom -and $CurrentHour -lt $HourTo)
+    }
+
+    return ($CurrentHour -ge $HourFrom -or $CurrentHour -lt $HourTo)
+}
+
+function Load-DlpPolicy {
+    param([string]$Path)
+
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
+        Write-CollectorLog ("dlp policy not found, disabled: {0}" -f $Path)
+        return
+    }
+
+    try {
+        $parsed = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        $defaults = $parsed.defaults
+        if ($defaults) {
+            if ($defaults.PSObject.Properties.Name -contains 'enabled') {
+                $script:DlpDefaults.enabled = [bool]$defaults.enabled
+            }
+            if ($defaults.cooldownSeconds) {
+                $script:DlpDefaults.cooldownSeconds = [int]$defaults.cooldownSeconds
+            }
+            if ($defaults.action) {
+                $script:DlpDefaults.action = [string]$defaults.action
+            }
+            if ($defaults.severity) {
+                $script:DlpDefaults.severity = [string]$defaults.severity
+            }
+        }
+
+        $loaded = @()
+        foreach ($rule in @($parsed.rules)) {
+            if (-not $rule) { continue }
+            $when = $rule.when
+            if (-not $when) {
+                $when = [pscustomobject]@{}
+            }
+            $loaded += [pscustomobject]@{
+                id = [string]$rule.id
+                enabled = if ($rule.PSObject.Properties.Name -contains 'enabled') { [bool]$rule.enabled } else { $true }
+                action = if ($rule.action) { [string]$rule.action } else { [string]$script:DlpDefaults.action }
+                severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:DlpDefaults.severity }
+                message = if ($rule.message) { [string]$rule.message } else { "DLP rule matched: $($rule.id)" }
+                cooldownSeconds = if ($rule.cooldownSeconds) { [int]$rule.cooldownSeconds } else { [int]$script:DlpDefaults.cooldownSeconds }
+                when = [pscustomobject]@{
+                    domains = if ($when.PSObject.Properties.Name -contains 'domains') { @($when.domains | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Where-Object { $_ }) } else { @() }
+                    categoryGroups = if ($when.PSObject.Properties.Name -contains 'categoryGroups') { @($when.categoryGroups | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Where-Object { $_ }) } else { @() }
+                    categories = if ($when.PSObject.Properties.Name -contains 'categories') { @($when.categories | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Where-Object { $_ }) } else { @() }
+                    browsers = if ($when.PSObject.Properties.Name -contains 'browsers') { @($when.browsers | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Where-Object { $_ }) } else { @() }
+                    urlRegex = if ($when.PSObject.Properties.Name -contains 'urlRegex' -and $when.urlRegex) { [string]$when.urlRegex } else { $null }
+                    titleRegex = if ($when.PSObject.Properties.Name -contains 'titleRegex' -and $when.titleRegex) { [string]$when.titleRegex } else { $null }
+                    hourFrom = if ($when.PSObject.Properties.Name -contains 'hourFrom') { [int]$when.hourFrom } else { $null }
+                    hourTo = if ($when.PSObject.Properties.Name -contains 'hourTo') { [int]$when.hourTo } else { $null }
+                }
+            }
+        }
+
+        $script:DlpRules = @($loaded)
+        Write-CollectorLog ("dlp policy loaded: enabled={0}, rules={1}" -f $script:DlpDefaults.enabled, $script:DlpRules.Count)
+    }
+    catch {
+        Write-CollectorLog ("dlp policy parse failed: {0}" -f $_.Exception.Message)
+    }
+}
+
+function Test-DlpRuleMatch {
+    param(
+        [pscustomobject]$Rule,
+        [string]$Domain,
+        [string]$RootDomain,
+        [string]$Url,
+        [string]$Title,
+        [string]$BrowserKey,
+        [string]$Category,
+        [string]$CategoryGroup
+    )
+
+    if (-not $Rule.enabled) {
+        return $false
+    }
+
+    $when = $Rule.when
+    $currentHour = (Get-Date).Hour
+    if (-not (Test-DlpRuleTimeWindow -CurrentHour $currentHour -HourFrom $when.hourFrom -HourTo $when.hourTo)) {
+        return $false
+    }
+
+    if ($when.domains.Count -gt 0) {
+        $domainMatched = (Test-DomainListMatch -Host $Domain -Domains $when.domains) -or (Test-DomainListMatch -Host $RootDomain -Domains $when.domains)
+        if (-not $domainMatched) {
+            return $false
+        }
+    }
+
+    if ($when.categoryGroups.Count -gt 0 -and ($when.categoryGroups -notcontains $CategoryGroup.ToLowerInvariant())) {
+        return $false
+    }
+
+    if ($when.categories.Count -gt 0 -and ($when.categories -notcontains $Category.ToLowerInvariant())) {
+        return $false
+    }
+
+    if ($when.browsers.Count -gt 0 -and ($when.browsers -notcontains $BrowserKey.ToLowerInvariant())) {
+        return $false
+    }
+
+    if ($when.urlRegex) {
+        if (-not ($Url -match $when.urlRegex)) {
+            return $false
+        }
+    }
+
+    if ($when.titleRegex) {
+        if (-not ($Title -match $when.titleRegex)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Get-DlpDecision {
+    param(
+        [string]$Domain,
+        [string]$RootDomain,
+        [string]$Url,
+        [string]$Title,
+        [string]$BrowserKey,
+        [string]$Category,
+        [string]$CategoryGroup
+    )
+
+    if (-not $script:DlpDefaults.enabled) {
+        return $null
+    }
+
+    foreach ($rule in $script:DlpRules) {
+        if (Test-DlpRuleMatch -Rule $rule -Domain $Domain -RootDomain $RootDomain -Url $Url -Title $Title -BrowserKey $BrowserKey -Category $Category -CategoryGroup $CategoryGroup) {
+            return $rule
+        }
+    }
+
+    return $null
+}
+
+function Should-EmitIncident {
+    param(
+        [string]$Fingerprint,
+        [int]$CooldownSeconds
+    )
+
+    $now = (Get-Date).ToUniversalTime()
+    if ($script:IncidentState.ContainsKey($Fingerprint)) {
+        $last = [datetime]$script:IncidentState[$Fingerprint]
+        if ((New-TimeSpan -Start $last -End $now).TotalSeconds -lt $CooldownSeconds) {
+            return $false
+        }
+    }
+
+    $script:IncidentState[$Fingerprint] = $now
+    return $true
+}
+
+function Send-DlpIncidentHeartbeat {
+    param(
+        [pscustomobject]$Decision,
+        [string]$Url,
+        [string]$Title,
+        [string]$BrowserKey,
+        [string]$ProcessName,
+        [string]$Domain,
+        [string]$RootDomain,
+        [string]$Category,
+        [string]$CategoryGroup
+    )
+
+    $bucketId = 'aw-dlp-incidents_' + $script:Hostname
+    Ensure-Bucket -BucketId $bucketId -ClientName 'aw-dlp-incidents' -BucketType 'aw.dlp.incident'
+
+    $event = @{
+        timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        duration  = 0
+        data      = @{
+            ruleId         = [string]$Decision.id
+            action         = [string]$Decision.action
+            severity       = [string]$Decision.severity
+            message        = [string]$Decision.message
+            url            = $Url
+            title          = $Title
+            browser        = $BrowserKey
+            app            = "$ProcessName.exe"
+            domain         = $Domain
+            rootDomain     = $RootDomain
+            category       = $Category
+            categoryGroup  = $CategoryGroup
+            username       = $env:USERNAME
+            hostname       = $script:Hostname
+            sessionId      = $script:SessionId
+            source         = 'uia-native-dlp'
+        }
+    } | ConvertTo-Json -Depth 5 -Compress
+
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+}
+
 function Get-ForegroundWindowContext {
     $handle = [NativeAwMethods]::GetForegroundWindow()
     if ($handle -eq [IntPtr]::Zero) {
@@ -399,6 +664,7 @@ function Send-CategoryHeartbeat {
 }
 
 Load-CustomCategoryRules -Path $resolvedRulesPath
+Load-DlpPolicy -Path $resolvedPolicyPath
 Write-CollectorLog ("collector started against {0}" -f $script:ApiBase)
 
 while ($true) {
@@ -423,6 +689,18 @@ while ($true) {
                 Ensure-Bucket -BucketId $bucketId -ClientName ('aw-watcher-web-' + $browserKey)
                 Send-Heartbeat -BucketId $bucketId -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName
                 Send-CategoryHeartbeat -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName -Domain $domain -RootDomain $rootDomain -Category $category.Name -CategoryGroup $category.Group -CategoryRule $category.Rule
+
+                $decision = Get-DlpDecision -Domain $domain -RootDomain $rootDomain -Url $url -Title $context.Title -BrowserKey $browserKey -Category $category.Name -CategoryGroup $category.Group
+                if ($decision) {
+                    $fingerprint = '{0}|{1}|{2}|{3}' -f $decision.id, $browserKey, $rootDomain, $env:USERNAME
+                    $cooldown = [Math]::Max([int]$decision.cooldownSeconds, 30)
+                    if (Should-EmitIncident -Fingerprint $fingerprint -CooldownSeconds $cooldown) {
+                        Write-DlpIncidentLog ("{0} {1} {2} {3}" -f $decision.severity, $decision.action, $decision.id, $url)
+                        if (@('alert', 'block', 'quarantine') -contains ([string]$decision.action).ToLowerInvariant()) {
+                            Send-DlpIncidentHeartbeat -Decision $decision -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName -Domain $domain -RootDomain $rootDomain -Category $category.Name -CategoryGroup $category.Group
+                        }
+                    }
+                }
             }
         }
     }

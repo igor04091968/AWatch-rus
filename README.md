@@ -9,10 +9,12 @@
 - `docs/runbook.md` — быстрый runbook для оператора.
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
+- `docs/dlp-gap-analysis.md` — разрыв до enterprise DLP и roadmap.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation.
+- `windows/` — PowerShell toolkit + phase-1 DLP policy/incident pipeline (`aw-dlp-incidents_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
 
 ## Базовый сценарий

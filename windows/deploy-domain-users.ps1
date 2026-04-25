@@ -16,7 +16,8 @@ param(
     [int]$PollSeconds = 5,
     [int]$PulseSeconds = 30,
     [int]$RecoveryIntervalSeconds = 180,
-    [string]$CustomRulesPath
+    [string]$CustomRulesPath,
+    [string]$CustomPolicyPath
 )
 
 Set-StrictMode -Version Latest
@@ -36,6 +37,7 @@ $launchScriptPath = Join-Path $StateRoot 'launch-watchers.ps1'
 $recoveryScriptPath = Join-Path $StateRoot 'recovery-loop.ps1'
 $collectorSource = Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1'
 $exampleRulesSource = Join-Path $PSScriptRoot 'web-category-rules.example.json'
+$examplePolicySource = Join-Path $PSScriptRoot 'dlp-policy.example.json'
 
 New-ActivityWatchDirectory -Path $StateRoot
 New-ActivityWatchDirectory -Path $logsRoot
@@ -44,7 +46,13 @@ $archivePath = Get-ActivityWatchArchive -PackageZipPath $PackageZipPath -Package
 Install-ActivityWatchPackage -ArchivePath $archivePath -InstallRoot $InstallRoot -WorkingRoot $workingRoot -BackupRoot $backupRoot | Out-Null
 Get-ActivityWatchExecutableMap -InstallRoot $InstallRoot | Out-Null
 
-$assetResult = Copy-ActivityWatchCollectorAssets -CollectorScriptSource $collectorSource -ExampleRulesSource $exampleRulesSource -StateRoot $StateRoot -CustomRulesSource $CustomRulesPath
+$assetResult = Copy-ActivityWatchCollectorAssets `
+    -CollectorScriptSource $collectorSource `
+    -ExampleRulesSource $exampleRulesSource `
+    -ExamplePolicySource $examplePolicySource `
+    -StateRoot $StateRoot `
+    -CustomRulesSource $CustomRulesPath `
+    -CustomPolicySource $CustomPolicyPath
 $taskDefinitions = New-ActivityWatchUserTaskDefinitions -Users $targetUsers
 
 Write-ActivityWatchLaunchScript -Path $launchScriptPath -ConfigPath $configPath
@@ -59,6 +67,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $logsRoot `
     -CollectorScript $assetResult.CollectorScript `
     -RulesPath $assetResult.ActiveRules `
+    -PolicyPath $assetResult.ActivePolicy `
     -PollSeconds $PollSeconds `
     -PulseSeconds $PulseSeconds `
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
@@ -78,3 +87,4 @@ Write-Host 'ActivityWatch deployed for users:'
 $targetUsers | ForEach-Object { Write-Host " - $_" }
 Write-Host "Server: $ServerScheme://$ServerHost`:$ServerPort"
 Write-Host "State root: $StateRoot"
+Write-Host "Policy file: $($assetResult.ActivePolicy)"

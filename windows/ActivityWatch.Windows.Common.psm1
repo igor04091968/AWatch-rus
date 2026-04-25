@@ -243,8 +243,11 @@ function Copy-ActivityWatchCollectorAssets {
         [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
         [Parameter(Mandatory = $true)]
+        [string]$ExamplePolicySource,
+        [Parameter(Mandatory = $true)]
         [string]$StateRoot,
-        [string]$CustomRulesSource
+        [string]$CustomRulesSource,
+        [string]$CustomPolicySource
     )
 
     New-ActivityWatchDirectory -Path $StateRoot
@@ -252,19 +255,32 @@ function Copy-ActivityWatchCollectorAssets {
     $collectorTarget = Join-Path $StateRoot 'browser-domains-native-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
+    $examplePolicyTarget = Join-Path $StateRoot 'dlp-policy.example.json'
+    $policyTarget = Join-Path $StateRoot 'dlp-policy.json'
 
     Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
     Copy-Item -LiteralPath $ExampleRulesSource -Destination $exampleRulesTarget -Force
+    Copy-Item -LiteralPath $ExamplePolicySource -Destination $examplePolicyTarget -Force
 
     if ($CustomRulesSource) {
         $resolvedRules = Resolve-Path -LiteralPath $CustomRulesSource -ErrorAction Stop
         Copy-Item -LiteralPath $resolvedRules.Path -Destination $rulesTarget -Force
     }
 
+    if ($CustomPolicySource) {
+        $resolvedPolicy = Resolve-Path -LiteralPath $CustomPolicySource -ErrorAction Stop
+        Copy-Item -LiteralPath $resolvedPolicy.Path -Destination $policyTarget -Force
+    }
+    else {
+        Copy-Item -LiteralPath $examplePolicyTarget -Destination $policyTarget -Force
+    }
+
     return [pscustomobject]@{
         CollectorScript = $collectorTarget
         ExampleRules    = $exampleRulesTarget
         ActiveRules     = $rulesTarget
+        ExamplePolicy   = $examplePolicyTarget
+        ActivePolicy    = $policyTarget
     }
 }
 
@@ -286,6 +302,8 @@ function New-ActivityWatchDeploymentConfig {
         [string]$CollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
+        [Parameter(Mandatory = $true)]
+        [string]$PolicyPath,
         [Parameter(Mandatory = $true)]
         [int]$PollSeconds,
         [Parameter(Mandatory = $true)]
@@ -315,6 +333,7 @@ function New-ActivityWatchDeploymentConfig {
             logsRoot       = $LogsRoot
             collectorScript = $CollectorScript
             rulesPath      = $RulesPath
+            policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
             recoveryScript = $RecoveryScriptPath
         }
@@ -325,6 +344,10 @@ function New-ActivityWatchDeploymentConfig {
         recovery = [pscustomobject]@{
             intervalSeconds = $RecoveryIntervalSeconds
             taskName        = 'ActivityWatch Recovery'
+        }
+        dlp = [pscustomobject]@{
+            incidentBucketPrefix = 'aw-dlp-incidents'
+            enabled              = $true
         }
         package = [pscustomobject]@{
             version = $PackageVersion

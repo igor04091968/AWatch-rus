@@ -14,6 +14,7 @@ $installRoot = [string]$config.paths.installRoot
 $stateRoot = [string]$config.paths.stateRoot
 $collectorScript = [string]$config.paths.collectorScript
 $rulesPath = [string]$config.paths.rulesPath
+$policyPath = if ($config.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$config.paths.policyPath } else { Join-Path $stateRoot 'dlp-policy.json' }
 $launchScript = [string]$config.paths.launchScript
 $recoveryScript = [string]$config.paths.recoveryScript
 
@@ -22,6 +23,7 @@ $requiredFiles = @(
     (Join-Path $installRoot 'aw-watcher-window\aw-watcher-window.exe'),
     $collectorScript,
     $rulesPath,
+    $policyPath,
     $launchScript,
     $recoveryScript,
     $ConfigPath

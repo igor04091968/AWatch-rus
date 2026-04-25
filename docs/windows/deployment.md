@@ -9,11 +9,13 @@
 - `windows/validate-deployment.ps1` — машинная проверка состояния и JSON-отчёт.
 - `windows/browser-domains-native-collector.ps1` — native collector доменов браузера с категоризацией.
 - `windows/web-category-rules.example.json` — пример кастомных правил категоризации.
+- `windows/dlp-policy.example.json` — пример DLP-политики (phase-1: alerting incidents).
 
 ## Что делает пакет
 
 - Ставит `aw-watcher-afk` и `aw-watcher-window` из официального Windows ZIP ActivityWatch.
 - Копирует browser-domain collector в `C:\ProgramData\ActivityWatch`.
+- Копирует DLP policy в `C:\ProgramData\ActivityWatch\dlp-policy.json`.
 - Создаёт per-user задачи `ActivityWatch Launch [...]` с запуском при логоне.
 - Создаёт системную задачу `ActivityWatch Recovery`, которая циклически перезапускает per-user launch tasks.
 - Применяет ACL к `C:\Program Files\ActivityWatch`, `C:\ProgramData\ActivityWatch` и каталогу логов.
@@ -36,7 +38,8 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
   -ServerHost aw.example.local `
   -ServerPort 5600 `
   -TargetUser 'CONTOSO\svc.activity.user01' `
-  -CustomRulesPath .\windows\web-category-rules.example.json
+  -CustomRulesPath .\windows\web-category-rules.example.json `
+  -CustomPolicyPath .\windows\dlp-policy.example.json
 ```
 
 Локальный пользователь:
@@ -85,7 +88,8 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
   -ServerPort 5600 `
   -Domain CONTOSO `
   -UserListPath C:\Temp\aw-users.txt `
-  -CustomRulesPath C:\Temp\web-category-rules.json
+  -CustomRulesPath C:\Temp\web-category-rules.json `
+  -CustomPolicyPath C:\Temp\dlp-policy.json
 ```
 
 Если список уже содержит `DOMAIN\user`, параметр `-Domain` не нужен.
@@ -98,6 +102,7 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
   -ServerPort 5600 `
   -Domain CONTOSO `
   -Users user1,user2,user3,user4,user5 `
+  -CustomPolicyPath C:\Temp\dlp-policy.json `
   -ValidateAfterDeploy
 ```
 
@@ -119,6 +124,7 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
 - `C:\ProgramData\ActivityWatch\launch-watchers.ps1` — per-user launcher.
 - `C:\ProgramData\ActivityWatch\recovery-loop.ps1` — system recovery loop.
 - `C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1` — runtime collector.
+- `C:\ProgramData\ActivityWatch\dlp-policy.json` — активная DLP-политика.
 - `C:\ProgramData\ActivityWatch\logs\` — логи collector'а.
 
 ## Повторный прогон

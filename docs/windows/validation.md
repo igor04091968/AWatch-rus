@@ -20,6 +20,7 @@ $report | ConvertTo-Json -Depth 12
 Test-Path 'C:\Program Files\ActivityWatch\aw-watcher-afk\aw-watcher-afk.exe'
 Test-Path 'C:\Program Files\ActivityWatch\aw-watcher-window\aw-watcher-window.exe'
 Test-Path 'C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1'
+Test-Path 'C:\ProgramData\ActivityWatch\dlp-policy.json'
 Test-Path 'C:\ProgramData\ActivityWatch\deployment-config.json'
 ```
 
@@ -72,6 +73,7 @@ Invoke-WebRequest https://aw.example.local/api/0/info
 - `aw-watcher-window_<hostname>`
 - `aw-watcher-web-edge_<hostname>` или другой browser bucket
 - `aw-detmir-web-category_<hostname>`
+- `aw-dlp-incidents_<hostname>` (при срабатывании policy rule с `action=alert|block|quarantine`)
 
 Проверка через API:
 
@@ -85,6 +87,17 @@ Invoke-WebRequest http://aw.example.local:5600/api/0/buckets | Select-Object -Ex
 2. Подождите `PollSeconds + PulseSeconds`.
 3. Проверьте category bucket на сервере.
 4. Убедитесь, что поля `domain`, `rootDomain`, `category`, `categoryGroup`, `categoryRule` заполнены.
+
+## Проверка DLP phase-1
+
+1. В `dlp-policy.json` задайте правило на тестовый домен.
+2. Откройте этот домен в браузере.
+3. Проверьте `aw-dlp-incidents_<hostname>` через API.
+4. Проверьте локальный лог:
+
+```powershell
+Get-Content "C:\ProgramData\ActivityWatch\logs\dlp-incidents-$env:USERNAME.log" -Tail 50
+```
 
 ## Проверка восстановления
 

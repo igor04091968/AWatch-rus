@@ -17,6 +17,7 @@ param(
     [int]$PulseSeconds = 30,
     [int]$RecoveryIntervalSeconds = 180,
     [string]$CustomRulesPath,
+    [string]$CustomPolicyPath,
     [string]$ReportPath,
     [switch]$SkipHardening,
     [switch]$ValidateAfterDeploy
@@ -54,7 +55,8 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -PollSeconds $PollSeconds `
     -PulseSeconds $PulseSeconds `
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
-    -CustomRulesPath $CustomRulesPath
+    -CustomRulesPath $CustomRulesPath `
+    -CustomPolicyPath $CustomPolicyPath
 
 if (-not $SkipHardening) {
     & $hardeningScript `
@@ -68,7 +70,8 @@ if (-not $SkipHardening) {
         -PollSeconds $PollSeconds `
         -PulseSeconds $PulseSeconds `
         -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
-        -CustomRulesPath $CustomRulesPath
+        -CustomRulesPath $CustomRulesPath `
+        -CustomPolicyPath $CustomPolicyPath
 }
 
 $report = [ordered]@{

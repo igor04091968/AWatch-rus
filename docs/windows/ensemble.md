@@ -22,6 +22,7 @@ C:\Deploy\AWatch-rus\windows\deploy-ensemble.ps1 `
   -ServerPort 5600 `
   -Domain AD `
   -Users user1,user2,user3,user4,user5 `
+  -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json `
   -ValidateAfterDeploy
 ```
 

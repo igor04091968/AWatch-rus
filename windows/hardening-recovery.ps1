@@ -14,6 +14,7 @@ param(
     [int]$PulseSeconds,
     [int]$RecoveryIntervalSeconds,
     [string]$CustomRulesPath,
+    [string]$CustomPolicyPath,
     [switch]$RepairPackage,
     [string]$Version,
     [string]$PackageUrl,
@@ -45,6 +46,7 @@ $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
 $effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
 $effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
+$effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 
 $effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
 $effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
@@ -79,8 +81,12 @@ Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
+    -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
-    -CustomRulesSource $CustomRulesPath
+    -CustomRulesSource $CustomRulesPath `
+    -CustomPolicySource $CustomPolicyPath
+
+$effectivePolicy = [string]$assetResult.ActivePolicy
 
 $taskDefinitions = New-ActivityWatchUserTaskDefinitions -Users $effectiveUsers
 Write-ActivityWatchLaunchScript -Path $effectiveLaunchScript -ConfigPath $effectiveConfigPath
@@ -95,6 +101,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
     -RulesPath $effectiveRules `
+    -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `
     -PulseSeconds $effectivePulseSeconds `
     -RecoveryIntervalSeconds $effectiveRecoveryInterval `
