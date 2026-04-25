@@ -13,6 +13,7 @@
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation.
+- `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
 
 ## Базовый сценарий
 
