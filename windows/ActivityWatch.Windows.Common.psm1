@@ -477,13 +477,32 @@ function Ensure-Bucket {
         return
     }
 
+    try {
+        Invoke-RestMethod -Method Get -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" | Out-Null
+        `$script:KnownBuckets[`$BucketId] = `$true
+        return
+    }
+    catch {
+    }
+
     `$body = @{
         client   = `$ClientName
         type     = `$BucketType
         hostname = `$script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" -Json `$body
+    try {
+        Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" -Json `$body
+    }
+    catch {
+        try {
+            Invoke-RestMethod -Method Get -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" | Out-Null
+        }
+        catch {
+            return
+        }
+    }
+
     `$script:KnownBuckets[`$BucketId] = `$true
 }
 
@@ -598,7 +617,11 @@ if (`$windowEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-window' -
     Start-Process -FilePath `$windowExe -ArgumentList `$serverArgs -WindowStyle Hidden
 }
 
-Send-LogonMarkerIfNeeded -Config `$config -SessionId `$sessionId
+try {
+    Send-LogonMarkerIfNeeded -Config `$config -SessionId `$sessionId
+}
+catch {
+}
 Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 "@
