@@ -365,6 +365,10 @@
     return /^#\/buckets\/aw-dlp-endpoint-signals_/i.test(window.location.hash || "");
   }
 
+  function isAlertsRoute() {
+    return /^#\/alerts(?:[/?#]|$)/i.test(window.location.hash || "");
+  }
+
   function getDlpBucketIdFromHash() {
     const hash = window.location.hash || "";
     const match = hash.match(/^#\/buckets\/([^/?#]+)/i);
@@ -681,6 +685,37 @@
         }
       }
     }, 1);
+    if (verdict === "incident") {
+      await saveDlpIncident(host, event, {
+        verdict: verdict,
+        category: category,
+        comment: comment
+      });
+    }
+  }
+
+  async function saveDlpIncident(host, event, review) {
+    const bucketId = "aw-dlp-incidents_" + host;
+    await ensureAwBucket(bucketId, "aw-dlp-incidents", "aw.dlp.incident", host);
+    await saveAwHeartbeat(bucketId, {
+      timestamp: new Date().toISOString(),
+      duration: 0,
+      data: {
+        host: host,
+        sourceBucket: getDlpBucketIdFromHash(),
+        sourceEvent: {
+          timestamp: event.timestamp,
+          data: event.data || {}
+        },
+        incident: {
+          incidentId: generateDlpId("incident"),
+          verdict: review && review.verdict || "incident",
+          category: review && review.category || "",
+          comment: review && review.comment || "",
+          status: "open"
+        }
+      }
+    }, 1);
   }
 
   async function saveDlpRule(host, event, row) {
@@ -970,6 +1005,74 @@
     }
   }
 
+  async function refreshDlpAlertsCenter(center, host) {
+    center.querySelector("[data-aw-ru-dlp-alerts-message]").textContent = "Загрузка DLP-инцидентов...";
+    try {
+      const events = (await loadBucketEvents("aw-dlp-incidents_" + host, 100))
+        .sort(function (a, b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });
+      const rows = events.map(function (event) {
+        const data = event.data || {};
+        const incident = data.incident || {};
+        const sourceData = data.sourceEvent && data.sourceEvent.data ? data.sourceEvent.data : {};
+        return '<tr>' +
+          '<td>' + escapeHtml(new Date(event.timestamp).toLocaleString()) + '</td>' +
+          '<td>' + escapeHtml(incident.status || "open") + '</td>' +
+          '<td>' + escapeHtml(incident.category || "") + '</td>' +
+          '<td>' + escapeHtml(incident.comment || "") + '</td>' +
+          '<td>' + escapeHtml(sourceData.username || sourceData.owner || "") + '</td>' +
+          '<td>' + escapeHtml(sourceData.signalType || "") + '</td>' +
+          '<td>' + escapeHtml(sourceData.documentName || sourceData.printerName || "") + '</td>' +
+        '</tr>';
+      });
+      center.querySelector("[data-aw-ru-dlp-alerts-events]").innerHTML = rows.length
+        ? rows.join("")
+        : '<tr><td colspan="7">Операторских DLP-инцидентов пока нет.</td></tr>';
+      center.querySelector("[data-aw-ru-dlp-alerts-status]").textContent = "Инцидентов: " + events.length;
+      center.querySelector("[data-aw-ru-dlp-alerts-message]").textContent = "Список DLP-инцидентов обновлен.";
+    } catch (error) {
+      center.querySelector("[data-aw-ru-dlp-alerts-events]").innerHTML = '<tr><td colspan="7">Не удалось загрузить DLP-инциденты.</td></tr>';
+      center.querySelector("[data-aw-ru-dlp-alerts-message]").textContent = "Ошибка загрузки DLP-инцидентов: " + error.message;
+    }
+  }
+
+  function injectDlpAlertsCenter(root) {
+    if (!isAlertsRoute()) return;
+    const host = window.__awRuPatchSettingsHost || getCurrentHostFromHash();
+    if (!host) return;
+
+    const heading = root.querySelector("h3");
+    if (!heading) return;
+
+    let center = root.querySelector("[data-aw-ru-dlp-alerts='1']");
+    if (!center) {
+      center = document.createElement("section");
+      center.className = "aw-ru-dlp-center";
+      center.setAttribute("data-aw-ru-dlp-alerts", "1");
+      center.innerHTML =
+        '<h4>DLP-инциденты оператора</h4>' +
+        '<div class="aw-ru-dlp-toolbar">' +
+          '<span class="aw-ru-dlp-pill">bucket: ' + escapeHtml("aw-dlp-incidents_" + host) + '</span>' +
+          '<button type="button" data-aw-ru-refresh-dlp-alerts>Обновить инциденты</button>' +
+          '<div class="aw-ru-dlp-status" data-aw-ru-dlp-alerts-status>Инцидентов: 0</div>' +
+        '</div>' +
+        '<p>Здесь выводятся DLP-события, которые оператор вручную признал инцидентами через review-центр.</p>' +
+        '<table class="aw-ru-dlp-table">' +
+          '<thead><tr><th>Время</th><th>Статус</th><th>Категория</th><th>Комментарий</th><th>Пользователь</th><th>Тип</th><th>Документ/канал</th></tr></thead>' +
+          '<tbody data-aw-ru-dlp-alerts-events><tr><td colspan="7">Загрузка...</td></tr></tbody>' +
+        '</table>' +
+        '<div class="aw-ru-dlp-message" data-aw-ru-dlp-alerts-message></div>';
+      heading.parentElement.insertBefore(center, heading.nextSibling);
+      center.querySelector("[data-aw-ru-refresh-dlp-alerts]").addEventListener("click", function () {
+        refreshDlpAlertsCenter(center, host);
+      });
+    }
+
+    if (center.getAttribute("data-aw-ru-loaded") !== "1") {
+      center.setAttribute("data-aw-ru-loaded", "1");
+      refreshDlpAlertsCenter(center, host);
+    }
+  }
+
   let trendsRedirectInFlight = false;
   let settingsHostFetchInFlight = false;
 
@@ -1040,6 +1143,7 @@
     hideNoiseNavigation(document.body);
     injectDlpNavigation(document.body);
     injectDlpReviewCenter(document.body);
+    injectDlpAlertsCenter(document.body);
     redirectBareTrendsRoute();
   }
 
