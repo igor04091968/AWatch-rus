@@ -16,6 +16,8 @@ param(
     [int]$PollSeconds = 5,
     [int]$PulseSeconds = 30,
     [int]$RecoveryIntervalSeconds = 180,
+    [bool]$AfkEnabled = $true,
+    [bool]$WindowEnabled = $true,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
     [string]$ReportPath,
@@ -55,6 +57,8 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -PollSeconds $PollSeconds `
     -PulseSeconds $PulseSeconds `
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
+    -AfkEnabled $AfkEnabled `
+    -WindowEnabled $WindowEnabled `
     -CustomRulesPath $CustomRulesPath `
     -CustomPolicyPath $CustomPolicyPath
 
@@ -70,6 +74,8 @@ if (-not $SkipHardening) {
         -PollSeconds $PollSeconds `
         -PulseSeconds $PulseSeconds `
         -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
+        -AfkEnabled $AfkEnabled `
+        -WindowEnabled $WindowEnabled `
         -CustomRulesPath $CustomRulesPath `
         -CustomPolicyPath $CustomPolicyPath
 }
@@ -87,6 +93,10 @@ $report = [ordered]@{
         installRoot = $InstallRoot
         stateRoot = $StateRoot
         configPath = Join-Path $StateRoot 'deployment-config.json'
+    }
+    collectors = [ordered]@{
+        afkEnabled = $AfkEnabled
+        windowEnabled = $WindowEnabled
     }
     hardeningApplied = (-not $SkipHardening)
 }

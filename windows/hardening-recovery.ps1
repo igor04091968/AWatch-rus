@@ -16,6 +16,7 @@ param(
     [bool]$AfkEnabled,
     [bool]$WindowEnabled,
     [string]$CustomRulesPath,
+    [string]$CustomPolicyPath,
     [switch]$RepairPackage,
     [string]$Version,
     [string]$PackageUrl,
@@ -46,7 +47,9 @@ $effectiveConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $effect
 $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
 $effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
 $effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
+$effectiveEndpointCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$existingConfig.paths.endpointCollectorScript } else { Join-Path $effectiveStateRoot 'dlp-endpoint-signals-collector.ps1' }
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
+$effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 
 $effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
 $effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
@@ -82,9 +85,12 @@ Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
 
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
+    -EndpointCollectorScriptSource (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
+    -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
-    -CustomRulesSource $CustomRulesPath
+    -CustomRulesSource $CustomRulesPath `
+    -CustomPolicySource $CustomPolicyPath
 
 $taskDefinitions = New-ActivityWatchUserTaskDefinitions -Users $effectiveUsers
 Write-ActivityWatchLaunchScript -Path $effectiveLaunchScript -ConfigPath $effectiveConfigPath
@@ -98,7 +104,9 @@ $config = New-ActivityWatchDeploymentConfig `
     -StateRoot $effectiveStateRoot `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
+    -EndpointCollectorScript $effectiveEndpointCollector `
     -RulesPath $effectiveRules `
+    -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `
     -PulseSeconds $effectivePulseSeconds `
     -RecoveryIntervalSeconds $effectiveRecoveryInterval `

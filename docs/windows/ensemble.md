@@ -24,6 +24,7 @@ C:\Deploy\AWatch-rus\windows\deploy-ensemble.ps1 `
   -Users user1,user2,user3,user4,user5 `
   -InstallRoot 'C:\Program Files\ActivityWatch-Phase2' `
   -StateRoot 'C:\ProgramData\ActivityWatch-Phase2' `
+  -AfkEnabled:$false `
   -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json `
   -ValidateAfterDeploy
 ```

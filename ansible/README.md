@@ -73,9 +73,15 @@ ansible-playbook -i inventory.ini deploy_aw_windows_phase2.yml
 Playbook:
 
 - выгружает `windows/*` toolkit на целевой хост в `C:\Deploy\AWatch-rus\windows`;
-- выполняет `deploy-domain-users.ps1` с phase-2 policy/rules;
+- выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с phase-2 policy/rules;
 - запускает `validate-deployment.ps1`;
 - забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation` по умолчанию).
+
+Дополнительные флаги:
+
+- `aw_windows_afk_enabled: false` — не запускать `aw-watcher-afk`;
+- `aw_windows_window_enabled: false` — не запускать `aw-watcher-window`;
+- `aw_windows_skip_hardening: true` — пропустить `hardening-recovery.ps1` внутри ensemble-скрипта.
 
 ## Результат
 
