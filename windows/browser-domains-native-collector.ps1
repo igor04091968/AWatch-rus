@@ -59,8 +59,9 @@ $resolvedPulseSeconds = if ($PSBoundParameters.ContainsKey('PulseSeconds')) { $P
 $resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("browser-domains-{0}.log" -f $env:USERNAME) }
 $resolvedIncidentLogPath = if ($IncidentLogPath) { $IncidentLogPath } else { Join-Path $resolvedLogsRoot ("dlp-incidents-{0}.log" -f $env:USERNAME) }
+$resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
 
-if (-not (Test-Path -LiteralPath $resolvedLogsRoot)) {
+if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
 }
 
@@ -68,6 +69,7 @@ $script:ApiBase = '{0}://{1}:{2}/api/0' -f $resolvedServerScheme, $resolvedServe
 $script:Hostname = $env:COMPUTERNAME
 $script:SessionId = (Get-Process -Id $PID).SessionId
 $script:KnownBuckets = @{}
+$script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
 $script:LogPath = $resolvedLogPath
 $script:IncidentLogPath = $resolvedIncidentLogPath
 $script:IncidentState = @{}
@@ -102,6 +104,10 @@ $script:CategoryRules = @(
 function Write-CollectorLog {
     param([string]$Message)
 
+    if (-not $script:LocalAgentLogsEnabled) {
+        return
+    }
+
     try {
         Add-Content -LiteralPath $script:LogPath -Value ('{0} {1}' -f (Get-Date -Format s), $Message)
     }
@@ -111,6 +117,10 @@ function Write-CollectorLog {
 
 function Write-DlpIncidentLog {
     param([string]$Message)
+
+    if (-not $script:LocalAgentLogsEnabled) {
+        return
+    }
 
     try {
         Add-Content -LiteralPath $script:IncidentLogPath -Value ('{0} {1}' -f (Get-Date -Format s), $Message)

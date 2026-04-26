@@ -18,6 +18,8 @@ param(
     [int]$RecoveryIntervalSeconds = 180,
     [bool]$AfkEnabled = $true,
     [bool]$WindowEnabled = $true,
+    [bool]$LocalAgentLogsEnabled = $false,
+    [bool]$LogonMarkerEnabled = $true,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
     [string]$ReportPath,
@@ -59,6 +61,8 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
     -AfkEnabled $AfkEnabled `
     -WindowEnabled $WindowEnabled `
+    -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
+    -LogonMarkerEnabled $LogonMarkerEnabled `
     -CustomRulesPath $CustomRulesPath `
     -CustomPolicyPath $CustomPolicyPath
 
@@ -76,6 +80,8 @@ if (-not $SkipHardening) {
         -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
         -AfkEnabled $AfkEnabled `
         -WindowEnabled $WindowEnabled `
+        -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
+        -LogonMarkerEnabled $LogonMarkerEnabled `
         -CustomRulesPath $CustomRulesPath `
         -CustomPolicyPath $CustomPolicyPath
 }

@@ -19,6 +19,8 @@ aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
 aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
+aw_windows_local_agent_logs_enabled: false
+aw_windows_logon_marker_enabled: true
 aw_windows_skip_hardening: false
 
 aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"

@@ -23,6 +23,9 @@ function Get-DeploymentConfig {
 
 function Write-EndpointLog {
     param([string]$Message)
+    if (-not $script:LocalAgentLogsEnabled) {
+        return
+    }
     try {
         Add-Content -LiteralPath $script:LogPath -Value ('{0} {1}' -f (Get-Date -Format s), $Message)
     }
@@ -459,8 +462,9 @@ $resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
 $resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("endpoint-signals-{0}.log" -f $env:USERNAME) }
+$resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
 
-if (-not (Test-Path -LiteralPath $resolvedLogsRoot)) {
+if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
 }
 
@@ -474,6 +478,7 @@ $script:SeenPrintJob = @{}
 $script:SeenPrintEvent = @{}
 $script:LastClipboardHash = $null
 $script:PulseSeconds = [Math]::Max($resolvedPollSeconds * 3, 30)
+$script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
 $script:LogPath = $resolvedLogPath
 
 Load-DlpPolicy -Path $resolvedPolicyPath

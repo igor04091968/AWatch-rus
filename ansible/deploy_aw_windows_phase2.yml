@@ -21,6 +21,8 @@
     aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
     aw_windows_afk_enabled: true
     aw_windows_window_enabled: true
+    aw_windows_local_agent_logs_enabled: false
+    aw_windows_logon_marker_enabled: true
     aw_windows_skip_hardening: false
     aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
     aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
@@ -87,6 +89,8 @@
             StateRoot = "{{ aw_windows_state_root }}"
             AfkEnabled = {{ '$true' if (aw_windows_afk_enabled | bool) else '$false' }}
             WindowEnabled = {{ '$true' if (aw_windows_window_enabled | bool) else '$false' }}
+            LocalAgentLogsEnabled = {{ '$true' if (aw_windows_local_agent_logs_enabled | bool) else '$false' }}
+            LogonMarkerEnabled = {{ '$true' if (aw_windows_logon_marker_enabled | bool) else '$false' }}
             CustomRulesPath = "{{ aw_windows_rules_path }}"
             CustomPolicyPath = "{{ aw_windows_policy_path }}"
           }

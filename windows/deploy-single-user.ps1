@@ -17,6 +17,8 @@ param(
     [int]$RecoveryIntervalSeconds = 180,
     [bool]$AfkEnabled = $true,
     [bool]$WindowEnabled = $true,
+    [bool]$LocalAgentLogsEnabled = $false,
+    [bool]$LogonMarkerEnabled = $true,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath
 )
@@ -76,6 +78,8 @@ $config = New-ActivityWatchDeploymentConfig `
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
     -AfkEnabled $AfkEnabled `
     -WindowEnabled $WindowEnabled `
+    -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
+    -LogonMarkerEnabled $LogonMarkerEnabled `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `
     -UserTasks $taskDefinitions `

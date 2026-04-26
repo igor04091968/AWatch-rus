@@ -319,6 +319,8 @@ function New-ActivityWatchDeploymentConfig {
         [int]$RecoveryIntervalSeconds,
         [bool]$AfkEnabled = $true,
         [bool]$WindowEnabled = $true,
+        [bool]$LocalAgentLogsEnabled = $true,
+        [bool]$LogonMarkerEnabled = $true,
         [Parameter(Mandatory = $true)]
         [string]$LaunchScriptPath,
         [Parameter(Mandatory = $true)]
@@ -354,6 +356,13 @@ function New-ActivityWatchDeploymentConfig {
         collectors = [pscustomobject]@{
             afkEnabled   = $AfkEnabled
             windowEnabled = $WindowEnabled
+        }
+        logging = [pscustomobject]@{
+            localAgentLogsEnabled = $LocalAgentLogsEnabled
+        }
+        sessionEvents = [pscustomobject]@{
+            logonEnabled = $LogonMarkerEnabled
+            bucketPrefix = 'aw-session-events'
         }
         recovery = [pscustomobject]@{
             intervalSeconds = $RecoveryIntervalSeconds
@@ -447,6 +456,92 @@ function Test-CollectorRunning {
     return [bool](`$processes | Select-Object -First 1)
 }
 
+function Invoke-AwJsonPost {
+    param(
+        [Parameter(Mandatory = `$true)][string]`$Uri,
+        [Parameter(Mandatory = `$true)][string]`$Json
+    )
+
+    `$bytes = [Text.Encoding]::UTF8.GetBytes(`$Json)
+    Invoke-RestMethod -Method Post -Uri `$Uri -ContentType 'application/json; charset=utf-8' -Body `$bytes | Out-Null
+}
+
+function Ensure-Bucket {
+    param(
+        [string]`$BucketId,
+        [string]`$ClientName,
+        [string]`$BucketType
+    )
+
+    if (`$script:KnownBuckets.ContainsKey(`$BucketId)) {
+        return
+    }
+
+    `$body = @{
+        client   = `$ClientName
+        type     = `$BucketType
+        hostname = `$script:Hostname
+    } | ConvertTo-Json -Compress
+
+    Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" -Json `$body
+    `$script:KnownBuckets[`$BucketId] = `$true
+}
+
+function Send-LogonMarkerIfNeeded {
+    param(
+        [pscustomobject]`$Config,
+        [int]`$SessionId
+    )
+
+    `$sessionEvents = if (`$Config.PSObject.Properties.Name -contains 'sessionEvents') { `$Config.sessionEvents } else { `$null }
+    `$logging = if (`$Config.PSObject.Properties.Name -contains 'logging') { `$Config.logging } else { `$null }
+    `$logonEnabled = if (`$sessionEvents -and `$sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]`$sessionEvents.logonEnabled } else { `$false }
+    if (-not `$logonEnabled) {
+        return
+    }
+
+    `$bucketPrefix = if (`$sessionEvents -and `$sessionEvents.PSObject.Properties.Name -contains 'bucketPrefix' -and -not [string]::IsNullOrWhiteSpace([string]`$sessionEvents.bucketPrefix)) {
+        [string]`$sessionEvents.bucketPrefix
+    }
+    else {
+        'aw-session-events'
+    }
+
+    `$stateRoot = [string]`$Config.paths.stateRoot
+    if ([string]::IsNullOrWhiteSpace(`$stateRoot)) {
+        return
+    }
+
+    `$markerDir = Join-Path `$stateRoot 'markers'
+    if (-not (Test-Path -LiteralPath `$markerDir)) {
+        New-Item -Path `$markerDir -ItemType Directory -Force | Out-Null
+    }
+
+    `$markerFile = Join-Path `$markerDir ("logon-{0}-{1}.marker" -f `$env:USERNAME, `$SessionId)
+    if (Test-Path -LiteralPath `$markerFile) {
+        return
+    }
+
+    `$bucketId = ('{0}_{1}' -f `$bucketPrefix, `$script:Hostname)
+    Ensure-Bucket -BucketId `$bucketId -ClientName 'aw-session-events' -BucketType 'aw.session.event'
+
+    `$payload = @{
+        timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        duration  = 0
+        data      = @{
+            eventType = 'logon'
+            username  = `$env:USERNAME
+            userId    = "`$(`$env:USERDOMAIN)\`$(`$env:USERNAME)"
+            sessionId = `$SessionId
+            hostname  = `$script:Hostname
+            source    = 'launch-watchers-phase2'
+        }
+    } | ConvertTo-Json -Depth 5 -Compress
+
+    Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$bucketId/heartbeat?pulsetime=1" -Json `$payload
+    Set-Content -LiteralPath `$markerFile -Value ((Get-Date).ToUniversalTime().ToString('o')) -Encoding UTF8
+}
+
 function Start-CollectorScriptIfNeeded {
     param(
         [string]`$ScriptPath,
@@ -475,6 +570,9 @@ function Start-CollectorScriptIfNeeded {
 `$config = Get-DeploymentConfig -Path `$ConfigPath
 `$sessionId = (Get-Process -Id `$PID).SessionId
 `$installRoot = [string]`$config.paths.installRoot
+`$script:ApiBase = '{0}://{1}:{2}/api/0' -f [string]`$config.server.scheme, [string]`$config.server.host, [string]`$config.server.port
+`$script:Hostname = `$env:COMPUTERNAME
+`$script:KnownBuckets = @{}
 `$collectorScript = [string]`$config.paths.collectorScript
 `$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { '' }
 `$afkExe = Join-Path `$installRoot 'aw-watcher-afk\aw-watcher-afk.exe'
@@ -500,6 +598,7 @@ if (`$windowEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-window' -
     Start-Process -FilePath `$windowExe -ArgumentList `$serverArgs -WindowStyle Hidden
 }
 
+Send-LogonMarkerIfNeeded -Config `$config -SessionId `$sessionId
 Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 "@

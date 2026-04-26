@@ -15,6 +15,8 @@ param(
     [int]$RecoveryIntervalSeconds,
     [bool]$AfkEnabled,
     [bool]$WindowEnabled,
+    [bool]$LocalAgentLogsEnabled,
+    [bool]$LogonMarkerEnabled,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
     [switch]$RepairPackage,
@@ -59,6 +61,8 @@ $effectivePulseSeconds = if ($PSBoundParameters.ContainsKey('PulseSeconds')) { $
 $effectiveRecoveryInterval = if ($PSBoundParameters.ContainsKey('RecoveryIntervalSeconds')) { $RecoveryIntervalSeconds } elseif ($existingConfig) { [int]$existingConfig.recovery.intervalSeconds } else { 180 }
 $effectiveAfkEnabled = if ($PSBoundParameters.ContainsKey('AfkEnabled')) { [bool]$AfkEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$existingConfig.collectors.afkEnabled } else { $true }
 $effectiveWindowEnabled = if ($PSBoundParameters.ContainsKey('WindowEnabled')) { [bool]$WindowEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$existingConfig.collectors.windowEnabled } else { $true }
+$effectiveLocalAgentLogsEnabled = if ($PSBoundParameters.ContainsKey('LocalAgentLogsEnabled')) { [bool]$LocalAgentLogsEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'logging' -and $existingConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$existingConfig.logging.localAgentLogsEnabled } else { $false }
+$effectiveLogonMarkerEnabled = if ($PSBoundParameters.ContainsKey('LogonMarkerEnabled')) { [bool]$LogonMarkerEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$existingConfig.sessionEvents.logonEnabled } else { $true }
 $effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
 
 $effectiveUsers = if ($Users -or $UserListPath) {
@@ -112,6 +116,8 @@ $config = New-ActivityWatchDeploymentConfig `
     -RecoveryIntervalSeconds $effectiveRecoveryInterval `
     -AfkEnabled $effectiveAfkEnabled `
     -WindowEnabled $effectiveWindowEnabled `
+    -LocalAgentLogsEnabled $effectiveLocalAgentLogsEnabled `
+    -LogonMarkerEnabled $effectiveLogonMarkerEnabled `
     -LaunchScriptPath $effectiveLaunchScript `
     -RecoveryScriptPath $effectiveRecoveryScript `
     -UserTasks $taskDefinitions `
