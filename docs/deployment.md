@@ -94,7 +94,8 @@ systemctl restart activitywatch-server.service
 - копирует `aw-ru-patch.js` и `aw-sw-cleanup.js`;
 - делает backup `index.html`;
 - добавляет include в `index.html`;
-- заменяет `service-worker.js` cleanup-версией для сброса старого cache.
+- заменяет `service-worker.js` cleanup-версией для сброса старого cache;
+- включает DLP Web UI override: верхнее меню `DLP`, центр `DLP review и правила`, buckets `aw-dlp-review_<HOST>` и `aw-dlp-rules_<HOST>`.
 
 ## 6. Проверить сервис
 
@@ -119,6 +120,8 @@ grep -n 'aw-ru-patch\|aw-sw-cleanup' /opt/activitywatch/webui-ru/index.html
 - открывается `/`;
 - API доступен по ожидаемому URL;
 - после hard refresh видна русификация;
+- в верхнем меню доступен `DLP` и он открывает `#/buckets/aw-dlp-endpoint-signals_<HOST>`;
+- на DLP bucket-странице доступны секции `DLP review и правила`, `DLP Rules`, `DLP Review`;
 - reverse proxy не кэширует старую статику.
 
 ## 8. Что зафиксировать после ввода

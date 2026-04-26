@@ -9,6 +9,8 @@
     aw_release_dir: "{{ aw_release_root }}/{{ aw_server_version }}"
     aw_archive_path: "/tmp/activitywatch-{{ aw_server_version }}.zip"
     aw_bootstrap_dir: "/tmp/aw-rus-bootstrap"
+    aw_ru_patch_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-ru-patch.js') | hash('sha1') | truncate(12, true, '') }}"
+    aw_sw_cleanup_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-sw-cleanup.js') | hash('sha1') | truncate(12, true, '') }}"
 
   tasks:
     - name: Install base packages
@@ -103,13 +105,13 @@
       ansible.builtin.replace:
         path: "{{ aw_server_webui_dir }}/index.html"
         regexp: '</head>'
-        replace: '<script src="/js/sw-cleanup.js?v=ansible1"></script></head>'
+        replace: '<script src="/js/sw-cleanup.js?v={{ aw_sw_cleanup_cache_bust }}"></script></head>'
 
     - name: Insert RU patch loader before body end
       ansible.builtin.replace:
         path: "{{ aw_server_webui_dir }}/index.html"
         regexp: '</body>'
-        replace: '<script defer="defer" src="/js/ru-patch-v5.js?v=ansible1"></script></body>'
+        replace: '<script defer="defer" src="/js/ru-patch-v5.js?v={{ aw_ru_patch_cache_bust }}"></script></body>'
 
     - name: Write /etc/activitywatch/aw-server.env
       ansible.builtin.copy:

@@ -8,6 +8,7 @@
 - LXC-контейнера с Debian 12;
 - `ActivityWatch Server` на Rust;
 - Web UI override с RU patch;
+- DLP Web UI overlay для review/rules поверх bucket `aw-dlp-endpoint-signals_<HOST>`;
 - systemd unit `activitywatch-server.service`.
 
 Базовые правила:
@@ -49,6 +50,7 @@
 - `/etc/systemd/system/activitywatch-server.service`;
 - `/opt/activitywatch/webui-ru/`;
 - `/opt/activitywatch/releases/`;
+- buckets `aw-dlp-review_*` и `aw-dlp-rules_*` через API export, если review/rule-классификация уже ведётся в UI;
 - конфиг reverse proxy, если он есть.
 
 Пример:
@@ -57,6 +59,9 @@
 vzdump <CT_ID> --mode snapshot --compress zstd --storage <BACKUP_STORAGE>
 pct exec <CT_ID> -- tar -C / -czf /root/activitywatch-config-backup.tgz \
   etc/activitywatch etc/systemd/system/activitywatch-server.service opt/activitywatch/webui-ru
+
+curl -sS http://127.0.0.1:5600/api/0/buckets/aw-dlp-review_<HOST>/events?limit=500 > /root/aw-dlp-review-<HOST>.json
+curl -sS http://127.0.0.1:5600/api/0/buckets/aw-dlp-rules_<HOST>/events?limit=500 > /root/aw-dlp-rules-<HOST>.json
 ```
 
 ## Rollback
@@ -67,6 +72,8 @@ pct exec <CT_ID> -- tar -C / -czf /root/activitywatch-config-backup.tgz \
 cp /opt/activitywatch/webui-ru/index.html.bak.<timestamp> /opt/activitywatch/webui-ru/index.html
 systemctl restart activitywatch-server.service
 ```
+
+Примечание: после rollback или повторного деплоя открыть UI с hard refresh, так как браузер может держать старую версию `ru-patch-v5.js`.
 
 ### Rollback server release
 
@@ -94,6 +101,12 @@ systemctl restart activitywatch-server.service
 5. Перезапустить сервис.
 6. Проверить API/UI.
 7. Зафиксировать результат.
+
+После обновления UI отдельно проверить:
+
+- `#/home` — есть один корректный пункт `DLP`;
+- `#/buckets/aw-dlp-endpoint-signals_<HOST>` — работают сохранение review/rule и списки `DLP Rules` / `DLP Review`;
+- API создаёт/читает buckets `aw-dlp-review_<HOST>` и `aw-dlp-rules_<HOST>` без ошибок `304/409`.
 
 ## Эскалация
 

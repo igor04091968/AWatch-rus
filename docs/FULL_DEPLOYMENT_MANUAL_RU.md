@@ -134,6 +134,13 @@ bash /root/bootstrap/apply_webui_ru_patch.sh
 systemctl restart activitywatch-server.service
 ```
 
+После применения патча доступны:
+
+- верхнее меню `DLP` в Web UI;
+- DLP-страница bucket `aw-dlp-endpoint-signals_<HOST>`;
+- встроенный центр `DLP review и правила`;
+- служебные buckets `aw-dlp-review_<HOST>` и `aw-dlp-rules_<HOST>`.
+
 ### 2.5 Проверка сервера
 
 В CT:
@@ -151,6 +158,12 @@ grep -n 'aw-ru-patch\|aw-sw-cleanup' /opt/activitywatch/webui-ru/index.html
 - API отвечает JSON;
 - порт 5600 слушается;
 - в `index.html` присутствуют оба скрипта.
+
+Дополнительно после первого входа в Web UI:
+
+- `#/home` должен показывать один корректный пункт `DLP`;
+- `#/buckets/aw-dlp-endpoint-signals_<HOST>` должен открываться без ошибок;
+- сохранение review/rule должно создавать buckets `aw-dlp-review_<HOST>` и `aw-dlp-rules_<HOST>`.
 
 ---
 
@@ -279,6 +292,9 @@ curl -sS http://127.0.0.1:5600/api/0/buckets | jq 'keys'
 - `aw-watcher-window_<HOST>`
 - `aw-watcher-web-<browser>_<HOST>`
 - `aw-detmir-web-category_<HOST>` (категоризованный поток)
+- `aw-dlp-endpoint-signals_<HOST>` (endpoint сигналы)
+- `aw-dlp-review_<HOST>` (ручная классификация через UI)
+- `aw-dlp-rules_<HOST>` (suppress/rule записи через UI)
 
 Проверка событий браузера:
 
@@ -291,6 +307,31 @@ curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-watcher-web-edge_<HOST>/events?
 ```bash
 curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-detmir-web-category_<HOST>/events?limit=5" | jq
 ```
+
+Проверка DLP review/rules:
+
+```bash
+curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-dlp-review_<HOST>/events?limit=20" | jq
+curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-dlp-rules_<HOST>/events?limit=20" | jq
+```
+
+Ожидаемые поля review:
+
+- `reviewId`
+- `signalType`
+- `verdict`
+- `category`
+- `comment`
+- `archived`
+
+Ожидаемые поля rules:
+
+- `ruleId`
+- `signalType`
+- `match`
+- `category`
+- `comment`
+- `enabled`
 
 ---
 

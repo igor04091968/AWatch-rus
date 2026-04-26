@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v2";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v2");
+  window.__awRuPatchVersion = "template-v4-dlp-review";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v4-dlp-review");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -259,6 +259,13 @@
     /\/raw\b/i
   ];
 
+  const dlpVerdictOptions = [
+    { value: "false_positive", label: "Ложное срабатывание" },
+    { value: "allowed", label: "Разрешено" },
+    { value: "review_needed", label: "На проверку" },
+    { value: "incident", label: "Инцидент" }
+  ];
+
   function replaceText(text) {
     if (!text) return text;
     if (exact.has(text.trim())) {
@@ -301,7 +308,21 @@
     style.id = "aw-ru-hide-noise-style";
     style.textContent = [
       '[href*="/raw-data"], [href*="/raw"], a[data-testid*="raw"], button[data-testid*="raw"] { display: none !important; }',
-      '[aria-label="Raw Data"], [aria-label="Сырые данные"] { display: none !important; }'
+      '[aria-label="Raw Data"], [aria-label="Сырые данные"] { display: none !important; }',
+      '.aw-ru-dlp-center { margin: 16px 0; padding: 16px; border: 1px solid rgba(120,120,120,.35); border-radius: 8px; background: rgba(20,20,20,.03); }',
+      '.aw-ru-dlp-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }',
+      '.aw-ru-dlp-toolbar input, .aw-ru-dlp-toolbar select, .aw-ru-dlp-toolbar textarea { min-height: 32px; }',
+      '.aw-ru-dlp-toolbar button, .aw-ru-dlp-row button { min-height: 32px; padding: 4px 10px; }',
+      '.aw-ru-dlp-table { width: 100%; border-collapse: collapse; font-size: 13px; }',
+      '.aw-ru-dlp-table th, .aw-ru-dlp-table td { border: 1px solid rgba(120,120,120,.25); padding: 6px; vertical-align: top; }',
+      '.aw-ru-dlp-table td input, .aw-ru-dlp-table td select { width: 100%; box-sizing: border-box; }',
+      '.aw-ru-dlp-muted { opacity: .55; }',
+      '.aw-ru-dlp-pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: rgba(90,140,255,.15); font-size: 12px; }',
+      '.aw-ru-dlp-status { margin-left: auto; font-size: 12px; opacity: .8; }',
+      '.aw-ru-dlp-message { margin-top: 8px; font-size: 12px; }',
+      '.aw-ru-dlp-actions { display: flex; gap: 6px; flex-wrap: wrap; }',
+      '.aw-ru-dlp-section { margin-top: 18px; }',
+      '.aw-ru-dlp-section h5 { margin: 0 0 8px; }'
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -318,7 +339,639 @@
     }
   }
 
+  function getCurrentHostFromHash() {
+    const hash = window.location.hash || "";
+    const activityMatch = hash.match(/#\/activity\/([^/?#]+)/);
+    if (activityMatch && activityMatch[1]) return decodeURIComponent(activityMatch[1]);
+    const trendsMatch = hash.match(/#\/trends\/([^/?#]+)/);
+    if (trendsMatch && trendsMatch[1]) return decodeURIComponent(trendsMatch[1]);
+    return "";
+  }
+
+  function getDlpHostFromSettings(settings) {
+    const routeHost = getCurrentHostFromHash();
+    if (routeHost) return routeHost;
+    const bucketHost = getDlpHostFromBucketId(getDlpBucketIdFromHash());
+    if (bucketHost) return bucketHost;
+    return getTrendsHostFromSettings(settings);
+  }
+
+  function getDlpHref(host) {
+    if (!host) return "#/buckets";
+    return "#/buckets/" + encodeURIComponent("aw-dlp-endpoint-signals_" + host);
+  }
+
+  function isDlpSignalBucketRoute() {
+    return /^#\/buckets\/aw-dlp-endpoint-signals_/i.test(window.location.hash || "");
+  }
+
+  function getDlpBucketIdFromHash() {
+    const hash = window.location.hash || "";
+    const match = hash.match(/^#\/buckets\/([^/?#]+)/i);
+    return match && match[1] ? decodeURIComponent(match[1]) : "";
+  }
+
+  function getDlpHostFromBucketId(bucketId) {
+    const prefix = "aw-dlp-endpoint-signals_";
+    return bucketId.startsWith(prefix) ? bucketId.slice(prefix.length) : "";
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function normalizeText(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function buildDlpKey(event) {
+    const data = event && event.data ? event.data : {};
+    return [
+      event && event.timestamp || "",
+      data.signalType || "",
+      data.username || "",
+      data.owner || "",
+      data.documentName || "",
+      data.printerName || ""
+    ].join("|");
+  }
+
+  function generateDlpId(prefix) {
+    return prefix + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+  }
+
+  async function awApiJson(url, options) {
+    const response = await fetch(url, Object.assign({
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json; charset=utf-8"
+      }
+    }, options || {}));
+    if (response.status === 304 || response.status === 409) {
+      return null;
+    }
+    if (!response.ok) {
+      throw new Error("aw-api-" + response.status);
+    }
+    if (response.status === 204) return null;
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  async function ensureAwBucket(bucketId, clientName, bucketType, hostname) {
+    await awApiJson("/api/0/buckets/" + encodeURIComponent(bucketId), {
+      method: "POST",
+      body: JSON.stringify({
+        client: clientName,
+        type: bucketType,
+        hostname: hostname
+      })
+    });
+  }
+
+  async function saveAwHeartbeat(bucketId, payload, pulsetimeSeconds) {
+    const pulsetime = pulsetimeSeconds || 1;
+    await awApiJson("/api/0/buckets/" + encodeURIComponent(bucketId) + "/heartbeat?pulsetime=" + pulsetime, {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+  }
+
+  async function loadBucketEvents(bucketId, limit) {
+    const data = await awApiJson("/api/0/buckets/" + encodeURIComponent(bucketId) + "/events?limit=" + (limit || 100), {
+      method: "GET",
+      headers: {}
+    });
+    return Array.isArray(data) ? data : [];
+  }
+
+  function getRuleMatchFields(event) {
+    const data = event && event.data ? event.data : {};
+    return {
+      signalType: normalizeText(data.signalType),
+      username: normalizeText(data.username),
+      owner: normalizeText(data.owner),
+      documentName: normalizeText(data.documentName),
+      printerName: normalizeText(data.printerName),
+      hostname: normalizeText(data.hostname)
+    };
+  }
+
+  function serializeRuleMatch(match) {
+    const normalized = match || {};
+    return [
+      normalized.signalType || "",
+      normalized.username || "",
+      normalized.owner || "",
+      normalized.documentName || "",
+      normalized.printerName || "",
+      normalized.hostname || ""
+    ].join("|");
+  }
+
+  function getRuleId(ruleEvent) {
+    const data = ruleEvent && ruleEvent.data ? ruleEvent.data : {};
+    return normalizeText(data.ruleId) || [
+      serializeRuleMatch(data.match || {}),
+      normalizeText(data.category),
+      normalizeText(data.action)
+    ].join("|");
+  }
+
+  function getReviewId(reviewEvent) {
+    const data = reviewEvent && reviewEvent.data ? reviewEvent.data : {};
+    const review = data.review || {};
+    return normalizeText(review.reviewId) || [
+      data.sourceEvent && data.sourceEvent.timestamp || "",
+      data.sourceEvent && data.sourceEvent.data ? buildDlpKey({ timestamp: data.sourceEvent.timestamp, data: data.sourceEvent.data }) : "",
+      normalizeText(review.verdict),
+      normalizeText(review.category)
+    ].join("|");
+  }
+
+  function collapseRuleEvents(events) {
+    const ordered = (events || []).slice().sort(function (a, b) {
+      return String(a.timestamp).localeCompare(String(b.timestamp));
+    });
+    const map = new Map();
+    ordered.forEach(function (event) {
+      map.set(getRuleId(event), event);
+    });
+    return Array.from(map.values()).sort(function (a, b) {
+      return String(b.timestamp).localeCompare(String(a.timestamp));
+    });
+  }
+
+  function collapseReviewEvents(events) {
+    const ordered = (events || []).slice().sort(function (a, b) {
+      return String(a.timestamp).localeCompare(String(b.timestamp));
+    });
+    const map = new Map();
+    ordered.forEach(function (event) {
+      map.set(getReviewId(event), event);
+    });
+    return Array.from(map.values()).sort(function (a, b) {
+      return String(b.timestamp).localeCompare(String(a.timestamp));
+    });
+  }
+
+  function ruleMatchesEvent(rule, event) {
+    const eventFields = getRuleMatchFields(event);
+    const match = rule && rule.data && rule.data.match ? rule.data.match : {};
+    return Object.keys(eventFields).every(function (key) {
+      const ruleValue = normalizeText(match[key]);
+      return !ruleValue || ruleValue === eventFields[key];
+    });
+  }
+
+  function getSuppressionState() {
+    if (!window.__awRuDlpState) {
+      window.__awRuDlpState = {
+        rules: [],
+        activeRules: [],
+        reviews: [],
+        events: [],
+        loading: false
+      };
+    }
+    return window.__awRuDlpState;
+  }
+
+  function removeBadDlpLinks(root) {
+    const badLinks = root.querySelectorAll("a[href*='/view/DLP']");
+    badLinks.forEach(function (link) {
+      const item = link.closest("li") || link;
+      item.remove();
+    });
+  }
+
+  function updateDlpLinks(root, href) {
+    const links = root.querySelectorAll("a[data-aw-ru-dlp-link='1']");
+    for (const link of links) {
+      if (link.getAttribute("href") !== href) {
+        link.setAttribute("href", href);
+      }
+    }
+  }
+
+  function buildDlpNavItem(templateItem, href) {
+    const templateLink = templateItem.querySelector("a[href], [role='link']");
+    if (!templateLink) return null;
+
+    const item = document.createElement("li");
+    item.setAttribute("data-aw-ru-dlp-item", "1");
+    item.className = templateItem.className || "";
+
+    const link = document.createElement("a");
+    link.setAttribute("href", href);
+    link.setAttribute("data-aw-ru-dlp-link", "1");
+    link.textContent = "DLP";
+    link.className = templateLink.className || "";
+
+    item.appendChild(link);
+    return item;
+  }
+
+  function findPrimaryNavList(root) {
+    const navLists = Array.from(root.querySelectorAll("nav ul"));
+    return navLists.find(function (list) {
+      const labels = Array.from(list.querySelectorAll("a"))
+        .map(function (link) { return normalizeText(link.textContent); })
+        .filter(Boolean);
+      return labels.includes("Главная") ||
+        labels.includes("Home") ||
+        labels.includes("Активность") ||
+        labels.includes("Activity");
+    }) || null;
+  }
+
+  function injectDlpNavigation(root) {
+    const href = getDlpHref(window.__awRuPatchSettingsHost || getCurrentHostFromHash());
+    removeBadDlpLinks(root);
+    updateDlpLinks(root, href);
+    if (root.querySelector("[data-aw-ru-dlp-item='1']")) return;
+
+    const primaryNav = findPrimaryNavList(root);
+    if (primaryNav) {
+      const templateItem = primaryNav.querySelector("li") || primaryNav.parentElement;
+      const dlpItem = templateItem ? buildDlpNavItem(templateItem, href) : null;
+      if (dlpItem) {
+        primaryNav.appendChild(dlpItem);
+        return;
+      }
+      const item = document.createElement("li");
+      item.setAttribute("data-aw-ru-dlp-item", "1");
+      const link = document.createElement("a");
+      link.setAttribute("href", href);
+      link.setAttribute("data-aw-ru-dlp-link", "1");
+      link.textContent = "DLP";
+      item.appendChild(link);
+      primaryNav.appendChild(item);
+    }
+  }
+
+  function renderDlpTableRows(center, host) {
+    const state = getSuppressionState();
+    const tbody = center.querySelector("[data-aw-ru-dlp-events]");
+    if (!tbody) return;
+    const hideSuppressed = center.querySelector("[data-aw-ru-hide-suppressed]") && center.querySelector("[data-aw-ru-hide-suppressed]").checked;
+    const rows = [];
+    for (const event of state.events) {
+      const matchedRule = state.activeRules.find(function (rule) { return ruleMatchesEvent(rule, event); }) || null;
+      if (hideSuppressed && matchedRule) continue;
+      const data = event.data || {};
+      const eventKey = buildDlpKey(event);
+      rows.push(
+        '<tr class="aw-ru-dlp-row' + (matchedRule ? ' aw-ru-dlp-muted' : '') + '" data-aw-ru-dlp-key="' + escapeHtml(eventKey) + '">' +
+          "<td>" + escapeHtml(new Date(event.timestamp).toLocaleString()) + "</td>" +
+          "<td>" + escapeHtml(data.signalType || "") + "</td>" +
+          "<td>" + escapeHtml(data.username || data.owner || "") + "</td>" +
+          "<td>" + escapeHtml(data.documentName || "") + "</td>" +
+          "<td>" + escapeHtml(data.printerName || "") + "</td>" +
+          "<td>" + (matchedRule ? '<span class="aw-ru-dlp-pill">Подавлено правилом</span>' : "") + "</td>" +
+          '<td><select data-aw-ru-dlp-verdict>' +
+            dlpVerdictOptions.map(function (option) {
+              return '<option value="' + option.value + '">' + option.label + '</option>';
+            }).join("") +
+          "</select></td>" +
+          '<td><input type="text" data-aw-ru-dlp-category placeholder="например, safe.print.invoice" /></td>' +
+          '<td><input type="text" data-aw-ru-dlp-comment placeholder="комментарий" /></td>' +
+          '<td class="aw-ru-dlp-actions">' +
+            '<button type="button" data-aw-ru-save-review>Сохранить</button>' +
+            '<button type="button" data-aw-ru-save-rule>Правило</button>' +
+          "</td>" +
+        "</tr>"
+      );
+    }
+    tbody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="10">Нет DLP-событий в выборке.</td></tr>';
+    center.querySelector("[data-aw-ru-dlp-status]").textContent =
+      "Событий: " + state.events.length + " · правил: " + state.activeRules.length + "/" + state.rules.length + " · review: " + state.reviews.filter(function (review) { return !(review.data && review.data.review && review.data.review.archived); }).length + "/" + state.reviews.length;
+    bindDlpRowActions(center, host);
+    renderDlpRuleManager(center, host);
+    renderDlpReviewManager(center, host);
+  }
+
+  async function saveDlpReview(host, event, row) {
+    const bucketId = "aw-dlp-review_" + host;
+    await ensureAwBucket(bucketId, "aw-dlp-review", "aw.dlp.review", host);
+    const verdict = row.querySelector("[data-aw-ru-dlp-verdict]").value;
+    const category = row.querySelector("[data-aw-ru-dlp-category]").value.trim();
+    const comment = row.querySelector("[data-aw-ru-dlp-comment]").value.trim();
+    await saveAwHeartbeat(bucketId, {
+      timestamp: new Date().toISOString(),
+      duration: 0,
+      data: {
+        host: host,
+        sourceBucket: getDlpBucketIdFromHash(),
+        sourceEvent: {
+          timestamp: event.timestamp,
+          data: event.data || {}
+        },
+        review: {
+          reviewId: generateDlpId("review"),
+          verdict: verdict,
+          category: category,
+          comment: comment,
+          archived: false
+        }
+      }
+    }, 1);
+  }
+
+  async function saveDlpRule(host, event, row) {
+    const bucketId = "aw-dlp-rules_" + host;
+    await ensureAwBucket(bucketId, "aw-dlp-rules", "aw.dlp.rule", host);
+    const verdict = row.querySelector("[data-aw-ru-dlp-verdict]").value;
+    const category = row.querySelector("[data-aw-ru-dlp-category]").value.trim();
+    const comment = row.querySelector("[data-aw-ru-dlp-comment]").value.trim();
+    await saveAwHeartbeat(bucketId, {
+      timestamp: new Date().toISOString(),
+      duration: 0,
+      data: {
+        host: host,
+        ruleId: generateDlpId("rule"),
+        enabled: true,
+        action: verdict,
+        category: category,
+        comment: comment,
+        match: getRuleMatchFields(event)
+      }
+    }, 1);
+  }
+
+  function bindDlpRowActions(center, host) {
+    const state = getSuppressionState();
+    const rows = center.querySelectorAll("[data-aw-ru-dlp-key]");
+    rows.forEach(function (row) {
+      if (row.getAttribute("data-aw-ru-bound") === "1") return;
+      row.setAttribute("data-aw-ru-bound", "1");
+      const eventKey = row.getAttribute("data-aw-ru-dlp-key");
+      const event = state.events.find(function (item) { return buildDlpKey(item) === eventKey; });
+      if (!event) return;
+      row.querySelector("[data-aw-ru-save-review]").addEventListener("click", async function () {
+        const message = center.querySelector("[data-aw-ru-dlp-message]");
+        try {
+          await saveDlpReview(host, event, row);
+          state.reviews = collapseReviewEvents(await loadBucketEvents("aw-dlp-review_" + host, 200));
+          renderDlpTableRows(center, host);
+          message.textContent = "Review сохранен.";
+        } catch (error) {
+          message.textContent = "Ошибка сохранения review: " + error.message;
+        }
+      });
+      row.querySelector("[data-aw-ru-save-rule]").addEventListener("click", async function () {
+        const message = center.querySelector("[data-aw-ru-dlp-message]");
+        try {
+          await saveDlpRule(host, event, row);
+          state.rules = collapseRuleEvents(await loadBucketEvents("aw-dlp-rules_" + host, 200));
+          state.activeRules = state.rules.filter(function (rule) { return !(rule.data && rule.data.enabled === false); });
+          message.textContent = "Правило сохранено.";
+          renderDlpTableRows(center, host);
+        } catch (error) {
+          message.textContent = "Ошибка сохранения правила: " + error.message;
+        }
+      });
+    });
+  }
+
+  async function setDlpRuleEnabled(host, ruleEvent, enabled) {
+    const bucketId = "aw-dlp-rules_" + host;
+    await ensureAwBucket(bucketId, "aw-dlp-rules", "aw.dlp.rule", host);
+    const data = ruleEvent.data || {};
+    await saveAwHeartbeat(bucketId, {
+      timestamp: new Date().toISOString(),
+      duration: 0,
+      data: {
+        host: host,
+        ruleId: getRuleId(ruleEvent),
+        enabled: enabled,
+        action: data.action || "",
+        category: data.category || "",
+        comment: data.comment || "",
+        match: data.match || {}
+      }
+    }, 1);
+  }
+
+  async function setDlpReviewArchived(host, reviewEvent, archived) {
+    const bucketId = "aw-dlp-review_" + host;
+    await ensureAwBucket(bucketId, "aw-dlp-review", "aw.dlp.review", host);
+    const data = reviewEvent.data || {};
+    const review = data.review || {};
+    await saveAwHeartbeat(bucketId, {
+      timestamp: new Date().toISOString(),
+      duration: 0,
+      data: {
+        host: host,
+        sourceBucket: data.sourceBucket || getDlpBucketIdFromHash(),
+        sourceEvent: data.sourceEvent || {},
+        review: {
+          reviewId: getReviewId(reviewEvent),
+          verdict: review.verdict || "",
+          category: review.category || "",
+          comment: review.comment || "",
+          archived: archived
+        }
+      }
+    }, 1);
+  }
+
+  function renderDlpRuleManager(center, host) {
+    const state = getSuppressionState();
+    const tbody = center.querySelector("[data-aw-ru-dlp-rules]");
+    if (!tbody) return;
+    const showDisabled = center.querySelector("[data-aw-ru-show-disabled-rules]") && center.querySelector("[data-aw-ru-show-disabled-rules]").checked;
+    const rows = [];
+    state.rules.forEach(function (ruleEvent) {
+      const data = ruleEvent.data || {};
+      const isEnabled = data.enabled !== false;
+      if (!isEnabled && !showDisabled) return;
+      rows.push(
+        '<tr data-aw-ru-rule-id="' + escapeHtml(getRuleId(ruleEvent)) + '">' +
+          '<td>' + escapeHtml(new Date(ruleEvent.timestamp).toLocaleString()) + '</td>' +
+          '<td>' + (isEnabled ? '<span class="aw-ru-dlp-pill">Активно</span>' : '<span class="aw-ru-dlp-pill">Отключено</span>') + '</td>' +
+          '<td>' + escapeHtml(data.action || "") + '</td>' +
+          '<td>' + escapeHtml(data.category || "") + '</td>' +
+          '<td>' + escapeHtml(serializeRuleMatch(data.match || {})) + '</td>' +
+          '<td>' + escapeHtml(data.comment || "") + '</td>' +
+          '<td class="aw-ru-dlp-actions">' +
+            '<button type="button" data-aw-ru-toggle-rule>' + (isEnabled ? 'Отключить' : 'Включить') + '</button>' +
+          '</td>' +
+        '</tr>'
+      );
+    });
+    tbody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="7">Сохраненных правил нет.</td></tr>';
+    tbody.querySelectorAll("[data-aw-ru-toggle-rule]").forEach(function (button) {
+      button.addEventListener("click", async function () {
+        const row = button.closest("[data-aw-ru-rule-id]");
+        const ruleId = row && row.getAttribute("data-aw-ru-rule-id");
+        const ruleEvent = state.rules.find(function (item) { return getRuleId(item) === ruleId; });
+        if (!ruleEvent) return;
+        const message = center.querySelector("[data-aw-ru-dlp-message]");
+        try {
+          await setDlpRuleEnabled(host, ruleEvent, ruleEvent.data && ruleEvent.data.enabled === false);
+          state.rules = collapseRuleEvents(await loadBucketEvents("aw-dlp-rules_" + host, 200));
+          state.activeRules = state.rules.filter(function (rule) { return !(rule.data && rule.data.enabled === false); });
+          renderDlpTableRows(center, host);
+          message.textContent = "Статус правила обновлен.";
+        } catch (error) {
+          message.textContent = "Ошибка обновления правила: " + error.message;
+        }
+      });
+    });
+  }
+
+  function renderDlpReviewManager(center, host) {
+    const state = getSuppressionState();
+    const tbody = center.querySelector("[data-aw-ru-dlp-reviews]");
+    if (!tbody) return;
+    const showArchived = center.querySelector("[data-aw-ru-show-archived-reviews]") && center.querySelector("[data-aw-ru-show-archived-reviews]").checked;
+    const rows = [];
+    state.reviews.forEach(function (reviewEvent) {
+      const data = reviewEvent.data || {};
+      const review = data.review || {};
+      const archived = review.archived === true;
+      if (archived && !showArchived) return;
+      const sourceData = data.sourceEvent && data.sourceEvent.data ? data.sourceEvent.data : {};
+      rows.push(
+        '<tr data-aw-ru-review-id="' + escapeHtml(getReviewId(reviewEvent)) + '">' +
+          '<td>' + escapeHtml(new Date(reviewEvent.timestamp).toLocaleString()) + '</td>' +
+          '<td>' + (archived ? '<span class="aw-ru-dlp-pill">Архив</span>' : '<span class="aw-ru-dlp-pill">Активно</span>') + '</td>' +
+          '<td>' + escapeHtml(review.verdict || "") + '</td>' +
+          '<td>' + escapeHtml(review.category || "") + '</td>' +
+          '<td>' + escapeHtml(review.comment || "") + '</td>' +
+          '<td>' + escapeHtml(sourceData.signalType || "") + ' · ' + escapeHtml(sourceData.documentName || sourceData.printerName || sourceData.username || "") + '</td>' +
+          '<td class="aw-ru-dlp-actions">' +
+            '<button type="button" data-aw-ru-toggle-review>' + (archived ? 'Вернуть' : 'Архивировать') + '</button>' +
+          '</td>' +
+        '</tr>'
+      );
+    });
+    tbody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="7">Сохраненных review нет.</td></tr>';
+    tbody.querySelectorAll("[data-aw-ru-toggle-review]").forEach(function (button) {
+      button.addEventListener("click", async function () {
+        const row = button.closest("[data-aw-ru-review-id]");
+        const reviewId = row && row.getAttribute("data-aw-ru-review-id");
+        const reviewEvent = state.reviews.find(function (item) { return getReviewId(item) === reviewId; });
+        if (!reviewEvent) return;
+        const message = center.querySelector("[data-aw-ru-dlp-message]");
+        try {
+          await setDlpReviewArchived(host, reviewEvent, !(reviewEvent.data && reviewEvent.data.review && reviewEvent.data.review.archived === true));
+          state.reviews = collapseReviewEvents(await loadBucketEvents("aw-dlp-review_" + host, 200));
+          renderDlpTableRows(center, host);
+          message.textContent = "Статус review обновлен.";
+        } catch (error) {
+          message.textContent = "Ошибка обновления review: " + error.message;
+        }
+      });
+    });
+  }
+
+  async function refreshDlpCenter(center, host) {
+    const state = getSuppressionState();
+    if (state.loading) return;
+    state.loading = true;
+    center.querySelector("[data-aw-ru-dlp-message]").textContent = "Загрузка DLP-событий...";
+    try {
+      state.events = (await loadBucketEvents(getDlpBucketIdFromHash(), 200))
+        .sort(function (a, b) { return String(b.timestamp).localeCompare(String(a.timestamp)); });
+      try {
+        state.rules = collapseRuleEvents(await loadBucketEvents("aw-dlp-rules_" + host, 200));
+        state.activeRules = state.rules.filter(function (rule) { return !(rule.data && rule.data.enabled === false); });
+      } catch (error) {
+        state.rules = [];
+        state.activeRules = [];
+      }
+      try {
+        state.reviews = collapseReviewEvents(await loadBucketEvents("aw-dlp-review_" + host, 200));
+      } catch (error) {
+        state.reviews = [];
+      }
+      renderDlpTableRows(center, host);
+      center.querySelector("[data-aw-ru-dlp-message]").textContent = "DLP review центр обновлен.";
+    } catch (error) {
+      center.querySelector("[data-aw-ru-dlp-message]").textContent = "Ошибка загрузки DLP-событий: " + error.message;
+    } finally {
+      state.loading = false;
+    }
+  }
+
+  function injectDlpReviewCenter(root) {
+    if (!isDlpSignalBucketRoute()) return;
+    const bucketId = getDlpBucketIdFromHash();
+    const host = getDlpHostFromBucketId(bucketId);
+    if (!host) return;
+
+    const heading = root.querySelector("h3");
+    if (!heading) return;
+
+    let center = root.querySelector("[data-aw-ru-dlp-center='1']");
+    if (!center) {
+      center = document.createElement("section");
+      center.className = "aw-ru-dlp-center";
+      center.setAttribute("data-aw-ru-dlp-center", "1");
+      center.innerHTML =
+        '<h4>DLP review и правила</h4>' +
+        '<div class="aw-ru-dlp-toolbar">' +
+          '<span class="aw-ru-dlp-pill">bucket: ' + escapeHtml(bucketId) + '</span>' +
+          '<label><input type="checkbox" data-aw-ru-hide-suppressed /> скрывать события, совпавшие с правилами</label>' +
+          '<button type="button" data-aw-ru-refresh-dlp>Обновить DLP</button>' +
+          '<div class="aw-ru-dlp-status" data-aw-ru-dlp-status>Событий: 0 · правил: 0 · review: 0</div>' +
+        '</div>' +
+        '<p>Здесь можно категорировать DLP-события и сохранять suppress/rule записи прямо в AW. Это снижает ложные сработки на уровне review-потока.</p>' +
+        '<table class="aw-ru-dlp-table">' +
+          '<thead><tr><th>Время</th><th>Тип</th><th>Пользователь</th><th>Документ</th><th>Принтер/канал</th><th>Статус</th><th>Вердикт</th><th>Категория</th><th>Комментарий</th><th>Действия</th></tr></thead>' +
+          '<tbody data-aw-ru-dlp-events><tr><td colspan="10">Загрузка...</td></tr></tbody>' +
+        '</table>' +
+        '<div class="aw-ru-dlp-section">' +
+          '<div class="aw-ru-dlp-toolbar">' +
+            '<h5>DLP Rules</h5>' +
+            '<label><input type="checkbox" data-aw-ru-show-disabled-rules /> показывать отключённые</label>' +
+          '</div>' +
+          '<table class="aw-ru-dlp-table">' +
+            '<thead><tr><th>Время</th><th>Статус</th><th>Действие</th><th>Категория</th><th>Match</th><th>Комментарий</th><th>Управление</th></tr></thead>' +
+            '<tbody data-aw-ru-dlp-rules><tr><td colspan="7">Загрузка...</td></tr></tbody>' +
+          '</table>' +
+        '</div>' +
+        '<div class="aw-ru-dlp-section">' +
+          '<div class="aw-ru-dlp-toolbar">' +
+            '<h5>DLP Review</h5>' +
+            '<label><input type="checkbox" data-aw-ru-show-archived-reviews /> показывать архив</label>' +
+          '</div>' +
+          '<table class="aw-ru-dlp-table">' +
+            '<thead><tr><th>Время</th><th>Статус</th><th>Вердикт</th><th>Категория</th><th>Комментарий</th><th>Источник</th><th>Управление</th></tr></thead>' +
+            '<tbody data-aw-ru-dlp-reviews><tr><td colspan="7">Загрузка...</td></tr></tbody>' +
+          '</table>' +
+        '</div>' +
+        '<div class="aw-ru-dlp-message" data-aw-ru-dlp-message></div>';
+      heading.parentElement.insertBefore(center, heading.nextSibling);
+      center.querySelector("[data-aw-ru-refresh-dlp]").addEventListener("click", function () {
+        refreshDlpCenter(center, host);
+      });
+      center.querySelector("[data-aw-ru-hide-suppressed]").addEventListener("change", function () {
+        renderDlpTableRows(center, host);
+      });
+      center.querySelector("[data-aw-ru-show-disabled-rules]").addEventListener("change", function () {
+        renderDlpRuleManager(center, host);
+      });
+      center.querySelector("[data-aw-ru-show-archived-reviews]").addEventListener("change", function () {
+        renderDlpReviewManager(center, host);
+      });
+    }
+
+    if (center.getAttribute("data-aw-ru-loaded") !== "1") {
+      center.setAttribute("data-aw-ru-loaded", "1");
+      refreshDlpCenter(center, host);
+    }
+  }
+
   let trendsRedirectInFlight = false;
+  let settingsHostFetchInFlight = false;
 
   function getTrendsHostFromSettings(settings) {
     if (!settings || typeof settings !== "object") return "";
@@ -347,6 +1000,7 @@
         return response.json();
       })
       .then(function (settings) {
+        window.__awRuPatchSettingsHost = getDlpHostFromSettings(settings);
         const host = getTrendsHostFromSettings(settings);
         if (!host || !shouldRedirectTrends(window.location.hash)) return;
         const target = "#/trends/" + encodeURIComponent(host);
@@ -360,11 +1014,32 @@
       });
   }
 
+  function ensureSettingsHost() {
+    if (window.__awRuPatchSettingsHost || settingsHostFetchInFlight) return;
+    settingsHostFetchInFlight = true;
+    fetch("/api/0/settings/", { credentials: "same-origin" })
+      .then(function (response) {
+        if (!response.ok) throw new Error("settings-fetch-failed");
+        return response.json();
+      })
+      .then(function (settings) {
+        window.__awRuPatchSettingsHost = getDlpHostFromSettings(settings);
+      })
+      .catch(function () {})
+      .finally(function () {
+        settingsHostFetchInFlight = false;
+        injectDlpNavigation(document.body);
+      });
+  }
+
   function applyPatch() {
+    ensureSettingsHost();
     injectStyles();
     walk(document.body);
     translateAttributes(document.body);
     hideNoiseNavigation(document.body);
+    injectDlpNavigation(document.body);
+    injectDlpReviewCenter(document.body);
     redirectBareTrendsRoute();
   }
 

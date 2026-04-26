@@ -88,5 +88,6 @@ Playbook:
 - Установлен ActivityWatch Server.
 - Создан systemd-unit `activitywatch-server.service`.
 - Установлен RU Web UI patch.
+- Для Web UI используется checksum-based cache-bust для `ru-patch-v5.js` и `sw-cleanup.js`, чтобы браузер не держал старую DLP/русскую статику после деплоя.
 - Выполнена валидация API `http://127.0.0.1:5600/api/0/info`.
 - Для full-stack сценария CT создаётся автоматически через `pct create`.
