@@ -17,5 +17,8 @@ aw_apply_worktime_settings: false
 # Optional defaults for the worktime period in Web UI.
 # startOfDay controls day-boundary and default report window start.
 # durationDefault controls default time range (seconds) shown in UI.
-aw_worktime_start_of_day: "08:00"
-aw_worktime_duration_default: 32400
+#
+# Recommended: set worktime window explicitly and let the playbook derive duration.
+aw_worktime_from: "08:00"
+aw_worktime_to: "17:00"
+aw_worktime_start_of_day: "{{ aw_worktime_from }}"

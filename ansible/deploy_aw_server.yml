@@ -163,6 +163,41 @@
         status_code: 201
       when: aw_apply_worktime_settings | default(false) | bool
 
+    - name: Derive worktime durationDefault from aw_worktime_from/to
+      ansible.builtin.set_fact:
+        aw_worktime_from_h: "{{ (aw_worktime_from | default('08:00')).split(':')[0] | int }}"
+        aw_worktime_from_m: "{{ (aw_worktime_from | default('08:00')).split(':')[1] | int }}"
+        aw_worktime_to_h: "{{ (aw_worktime_to | default('17:00')).split(':')[0] | int }}"
+        aw_worktime_to_m: "{{ (aw_worktime_to | default('17:00')).split(':')[1] | int }}"
+        aw_worktime_duration_default_derived: >-
+          {{
+            (
+              (
+                ((aw_worktime_to_h | int) * 60 + (aw_worktime_to_m | int)) -
+                ((aw_worktime_from_h | int) * 60 + (aw_worktime_from_m | int))
+              ) * 60
+            )
+          }}
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Normalize derived durationDefault for overnight shifts
+      ansible.builtin.set_fact:
+        aw_worktime_duration_default_effective: >-
+          {{
+            (aw_worktime_duration_default_derived | int)
+            if (aw_worktime_duration_default_derived | int) > 0
+            else ((aw_worktime_duration_default_derived | int) + 86400)
+          }}
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Validate derived durationDefault is sane
+      ansible.builtin.assert:
+        that:
+          - aw_worktime_duration_default_effective | int > 0
+          - aw_worktime_duration_default_effective | int <= 86400
+        fail_msg: "Invalid worktime window: {{ aw_worktime_from }}..{{ aw_worktime_to }}"
+      when: aw_apply_worktime_settings | default(false) | bool
+
     - name: Apply baseline worktime period (startOfDay)
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/startOfDay"
@@ -176,7 +211,7 @@
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/durationDefault"
         method: POST
-        body: "{{ aw_worktime_duration_default }}"
+        body: "{{ aw_worktime_duration_default_effective }}"
         body_format: json
         status_code: 200
       when: aw_apply_worktime_settings | default(false) | bool

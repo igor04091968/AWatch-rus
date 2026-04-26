@@ -40,6 +40,14 @@ ls -l /opt/activitywatch/webui-ru/js/
 
 Контрольные AQL-шаблоны для расчета рабочего времени: `docs/worktime_aql_detmir.md`.
 
+Период рабочего времени задаётся переменными:
+
+- `aw_worktime_from` (например `08:00`)
+- `aw_worktime_to` (например `17:00`)
+
+Playbook вычисляет `durationDefault` автоматически (включая смены через полночь) и выставляет:
+`/api/0/settings/startOfDay` и `/api/0/settings/durationDefault`.
+
 ## Типовые инциденты
 
 ### Сервис не стартует
