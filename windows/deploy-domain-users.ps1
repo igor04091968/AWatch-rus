@@ -16,6 +16,8 @@ param(
     [int]$PollSeconds = 5,
     [int]$PulseSeconds = 30,
     [int]$RecoveryIntervalSeconds = 180,
+    [bool]$AfkEnabled = $true,
+    [bool]$WindowEnabled = $true,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath
 )
@@ -74,6 +76,8 @@ $config = New-ActivityWatchDeploymentConfig `
     -PollSeconds $PollSeconds `
     -PulseSeconds $PulseSeconds `
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
+    -AfkEnabled $AfkEnabled `
+    -WindowEnabled $WindowEnabled `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `
     -UserTasks $taskDefinitions `

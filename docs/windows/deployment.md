@@ -22,6 +22,7 @@
 - Применяет ACL к `C:\Program Files\ActivityWatch`, `C:\ProgramData\ActivityWatch` и каталогу логов.
 - Не содержит хардкодов инфраструктуры: сервер, домен, список пользователей и правила передаются параметрами.
 - Корректно регистрирует задачи через `-LogonType Interactive` (совместимо с Windows Server, где `InteractiveToken` не поддерживается).
+- Поддерживает отключение шумных watcher'ов через `-AfkEnabled:$false` и `-WindowEnabled:$false`.
 
 ## Предпосылки
 
@@ -40,6 +41,31 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
   -ServerHost aw.example.local `
   -ServerPort 5600 `
   -TargetUser 'CONTOSO\svc.activity.user01' `
+  -CustomRulesPath .\windows\web-category-rules.example.json `
+  -CustomPolicyPath .\windows\dlp-policy.example.json
+```
+
+Чтобы убрать `afkstatus` из веб-интерфейса, отключите AFK watcher:
+
+```powershell
+.\windows\deploy-single-user.ps1 `
+  -ServerHost aw.example.local `
+  -ServerPort 5600 `
+  -TargetUser 'CONTOSO\svc.activity.user01' `
+  -AfkEnabled:$false `
+  -CustomRulesPath .\windows\web-category-rules.example.json `
+  -CustomPolicyPath .\windows\dlp-policy.example.json
+```
+
+Если нужен только `window`-сигнал без AFK:
+
+```powershell
+.\windows\deploy-single-user.ps1 `
+  -ServerHost aw.example.local `
+  -ServerPort 5600 `
+  -TargetUser 'CONTOSO\svc.activity.user01' `
+  -AfkEnabled:$false `
+  -WindowEnabled:$true `
   -CustomRulesPath .\windows\web-category-rules.example.json `
   -CustomPolicyPath .\windows\dlp-policy.example.json
 ```
@@ -90,6 +116,19 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
   -ServerPort 5600 `
   -Domain CONTOSO `
   -UserListPath C:\Temp\aw-users.txt `
+  -CustomRulesPath C:\Temp\web-category-rules.json `
+  -CustomPolicyPath C:\Temp\dlp-policy.json
+```
+
+Для quiet-профиля без `afkstatus`:
+
+```powershell
+.\windows\deploy-domain-users.ps1 `
+  -ServerHost aw.example.local `
+  -ServerPort 5600 `
+  -Domain CONTOSO `
+  -UserListPath C:\Temp\aw-users.txt `
+  -AfkEnabled:$false `
   -CustomRulesPath C:\Temp\web-category-rules.json `
   -CustomPolicyPath C:\Temp\dlp-policy.json
 ```

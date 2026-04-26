@@ -36,6 +36,8 @@ C:\Deploy\AWatch-rus\windows\deploy-ensemble.ps1 `
 4. Опционально запускает контроль (`validate-deployment.ps1`) при `-ValidateAfterDeploy`.
 5. Пишет итоговый JSON-отчёт в `<StateRoot>\ensemble-report-*.json`.
 
+Для quiet-профиля без `afkstatus` используйте `-AfkEnabled:$false`; если не нужен window watcher, добавьте `-WindowEnabled:$false`.
+
 ## Быстрый health-check
 
 ```powershell

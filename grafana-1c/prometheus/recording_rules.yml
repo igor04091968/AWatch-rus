@@ -1,0 +1,11 @@
+groups:
+  - name: onec_accounting_recording
+    rules:
+      - record: onec_overdue_receivables_total:company_currency
+        expr: sum by (company, currency) (onec_overdue_receivables_total)
+
+      - record: onec_unposted_documents_total:company
+        expr: sum by (company) (onec_unposted_documents_total)
+
+      - record: onec_sales_amount_today:company_currency
+        expr: sum by (company, currency) (onec_sales_amount_today)

@@ -317,6 +317,8 @@ function New-ActivityWatchDeploymentConfig {
         [int]$PulseSeconds,
         [Parameter(Mandatory = $true)]
         [int]$RecoveryIntervalSeconds,
+        [bool]$AfkEnabled = $true,
+        [bool]$WindowEnabled = $true,
         [Parameter(Mandatory = $true)]
         [string]$LaunchScriptPath,
         [Parameter(Mandatory = $true)]
@@ -348,6 +350,10 @@ function New-ActivityWatchDeploymentConfig {
         collector = [pscustomobject]@{
             pollSeconds  = $PollSeconds
             pulseSeconds = $PulseSeconds
+        }
+        collectors = [pscustomobject]@{
+            afkEnabled   = $AfkEnabled
+            windowEnabled = $WindowEnabled
         }
         recovery = [pscustomobject]@{
             intervalSeconds = $RecoveryIntervalSeconds
@@ -475,20 +481,22 @@ function Start-CollectorScriptIfNeeded {
 `$windowExe = Join-Path `$installRoot 'aw-watcher-window\aw-watcher-window.exe'
 `$serverArgs = @('--host', [string]`$config.server.host, '--port', [string]`$config.server.port)
 `$powershellExe = Join-Path `$env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+`$afkEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]`$config.collectors.afkEnabled } else { `$true }
+`$windowEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]`$config.collectors.windowEnabled } else { `$true }
 
-if (-not (Test-Path -LiteralPath `$afkExe)) {
+if (`$afkEnabled -and -not (Test-Path -LiteralPath `$afkExe)) {
     throw "Missing aw-watcher-afk.exe: `$afkExe"
 }
 
-if (-not (Test-Path -LiteralPath `$windowExe)) {
+if (`$windowEnabled -and -not (Test-Path -LiteralPath `$windowExe)) {
     throw "Missing aw-watcher-window.exe: `$windowExe"
 }
 
-if (-not (Test-ProcessInSession -Name 'aw-watcher-afk' -SessionId `$sessionId)) {
+if (`$afkEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-afk' -SessionId `$sessionId)) {
     Start-Process -FilePath `$afkExe -ArgumentList `$serverArgs -WindowStyle Hidden
 }
 
-if (-not (Test-ProcessInSession -Name 'aw-watcher-window' -SessionId `$sessionId)) {
+if (`$windowEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-window' -SessionId `$sessionId)) {
     Start-Process -FilePath `$windowExe -ArgumentList `$serverArgs -WindowStyle Hidden
 }
 

@@ -1,0 +1,13 @@
+global:
+  scrape_timeout_offset: 500ms
+  min_interval: 15s
+  max_connections: 3
+  max_idle_connections: 3
+
+target:
+  data_source_name: "${ONEC_DSN}"
+  collectors:
+    - onec_accounting_kpi
+
+collector_files:
+  - "/etc/sql_exporter/collectors/*.collector.yml"

@@ -1,0 +1,55 @@
+collector_name: onec_accounting_kpi
+metrics:
+  - metric_name: onec_unposted_documents_total
+    type: gauge
+    help: "Количество непроведенных документов в 1С."
+    key_labels:
+      - company
+    values: [value]
+    query: |
+      SELECT company, value
+      FROM onec_kpi_unposted_documents;
+
+  - metric_name: onec_sales_amount_today
+    type: gauge
+    help: "Сумма продаж за текущие сутки (валюта учета)."
+    key_labels:
+      - company
+      - currency
+    values: [value]
+    query: |
+      SELECT company, currency, value
+      FROM onec_kpi_sales_today;
+
+  - metric_name: onec_overdue_receivables_total
+    type: gauge
+    help: "Сумма просроченной дебиторской задолженности."
+    key_labels:
+      - company
+      - aging_bucket
+      - currency
+    values: [value]
+    query: |
+      SELECT company, aging_bucket, currency, value
+      FROM onec_kpi_overdue_receivables;
+
+  - metric_name: onec_posting_errors_total
+    type: gauge
+    help: "Количество ошибок проведения документов за последние 24 часа."
+    key_labels:
+      - company
+    values: [value]
+    query: |
+      SELECT company, value
+      FROM onec_kpi_posting_errors_24h;
+
+  - metric_name: onec_data_freshness_seconds
+    type: gauge
+    help: "Возраст последних данных 1С в секундах."
+    key_labels:
+      - company
+      - source
+    values: [value]
+    query: |
+      SELECT company, source, value
+      FROM onec_kpi_data_freshness;

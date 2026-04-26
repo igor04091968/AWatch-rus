@@ -15,6 +15,8 @@ SW_CLEANUP_SRC="/root/bootstrap/aw-sw-cleanup.js"
 INDEX_HTML="$WEBUI_DIR/index.html"
 SERVICE_WORKER="$WEBUI_DIR/service-worker.js"
 TS=$(date +%Y%m%d%H%M%S)
+TRENDS_NEEDLE='this.activityStore.query_category_time_by_period(r)'
+TRENDS_REPLACEMENT='this.activityStore.ensure_loaded(r)'
 
 [[ -f "$PATCH_JS_SRC" ]] || { echo "missing $PATCH_JS_SRC" >&2; exit 1; }
 [[ -f "$SW_CLEANUP_SRC" ]] || { echo "missing $SW_CLEANUP_SRC" >&2; exit 1; }
@@ -29,5 +31,26 @@ sed -i '/aw-ru-patch.js/d;/aw-sw-cleanup.js/d' "$INDEX_HTML"
 sed -i 's#</head>#<script src="/js/aw-sw-cleanup.js"></script></head>#' "$INDEX_HTML"
 sed -i 's#</body>#<script defer="defer" src="/js/aw-ru-patch.js"></script></body>#' "$INDEX_HTML"
 cp "$SW_CLEANUP_SRC" "$SERVICE_WORKER"
+
+trends_chunk="$(grep -Rsl "$TRENDS_NEEDLE" "$WEBUI_DIR/js"/*.js 2>/dev/null | head -n 1 || true)"
+if [[ -n "$trends_chunk" ]]; then
+  cp "$trends_chunk" "$trends_chunk.bak.$TS"
+  python3 - "$trends_chunk" "$TRENDS_NEEDLE" "$TRENDS_REPLACEMENT" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+old = sys.argv[2]
+new = sys.argv[3]
+content = path.read_text()
+if old in content:
+    path.write_text(content.replace(old, new, 1))
+    print(f"Trends hotfix applied to {path}")
+else:
+    print(f"Trends hotfix already present in {path}")
+PY
+else
+  echo "Trends hotfix skipped: chunk not found"
+fi
 
 echo "RU patch applied to $WEBUI_DIR"

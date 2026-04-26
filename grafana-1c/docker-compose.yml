@@ -1,0 +1,58 @@
+services:
+  sql-exporter:
+    image: ghcr.io/burningalchemist/sql_exporter:latest
+    container_name: awrus-sql-exporter
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - "-config.file=/etc/sql_exporter/sql_exporter.yml"
+    volumes:
+      - ./sql-exporter/sql_exporter.yml:/etc/sql_exporter/sql_exporter.yml:ro
+      - ./sql-exporter/collectors:/etc/sql_exporter/collectors:ro
+    ports:
+      - "${SQL_EXPORTER_PORT:-9399}:9399"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: awrus-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./prometheus/recording_rules.yml:/etc/prometheus/recording_rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=30d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    depends_on:
+      - sql-exporter
+
+  grafana:
+    image: grafana/grafana-oss:11.2.2
+    container_name: awrus-grafana
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD}"
+      GF_USERS_DEFAULT_THEME: "dark"
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:

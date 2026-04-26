@@ -30,6 +30,16 @@ function Write-EndpointLog {
     }
 }
 
+function Invoke-AwJsonPost {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Json
+    )
+
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
+    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+}
+
 function Ensure-Bucket {
     param(
         [string]$BucketId,
@@ -47,7 +57,7 @@ function Ensure-Bucket {
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId" -ContentType 'application/json' -Body $body | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
     $script:KnownBuckets[$BucketId] = $true
 }
 
@@ -72,7 +82,7 @@ function Send-EndpointSignalHeartbeat {
         } + $Data
     } | ConvertTo-Json -Depth 6 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -ContentType 'application/json' -Body $payload | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
 }
 
 function Send-DlpIncidentHeartbeat {
@@ -104,7 +114,7 @@ function Send-DlpIncidentHeartbeat {
         } + $Data
     } | ConvertTo-Json -Depth 7 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -ContentType 'application/json' -Body $payload | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
 }
 
 function Get-StringHash {
@@ -288,6 +298,159 @@ function Evaluate-PrintRules {
     }
 }
 
+function Test-LooksLikeMojibakeQuestionMarks {
+    param([AllowNull()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
+    return $Value -match '\?{2,}'
+}
+
+function Get-PrintServiceEventSummary {
+    param([Parameter(Mandatory = $true)]$Event)
+
+    $props = @($Event.Properties)
+    $propertyValues = @()
+    foreach ($prop in $props) {
+        $propertyValues += [string]$prop.Value
+    }
+
+    [pscustomobject]@{
+        RecordId      = [string]$Event.RecordId
+        TimeCreated   = if ($Event.TimeCreated) { $Event.TimeCreated.ToString('o') } else { '' }
+        PropertyCount  = $props.Count
+        DocumentName   = if ($props.Count -ge 1) { [string]$props[0].Value } else { '' }
+        Owner         = if ($props.Count -ge 2) { [string]$props[1].Value } else { '' }
+        PrinterName   = if ($props.Count -ge 4) { [string]$props[3].Value } else { '' }
+        PropertyValues = $propertyValues
+    }
+}
+
+function Get-PrintServiceDocumentFallback {
+    param(
+        [Parameter(Mandatory = $true)]$EventSummary,
+        [string]$Owner,
+        [string]$PrinterName
+    )
+
+    $preferred = [string]$EventSummary.DocumentName
+    if (-not (Test-LooksLikeMojibakeQuestionMarks -Value $preferred) -and $preferred -notmatch '^[0-9]+$') {
+        return $preferred
+    }
+
+    $pathCandidates = New-Object System.Collections.Generic.List[string]
+    $textCandidates = New-Object System.Collections.Generic.List[string]
+
+    foreach ($value in @($EventSummary.PropertyValues)) {
+        $candidate = [string]$value
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if ($candidate -eq $preferred) { continue }
+        if ($Owner -and $candidate -like "*$Owner*") { continue }
+        if ($PrinterName -and $candidate -like "*$PrinterName*") { continue }
+        if (Test-LooksLikeMojibakeQuestionMarks -Value $candidate) { continue }
+
+        if ($candidate -match '[\\/:]' -and $candidate -match '\.[A-Za-z0-9]{1,8}$') {
+            $pathCandidates.Add($candidate)
+            continue
+        }
+
+        if ($candidate -match '^[0-9]+$') {
+            continue
+        }
+
+        $textCandidates.Add($candidate)
+    }
+
+    foreach ($candidate in @($pathCandidates)) {
+        $leaf = Split-Path -Path $candidate -Leaf
+        if (-not [string]::IsNullOrWhiteSpace($leaf)) {
+            return $leaf
+        }
+        return $candidate
+    }
+
+    foreach ($candidate in @($textCandidates)) {
+        return $candidate
+    }
+
+    return $null
+}
+
+function Write-PrintServiceEventTrace {
+    param(
+        [Parameter(Mandatory = $true)]$EventSummary,
+        [string]$Phase,
+        [string]$MatchReason,
+        [string]$ResolvedDocument
+    )
+
+    $properties = if ($EventSummary.PropertyValues) {
+        ($EventSummary.PropertyValues -join ' | ')
+    }
+    else {
+        ''
+    }
+
+    Write-EndpointLog (
+        'printservice-307 phase={0} recordId={1} time={2} owner={3} printer={4} document={5} resolved={6} properties=[{7}] reason={8}' -f
+        $Phase,
+        $EventSummary.RecordId,
+        $EventSummary.TimeCreated,
+        $EventSummary.Owner,
+        $EventSummary.PrinterName,
+        $EventSummary.DocumentName,
+        $ResolvedDocument,
+        $properties,
+        $MatchReason
+    )
+}
+
+function Get-BetterDocumentNameFromPrintServiceEvents {
+    param(
+        [string]$Owner,
+        [string]$PrinterName
+    )
+
+    try {
+        $startTime = (Get-Date).AddMinutes(-15)
+        $events = Get-WinEvent -FilterHashtable @{
+            LogName   = 'Microsoft-Windows-PrintService/Operational'
+            Id        = 307
+            StartTime = $startTime
+        } -MaxEvents 200 -ErrorAction Stop
+
+        foreach ($event in @($events)) {
+            $summary = Get-PrintServiceEventSummary -Event $event
+            $matchReason = 'scan'
+            $resolvedDocument = Get-PrintServiceDocumentFallback -EventSummary $summary -Owner $Owner -PrinterName $PrinterName
+
+            if ($Owner -and $summary.Owner -and ($summary.Owner -notlike "*$Owner*")) {
+                $matchReason = 'owner-mismatch'
+                Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason $matchReason -ResolvedDocument $resolvedDocument
+                continue
+            }
+
+            if ($PrinterName -and $summary.PrinterName -and ($summary.PrinterName -notlike "*$PrinterName*")) {
+                $matchReason = 'printer-mismatch'
+                Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason $matchReason -ResolvedDocument $resolvedDocument
+                continue
+            }
+
+            if ([string]::IsNullOrWhiteSpace($resolvedDocument)) {
+                $matchReason = 'no-document-candidate'
+                Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason $matchReason -ResolvedDocument ''
+                continue
+            }
+
+            $matchReason = if (Test-LooksLikeMojibakeQuestionMarks -Value $summary.DocumentName) { 'fallback-used' } else { 'direct' }
+            Write-PrintServiceEventTrace -EventSummary $summary -Phase 'selected' -MatchReason $matchReason -ResolvedDocument $resolvedDocument
+            return $resolvedDocument
+        }
+    }
+    catch {
+    }
+
+    return $null
+}
+
 $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
 $resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'ServerHost is required.' }
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
@@ -308,6 +471,7 @@ $script:KnownBuckets = @{}
 $script:Cooldown = @{}
 $script:SeenUsb = @{}
 $script:SeenPrintJob = @{}
+$script:SeenPrintEvent = @{}
 $script:LastClipboardHash = $null
 $script:PulseSeconds = [Math]::Max($resolvedPollSeconds * 3, 30)
 $script:LogPath = $resolvedLogPath
@@ -377,10 +541,19 @@ while ($true) {
                 $printerName = [string]$job.Name
                 $documentName = [string]$job.Document
                 $owner = [string]$job.Owner
+                $documentNameOriginal = $documentName
+
+                if (Test-LooksLikeMojibakeQuestionMarks -Value $documentName) {
+                    $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -Owner $owner -PrinterName $printerName
+                    if ($eventDocumentName) {
+                        $documentName = $eventDocumentName
+                    }
+                }
 
                 Send-EndpointSignalHeartbeat -SignalType 'print_job' -Data @{
                     printerName  = $printerName
                     documentName = $documentName
+                    documentNameOriginal = $documentNameOriginal
                     owner        = $owner
                 }
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName $documentName -Owner $owner
@@ -391,6 +564,53 @@ while ($true) {
                 $ts = [datetime]$script:SeenPrintJob[$k]
                 if ($ts -lt $cleanupBefore) {
                     $script:SeenPrintJob.Remove($k)
+                }
+            }
+        }
+        catch {
+        }
+
+        try {
+            $printEvents = Get-WinEvent -FilterHashtable @{
+                LogName = 'Microsoft-Windows-PrintService/Operational'
+                Id = 307
+                StartTime = (Get-Date).AddMinutes(-20)
+            } -MaxEvents 200 -ErrorAction SilentlyContinue
+
+            foreach ($event in @($printEvents)) {
+                $recordId = [string]$event.RecordId
+                if (-not $recordId) { continue }
+                if ($script:SeenPrintEvent.ContainsKey($recordId)) { continue }
+                $script:SeenPrintEvent[$recordId] = (Get-Date).ToUniversalTime()
+
+                $summary = Get-PrintServiceEventSummary -Event $event
+                $documentName = [string]$summary.DocumentName
+                $owner = [string]$summary.Owner
+                $printerName = [string]$summary.PrinterName
+                $resolvedDocument = Get-PrintServiceDocumentFallback -EventSummary $summary -Owner $owner -PrinterName $printerName
+
+                Write-PrintServiceEventTrace -EventSummary $summary -Phase 'emit' -MatchReason 'raw-scan' -ResolvedDocument $resolvedDocument
+
+                if (-not [string]::IsNullOrWhiteSpace($owner) -and $owner -notlike "*$env:USERNAME*") {
+                    continue
+                }
+
+                Send-EndpointSignalHeartbeat -SignalType 'print_job' -Data @{
+                    printerName  = $printerName
+                    documentName = if ($resolvedDocument) { $resolvedDocument } else { $documentName }
+                    documentNameOriginal = $documentName
+                    owner        = $owner
+                    eventRecordId = $recordId
+                    eventSource = 'printservice-307'
+                }
+                Evaluate-PrintRules -PrinterName $printerName -DocumentName (if ($resolvedDocument) { $resolvedDocument } else { $documentName }) -Owner $owner
+            }
+
+            $cleanupBeforeEvent = (Get-Date).ToUniversalTime().AddHours(-8)
+            foreach ($k in @($script:SeenPrintEvent.Keys)) {
+                $ts = [datetime]$script:SeenPrintEvent[$k]
+                if ($ts -lt $cleanupBeforeEvent) {
+                    $script:SeenPrintEvent.Remove($k)
                 }
             }
         }

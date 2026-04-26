@@ -1,0 +1,42 @@
+groups:
+  - name: onec_accounting_alerts
+    rules:
+      - alert: OneCUnpostedDocumentsHigh
+        expr: onec_unposted_documents_total > 100
+        for: 15m
+        labels:
+          severity: warning
+          service: onec
+        annotations:
+          summary: "Высокий объем непроведенных документов ({{ $labels.company }})"
+          description: "В базе 1С накопилось {{ $value }} непроведенных документов."
+
+      - alert: OneCOverdueReceivablesCritical
+        expr: sum by (company, currency) (onec_overdue_receivables_total) > 500000
+        for: 15m
+        labels:
+          severity: critical
+          service: onec
+        annotations:
+          summary: "Критичная просроченная дебиторка ({{ $labels.company }})"
+          description: "Просроченная дебиторская задолженность превысила порог: {{ $value }} {{ $labels.currency }}."
+
+      - alert: OneCSQLExporterDown
+        expr: up{job="onec_sql_exporter"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          service: monitoring
+        annotations:
+          summary: "SQL Exporter недоступен"
+          description: "Prometheus не может получить метрики 1С от sql-exporter."
+
+      - alert: OneCDataFreshnessCritical
+        expr: onec_data_freshness_seconds > 7200
+        for: 10m
+        labels:
+          severity: critical
+          service: onec
+        annotations:
+          summary: "Данные 1С устарели ({{ $labels.company }})"
+          description: "Последнее обновление источника {{ $labels.source }} старше 2 часов: {{ $value }} сек."
