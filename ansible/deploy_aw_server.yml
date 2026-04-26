@@ -11,6 +11,8 @@
     aw_bootstrap_dir: "/tmp/aw-rus-bootstrap"
     aw_ru_patch_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-ru-patch.js') | hash('sha1') | truncate(12, true, '') }}"
     aw_sw_cleanup_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-sw-cleanup.js') | hash('sha1') | truncate(12, true, '') }}"
+    aw_worktime_classes: "{{ lookup('file', aw_repo_root + '/aw-server/settings/classes-worktime.json') | from_json }}"
+    aw_default_views: "{{ lookup('file', aw_repo_root + '/aw-server/settings/views-default.json') | from_json }}"
 
   tasks:
     - name: Install base packages
@@ -142,6 +144,24 @@
       retries: 10
       delay: 3
       until: aw_api.status == 200
+
+    - name: Apply baseline worktime settings (classes)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/classes"
+        method: POST
+        body: "{{ aw_worktime_classes }}"
+        body_format: json
+        status_code: 201
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Apply baseline views (include DLP and worktime)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/views"
+        method: POST
+        body: "{{ aw_default_views }}"
+        body_format: json
+        status_code: 201
+      when: aw_apply_worktime_settings | default(false) | bool
 
   handlers:
     - name: Reload systemd

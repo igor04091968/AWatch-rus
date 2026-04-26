@@ -1,0 +1,86 @@
+[
+  {
+    "id": 0,
+    "name": ["Работа"],
+    "rule": { "type": "none" }
+  },
+  {
+    "id": 1,
+    "name": ["Работа", "1С"],
+    "rule": {
+      "type": "regex",
+      "regex": "\\b(1cv8s?|1cv8c|1cestart)\\.exe\\b|1С:Предприятие|Запуск 1С:Предприятия|Загрузка конфигурационной информации|Доступ к информационной базе",
+      "ignore_case": true
+    },
+    "data": { "color": "#194D33" }
+  },
+  {
+    "id": 2,
+    "name": ["Работа", "Документы"],
+    "rule": {
+      "type": "regex",
+      "regex": "\\b(winword|excel|powerpnt|outlook|acrord32|acrord64)\\.exe\\b|Adobe Reader|Acrobat",
+      "ignore_case": true
+    },
+    "data": { "color": "#2E7D32" }
+  },
+  {
+    "id": 3,
+    "name": ["Работа", "Коммуникации"],
+    "rule": {
+      "type": "regex",
+      "regex": "\\b(teams|telegram|slack|thunderbird|zoom|skype|whatsapp|viber|discord)\\.exe\\b|Mattermost|Element|Riot",
+      "ignore_case": true
+    },
+    "data": { "color": "#1E88E5" }
+  },
+  {
+    "id": 4,
+    "name": ["Работа", "Администрирование"],
+    "rule": {
+      "type": "regex",
+      "regex": "\\b(mstsc|putty|kitty|winscp|anydesk|teamviewer|vncviewer|mmc|regedit|services|control|powershell|cmd)\\.exe\\b",
+      "ignore_case": true
+    },
+    "data": { "color": "#6D4C41" }
+  },
+  {
+    "id": 5,
+    "name": ["Интернет"],
+    "rule": { "type": "none" }
+  },
+  {
+    "id": 6,
+    "name": ["Интернет", "Браузер"],
+    "rule": {
+      "type": "regex",
+      "regex": "\\b(chrome|msedge|firefox|opera|brave|vivaldi|browser)\\.exe\\b",
+      "ignore_case": true
+    },
+    "data": { "color": "#00897B" }
+  },
+  {
+    "id": 7,
+    "name": ["Система"],
+    "rule": { "type": "none" }
+  },
+  {
+    "id": 8,
+    "name": ["Система", "Windows"],
+    "rule": {
+      "type": "regex",
+      "regex": "\\b(SearchHost|explorer|ShellExperienceHost|ApplicationFrameHost|RuntimeBroker|sihost|dwm|svchost|fontdrvhost|userinit)\\.exe\\b|\\\\Windows\\\\System32",
+      "ignore_case": true
+    },
+    "data": { "color": "#607D8B" }
+  },
+  {
+    "id": 9,
+    "name": ["ActivityWatch"],
+    "rule": {
+      "type": "regex",
+      "regex": "ActivityWatch|\\baw-(watcher|qt)\\.exe\\b",
+      "ignore_case": true
+    }
+  }
+]

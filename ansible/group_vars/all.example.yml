@@ -9,3 +9,7 @@ aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
 
 aw_repo_root: "/home/igor/tmp/AWatch-rus"
+
+# Optional: apply a baseline worktime-focused categorization and views via AW settings API.
+# WARNING: this overwrites existing server-side settings/classes/views.
+aw_apply_worktime_settings: false

@@ -34,6 +34,12 @@ ls -l /opt/activitywatch/webui-ru/js/
 - `index.html` содержит оба include;
 - `service-worker.js` заменён cleanup-версией.
 
+## Рабочее время (worktime)
+
+Если в деплое включен `aw_apply_worktime_settings: true`, playbook применяет базовую категоризацию (classes) и view `worktime`.
+
+Контрольные AQL-шаблоны для расчета рабочего времени: `docs/worktime_aql_detmir.md`.
+
 ## Типовые инциденты
 
 ### Сервис не стартует
