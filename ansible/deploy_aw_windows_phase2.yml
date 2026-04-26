@@ -15,6 +15,8 @@
       - user3
       - user4
       - user5
+    aw_windows_extra_users: []
+    aw_windows_users_effective: "{{ (aw_windows_users + aw_windows_extra_users) | unique }}"
     aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
     aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
     aw_windows_afk_enabled: true
@@ -32,7 +34,7 @@
           - aw_windows_server_host is defined
           - aw_windows_server_port is defined
           - aw_windows_domain is defined
-          - aw_windows_users | length > 0
+          - aw_windows_users_effective | length > 0
           - aw_windows_install_root is defined
           - aw_windows_state_root is defined
         fail_msg: "Missing required Windows deployment variables."
@@ -66,6 +68,9 @@
         dest: "{{ aw_windows_deploy_root }}\\windows\\users.txt"
         content: |
           {% for user in aw_windows_users -%}
+          {{ user }}
+          {% endfor -%}
+          {% for user in aw_windows_extra_users -%}
           {{ user }}
           {% endfor -%}
 

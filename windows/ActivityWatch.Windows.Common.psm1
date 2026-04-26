@@ -528,18 +528,75 @@ function Get-DeploymentConfig {
     return Get-Content -LiteralPath `$Path -Raw | ConvertFrom-Json
 }
 
+function Get-RecoveryConfigPaths {
+    param([string]`$PrimaryConfigPath)
+
+    `$paths = New-Object System.Collections.Generic.List[string]
+    if (`$PrimaryConfigPath -and (Test-Path -LiteralPath `$PrimaryConfigPath)) {
+        `$paths.Add((Resolve-Path -LiteralPath `$PrimaryConfigPath).Path)
+    }
+
+    `$searchRoot = `$env:ProgramData
+    if (`$PrimaryConfigPath) {
+        `$stateRoot = Split-Path -Path `$PrimaryConfigPath -Parent
+        `$candidateRoot = Split-Path -Path `$stateRoot -Parent
+        if (`$candidateRoot -and (Test-Path -LiteralPath `$candidateRoot)) {
+            `$searchRoot = `$candidateRoot
+        }
+    }
+
+    if (Test-Path -LiteralPath `$searchRoot) {
+        Get-ChildItem -LiteralPath `$searchRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { `$_.Name -like 'ActivityWatch*' } |
+            ForEach-Object {
+                `$candidate = Join-Path `$_.FullName 'deployment-config.json'
+                if (Test-Path -LiteralPath `$candidate) {
+                    `$paths.Add(`$candidate)
+                }
+            }
+    }
+
+    return @(`$paths | Sort-Object -Unique)
+}
+
+function Get-RecoveryTaskNames {
+    param([string[]]`$ConfigPaths)
+
+    `$taskNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    foreach (`$candidatePath in @(`$ConfigPaths)) {
+        try {
+            `$config = Get-DeploymentConfig -Path `$candidatePath
+            foreach (`$task in @(`$config.userTasks)) {
+                `$taskName = [string]`$task.launchTaskName
+                if (-not [string]::IsNullOrWhiteSpace(`$taskName)) {
+                    [void]`$taskNames.Add(`$taskName)
+                }
+            }
+        }
+        catch {
+        }
+    }
+
+    return @(`$taskNames)
+}
+
 while (`$true) {
+    `$sleepSeconds = 180
     try {
+        `$configPaths = Get-RecoveryConfigPaths -PrimaryConfigPath `$ConfigPath
+        foreach (`$taskName in Get-RecoveryTaskNames -ConfigPaths `$configPaths) {
+            Start-ScheduledTask -TaskName `$taskName -ErrorAction SilentlyContinue
+        }
+
         `$config = Get-DeploymentConfig -Path `$ConfigPath
-        foreach (`$task in @(`$config.userTasks)) {
-            Start-ScheduledTask -TaskName ([string]`$task.launchTaskName) -ErrorAction SilentlyContinue
+        if (`$config -and `$config.recovery -and `$config.recovery.intervalSeconds) {
+            `$sleepSeconds = [Math]::Max([int]`$config.recovery.intervalSeconds, 30)
         }
     }
     catch {
     }
 
-    `$config = Get-DeploymentConfig -Path `$ConfigPath
-    Start-Sleep -Seconds ([int]`$config.recovery.intervalSeconds)
+    Start-Sleep -Seconds `$sleepSeconds
 }
 "@
 
@@ -563,6 +620,25 @@ function Remove-LegacyActivityWatchEntries {
     }
 }
 
+function Remove-ActivityWatchScheduledTask {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName
+    )
+
+    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    & cmd.exe /c "schtasks /Delete /TN `"$TaskName`" /F >nul 2>&1" | Out-Null
+
+    for ($attempt = 0; $attempt -lt 10; $attempt++) {
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        if (-not $task) {
+            return
+        }
+
+        Start-Sleep -Milliseconds 300
+    }
+}
+
 function Register-ActivityWatchUserTasks {
     param(
         [Parameter(Mandatory = $true)]
@@ -576,7 +652,7 @@ function Register-ActivityWatchUserTasks {
     $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 
     foreach ($definition in $TaskDefinitions) {
-        Unregister-ScheduledTask -TaskName $definition.LaunchTaskName -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-ActivityWatchScheduledTask -TaskName $definition.LaunchTaskName
 
         $action = New-ScheduledTaskAction -Execute $powershellExe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$LaunchScriptPath`" -ConfigPath `"$ConfigPath`""
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $definition.UserId
@@ -597,7 +673,7 @@ function Register-ActivityWatchRecoveryTask {
         [string]$ConfigPath
     )
 
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-ActivityWatchScheduledTask -TaskName $TaskName
 
     $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $action = New-ScheduledTaskAction -Execute $powershellExe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$RecoveryScriptPath`" -ConfigPath `"$ConfigPath`""

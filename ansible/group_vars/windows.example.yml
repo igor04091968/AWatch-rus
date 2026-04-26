@@ -9,6 +9,10 @@ aw_windows_users:
   - user3
   - user4
   - user5
+aw_windows_extra_users: []
+# Например:
+# aw_windows_extra_users:
+#   - Администратор
 
 # Рекомендуемый изолированный профиль для фазового раската.
 aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
