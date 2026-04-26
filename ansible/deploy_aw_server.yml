@@ -163,6 +163,24 @@
         status_code: 201
       when: aw_apply_worktime_settings | default(false) | bool
 
+    - name: Apply baseline worktime period (startOfDay)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/startOfDay"
+        method: POST
+        body: "{{ aw_worktime_start_of_day }}"
+        body_format: json
+        status_code: 200
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Apply baseline worktime period (durationDefault seconds)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/durationDefault"
+        method: POST
+        body: "{{ aw_worktime_duration_default }}"
+        body_format: json
+        status_code: 200
+      when: aw_apply_worktime_settings | default(false) | bool
+
   handlers:
     - name: Reload systemd
       ansible.builtin.systemd:

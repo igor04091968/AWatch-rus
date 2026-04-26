@@ -2,7 +2,8 @@
   {
     "id": 0,
     "name": ["Работа"],
-    "rule": { "type": "none" }
+    "rule": { "type": "none" },
+    "data": {}
   },
   {
     "id": 1,
@@ -47,7 +48,8 @@
   {
     "id": 5,
     "name": ["Интернет"],
-    "rule": { "type": "none" }
+    "rule": { "type": "none" },
+    "data": {}
   },
   {
     "id": 6,
@@ -62,7 +64,8 @@
   {
     "id": 7,
     "name": ["Система"],
-    "rule": { "type": "none" }
+    "rule": { "type": "none" },
+    "data": {}
   },
   {
     "id": 8,
@@ -81,6 +84,7 @@
       "type": "regex",
       "regex": "ActivityWatch|\\baw-(watcher|qt)\\.exe\\b",
       "ignore_case": true
-    }
+    },
+    "data": {}
   }
 ]
