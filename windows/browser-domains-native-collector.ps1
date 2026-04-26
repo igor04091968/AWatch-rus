@@ -121,15 +121,15 @@ function Write-DlpIncidentLog {
 
 function Test-DomainMatch {
     param(
-        [string]$Host,
+        [string]$DomainHost,
         [string]$RuleDomain
     )
 
-    if ([string]::IsNullOrWhiteSpace($Host) -or [string]::IsNullOrWhiteSpace($RuleDomain)) {
+    if ([string]::IsNullOrWhiteSpace($DomainHost) -or [string]::IsNullOrWhiteSpace($RuleDomain)) {
         return $false
     }
 
-    $left = $Host.ToLowerInvariant()
+    $left = $DomainHost.ToLowerInvariant()
     $right = $RuleDomain.ToLowerInvariant()
     return $left -eq $right -or $left.EndsWith('.' + $right)
 }
@@ -156,15 +156,15 @@ function Get-HostFromUrl {
 }
 
 function Get-RootDomain {
-    param([string]$Host)
+    param([string]$DomainHost)
 
-    if ([string]::IsNullOrWhiteSpace($Host)) {
+    if ([string]::IsNullOrWhiteSpace($DomainHost)) {
         return $null
     }
 
-    $parts = $Host.Split('.')
+    $parts = $DomainHost.Split('.')
     if ($parts.Count -le 2) {
-        return $Host
+        return $DomainHost
     }
 
     $suffix = ('{0}.{1}' -f $parts[$parts.Count - 2], $parts[$parts.Count - 1]).ToLowerInvariant()
@@ -257,11 +257,11 @@ function Load-CustomCategoryRules {
 }
 
 function Get-WebCategory {
-    param([string]$Host)
+    param([string]$DomainHost)
 
     foreach ($rule in $script:CategoryRules) {
         foreach ($domain in $rule.Domains) {
-            if (Test-DomainMatch -Host $Host -RuleDomain $domain) {
+            if (Test-DomainMatch -DomainHost $DomainHost -RuleDomain $domain) {
                 return [pscustomobject]@{
                     Name  = [string]$rule.Name
                     Group = [string]$rule.Group
@@ -280,7 +280,7 @@ function Get-WebCategory {
 
 function Test-DomainListMatch {
     param(
-        [string]$Host,
+        [string]$DomainHost,
         [string[]]$Domains
     )
 
@@ -289,7 +289,7 @@ function Test-DomainListMatch {
     }
 
     foreach ($domain in $Domains) {
-        if (Test-DomainMatch -Host $Host -RuleDomain $domain) {
+        if (Test-DomainMatch -DomainHost $DomainHost -RuleDomain $domain) {
             return $true
         }
     }
@@ -403,7 +403,7 @@ function Test-DlpRuleMatch {
     }
 
     if ($when.domains.Count -gt 0) {
-        $domainMatched = (Test-DomainListMatch -Host $Domain -Domains $when.domains) -or (Test-DomainListMatch -Host $RootDomain -Domains $when.domains)
+        $domainMatched = (Test-DomainListMatch -DomainHost $Domain -Domains $when.domains) -or (Test-DomainListMatch -DomainHost $RootDomain -Domains $when.domains)
         if (-not $domainMatched) {
             return $false
         }
@@ -639,8 +639,8 @@ function Send-CategoryHeartbeat {
         [string]$CategoryRule
     )
 
-    $bucketId = 'aw-watcher-web-category_' + $script:Hostname
-    Ensure-Bucket -BucketId $bucketId -ClientName 'aw-watcher-web-category' -BucketType 'aw.web.category'
+    $bucketId = 'aw-detmir-web-category_' + $script:Hostname
+    Ensure-Bucket -BucketId $bucketId -ClientName 'aw-detmir-web-category' -BucketType 'aw.web.category'
 
     $event = @{
         timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
@@ -679,12 +679,12 @@ while ($true) {
                     $domain = 'unknown'
                 }
 
-                $rootDomain = Get-RootDomain -Host $domain
+                $rootDomain = Get-RootDomain -DomainHost $domain
                 if (-not $rootDomain) {
                     $rootDomain = $domain
                 }
 
-                $category = Get-WebCategory -Host $domain
+                $category = Get-WebCategory -DomainHost $domain
                 $bucketId = 'aw-watcher-web-{0}_{1}' -f $browserKey, $script:Hostname
                 Ensure-Bucket -BucketId $bucketId -ClientName ('aw-watcher-web-' + $browserKey)
                 Send-Heartbeat -BucketId $bucketId -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName
