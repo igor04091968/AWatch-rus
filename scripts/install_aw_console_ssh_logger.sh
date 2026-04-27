@@ -212,7 +212,7 @@ class Collector:
             if len(parts) < 2:
                 continue
             user = parts[0]
-            tty = parts[1]
+            tty = next((p for p in parts[1:] if p.startswith("pts/") or p.startswith("tty")), "")
             if not tty.startswith("pts/"):
                 continue
             sessions[tty] = {
@@ -355,12 +355,18 @@ ${AUTO_BLOCK_END}
 EOF
 fi
 
+started_with_systemd="0"
 if command -v systemctl >/dev/null 2>&1; then
     systemctl --user daemon-reload >/dev/null 2>&1 || true
     systemctl --user enable --now aw-console-ssh-logger.service >/dev/null 2>&1 || true
+    if systemctl --user is-active --quiet aw-console-ssh-logger.service >/dev/null 2>&1; then
+        started_with_systemd="1"
+    fi
 fi
 
-"${BIN_DIR}/aw-console-ssh-logger-start"
+if [ "${started_with_systemd}" != "1" ]; then
+    "${BIN_DIR}/aw-console-ssh-logger-start"
+fi
 
 echo "Installed AW console/ssh logger"
 echo "Server target: ${SERVER_HOST}:${SERVER_PORT}"
