@@ -28,7 +28,28 @@
 - `socks5://127.0.0.1:1080` активен.
 - `sing-box` запущен и пропускает трафик.
 
+4. Подготовлен и развернут Linux-клиент ActivityWatch для `10.10.10.2`.
+- В репозиторий добавлен rollout:
+  - `scripts/install_aw_linux_client.sh`
+  - `docs/linux-client.md`
+- На `10.10.10.2` под пользователем `admin` установлен bundle `ActivityWatch 0.13.2` в:
+  - `~/.local/opt/activitywatch/v0.13.2/activitywatch`
+- Созданы:
+  - `~/.config/activitywatch/aw-client/aw-client.toml` с `10.10.10.13:5600`
+  - `~/.config/activitywatch/aw-qt/aw-qt.toml`
+  - `~/.local/bin/activitywatch-remote-aw`
+  - `~/.config/autostart/activitywatch-remote-aw.desktop`
+- Проверка показала:
+  - удаленный `AW server` с `10.10.10.2` достижим;
+  - `aw-qt --no-gui` стартует;
+  - bucket `aw-watcher-afk_pve-detmir` появился на сервере.
+- Текущий blocker:
+  - на `10.10.10.2` нет активной `X11/GUI` сессии;
+  - `aw-watcher-window` падает с `DISPLAY environment variable not set`;
+  - `aw-watcher-afk` падает на `failed to acquire X connection`.
+
 ## Зафиксированные выводы
 
 - На текущем этапе `10.10.10.2` является фактическим runtime-хостом для `AW server` и `pfSense poller`.
 - Документация должна исходить из host-based сценария как из подтвержденного рабочего контура, а CT/LXC-схему держать как отдельный вариант развертывания.
+- Для Linux-клиента на `10.10.10.2` установка завершена, но полноценные watcher-события начнутся только после реального графического логина пользователя.

@@ -9,6 +9,7 @@
 - `docs/runbook.md` — быстрый runbook для оператора.
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
+- `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
 - `docs/dlp-gap-analysis.md` — разрыв до enterprise DLP и roadmap.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
@@ -16,6 +17,7 @@
 - `pfsense/` — внешний poller для pfSense API и systemd unit под Debian/Ubuntu utility VM.
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, phase-2 DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
+- `scripts/install_aw_linux_client.sh` — установка Linux bundle + autostart для remote AW server.
 
 ## Базовый сценарий
 
@@ -41,6 +43,11 @@
 Для внешнего pfSense poller'а:
 
 - `ansible/deploy_aw_pfsense_poller.yml`
+
+Для Linux desktop/admin host, который должен слать watcher'ы на удалённый AW server:
+
+- `docs/linux-client.md`
+- `scripts/install_aw_linux_client.sh`
 
 Скрипты `proxmox/create-ct.sh` и `proxmox/push-aw-artifacts.sh` по умолчанию читают:
 
