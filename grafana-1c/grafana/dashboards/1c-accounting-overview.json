@@ -7,6 +7,7 @@
   "graphTooltip": 0,
   "id": null,
   "links": [],
+  "title": "1C Бухгалтерия — Обзор",
   "panels": [
     {
       "datasource": {
@@ -335,7 +336,6 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "1C Бухгалтерия — Overview",
   "uid": "onec-accounting-overview",
   "version": 1,
   "weekStart": ""

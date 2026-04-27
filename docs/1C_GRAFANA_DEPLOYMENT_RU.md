@@ -75,7 +75,7 @@ curl -fsS http://127.0.0.1:9090/-/healthy
 Проверка Grafana:
 
 - URL: `http://<host>:3000`
-- Дашборд: `1C Бухгалтерия — Overview`
+- Дашборд: `1C Бухгалтерия — Обзор`
 - Дашборд: `1C Бухгалтерия — SRE`
 
 E2E health-check:
