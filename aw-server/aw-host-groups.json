@@ -1,6 +1,19 @@
 {
   "groups": [
     {
+      "id": "pve-detmir",
+      "name": "pve-detmir",
+      "description": "Выделенный клиент DetMir в разделе Активность.",
+      "patterns": [
+        "^pve-detmir$"
+      ],
+      "links": [
+        { "label": "Активность", "type": "activity" },
+        { "label": "Web категории", "type": "bucket", "bucket_prefix": "aw-detmir-web-category_" },
+        { "label": "Все бакеты", "type": "buckets" }
+      ]
+    },
+    {
       "id": "windows-rdp",
       "name": "Windows RDP",
       "description": "Пользовательские Windows/RDP хосты с активностью, DLP и рабочим временем.",

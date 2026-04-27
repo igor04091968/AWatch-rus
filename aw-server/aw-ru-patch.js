@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v5-dlp-review-host-groups";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v5-dlp-review-host-groups");
+  window.__awRuPatchVersion = "template-v6-pve-detmir-client";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v6-pve-detmir-client");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
