@@ -101,6 +101,15 @@ function Send-DlpIncidentHeartbeat {
     $bucketId = 'aw-dlp-incidents_' + $script:Hostname
     Ensure-Bucket -BucketId $bucketId -ClientName 'aw-dlp-incidents' -BucketType 'aw.dlp.incident'
 
+    $captureData = @{}
+    if ($script:IncidentScreenshotEnabled) {
+        try {
+            $captureData = Capture-IncidentScreenshot -RuleId $RuleId -SignalType $SignalType
+        }
+        catch {
+        }
+    }
+
     $payload = @{
         timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         duration  = 0
@@ -114,10 +123,96 @@ function Send-DlpIncidentHeartbeat {
             sessionId = $script:SessionId
             hostname  = $script:Hostname
             source    = 'endpoint-signals-phase2'
-        } + $Data
+        } + $Data + $captureData
     } | ConvertTo-Json -Depth 7 -Compress
 
     Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
+}
+
+function Get-FileSha256Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        $stream = [IO.File]::OpenRead($Path)
+        try {
+            ($sha.ComputeHash($stream) | ForEach-Object { $_.ToString('x2') }) -join ''
+        }
+        finally {
+            $stream.Dispose()
+            $sha.Dispose()
+        }
+    }
+    catch {
+        return $null
+    }
+}
+
+function Ensure-Directory {
+    param([Parameter(Mandatory = $true)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) {
+        New-Item -Path $Path -ItemType Directory -Force | Out-Null
+    }
+}
+
+function Get-IncidentScreenshotPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$RuleId,
+        [Parameter(Mandatory = $true)][string]$SignalType
+    )
+
+    $safeUser = ($env:USERNAME -replace '[^A-Za-z0-9_.-]', '_')
+    $safeRule = ($RuleId -replace '[^A-Za-z0-9_.-]', '_')
+    $safeType = ($SignalType -replace '[^A-Za-z0-9_.-]', '_')
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMdd_HHmmss_fff')
+    $file = '{0}_{1}_sid{2}_{3}_{4}.png' -f $script:Hostname, $safeUser, $script:SessionId, $safeType, $safeRule
+    $file = '{0}_{1}' -f $stamp, $file
+    return (Join-Path $script:IncidentArtifactsRoot $file)
+}
+
+function Ensure-ScreenshotTypesLoaded {
+    if ($script:ScreenshotTypesLoaded) {
+        return
+    }
+    Add-Type -AssemblyName System.Windows.Forms | Out-Null
+    Add-Type -AssemblyName System.Drawing | Out-Null
+    $script:ScreenshotTypesLoaded = $true
+}
+
+function Capture-IncidentScreenshot {
+    param(
+        [Parameter(Mandatory = $true)][string]$RuleId,
+        [Parameter(Mandatory = $true)][string]$SignalType
+    )
+
+    try {
+        Ensure-Directory -Path $script:IncidentArtifactsRoot
+        Ensure-ScreenshotTypesLoaded
+
+        $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
+        $bmp = New-Object System.Drawing.Bitmap ([int]$vs.Width), ([int]$vs.Height)
+        $gfx = [System.Drawing.Graphics]::FromImage($bmp)
+        try {
+            $gfx.CopyFromScreen([int]$vs.Left, [int]$vs.Top, 0, 0, $bmp.Size)
+            $path = Get-IncidentScreenshotPath -RuleId $RuleId -SignalType $SignalType
+            $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png)
+        }
+        finally {
+            $gfx.Dispose()
+            $bmp.Dispose()
+        }
+
+        return @{
+            screenshotPath   = $path
+            screenshotFormat = 'png'
+            screenshotWidth  = [int]$vs.Width
+            screenshotHeight = [int]$vs.Height
+            screenshotSha256 = (Get-FileSha256Hex -Path $path)
+        }
+    }
+    catch {
+        Write-EndpointLog ("screenshot capture failed: {0}" -f $_.Exception.Message)
+        return @{}
+    }
 }
 
 function Get-StringHash {
@@ -463,6 +558,8 @@ $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $Pol
 $resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("endpoint-signals-{0}.log" -f $env:USERNAME) }
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
+$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'ActivityWatch-Phase2\\incident-artifacts' }
+$resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
@@ -480,6 +577,9 @@ $script:LastClipboardHash = $null
 $script:PulseSeconds = [Math]::Max($resolvedPollSeconds * 3, 30)
 $script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
 $script:LogPath = $resolvedLogPath
+$script:IncidentArtifactsRoot = $resolvedIncidentArtifactsRoot
+$script:IncidentScreenshotEnabled = $resolvedIncidentScreenshotEnabled
+$script:ScreenshotTypesLoaded = $false
 
 Load-DlpPolicy -Path $resolvedPolicyPath
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)

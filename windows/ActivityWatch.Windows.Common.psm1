@@ -360,6 +360,11 @@ function New-ActivityWatchDeploymentConfig {
         logging = [pscustomobject]@{
             localAgentLogsEnabled = $LocalAgentLogsEnabled
         }
+        incidentCapture = [pscustomobject]@{
+            enabled           = $true
+            screenshotEnabled = $true
+            artifactsRoot     = (Join-Path $StateRoot 'incident-artifacts')
+        }
         sessionEvents = [pscustomobject]@{
             logonEnabled = $LogonMarkerEnabled
             bucketPrefix = 'aw-session-events'
