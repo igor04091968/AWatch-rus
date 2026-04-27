@@ -11,6 +11,21 @@ pct exec <CT_ID> -- systemctl is-active activitywatch-server.service
 pct exec <CT_ID> -- curl -fsS http://127.0.0.1:5600/api/0/info
 ```
 
+### На host-based инсталляции
+
+Для подтвержденного размещения на `10.10.10.2`:
+
+```sh
+ps -ef | grep -E 'aw-server-rust|pfsense-aw-poller' | grep -v grep
+curl -fsS http://127.0.0.1:5600/api/0/info
+ss -ltnp | grep 5600
+```
+
+Ожидаемо должны быть видны:
+
+- `aw-server-rust` с `--webpath /opt/aw-webui-ru`;
+- `pfsense-aw-poller.py --config /etc/aw-pfsense/poller.json`.
+
 ### Внутри CT
 
 ```sh

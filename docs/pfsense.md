@@ -8,6 +8,16 @@
 - `Debian/Ubuntu` poller VM опрашивает его с интервалом.
 - poller отправляет события в общий `AW server`.
 
+## Подтвержденный runtime
+
+Проверенный на `2026-04-27` рабочий контур:
+
+- `10.10.10.2` (`pve-detmir`, admin host) запускает `AW server`:
+  - `/usr/local/bin/aw-server-rust --host 0.0.0.0 --port 5600 --webpath /opt/aw-webui-ru`
+- тот же `10.10.10.2` запускает внешний `pfSense poller`:
+  - `/usr/bin/python3 /opt/aw-pfsense/pfsense-aw-poller.py --config /etc/aw-pfsense/poller.json`
+- `10.10.10.1` используется как API-цель для poller'а; на сам `pfSense` агент или сервер `AW` не ставятся.
+
 ## Bucket'ы
 
 Базовая конфигурация пишет:
