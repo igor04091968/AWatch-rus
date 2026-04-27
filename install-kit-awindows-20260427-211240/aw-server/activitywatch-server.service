@@ -1,0 +1,24 @@
+[Unit]
+Description=ActivityWatch Server (Rust)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/activitywatch/aw-server.env
+User=__AW_SERVER_USER__
+Group=__AW_SERVER_GROUP__
+WorkingDirectory=__AW_SERVER_DATA_DIR__
+ExecStart=/bin/sh -lc 'exec /opt/activitywatch/bin/aw-server-rust --host "$AW_SERVER_BIND_HOST" --port "$AW_SERVER_PORT"'
+Restart=on-failure
+RestartSec=5s
+StateDirectory=activitywatch
+LogsDirectory=activitywatch
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

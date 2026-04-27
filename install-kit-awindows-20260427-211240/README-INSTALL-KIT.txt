@@ -2,9 +2,9 @@ ActivityWatch DetMir Windows Install Kit
 
 Includes:
 - windows/* (deploy scripts, collectors, common module, configs/examples)
-- ansible/deploy_aw_windows_phase2.yml
-- ansible/group_vars/windows.example.yml
-- ansible/README.md
+- ansible/* (Windows and AW server playbooks, examples, inventory, tasks)
+- aw-server/* (server installer, RU patch loader, host groups, default settings)
+- server-configs-192.168.100.21/* (working Windows Phase2 config snapshots)
 
 Source:
 - Local project snapshot at build time.

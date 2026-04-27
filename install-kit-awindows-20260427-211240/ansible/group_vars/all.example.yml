@@ -1,0 +1,24 @@
+aw_server_version: "v0.13.2"
+aw_server_download_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-linux-x86_64.zip"
+aw_server_bind_host: "0.0.0.0"
+aw_server_port: 5600
+aw_server_webui_dir: "/opt/activitywatch/webui-ru"
+aw_server_data_dir: "/var/lib/activitywatch"
+aw_server_log_dir: "/var/log/activitywatch"
+aw_server_user: "activitywatch"
+aw_server_group: "activitywatch"
+
+aw_repo_root: "/home/igor/tmp/AWatch-rus"
+
+# Optional: apply a baseline worktime-focused categorization and views via AW settings API.
+# WARNING: this overwrites existing server-side settings/classes/views.
+aw_apply_worktime_settings: false
+
+# Optional defaults for the worktime period in Web UI.
+# startOfDay controls day-boundary and default report window start.
+# durationDefault controls default time range (seconds) shown in UI.
+#
+# Recommended: set worktime window explicitly and let the playbook derive duration.
+aw_worktime_from: "08:00"
+aw_worktime_to: "17:00"
+aw_worktime_start_of_day: "{{ aw_worktime_from }}"

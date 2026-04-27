@@ -1,28 +1,37 @@
-KIT_DIR=install-kit-awindows-20260427-211240
-CREATED_AT=2026-04-27T21:14:11+03:00
-
-FILES:
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/MANIFEST.txt
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/README-INSTALL-KIT.txt
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/ansible/README.md
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/ansible/deploy_aw_windows_phase2.yml
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/ansible/windows.example.yml
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-admin.deployment-config.json
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-u2u5.deployment-config.json
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-user1.deployment-config.json
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/ActivityWatch.Windows.Common.psd1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/ActivityWatch.Windows.Common.psm1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/browser-domains-native-collector.ps1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/deploy-domain-users.ps1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/deploy-ensemble.ps1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/deploy-single-user.ps1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/dlp-endpoint-signals-collector.ps1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/dlp-policy.example.json
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/hardening-recovery.ps1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/validate-deployment.ps1
-/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/web-category-rules.example.json
-
-
-SHA256:
-40bdf651a876f1f545c06c9191ff5d9ec3ca1ce75d3edf1d647e3e2fbafece52  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.tar.gz
-e7e020bff342070d55d2489d9a5e40822543a518863a97cd46865ccf00f64399  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.zip
+6e1f304f468d77f12df67face6afaaca5bbcfb1496f43df4e4fa0557cf847829  install-kit-awindows-20260427-211240/README-INSTALL-KIT.txt
+a11f41827769be915f73d0de2c5503b05f61ccf56f70a50845771bcb79c5ebb7  install-kit-awindows-20260427-211240/ansible/README.md
+02ca96f5ecc6abf89ab3271bd08add5795dbba2281168f158d96166f557e33f0  install-kit-awindows-20260427-211240/ansible/deploy_aw_pfsense_poller.yml
+7c1ad9363412e802f4272f2e91a1d9f26be722eaf22e654c0a2512b0cebbbfd0  install-kit-awindows-20260427-211240/ansible/deploy_aw_server.yml
+d5c42e6fe49c14a0769517ff28184139e467d40f22d4a632630c42ed1ff34ce5  install-kit-awindows-20260427-211240/ansible/deploy_aw_windows_phase2.yml
+bc791462b9c00adc8c68ed81e2a7697c560bdbc46f156b4840c7bca1dee2157d  install-kit-awindows-20260427-211240/ansible/group_vars/all.example.yml
+95696c243ab331f06e77a40a9800c4b6668de77675ebbdf2ef54ae49e1b18874  install-kit-awindows-20260427-211240/ansible/group_vars/pfsense-poller.example.yml
+c5cab36645065815571c99f6d360f910dcccbb54b780c8bfd526a6cdc3684e19  install-kit-awindows-20260427-211240/ansible/group_vars/proxmox-matrix.example.yml
+35a33c8a1c75ded5e85c6b79e0b3efde07959ff61ee5f66d83b7e0c2abe87fc5  install-kit-awindows-20260427-211240/ansible/group_vars/proxmox.example.yml
+69368b7adb7711fa81304866373e61ed464bcc23a08e4509fa54655b05f95790  install-kit-awindows-20260427-211240/ansible/group_vars/windows.example.yml
+00064ce5187569fb3221ddd45c2ad7eb37cd50b2a0a832ddf7843e4ff461849a  install-kit-awindows-20260427-211240/ansible/inventory.example.ini
+bbef175cb77dd53aa07452dbb2fe8797f38b58f42372005c3404c8dc9d6f8e13  install-kit-awindows-20260427-211240/ansible/provision_proxmox_ct_and_deploy_aw.yml
+b8f8b6bc504a51cd87db3f46c35a27295b395ea516533068f96af35f8b720434  install-kit-awindows-20260427-211240/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml
+d35bc97b6de18f0006cbbad4adf8a8a5db8ed912997d8fc47c7f11fa9247e907  install-kit-awindows-20260427-211240/ansible/tasks/provision_ct_and_deploy_aw.yml
+a50dbadbf619342c2178e255b68f69a36503756daf80eedd9170311c63964f2e  install-kit-awindows-20260427-211240/aw-server/activitywatch-server.service
+1ef77d865937a8fac15e47fd95b046fc713306f7e0b5a386a9dadd1d4c6ad0be  install-kit-awindows-20260427-211240/aw-server/apply_webui_ru_patch.sh
+07d4e583f6e9757a11f01558e1f15cfd73c4d82695f1768204f2f50621712168  install-kit-awindows-20260427-211240/aw-server/aw-host-groups.json
+76d9d3f3b1984fb2d668bc3bab6bb2a6300c0e5e2cae1b123da7237ca13484e3  install-kit-awindows-20260427-211240/aw-server/aw-ru-patch.js
+7c5952f8f0a8590e849ea8381bfcd7059b138250bca8551bd5625f395eb66cd8  install-kit-awindows-20260427-211240/aw-server/aw-server.env.example
+98c0bed353bbda0fa7a69df23f3b008cb0e8e70cdff6cc63330d4caf79fd3280  install-kit-awindows-20260427-211240/aw-server/aw-sw-cleanup.js
+dce731fdfdcfd773c154d12dbd6b9e621a0bff17ced5a05a65f0fdcb1adcb70f  install-kit-awindows-20260427-211240/aw-server/install_aw_server.sh
+1856e9f44636030b0cb9ece37ba2a0618eb5187fa82c7969976c1bb5f10fc622  install-kit-awindows-20260427-211240/aw-server/settings/classes-worktime.json
+ff07b90cb6a7f09b27d522307cf55b0359e136a2e695190b8564e859f14f9204  install-kit-awindows-20260427-211240/aw-server/settings/views-default.json
+59307d284caa74eb3dc129765f9db93b6e8dfd5b1d960b98f347a332b23f82dc  install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-admin.deployment-config.json
+f2cee1872bf274f15dcfb8fb595fb20a11d228a4bae0930dc6cb918a6f800756  install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-u2u5.deployment-config.json
+6aefedcdac8c1d3823c9f4065b051a67a221a3e9424c913a673667b2a23ea1e7  install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-user1.deployment-config.json
+33aa34b89246d6c079ef9afe2f5cd153bd9d5946b69a175ff6fd678c77f61da5  install-kit-awindows-20260427-211240/windows/ActivityWatch.Windows.Common.psd1
+d506614168227fa01fa481289079b432b6d8846d5ee8961cff8c21fd0bf7ea8f  install-kit-awindows-20260427-211240/windows/ActivityWatch.Windows.Common.psm1
+2a0b94ddad43a6bc684037243e636a54c168d8d4ad25b29778c4d78180da2532  install-kit-awindows-20260427-211240/windows/browser-domains-native-collector.ps1
+98bfcf5dca972f1ba1845bbca546133c192824ec40dd2e55f4e6d59c24a834d1  install-kit-awindows-20260427-211240/windows/deploy-domain-users.ps1
+a19c2a98e6483eb921457f472d1cf62a76e344f2ef3621f04fafa3d7dc2df353  install-kit-awindows-20260427-211240/windows/deploy-ensemble.ps1
+2542425e02acd8a8b02ed701ca2382cf7ae612be28441d1a10a40e48c6a13ad0  install-kit-awindows-20260427-211240/windows/deploy-single-user.ps1
+a2f963927c8b263a21aaffc0a926a058dcec65a04a5fa57c271d3dbe59f9347c  install-kit-awindows-20260427-211240/windows/dlp-endpoint-signals-collector.ps1
+aef0032edd9b1e0c54f7b575664ed511dfc6cb53364e7496cbc95e137678e11a  install-kit-awindows-20260427-211240/windows/dlp-policy.example.json
+ade74a55ce00d9295f2efa0fd72f987688154c93f1142ce0eb6e982f07271be7  install-kit-awindows-20260427-211240/windows/hardening-recovery.ps1
+88ffe06093ef5f7247bd2b990b0c8f801c706a26dc87725bb1194504fab7e306  install-kit-awindows-20260427-211240/windows/validate-deployment.ps1
+731098681d89b9af6f3872abd586ac3b1faba2d7f9340211e503f52ad0243b3f  install-kit-awindows-20260427-211240/windows/web-category-rules.example.json

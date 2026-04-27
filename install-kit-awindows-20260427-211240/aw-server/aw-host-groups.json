@@ -1,0 +1,47 @@
+{
+  "groups": [
+    {
+      "id": "pve-detmir",
+      "name": "pve-detmir",
+      "description": "Выделенный клиент DetMir в разделе Активность.",
+      "patterns": [
+        "^pve-detmir$"
+      ],
+      "links": [
+        { "label": "Активность", "type": "activity", "view": "pve_audit" },
+        { "label": "Web-admin аудит", "type": "bucket", "bucket_prefix": "aw-pve-webadmin-events_" },
+        { "label": "PVE tasks", "type": "bucket", "bucket_prefix": "aw-pve-task-events_" },
+        { "label": "SSH сессии", "type": "bucket", "bucket_prefix": "aw-ssh-sessions_" },
+        { "label": "Команды shell", "type": "bucket", "bucket_prefix": "aw-console-commands_" },
+        { "label": "Web категории", "type": "bucket", "bucket_prefix": "aw-detmir-web-category_" },
+        { "label": "Все бакеты", "type": "buckets" }
+      ]
+    },
+    {
+      "id": "windows-rdp",
+      "name": "Windows RDP",
+      "description": "Пользовательские Windows/RDP хосты с активностью, DLP и рабочим временем.",
+      "patterns": [
+        "^(SHARKON|WIN|RDP|TERM|TS-|WS-)"
+      ],
+      "links": [
+        { "label": "Активность", "type": "activity" },
+        { "label": "DLP", "type": "bucket", "bucket_prefix": "aw-dlp-endpoint-signals_" }
+      ]
+    },
+    {
+      "id": "virtual-infra",
+      "name": "Virtual servers + Proxmox",
+      "description": "Инфраструктурные VM и сетевые узлы. Здесь должны лежать Proxmox, pfSense, Debian и Ubuntu серверы.",
+      "patterns": [
+        "^(PFSENSE|PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"
+      ],
+      "links": [
+        { "label": "pfSense health", "type": "bucket", "bucket_prefix": "aw-pfsense-health_" },
+        { "label": "pfSense gateways", "type": "bucket", "bucket_prefix": "aw-pfsense-gateways_" },
+        { "label": "Все бакеты", "type": "buckets" }
+      ]
+    }
+  ],
+  "ungrouped_name": "Прочие хосты"
+}

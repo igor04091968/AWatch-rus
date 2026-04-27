@@ -1,0 +1,229 @@
+---
+- name: Deploy AWatch-rus server
+  hosts: aw_server
+  become: true
+  gather_facts: true
+
+  vars:
+    aw_release_root: "/opt/activitywatch/releases"
+    aw_release_dir: "{{ aw_release_root }}/{{ aw_server_version }}"
+    aw_archive_path: "/tmp/activitywatch-{{ aw_server_version }}.zip"
+    aw_bootstrap_dir: "/tmp/aw-rus-bootstrap"
+    aw_ru_patch_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-ru-patch.js') | hash('sha1') | truncate(12, true, '') }}"
+    aw_sw_cleanup_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-sw-cleanup.js') | hash('sha1') | truncate(12, true, '') }}"
+    aw_host_groups_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-host-groups.json') | hash('sha1') | truncate(12, true, '') }}"
+    aw_worktime_classes: "{{ lookup('file', aw_repo_root + '/aw-server/settings/classes-worktime.json') | from_json }}"
+    aw_default_views: "{{ lookup('file', aw_repo_root + '/aw-server/settings/views-default.json') | from_json }}"
+
+  tasks:
+    - name: Install base packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - unzip
+        state: present
+        update_cache: true
+
+    - name: Ensure service account exists
+      ansible.builtin.user:
+        name: "{{ aw_server_user }}"
+        group: "{{ aw_server_group }}"
+        home: "{{ aw_server_data_dir }}"
+        shell: /usr/sbin/nologin
+        system: true
+        create_home: false
+
+    - name: Ensure required directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ aw_server_user }}"
+        group: "{{ aw_server_group }}"
+        mode: "0755"
+      loop:
+        - "{{ aw_release_root }}"
+        - "{{ aw_release_dir }}"
+        - "{{ aw_server_webui_dir }}"
+        - "{{ aw_server_data_dir }}"
+        - "{{ aw_server_log_dir }}"
+        - /etc/activitywatch
+        - "{{ aw_bootstrap_dir }}"
+
+    - name: Download ActivityWatch release archive
+      ansible.builtin.get_url:
+        url: "{{ aw_server_download_url }}"
+        dest: "{{ aw_archive_path }}"
+        mode: "0644"
+
+    - name: Unpack ActivityWatch release
+      ansible.builtin.unarchive:
+        src: "{{ aw_archive_path }}"
+        dest: "{{ aw_release_dir }}"
+        remote_src: true
+        extra_opts: ["-o"]
+
+    - name: Discover extracted AW directory
+      ansible.builtin.find:
+        paths: "{{ aw_release_dir }}"
+        file_type: directory
+        patterns: "activitywatch*"
+      register: aw_release_find
+
+    - name: Set release extracted path
+      ansible.builtin.set_fact:
+        aw_release_extracted: "{{ (aw_release_find.files | sort(attribute='path') | map(attribute='path') | list | first) }}"
+
+    - name: Verify extracted directory exists
+      ansible.builtin.assert:
+        that:
+          - aw_release_extracted is defined
+          - aw_release_extracted | length > 0
+        fail_msg: "Cannot locate extracted ActivityWatch release directory."
+
+    - name: Sync release content to /opt/activitywatch
+      ansible.builtin.command:
+        cmd: "rsync -a --delete {{ aw_release_extracted }}/ /opt/activitywatch/"
+
+    - name: Copy bootstrap files from repository
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { src: "{{ aw_repo_root }}/aw-server/activitywatch-server.service", dest: "/etc/systemd/system/activitywatch-server.service", mode: "0644" }
+        - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "{{ aw_server_webui_dir }}/js/ru-patch-v5.js", mode: "0644" }
+        - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "{{ aw_server_webui_dir }}/js/sw-cleanup.js", mode: "0644" }
+        - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "{{ aw_server_webui_dir }}/js/aw-host-groups.json", mode: "0644" }
+      notify:
+        - Reload systemd
+        - Restart activitywatch
+
+    - name: Copy WebUI index template from installed distribution
+      ansible.builtin.copy:
+        remote_src: true
+        src: "/opt/activitywatch/aw-webui/index.html"
+        dest: "{{ aw_server_webui_dir }}/index.html"
+        mode: "0644"
+
+    - name: Insert RU patch scripts into index.html
+      ansible.builtin.replace:
+        path: "{{ aw_server_webui_dir }}/index.html"
+        regexp: '</head>'
+        replace: '<script src="/js/sw-cleanup.js?v={{ aw_sw_cleanup_cache_bust }}"></script></head>'
+
+    - name: Insert RU patch loader before body end
+      ansible.builtin.replace:
+        path: "{{ aw_server_webui_dir }}/index.html"
+        regexp: '</body>'
+        replace: '<script defer="defer" src="/js/ru-patch-v5.js?v={{ aw_ru_patch_cache_bust }}"></script></body>'
+
+    - name: Write /etc/activitywatch/aw-server.env
+      ansible.builtin.copy:
+        dest: /etc/activitywatch/aw-server.env
+        mode: "0640"
+        content: |
+          AW_SERVER_HOST={{ aw_server_bind_host }}
+          AW_SERVER_PORT={{ aw_server_port }}
+          AW_DATA_DIR={{ aw_server_data_dir }}
+          AW_LOG_DIR={{ aw_server_log_dir }}
+          AW_WEBUI_DIR={{ aw_server_webui_dir }}
+          AW_SERVER_USER={{ aw_server_user }}
+          AW_SERVER_GROUP={{ aw_server_group }}
+
+    - name: Enable and start service
+      ansible.builtin.systemd:
+        name: activitywatch-server.service
+        enabled: true
+        state: restarted
+        daemon_reload: true
+
+    - name: Wait for API
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/info"
+        method: GET
+        status_code: 200
+      register: aw_api
+      retries: 10
+      delay: 3
+      until: aw_api.status == 200
+
+    - name: Apply baseline worktime settings (classes)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/classes"
+        method: POST
+        body: "{{ aw_worktime_classes }}"
+        body_format: json
+        status_code: 201
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Apply baseline views (include DLP and worktime)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/views"
+        method: POST
+        body: "{{ aw_default_views }}"
+        body_format: json
+        status_code: 201
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Derive worktime durationDefault from aw_worktime_from/to
+      ansible.builtin.set_fact:
+        aw_worktime_from_h: "{{ (aw_worktime_from | default('08:00')).split(':')[0] | int }}"
+        aw_worktime_from_m: "{{ (aw_worktime_from | default('08:00')).split(':')[1] | int }}"
+        aw_worktime_to_h: "{{ (aw_worktime_to | default('17:00')).split(':')[0] | int }}"
+        aw_worktime_to_m: "{{ (aw_worktime_to | default('17:00')).split(':')[1] | int }}"
+        aw_worktime_duration_default_derived: >-
+          {{
+            (
+              (
+                ((aw_worktime_to_h | int) * 60 + (aw_worktime_to_m | int)) -
+                ((aw_worktime_from_h | int) * 60 + (aw_worktime_from_m | int))
+              ) * 60
+            )
+          }}
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Normalize derived durationDefault for overnight shifts
+      ansible.builtin.set_fact:
+        aw_worktime_duration_default_effective: >-
+          {{
+            (aw_worktime_duration_default_derived | int)
+            if (aw_worktime_duration_default_derived | int) > 0
+            else ((aw_worktime_duration_default_derived | int) + 86400)
+          }}
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Validate derived durationDefault is sane
+      ansible.builtin.assert:
+        that:
+          - aw_worktime_duration_default_effective | int > 0
+          - aw_worktime_duration_default_effective | int <= 86400
+        fail_msg: "Invalid worktime window: {{ aw_worktime_from }}..{{ aw_worktime_to }}"
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Apply baseline worktime period (startOfDay)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/startOfDay"
+        method: POST
+        body: "{{ aw_worktime_start_of_day }}"
+        body_format: json
+        status_code: 200
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Apply baseline worktime period (durationDefault seconds)
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/durationDefault"
+        method: POST
+        body: "{{ aw_worktime_duration_default_effective }}"
+        body_format: json
+        status_code: 200
+      when: aw_apply_worktime_settings | default(false) | bool
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart activitywatch
+      ansible.builtin.systemd:
+        name: activitywatch-server.service
+        state: restarted
