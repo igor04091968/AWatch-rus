@@ -50,6 +50,42 @@ Playbook вычисляет `durationDefault` автоматически (вкл
 
 ## Типовые инциденты
 
+### DLP не виден в вебе
+
+Быстрый чек сервера:
+
+```sh
+curl -fsS http://127.0.0.1:5600/api/0/buckets | jq -r 'keys[] | select(test("^aw-dlp-"))'
+curl -fsS http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025 | jq '{end:.metadata.end}'
+```
+
+Контролируемый тест ingest:
+
+```sh
+TS=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+PAYLOAD=$(jq -nc --arg ts "$TS" '{timestamp:$ts,duration:0,data:{ruleId:"selftest-dlp-incident",action:"alert",severity:"low",message:"Self-test DLP incident from runbook",signalType:"self_test",username:"AUTOTEST",sessionId:0,hostname:"SHARKON2025",source:"self-test"}}')
+curl -fsS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/heartbeat?pulsetime=60' -H 'Content-Type: application/json' --data "$PAYLOAD"
+curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/events?limit=5' | jq '.[0].data'
+```
+
+Если API видит событие, а bucket-страница в UI показывает старые `First/last event`, нажать `Обновить` на странице bucket и раскрыть `Events`.
+
+### У пользователей всплывает окно PowerShell
+
+Ожидаемое поведение collector-ов: запуск hidden (`-WindowStyle Hidden`).
+Проверка на Windows хосте:
+
+```powershell
+Get-CimInstance Win32_Process |
+  Where-Object { $_.CommandLine -and ($_.CommandLine -match 'browser-domains-native-collector.ps1' -or $_.CommandLine -match 'dlp-endpoint-signals-collector.ps1') } |
+  Select-Object SessionId, ProcessId, CommandLine
+```
+
+Если нужно экстренно убрать снимки инцидентов:
+
+1. Поставить `incidentCapture.screenshotEnabled = false` в `deployment-config.json` (для каждого StateRoot).
+2. Запустить `Start-ScheduledTask -TaskName 'ActivityWatch Recovery'`.
+
 ### Сервис не стартует
 
 ```sh

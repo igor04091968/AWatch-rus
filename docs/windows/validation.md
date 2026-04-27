@@ -47,6 +47,19 @@ Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Launch [SHARKON2025
 Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Recovery'
 ```
 
+### 2.1 Проверить incidentCapture в конфиге
+
+```powershell
+$cfg = Get-Content 'C:\ProgramData\ActivityWatch\deployment-config.json' -Raw | ConvertFrom-Json
+$cfg.incidentCapture
+```
+
+Ожидаемо:
+
+- `enabled = True`
+- `screenshotEnabled = True` (или `False`, если временно отключали)
+- `artifactsRoot` указывает на `<StateRoot>\incident-artifacts`
+
 ### 3. Проверить процессы после логина пользователя
 
 ```powershell
@@ -108,6 +121,59 @@ Invoke-WebRequest http://aw.example.local:5600/api/0/buckets | Select-Object -Ex
 ```powershell
 Get-Content "C:\ProgramData\ActivityWatch\logs\dlp-incidents-$env:USERNAME.log" -Tail 50
 ```
+
+Если `screenshotEnabled = True`, проверьте наличие скриншота в инциденте:
+
+```powershell
+Invoke-WebRequest http://aw.example.local:5600/api/0/buckets/aw-dlp-incidents_<hostname>/events?limit=5 |
+  Select-Object -ExpandProperty Content
+```
+
+Проверьте поля:
+
+- `data.screenshotPath`
+- `data.screenshotSha256`
+- `data.screenshotWidth`
+- `data.screenshotHeight`
+
+И что файл реально существует:
+
+```powershell
+Test-Path '<path from data.screenshotPath>'
+```
+
+## Контролируемый self-test DLP ingest
+
+Этот тест проверяет канал `AW API -> aw-dlp-incidents_<hostname> -> Web UI`, не затрагивая пользовательские действия.
+
+```powershell
+$ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.000Z')
+$body = @{
+  timestamp = $ts
+  duration  = 0
+  data      = @{
+    ruleId    = 'selftest-dlp-incident'
+    action    = 'alert'
+    severity  = 'low'
+    message   = 'Self-test DLP incident from validation'
+    signalType= 'self_test'
+    username  = 'AUTOTEST'
+    sessionId = 0
+    hostname  = '<hostname>'
+    source    = 'self-test'
+  }
+} | ConvertTo-Json -Depth 6
+
+Invoke-RestMethod -Method Post `
+  -Uri "http://aw.example.local:5600/api/0/buckets/aw-dlp-incidents_<hostname>/heartbeat?pulsetime=60" `
+  -ContentType 'application/json; charset=utf-8' `
+  -Body ([Text.Encoding]::UTF8.GetBytes($body))
+```
+
+Проверка:
+
+- в API появился `ruleId=selftest-dlp-incident`;
+- в UI (`#/buckets/aw-dlp-incidents_<hostname>`) событие видно в `Events`.
 
 ## Проверка phase-2 endpoint signals
 

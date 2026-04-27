@@ -17,12 +17,20 @@
 - Ставит `aw-watcher-afk` и `aw-watcher-window` из официального Windows ZIP ActivityWatch.
 - Копирует browser-domain collector в `C:\ProgramData\ActivityWatch`.
 - Копирует DLP policy в `C:\ProgramData\ActivityWatch\dlp-policy.json`.
+- Включает `incidentCapture` в `deployment-config.json` для DLP-инцидентов:
+  - `incidentCapture.screenshotEnabled = true`
+  - `incidentCapture.artifactsRoot = <StateRoot>\incident-artifacts`
 - Создаёт per-user задачи `ActivityWatch Launch [...]` с запуском при логоне.
 - Создаёт системную задачу `ActivityWatch Recovery`, которая циклически перезапускает per-user launch tasks.
 - Применяет ACL к `C:\Program Files\ActivityWatch`, `C:\ProgramData\ActivityWatch` и каталогу логов.
 - Не содержит хардкодов инфраструктуры: сервер, домен, список пользователей и правила передаются параметрами.
 - Корректно регистрирует задачи через `-LogonType Interactive` (совместимо с Windows Server, где `InteractiveToken` не поддерживается).
 - Поддерживает отключение шумных watcher'ов через `-AfkEnabled:$false` и `-WindowEnabled:$false`.
+
+Важно:
+
+- Скриншот делается только при DLP-инциденте (`Send-DlpIncidentHeartbeat`), не по таймеру и не на обычной активности.
+- Для экстренного отключения снимков можно выставить `incidentCapture.screenshotEnabled = false` в `deployment-config.json` и запустить `ActivityWatch Recovery`.
 
 ## Предпосылки
 
@@ -191,6 +199,7 @@ Single-user pilot в таком же стиле:
 
 - `C:\Program Files\ActivityWatch` — бинарники watcher'ов.
 - `C:\ProgramData\ActivityWatch\deployment-config.json` — итоговая конфигурация.
+- `C:\ProgramData\ActivityWatch\incident-artifacts\` — скриншоты DLP-инцидентов (если `incidentCapture.screenshotEnabled=true`).
 - `C:\ProgramData\ActivityWatch\launch-watchers.ps1` — per-user launcher.
 - `C:\ProgramData\ActivityWatch\recovery-loop.ps1` — system recovery loop.
 - `C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1` — runtime collector.
