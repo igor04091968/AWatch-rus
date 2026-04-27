@@ -1,0 +1,27 @@
+KIT_DIR=install-kit-awindows-20260427-211240
+CREATED_AT=2026-04-27T21:14:11+03:00
+
+FILES:
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/MANIFEST.txt
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/README-INSTALL-KIT.txt
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/ansible/README.md
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/ansible/deploy_aw_windows_phase2.yml
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/ansible/windows.example.yml
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-admin.deployment-config.json
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-u2u5.deployment-config.json
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/server-configs-192.168.100.21/phase2-user1.deployment-config.json
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/ActivityWatch.Windows.Common.psd1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/ActivityWatch.Windows.Common.psm1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/browser-domains-native-collector.ps1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/deploy-domain-users.ps1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/deploy-ensemble.ps1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/deploy-single-user.ps1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/dlp-endpoint-signals-collector.ps1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/dlp-policy.example.json
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/hardening-recovery.ps1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/validate-deployment.ps1
+/home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/web-category-rules.example.json
+
+SHA256:
+f48965a47781c329c08e261461ac4808031e35c5fe24fb84a2f1eaa798cd042d  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.tar.gz
+e1ef90f566d821b196f16dfa0810f86530cc0b92d13dc83c9ae8ab0427c37c0b  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.zip

@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "defaults": {
+    "enabled": true,
+    "cooldownSeconds": 300,
+    "action": "log",
+    "severity": "low"
+  },
+  "rules": [
+    {
+      "id": "personal-web-during-workhours",
+      "enabled": true,
+      "cooldownSeconds": 600,
+      "action": "alert",
+      "severity": "medium",
+      "message": "Личные ресурсы в рабочее время",
+      "when": {
+        "categoryGroups": ["personal"],
+        "hourFrom": 9,
+        "hourTo": 19
+      }
+    },
+    {
+      "id": "high-risk-cloud-storage",
+      "enabled": true,
+      "cooldownSeconds": 900,
+      "action": "alert",
+      "severity": "high",
+      "message": "Подозрительный доступ к облачному хранилищу",
+      "when": {
+        "domains": [
+          "dropbox.com",
+          "drive.google.com",
+          "mega.nz",
+          "onedrive.live.com",
+          "disk.yandex.ru"
+        ]
+      }
+    },
+    {
+      "id": "anonymizer-and-vpn-web",
+      "enabled": true,
+      "cooldownSeconds": 900,
+      "action": "alert",
+      "severity": "high",
+      "message": "Использование веб-анонимайзеров / VPN-сервисов",
+      "when": {
+        "domains": [
+          "hidemy.name",
+          "2ip.ru",
+          "whoer.net",
+          "protonvpn.com",
+          "nordvpn.com"
+        ]
+      }
+    }
+  ],
+  "endpoint": {
+    "clipboard": [
+      {
+        "id": "clipboard-sensitive-keywords",
+        "enabled": true,
+        "cooldownSeconds": 300,
+        "action": "alert",
+        "severity": "high",
+        "message": "В буфере обнаружены чувствительные ключевые слова",
+        "minLength": 20,
+        "regexPatterns": [
+          "(?i)парол(ь|и)",
+          "(?i)password",
+          "(?i)secret",
+          "(?i)cvv",
+          "(?i)паспорт"
+        ]
+      }
+    ],
+    "usb": [
+      {
+        "id": "usb-media-connected",
+        "enabled": true,
+        "cooldownSeconds": 300,
+        "action": "alert",
+        "severity": "medium",
+        "message": "Подключен съемный носитель"
+      }
+    ],
+    "print": [
+      {
+        "id": "print-sensitive-docs",
+        "enabled": true,
+        "cooldownSeconds": 300,
+        "action": "alert",
+        "severity": "high",
+        "message": "Печать документа с признаками чувствительных данных",
+        "documentRegex": "(?i)(salary|зарплат|passport|паспорт|договор|contract)"
+      }
+    ]
+  }
+}

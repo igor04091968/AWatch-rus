@@ -1,0 +1,57 @@
+{
+    "version":  1,
+    "generatedAtUtc":  "2026-04-27T01:14:21.9184268Z",
+    "server":  {
+                   "host":  "10.10.10.13",
+                   "port":  5600,
+                   "scheme":  "http"
+               },
+    "paths":  {
+                  "installRoot":  "C:\\Program Files\\ActivityWatch-Phase2-admin",
+                  "stateRoot":  "C:\\ProgramData\\ActivityWatch\\phase2-admin",
+                  "logsRoot":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\logs",
+                  "collectorScript":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\browser-domains-native-collector.ps1",
+                  "endpointCollectorScript":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\dlp-endpoint-signals-collector.ps1",
+                  "rulesPath":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\web-category-rules.json",
+                  "policyPath":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\dlp-policy.json",
+                  "launchScript":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\launch-watchers.ps1",
+                  "recoveryScript":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\recovery-loop.ps1"
+              },
+    "collector":  {
+                      "pollSeconds":  5,
+                      "pulseSeconds":  30
+                  },
+    "collectors":  {
+                       "afkEnabled":  true,
+                       "windowEnabled":  true
+                   },
+    "logging":  {
+                    "localAgentLogsEnabled":  false
+                },
+    "incidentCapture":  {
+                            "enabled":  true,
+                            "screenshotEnabled":  true,
+                            "artifactsRoot":  "C:\\ProgramData\\ActivityWatch\\phase2-admin\\incident-artifacts"
+                        },
+    "sessionEvents":  {
+                          "logonEnabled":  true,
+                          "bucketPrefix":  "aw-session-events"
+                      },
+    "recovery":  {
+                     "intervalSeconds":  180,
+                     "taskName":  "ActivityWatch Recovery"
+                 },
+    "dlp":  {
+                "incidentBucketPrefix":  "aw-dlp-incidents",
+                "enabled":  true
+            },
+    "package":  {
+                    "version":  "v0.13.2"
+                },
+    "userTasks":  [
+                      {
+                          "UserId":  "SHARKON2025\\РђРґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ",
+                          "LaunchTaskName":  "ActivityWatch Launch [SHARKON2025_РђРґРјРёРЅРёСЃС_СЂР_С_РѕСЂ]"
+                      }
+                  ]
+}

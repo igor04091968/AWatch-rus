@@ -1,0 +1,33 @@
+aw_windows_repo_root: "/home/igor/tmp/AWatch-rus"
+aw_windows_deploy_root: "C:\\Deploy\\AWatch-rus"
+aw_windows_server_host: "10.10.10.13"
+aw_windows_server_port: 5600
+aw_windows_domain: "SHARKON2025"
+aw_windows_users:
+  - user1
+  - user2
+  - user3
+  - user4
+  - user5
+aw_windows_extra_users: []
+# Например:
+# aw_windows_extra_users:
+#   - Администратор
+
+# Рекомендуемый изолированный профиль для фазового раската.
+aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
+aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+aw_windows_afk_enabled: true
+aw_windows_window_enabled: true
+aw_windows_local_agent_logs_enabled: false
+aw_windows_incident_capture_enabled: true
+aw_windows_incident_screenshot_enabled: true
+aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
+aw_windows_logon_marker_enabled: true
+aw_windows_skip_hardening: false
+
+aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
+aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
+
+aw_windows_validation_remote_path: "C:\\Windows\\Temp\\aw_validate_phase2_ansible.json"
+aw_windows_validation_local_dir: "/tmp/aw-rus-validation"

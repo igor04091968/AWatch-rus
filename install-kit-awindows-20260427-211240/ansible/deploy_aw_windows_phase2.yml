@@ -1,0 +1,133 @@
+---
+- name: Deploy AWatch-rus Windows phase2 collectors
+  hosts: aw_windows
+  gather_facts: false
+
+  vars:
+    aw_windows_repo_root: "/home/igor/tmp/AWatch-rus"
+    aw_windows_deploy_root: "C:\\Deploy\\AWatch-rus"
+    aw_windows_server_host: "10.10.10.13"
+    aw_windows_server_port: 5600
+    aw_windows_domain: "SHARKON2025"
+    aw_windows_users:
+      - user1
+      - user2
+      - user3
+      - user4
+      - user5
+    aw_windows_extra_users: []
+    aw_windows_users_effective: "{{ (aw_windows_users + aw_windows_extra_users) | unique }}"
+    aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
+    aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+    aw_windows_afk_enabled: true
+    aw_windows_window_enabled: true
+    aw_windows_local_agent_logs_enabled: false
+    aw_windows_incident_capture_enabled: true
+    aw_windows_incident_screenshot_enabled: true
+    aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
+    aw_windows_logon_marker_enabled: true
+    aw_windows_skip_hardening: false
+    aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
+    aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
+    aw_windows_validation_remote_path: "C:\\Windows\\Temp\\aw_validate_phase2_ansible.json"
+    aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+
+  tasks:
+    - name: Validate required variables
+      ansible.builtin.assert:
+        that:
+          - aw_windows_server_host is defined
+          - aw_windows_server_port is defined
+          - aw_windows_domain is defined
+          - aw_windows_users_effective | length > 0
+          - aw_windows_install_root is defined
+          - aw_windows_state_root is defined
+        fail_msg: "Missing required Windows deployment variables."
+
+    - name: Ensure deploy directories exist
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ aw_windows_deploy_root }}"
+        - "{{ aw_windows_deploy_root }}\\windows"
+
+    - name: Upload Windows deployment toolkit
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_repo_root }}/windows/{{ item }}"
+        dest: "{{ aw_windows_deploy_root }}\\windows\\{{ item }}"
+      loop:
+        - ActivityWatch.Windows.Common.psd1
+        - ActivityWatch.Windows.Common.psm1
+        - browser-domains-native-collector.ps1
+        - dlp-endpoint-signals-collector.ps1
+        - deploy-domain-users.ps1
+        - deploy-ensemble.ps1
+        - hardening-recovery.ps1
+        - validate-deployment.ps1
+        - web-category-rules.example.json
+        - dlp-policy.example.json
+
+    - name: Upload user list for domain deploy
+      ansible.windows.win_copy:
+        dest: "{{ aw_windows_deploy_root }}\\windows\\users.txt"
+        content: |
+          {% for user in aw_windows_users -%}
+          {{ user }}
+          {% endfor -%}
+          {% for user in aw_windows_extra_users -%}
+          {{ user }}
+          {% endfor -%}
+
+    - name: Run phase2 ensemble deployment
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $params = @{
+            ServerHost = "{{ aw_windows_server_host }}"
+            ServerPort = {{ aw_windows_server_port }}
+            Domain = "{{ aw_windows_domain }}"
+            UserListPath = "{{ aw_windows_deploy_root }}\windows\users.txt"
+            InstallRoot = "{{ aw_windows_install_root }}"
+            StateRoot = "{{ aw_windows_state_root }}"
+            AfkEnabled = {{ '$true' if (aw_windows_afk_enabled | bool) else '$false' }}
+            WindowEnabled = {{ '$true' if (aw_windows_window_enabled | bool) else '$false' }}
+            LocalAgentLogsEnabled = {{ '$true' if (aw_windows_local_agent_logs_enabled | bool) else '$false' }}
+            IncidentCaptureEnabled = {{ '$true' if (aw_windows_incident_capture_enabled | bool) else '$false' }}
+            IncidentScreenshotEnabled = {{ '$true' if (aw_windows_incident_screenshot_enabled | bool) else '$false' }}
+            IncidentArtifactsRoot = "{{ aw_windows_incident_artifacts_root }}"
+            LogonMarkerEnabled = {{ '$true' if (aw_windows_logon_marker_enabled | bool) else '$false' }}
+            CustomRulesPath = "{{ aw_windows_rules_path }}"
+            CustomPolicyPath = "{{ aw_windows_policy_path }}"
+          }
+          {% if aw_windows_skip_hardening | bool %}
+          $params.SkipHardening = $true
+          {% endif %}
+          & "{{ aw_windows_deploy_root }}\windows\deploy-ensemble.ps1" @params
+
+    - name: Run validation and store report on target
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $report = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
+            -ConfigPath "{{ aw_windows_state_root }}\deployment-config.json"
+          $report | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
+
+    - name: Ensure local validation directory exists
+      ansible.builtin.file:
+        path: "{{ aw_windows_validation_local_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Fetch validation report
+      ansible.builtin.fetch:
+        src: "{{ aw_windows_validation_remote_path }}"
+        dest: "{{ aw_windows_validation_local_dir }}/"
+        flat: false
+
+    - name: Show report location
+      ansible.builtin.debug:
+        msg:
+          - "Windows phase2 deploy completed on {{ inventory_hostname }}."
+          - "Validation report: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}/C$/Windows/Temp/aw_validate_phase2_ansible.json"
