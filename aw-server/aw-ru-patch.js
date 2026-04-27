@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v7-pve-detmir-audit-view";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v7-pve-detmir-audit-view");
+  window.__awRuPatchVersion = "template-v8-pve-detmir-safe-view";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v8-pve-detmir-safe-view");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -358,6 +358,26 @@
     return "";
   }
 
+  function isPveLikeHost(host) {
+    return /^pve[-_]/i.test(String(host || ""));
+  }
+
+  function enforceSafeActivityViewForPveHost() {
+    const hash = window.location.hash || "";
+    const match = hash.match(/^#\/activity\/([^/]+)\/day\/([^/]+)\/view\/([^/?#]+)/i);
+    if (!match) return;
+    const host = decodeURIComponent(match[1] || "");
+    const day = decodeURIComponent(match[2] || "");
+    const viewId = decodeURIComponent(match[3] || "");
+    if (!isPveLikeHost(host)) return;
+    if (/^(summary|window|worktime)$/i.test(viewId)) {
+      const safeHash = "#/activity/" + encodeURIComponent(host) + "/day/" + encodeURIComponent(day) + "/view/" + encodeURIComponent("DLP");
+      if (safeHash !== hash) {
+        window.location.replace(safeHash);
+      }
+    }
+  }
+
   function getDlpHostFromSettings(settings) {
     const routeHost = getCurrentHostFromHash();
     if (routeHost) return routeHost;
@@ -605,7 +625,14 @@
   }
 
   function injectDlpNavigation(root) {
-    const href = getDlpHref(window.__awRuPatchSettingsHost || getCurrentHostFromHash());
+    const hostForDlp = window.__awRuPatchSettingsHost || getCurrentHostFromHash();
+    if (hostForDlp && isPveLikeHost(hostForDlp)) {
+      removeBadDlpLinks(root);
+      const ownItem = root.querySelector("[data-aw-ru-dlp-item='1']");
+      if (ownItem) ownItem.remove();
+      return;
+    }
+    const href = getDlpHref(hostForDlp);
     removeBadDlpLinks(root);
     updateDlpLinks(root, href);
     if (root.querySelector("[data-aw-ru-dlp-item='1']")) return;
@@ -1356,6 +1383,7 @@
   }
 
   function applyPatch() {
+    enforceSafeActivityViewForPveHost();
     ensureSettingsHost();
     injectStyles();
     walk(document.body);
