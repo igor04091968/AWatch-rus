@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v6-pve-detmir-client";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v6-pve-detmir-client");
+  window.__awRuPatchVersion = "template-v7-pve-detmir-audit-view";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v7-pve-detmir-audit-view");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -749,7 +749,8 @@
   function buildHostLink(host, hostBuckets, linkDef) {
     if (!linkDef || !linkDef.type) return "";
     if (linkDef.type === "activity") {
-      return '#/activity/' + encodeURIComponent(host) + '/day/' + encodeURIComponent(new Date().toISOString().slice(0, 10)) + '/view/summary';
+      const viewId = linkDef.view ? String(linkDef.view) : "summary";
+      return '#/activity/' + encodeURIComponent(host) + '/day/' + encodeURIComponent(new Date().toISOString().slice(0, 10)) + '/view/' + encodeURIComponent(viewId);
     }
     if (linkDef.type === "buckets") {
       return "#/buckets";

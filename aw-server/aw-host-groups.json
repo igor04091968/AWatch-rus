@@ -8,7 +8,11 @@
         "^pve-detmir$"
       ],
       "links": [
-        { "label": "Активность", "type": "activity" },
+        { "label": "Активность", "type": "activity", "view": "DLP" },
+        { "label": "Web-admin аудит", "type": "bucket", "bucket_prefix": "aw-pve-webadmin-events_" },
+        { "label": "PVE tasks", "type": "bucket", "bucket_prefix": "aw-pve-task-events_" },
+        { "label": "SSH сессии", "type": "bucket", "bucket_prefix": "aw-ssh-sessions_" },
+        { "label": "Команды shell", "type": "bucket", "bucket_prefix": "aw-console-commands_" },
         { "label": "Web категории", "type": "bucket", "bucket_prefix": "aw-detmir-web-category_" },
         { "label": "Все бакеты", "type": "buckets" }
       ]
