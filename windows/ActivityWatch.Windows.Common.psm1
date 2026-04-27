@@ -320,6 +320,9 @@ function New-ActivityWatchDeploymentConfig {
         [bool]$AfkEnabled = $true,
         [bool]$WindowEnabled = $true,
         [bool]$LocalAgentLogsEnabled = $true,
+        [bool]$IncidentCaptureEnabled = $true,
+        [bool]$IncidentScreenshotEnabled = $true,
+        [string]$IncidentArtifactsRoot,
         [bool]$LogonMarkerEnabled = $true,
         [Parameter(Mandatory = $true)]
         [string]$LaunchScriptPath,
@@ -329,6 +332,8 @@ function New-ActivityWatchDeploymentConfig {
         [pscustomobject[]]$UserTasks,
         [string]$PackageVersion = 'v0.13.2'
     )
+
+    $effectiveIncidentArtifactsRoot = if ($IncidentArtifactsRoot) { $IncidentArtifactsRoot } else { Join-Path $StateRoot 'incident-artifacts' }
 
     return [pscustomobject]@{
         version  = 1
@@ -361,9 +366,9 @@ function New-ActivityWatchDeploymentConfig {
             localAgentLogsEnabled = $LocalAgentLogsEnabled
         }
         incidentCapture = [pscustomobject]@{
-            enabled           = $true
-            screenshotEnabled = $true
-            artifactsRoot     = (Join-Path $StateRoot 'incident-artifacts')
+            enabled           = $IncidentCaptureEnabled
+            screenshotEnabled = $IncidentScreenshotEnabled
+            artifactsRoot     = $effectiveIncidentArtifactsRoot
         }
         sessionEvents = [pscustomobject]@{
             logonEnabled = $LogonMarkerEnabled

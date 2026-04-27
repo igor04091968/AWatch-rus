@@ -81,6 +81,9 @@ Playbook:
 
 - `aw_windows_afk_enabled: false` — не запускать `aw-watcher-afk`;
 - `aw_windows_window_enabled: false` — не запускать `aw-watcher-window`;
+- `aw_windows_incident_capture_enabled: false` — отключить блок incidentCapture;
+- `aw_windows_incident_screenshot_enabled: false` — не делать скриншот при DLP-инциденте;
+- `aw_windows_incident_artifacts_root: 'C:\...\incident-artifacts'` — переопределить путь артефактов;
 - `aw_windows_skip_hardening: true` — пропустить `hardening-recovery.ps1` внутри ensemble-скрипта.
 
 ## Результат

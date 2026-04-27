@@ -19,6 +19,9 @@ param(
     [bool]$AfkEnabled = $true,
     [bool]$WindowEnabled = $true,
     [bool]$LocalAgentLogsEnabled = $false,
+    [bool]$IncidentCaptureEnabled = $true,
+    [bool]$IncidentScreenshotEnabled = $true,
+    [string]$IncidentArtifactsRoot,
     [bool]$LogonMarkerEnabled = $true,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath
@@ -81,6 +84,9 @@ $config = New-ActivityWatchDeploymentConfig `
     -AfkEnabled $AfkEnabled `
     -WindowEnabled $WindowEnabled `
     -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
+    -IncidentCaptureEnabled $IncidentCaptureEnabled `
+    -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
+    -IncidentArtifactsRoot $IncidentArtifactsRoot `
     -LogonMarkerEnabled $LogonMarkerEnabled `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `

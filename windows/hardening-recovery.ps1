@@ -16,6 +16,9 @@ param(
     [bool]$AfkEnabled,
     [bool]$WindowEnabled,
     [bool]$LocalAgentLogsEnabled,
+    [bool]$IncidentCaptureEnabled,
+    [bool]$IncidentScreenshotEnabled,
+    [string]$IncidentArtifactsRoot,
     [bool]$LogonMarkerEnabled,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
@@ -62,6 +65,9 @@ $effectiveRecoveryInterval = if ($PSBoundParameters.ContainsKey('RecoveryInterva
 $effectiveAfkEnabled = if ($PSBoundParameters.ContainsKey('AfkEnabled')) { [bool]$AfkEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$existingConfig.collectors.afkEnabled } else { $true }
 $effectiveWindowEnabled = if ($PSBoundParameters.ContainsKey('WindowEnabled')) { [bool]$WindowEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$existingConfig.collectors.windowEnabled } else { $true }
 $effectiveLocalAgentLogsEnabled = if ($PSBoundParameters.ContainsKey('LocalAgentLogsEnabled')) { [bool]$LocalAgentLogsEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'logging' -and $existingConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$existingConfig.logging.localAgentLogsEnabled } else { $false }
+$effectiveIncidentCaptureEnabled = if ($PSBoundParameters.ContainsKey('IncidentCaptureEnabled')) { [bool]$IncidentCaptureEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.incidentCapture.enabled } else { $true }
+$effectiveIncidentScreenshotEnabled = if ($PSBoundParameters.ContainsKey('IncidentScreenshotEnabled')) { [bool]$IncidentScreenshotEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$existingConfig.incidentCapture.screenshotEnabled } else { $true }
+$effectiveIncidentArtifactsRoot = if ($PSBoundParameters.ContainsKey('IncidentArtifactsRoot') -and $IncidentArtifactsRoot) { $IncidentArtifactsRoot } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$existingConfig.incidentCapture.artifactsRoot } else { Join-Path $effectiveStateRoot 'incident-artifacts' }
 $effectiveLogonMarkerEnabled = if ($PSBoundParameters.ContainsKey('LogonMarkerEnabled')) { [bool]$LogonMarkerEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$existingConfig.sessionEvents.logonEnabled } else { $true }
 $effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
 
@@ -117,6 +123,9 @@ $config = New-ActivityWatchDeploymentConfig `
     -AfkEnabled $effectiveAfkEnabled `
     -WindowEnabled $effectiveWindowEnabled `
     -LocalAgentLogsEnabled $effectiveLocalAgentLogsEnabled `
+    -IncidentCaptureEnabled $effectiveIncidentCaptureEnabled `
+    -IncidentScreenshotEnabled $effectiveIncidentScreenshotEnabled `
+    -IncidentArtifactsRoot $effectiveIncidentArtifactsRoot `
     -LogonMarkerEnabled $effectiveLogonMarkerEnabled `
     -LaunchScriptPath $effectiveLaunchScript `
     -RecoveryScriptPath $effectiveRecoveryScript `
