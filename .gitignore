@@ -1,14 +1,51 @@
-# Local secrets
-secrets/deploy.secrets.env
+```
+# Dependencies
+node_modules/
+package-lock.json
 
-# Runtime / reports
+# Logs and temp files
 *.log
 *.tmp
-*.bak
-windows/*.report.json
 
-# IDE
-.idea/
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
 .vscode/
+.idea/
 
+# Python
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Build directories
+dist/
+build/
+*.egg-info/
+
+# Coverage
+.coverage
+coverage/
+htmlcov/
+.nyc_output/
+
+# Testing
+.pytest_cache/
+.mypy_cache/
+.tox/
+.hypothesis/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+```

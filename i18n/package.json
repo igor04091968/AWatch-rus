@@ -1,0 +1,28 @@
+{
+  "name": "awatch-rus-i18n",
+  "version": "1.1.2",
+  "description": "Internationalization (i18n) module for AWatch-rus project",
+  "type": "module",
+  "scripts": {
+    "validate": "node scripts/validate-locales.js",
+    "coverage": "node scripts/check-coverage.js",
+    "extract": "node scripts/extract-keys.js",
+    "bump": "node scripts/bump-version.js"
+  },
+  "keywords": [
+    "i18n",
+    "localization",
+    "l10n",
+    "russian",
+    "activitywatch"
+  ],
+  "author": "AWatch-rus Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "devDependencies": {
+    "glob": "^10.3.0",
+    "jsonschema": "^1.4.1"
+  }
+}
