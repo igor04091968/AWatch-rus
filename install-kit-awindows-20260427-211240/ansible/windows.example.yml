@@ -16,7 +16,7 @@ aw_windows_extra_users: []
 
 # Рекомендуемый изолированный профиль для фазового раската.
 aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
-aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+aw_windows_state_root: "C:\\ProgramData\\ActivityWatch"
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
 aw_windows_local_agent_logs_enabled: false

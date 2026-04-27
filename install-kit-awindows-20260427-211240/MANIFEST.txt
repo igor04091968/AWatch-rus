@@ -22,6 +22,7 @@ FILES:
 /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/validate-deployment.ps1
 /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240/windows/web-category-rules.example.json
 
+
 SHA256:
-f48965a47781c329c08e261461ac4808031e35c5fe24fb84a2f1eaa798cd042d  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.tar.gz
-e1ef90f566d821b196f16dfa0810f86530cc0b92d13dc83c9ae8ab0427c37c0b  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.zip
+40bdf651a876f1f545c06c9191ff5d9ec3ca1ce75d3edf1d647e3e2fbafece52  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.tar.gz
+e7e020bff342070d55d2489d9a5e40822543a518863a97cd46865ccf00f64399  /home/igor/tmp/AWatch-rus/install-kit-awindows-20260427-211240.zip
