@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v11-category-builder-host-fix";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v11-category-builder-host-fix");
+  window.__awRuPatchVersion = "template-v12-activity-heading-ru";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v12-activity-heading-ru");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -1572,6 +1572,18 @@
     });
   }
 
+  function patchActivityHeading(root) {
+    const heading = root.querySelector("h3");
+    if (!heading) return;
+    const inlineParts = heading.querySelectorAll("span");
+    inlineParts.forEach(function (element) {
+      const text = (element.textContent || "").trim();
+      if (text === "for") {
+        element.textContent = "за ";
+      }
+    });
+  }
+
   function applyPatch() {
     enforceSafeActivityViewForPveHost();
     ensureSettingsHost();
@@ -1581,6 +1593,7 @@
     walk(document.body);
     translateAttributes(document.body);
     hideNoiseNavigation(document.body);
+    patchActivityHeading(document.body);
     patchCategoryBuilderHostLabel(document.body);
     injectPveAuditCenter(document.body);
     injectDlpNavigation(document.body);

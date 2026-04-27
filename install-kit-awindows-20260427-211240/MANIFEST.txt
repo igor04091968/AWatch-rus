@@ -15,7 +15,7 @@ d35bc97b6de18f0006cbbad4adf8a8a5db8ed912997d8fc47c7f11fa9247e907  install-kit-aw
 a50dbadbf619342c2178e255b68f69a36503756daf80eedd9170311c63964f2e  install-kit-awindows-20260427-211240/aw-server/activitywatch-server.service
 2dbf55d4a8f204ebdc97af926d90435932c0aad7a2431e2b9987e47c5abf71a9  install-kit-awindows-20260427-211240/aw-server/apply_webui_ru_patch.sh
 07d4e583f6e9757a11f01558e1f15cfd73c4d82695f1768204f2f50621712168  install-kit-awindows-20260427-211240/aw-server/aw-host-groups.json
-c149bb3a92ad712bad184eb034f6a683b18117e84300116633a3575f07697395  install-kit-awindows-20260427-211240/aw-server/aw-ru-patch.js
+09605da1754abb0dc0446825580b57ebad6e646dc670f9f072fce1489e88dd43  install-kit-awindows-20260427-211240/aw-server/aw-ru-patch.js
 7c5952f8f0a8590e849ea8381bfcd7059b138250bca8551bd5625f395eb66cd8  install-kit-awindows-20260427-211240/aw-server/aw-server.env.example
 98c0bed353bbda0fa7a69df23f3b008cb0e8e70cdff6cc63330d4caf79fd3280  install-kit-awindows-20260427-211240/aw-server/aw-sw-cleanup.js
 dce731fdfdcfd773c154d12dbd6b9e621a0bff17ced5a05a65f0fdcb1adcb70f  install-kit-awindows-20260427-211240/aw-server/install_aw_server.sh
