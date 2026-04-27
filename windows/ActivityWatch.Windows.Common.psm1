@@ -527,19 +527,41 @@ function Send-LogonMarkerIfNeeded {
     }
 
     `$stateRoot = [string]`$Config.paths.stateRoot
-    if ([string]::IsNullOrWhiteSpace(`$stateRoot)) {
-        return
+    `$markerRoots = New-Object System.Collections.Generic.List[string]
+    if (-not [string]::IsNullOrWhiteSpace(`$env:LOCALAPPDATA)) {
+        `$markerRoots.Add((Join-Path `$env:LOCALAPPDATA 'ActivityWatch-Phase2\markers'))
+    }
+    if (-not [string]::IsNullOrWhiteSpace(`$stateRoot)) {
+        `$markerRoots.Add((Join-Path `$stateRoot 'markers'))
     }
 
-    `$markerDir = Join-Path `$stateRoot 'markers'
-    if (-not (Test-Path -LiteralPath `$markerDir)) {
-        New-Item -Path `$markerDir -ItemType Directory -Force | Out-Null
+    `$markerDir = `$null
+    foreach (`$candidate in `$markerRoots) {
+        try {
+            if (-not (Test-Path -LiteralPath `$candidate)) {
+                New-Item -Path `$candidate -ItemType Directory -Force | Out-Null
+            }
+
+            `$probePath = Join-Path `$candidate 'write-test.tmp'
+            Set-Content -LiteralPath `$probePath -Value 'ok' -Encoding ASCII
+            Remove-Item -LiteralPath `$probePath -Force -ErrorAction SilentlyContinue
+            `$markerDir = `$candidate
+            break
+        }
+        catch {
+        }
+    }
+
+    if (-not `$markerDir) {
+        return
     }
 
     `$markerFile = Join-Path `$markerDir ("logon-{0}-{1}.marker" -f `$env:USERNAME, `$SessionId)
     if (Test-Path -LiteralPath `$markerFile) {
         return
     }
+
+    Set-Content -LiteralPath `$markerFile -Value ((Get-Date).ToUniversalTime().ToString('o')) -Encoding UTF8
 
     `$bucketId = ('{0}_{1}' -f `$bucketPrefix, `$script:Hostname)
     Ensure-Bucket -BucketId `$bucketId -ClientName 'aw-session-events' -BucketType 'aw.session.event'
@@ -557,8 +579,13 @@ function Send-LogonMarkerIfNeeded {
         }
     } | ConvertTo-Json -Depth 5 -Compress
 
-    Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$bucketId/heartbeat?pulsetime=1" -Json `$payload
-    Set-Content -LiteralPath `$markerFile -Value ((Get-Date).ToUniversalTime().ToString('o')) -Encoding UTF8
+    try {
+        Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$bucketId/heartbeat?pulsetime=1" -Json `$payload
+    }
+    catch {
+        Remove-Item -LiteralPath `$markerFile -Force -ErrorAction SilentlyContinue
+        throw
+    }
 }
 
 function Start-CollectorScriptIfNeeded {
