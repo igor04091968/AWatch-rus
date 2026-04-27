@@ -10,3 +10,5 @@ windows/*.report.json
 # IDE
 .idea/
 .vscode/
+
+__pycache__/
