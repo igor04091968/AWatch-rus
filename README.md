@@ -13,6 +13,7 @@
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
+- `pfsense/` — внешний poller для pfSense API и systemd unit под Debian/Ubuntu utility VM.
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, phase-2 DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
 
@@ -36,6 +37,10 @@
 Для централизованного phase-2 деплоя Windows-клиентов через WinRM:
 
 - `ansible/deploy_aw_windows_phase2.yml`
+
+Для внешнего pfSense poller'а:
+
+- `ansible/deploy_aw_pfsense_poller.yml`
 
 Скрипты `proxmox/create-ct.sh` и `proxmox/push-aw-artifacts.sh` по умолчанию читают:
 

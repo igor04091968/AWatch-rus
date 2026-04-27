@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v4-dlp-review";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v4-dlp-review");
+  window.__awRuPatchVersion = "template-v5-dlp-review-host-groups";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v5-dlp-review-host-groups");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -322,7 +322,17 @@
       '.aw-ru-dlp-message { margin-top: 8px; font-size: 12px; }',
       '.aw-ru-dlp-actions { display: flex; gap: 6px; flex-wrap: wrap; }',
       '.aw-ru-dlp-section { margin-top: 18px; }',
-      '.aw-ru-dlp-section h5 { margin: 0 0 8px; }'
+      '.aw-ru-dlp-section h5 { margin: 0 0 8px; }',
+      '.aw-ru-host-groups { margin: 16px 0; padding: 16px; border: 1px solid rgba(120,120,120,.35); border-radius: 8px; background: rgba(20,20,20,.03); }',
+      '.aw-ru-host-groups-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }',
+      '.aw-ru-host-group-card { border: 1px solid rgba(120,120,120,.25); border-radius: 8px; padding: 12px; background: rgba(255,255,255,.02); }',
+      '.aw-ru-host-group-card h4 { margin: 0 0 8px; }',
+      '.aw-ru-host-group-card p { margin: 0 0 12px; font-size: 13px; opacity: .85; }',
+      '.aw-ru-host-list { display: flex; flex-direction: column; gap: 8px; }',
+      '.aw-ru-host-item { border: 1px solid rgba(120,120,120,.2); border-radius: 6px; padding: 8px; }',
+      '.aw-ru-host-item-title { font-weight: 600; margin-bottom: 6px; }',
+      '.aw-ru-host-links { display: flex; flex-wrap: wrap; gap: 6px; }',
+      '.aw-ru-host-links a { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(90,140,255,.15); text-decoration: none; }'
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -617,6 +627,215 @@
       item.appendChild(link);
       primaryNav.appendChild(item);
     }
+  }
+
+  function isHomeRoute() {
+    const hash = window.location.hash || "";
+    return !hash || /^#\/home(?:[/?#]|$)/i.test(hash);
+  }
+
+  function getDefaultHostGroupsConfig() {
+    return {
+      groups: [
+        {
+          id: "windows-rdp",
+          name: "Windows RDP",
+          description: "Пользовательские Windows/RDP хосты.",
+          patterns: ["^(SHARKON|WIN|RDP|TERM|TS-|WS-)"],
+          links: [
+            { label: "Активность", type: "activity" },
+            { label: "DLP", type: "bucket", bucket_prefix: "aw-dlp-endpoint-signals_" }
+          ]
+        },
+        {
+          id: "virtual-infra",
+          name: "Virtual servers + Proxmox",
+          description: "Инфраструктурные VM, Proxmox и сетевые узлы.",
+          patterns: ["^(PFSENSE|PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"],
+          links: [
+            { label: "pfSense health", type: "bucket", bucket_prefix: "aw-pfsense-health_" },
+            { label: "pfSense gateways", type: "bucket", bucket_prefix: "aw-pfsense-gateways_" },
+            { label: "Все бакеты", type: "buckets" }
+          ]
+        }
+      ],
+      ungrouped_name: "Прочие хосты"
+    };
+  }
+
+  function getHostGroupsState() {
+    if (!window.__awRuHostGroupsState) {
+      window.__awRuHostGroupsState = {
+        config: null,
+        buckets: null,
+        loading: false
+      };
+    }
+    return window.__awRuHostGroupsState;
+  }
+
+  async function ensureHostGroupsData() {
+    const state = getHostGroupsState();
+    if (state.loading) return state;
+    if (state.config && state.buckets) return state;
+    state.loading = true;
+    try {
+      if (!state.config) {
+        try {
+          state.config = await awApiJson("/js/aw-host-groups.json?v=" + encodeURIComponent(window.__awRuPatchVersion), { method: "GET", headers: {} });
+        } catch (error) {
+          state.config = getDefaultHostGroupsConfig();
+        }
+      }
+      if (!state.buckets) {
+        state.buckets = await awApiJson("/api/0/buckets/", { method: "GET", headers: {} });
+      }
+    } finally {
+      state.loading = false;
+    }
+    return state;
+  }
+
+  function extractHostFromBucket(bucketId, bucketMeta) {
+    if (bucketMeta && bucketMeta.hostname) return String(bucketMeta.hostname);
+    const prefixes = [
+      "aw-watcher-window_",
+      "aw-watcher-afk_",
+      "aw-dlp-endpoint-signals_",
+      "aw-dlp-incidents_",
+      "aw-pfsense-health_",
+      "aw-pfsense-gateways_",
+      "aw-pfsense-interfaces_"
+    ];
+    for (const prefix of prefixes) {
+      if (bucketId.indexOf(prefix) === 0) {
+        return bucketId.slice(prefix.length);
+      }
+    }
+    return "";
+  }
+
+  function buildHostBucketMap(rawBuckets) {
+    const result = new Map();
+    const entries = Array.isArray(rawBuckets)
+      ? rawBuckets.map(function (item) { return [item.id || "", item]; })
+      : Object.entries(rawBuckets || {});
+    entries.forEach(function (entry) {
+      const bucketId = entry[0];
+      const meta = entry[1] || {};
+      const host = extractHostFromBucket(bucketId, meta);
+      if (!host) return;
+      if (!result.has(host)) result.set(host, []);
+      result.get(host).push(bucketId);
+    });
+    return result;
+  }
+
+  function matchHostGroup(host, groups) {
+    for (const group of groups) {
+      const patterns = Array.isArray(group.patterns) ? group.patterns : [];
+      for (const pattern of patterns) {
+        try {
+          if (new RegExp(pattern, "i").test(host)) {
+            return group.id;
+          }
+        } catch (error) {
+        }
+      }
+    }
+    return "";
+  }
+
+  function buildHostLink(host, hostBuckets, linkDef) {
+    if (!linkDef || !linkDef.type) return "";
+    if (linkDef.type === "activity") {
+      return '#/activity/' + encodeURIComponent(host) + '/day/' + encodeURIComponent(new Date().toISOString().slice(0, 10)) + '/view/summary';
+    }
+    if (linkDef.type === "buckets") {
+      return "#/buckets";
+    }
+    if (linkDef.type === "bucket" && linkDef.bucket_prefix) {
+      const bucketId = String(linkDef.bucket_prefix) + host;
+      return hostBuckets.indexOf(bucketId) >= 0 ? '#/buckets/' + encodeURIComponent(bucketId) : "";
+    }
+    return "";
+  }
+
+  function renderHostGroupCards(state) {
+    const config = state.config || getDefaultHostGroupsConfig();
+    const groups = Array.isArray(config.groups) ? config.groups : [];
+    const hostBuckets = buildHostBucketMap(state.buckets);
+    const grouped = new Map();
+
+    groups.forEach(function (group) {
+      grouped.set(group.id, []);
+    });
+    grouped.set("__ungrouped__", []);
+
+    Array.from(hostBuckets.keys()).sort().forEach(function (host) {
+      const groupId = matchHostGroup(host, groups) || "__ungrouped__";
+      grouped.get(groupId).push(host);
+    });
+
+    const cards = [];
+    groups.forEach(function (group) {
+      const hosts = grouped.get(group.id) || [];
+      const items = hosts.map(function (host) {
+        const links = (group.links || []).map(function (linkDef) {
+          const href = buildHostLink(host, hostBuckets.get(host) || [], linkDef);
+          return href ? '<a href="' + escapeHtml(href) + '">' + escapeHtml(linkDef.label || "Открыть") + '</a>' : "";
+        }).filter(Boolean).join("");
+        return '<div class="aw-ru-host-item">' +
+          '<div class="aw-ru-host-item-title">' + escapeHtml(host) + '</div>' +
+          '<div class="aw-ru-host-links">' + links + '</div>' +
+        '</div>';
+      }).join("");
+      cards.push(
+        '<section class="aw-ru-host-group-card">' +
+          '<h4>' + escapeHtml(group.name || group.id) + '</h4>' +
+          '<p>' + escapeHtml(group.description || "") + '</p>' +
+          '<div class="aw-ru-host-list">' + (items || '<div class="aw-ru-host-item">Хосты пока не обнаружены.</div>') + '</div>' +
+        '</section>'
+      );
+    });
+
+    const ungroupedHosts = grouped.get("__ungrouped__") || [];
+    if (ungroupedHosts.length) {
+      cards.push(
+        '<section class="aw-ru-host-group-card">' +
+          '<h4>' + escapeHtml(config.ungrouped_name || "Прочие хосты") + '</h4>' +
+          '<p>Хосты, которые пока не попали под шаблоны группировки.</p>' +
+          '<div class="aw-ru-host-list">' +
+            ungroupedHosts.map(function (host) {
+              return '<div class="aw-ru-host-item"><div class="aw-ru-host-item-title">' + escapeHtml(host) + '</div></div>';
+            }).join("") +
+          '</div>' +
+        '</section>'
+      );
+    }
+
+    return cards.join("");
+  }
+
+  async function injectHostGroupsCenter(root) {
+    if (!isHomeRoute()) return;
+    const heading = root.querySelector("h3");
+    if (!heading) return;
+
+    let center = root.querySelector("[data-aw-ru-host-groups='1']");
+    if (!center) {
+      center = document.createElement("section");
+      center.className = "aw-ru-host-groups";
+      center.setAttribute("data-aw-ru-host-groups", "1");
+      center.innerHTML =
+        '<h4>Разделы хостов</h4>' +
+        '<p>Здесь хосты разделены на пользовательские Windows RDP и инфраструктурные виртуальные серверы/Proxmox.</p>' +
+        '<div class="aw-ru-host-groups-grid" data-aw-ru-host-groups-grid><section class="aw-ru-host-group-card"><p>Загрузка...</p></section></div>';
+      heading.parentElement.insertBefore(center, heading.nextSibling);
+    }
+
+    const state = await ensureHostGroupsData();
+    center.querySelector("[data-aw-ru-host-groups-grid]").innerHTML = renderHostGroupCards(state);
   }
 
   function renderDlpTableRows(center, host) {
@@ -1144,6 +1363,7 @@
     injectDlpNavigation(document.body);
     injectDlpReviewCenter(document.body);
     injectDlpAlertsCenter(document.body);
+    injectHostGroupsCenter(document.body).catch(function () {});
     redirectBareTrendsRoute();
   }
 

@@ -1,0 +1,66 @@
+---
+- name: Deploy pfSense ActivityWatch poller
+  hosts: aw_pfsense_pollers
+  become: true
+  gather_facts: true
+
+  vars:
+    aw_pfsense_install_root: "/opt/aw-pfsense"
+    aw_pfsense_config_dir: "/etc/aw-pfsense"
+    aw_pfsense_service_name: "aw-pfsense-poller.service"
+
+  tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - python3
+        state: present
+        update_cache: true
+
+    - name: Ensure directories exist
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ aw_pfsense_install_root }}"
+        - "{{ aw_pfsense_config_dir }}"
+
+    - name: Install pfSense poller script
+      ansible.builtin.copy:
+        src: "{{ aw_repo_root }}/pfsense/pfsense-aw-poller.py"
+        dest: "{{ aw_pfsense_install_root }}/pfsense-aw-poller.py"
+        mode: "0755"
+
+    - name: Install systemd service
+      ansible.builtin.copy:
+        src: "{{ aw_repo_root }}/pfsense/pfsense-aw-poller.service"
+        dest: "/etc/systemd/system/{{ aw_pfsense_service_name }}"
+        mode: "0644"
+      notify:
+        - Reload systemd
+
+    - name: Write pfSense poller config
+      ansible.builtin.copy:
+        dest: "{{ aw_pfsense_config_dir }}/poller.json"
+        mode: "0600"
+        content: "{{ aw_pfsense_poller_config | to_nice_json }}"
+      notify:
+        - Restart pfSense poller
+
+    - name: Enable and start pfSense poller
+      ansible.builtin.systemd:
+        name: "{{ aw_pfsense_service_name }}"
+        enabled: true
+        state: restarted
+        daemon_reload: true
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart pfSense poller
+      ansible.builtin.systemd:
+        name: "{{ aw_pfsense_service_name }}"
+        state: restarted

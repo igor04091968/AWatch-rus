@@ -1,0 +1,30 @@
+aw_pfsense_poller_config:
+  poll_interval_seconds: 60
+  aw:
+    server_host: "10.10.10.13"
+    server_port: 5600
+    hostname: "PFSENSE-EDGE01"
+    pulse_time_seconds: 120
+    timeout_seconds: 15
+  pfsense:
+    name: "pfSense Edge 01"
+    host: "10.10.10.1"
+    scheme: "https"
+    verify_tls: false
+    timeout_seconds: 15
+    headers:
+      X-API-Key: "replace-me"
+      X-API-Secret: "replace-me"
+  endpoints:
+    - name: "system-status"
+      path: "/api/v2/status/system"
+      bucket_prefix: "aw-pfsense-health"
+      bucket_type: "aw.pfsense.health"
+    - name: "interfaces"
+      path: "/api/v2/interface"
+      bucket_prefix: "aw-pfsense-interfaces"
+      bucket_type: "aw.pfsense.interfaces"
+    - name: "gateways"
+      path: "/api/v2/status/gateways"
+      bucket_prefix: "aw-pfsense-gateways"
+      bucket_type: "aw.pfsense.gateways"
