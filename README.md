@@ -10,6 +10,7 @@
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
+- `docs/console-ssh-logger.md` — логирование только консольных команд и SSH-сессий в AW.
 - `docs/dlp-gap-analysis.md` — разрыв до enterprise DLP и roadmap.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
@@ -18,6 +19,7 @@
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, phase-2 DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
 - `scripts/install_aw_linux_client.sh` — установка Linux bundle + autostart для remote AW server.
+- `scripts/install_aw_console_ssh_logger.sh` — user-space установка console/ssh logger.
 
 ## Базовый сценарий
 
@@ -48,6 +50,11 @@
 
 - `docs/linux-client.md`
 - `scripts/install_aw_linux_client.sh`
+
+Для режима “только консоль/ssh” без GUI watcher'ов:
+
+- `docs/console-ssh-logger.md`
+- `scripts/install_aw_console_ssh_logger.sh`
 
 Скрипты `proxmox/create-ct.sh` и `proxmox/push-aw-artifacts.sh` по умолчанию читают:
 
