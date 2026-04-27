@@ -762,6 +762,45 @@ while (`$true) {
     Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
 }
 
+function Get-ActivityWatchHiddenLauncherPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath
+    )
+
+    $directory = Split-Path -Path $ScriptPath -Parent
+    $baseName = [IO.Path]::GetFileNameWithoutExtension($ScriptPath)
+    return Join-Path $directory ("{0}-hidden.vbs" -f $baseName)
+}
+
+function Write-ActivityWatchHiddenPowerShellWrapper {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [string]$ScriptPath,
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigPath
+    )
+
+    $directory = Split-Path -Path $Path -Parent
+    if ($directory) {
+        New-ActivityWatchDirectory -Path $directory
+    }
+
+    $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $escapedPowerShellExe = $powershellExe.Replace('"', '""')
+    $escapedScriptPath = $ScriptPath.Replace('"', '""')
+    $escapedConfigPath = $ConfigPath.Replace('"', '""')
+
+    $content = @"
+Set shell = CreateObject("WScript.Shell")
+shell.Run """$escapedPowerShellExe"" -NoProfile -ExecutionPolicy Bypass -File ""$escapedScriptPath"" -ConfigPath ""$escapedConfigPath""", 0, False
+"@
+
+    Set-Content -LiteralPath $Path -Value $content -Encoding ASCII
+}
+
 function Remove-LegacyActivityWatchEntries {
     $legacyTaskNames = @(
         'ActivityWatch Watchers',
@@ -798,6 +837,50 @@ function Remove-ActivityWatchScheduledTask {
     }
 }
 
+function Set-ActivityWatchScheduledTaskAction {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName,
+        [Parameter(Mandatory = $true)]
+        [string]$Execute,
+        [Parameter(Mandatory = $true)]
+        [string]$Arguments
+    )
+
+    $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
+    & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "schtasks.exe /Change failed for $TaskName"
+    }
+}
+
+function Get-ActivityWatchScheduledTaskByCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName,
+        [string]$CommandMatch
+    )
+
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if ($task) {
+        return $task
+    }
+
+    if ([string]::IsNullOrWhiteSpace($CommandMatch)) {
+        return $null
+    }
+
+    foreach ($candidate in @(Get-ScheduledTask | Where-Object { $_.TaskName -like 'ActivityWatch Launch*' })) {
+        foreach ($action in @($candidate.Actions)) {
+            if ([string]$action.Arguments -like "*$CommandMatch*") {
+                return $candidate
+            }
+        }
+    }
+
+    return $null
+}
+
 function Register-ActivityWatchUserTasks {
     param(
         [Parameter(Mandatory = $true)]
@@ -808,16 +891,23 @@ function Register-ActivityWatchUserTasks {
         [string]$ConfigPath
     )
 
-    $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $wscriptExe = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $LaunchScriptPath
+    Write-ActivityWatchHiddenPowerShellWrapper -Path $launcherPath -ScriptPath $LaunchScriptPath -ConfigPath $ConfigPath
 
     foreach ($definition in $TaskDefinitions) {
-        Remove-ActivityWatchScheduledTask -TaskName $definition.LaunchTaskName
-
-        $action = New-ScheduledTaskAction -Execute $powershellExe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$LaunchScriptPath`" -ConfigPath `"$ConfigPath`""
+        $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument "//B //NoLogo `"$launcherPath`""
         $trigger = New-ScheduledTaskTrigger -AtLogOn -User $definition.UserId
         $principal = New-ScheduledTaskPrincipal -UserId $definition.UserId -LogonType Interactive -RunLevel Highest
         $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+        $existingTask = Get-ActivityWatchScheduledTaskByCommand -TaskName $definition.LaunchTaskName -CommandMatch $ConfigPath
 
+        if ($existingTask) {
+            Set-ActivityWatchScheduledTaskAction -TaskName $existingTask.TaskName -Execute $wscriptExe -Arguments $action.Arguments
+            continue
+        }
+
+        Remove-ActivityWatchScheduledTask -TaskName $definition.LaunchTaskName
         Register-ScheduledTask -TaskName $definition.LaunchTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
     }
 }
@@ -834,8 +924,10 @@ function Register-ActivityWatchRecoveryTask {
 
     Remove-ActivityWatchScheduledTask -TaskName $TaskName
 
-    $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $action = New-ScheduledTaskAction -Execute $powershellExe -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$RecoveryScriptPath`" -ConfigPath `"$ConfigPath`""
+    $wscriptExe = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $RecoveryScriptPath
+    Write-ActivityWatchHiddenPowerShellWrapper -Path $launcherPath -ScriptPath $RecoveryScriptPath -ConfigPath $ConfigPath
+    $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument "//B //NoLogo `"$launcherPath`""
     $trigger = New-ScheduledTaskTrigger -AtStartup
     $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -Hidden -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
