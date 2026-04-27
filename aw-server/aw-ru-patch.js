@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v8-pve-detmir-safe-view";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v8-pve-detmir-safe-view");
+  window.__awRuPatchVersion = "template-v10-pve-detmir-audit-stable";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v10-pve-detmir-audit-stable");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -332,7 +332,15 @@
       '.aw-ru-host-item { border: 1px solid rgba(120,120,120,.2); border-radius: 6px; padding: 8px; }',
       '.aw-ru-host-item-title { font-weight: 600; margin-bottom: 6px; }',
       '.aw-ru-host-links { display: flex; flex-wrap: wrap; gap: 6px; }',
-      '.aw-ru-host-links a { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(90,140,255,.15); text-decoration: none; }'
+      '.aw-ru-host-links a { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(90,140,255,.15); text-decoration: none; }',
+      '.aw-ru-pve-audit { margin: 16px 0; padding: 16px; border: 1px solid rgba(120,120,120,.35); border-radius: 8px; background: rgba(10,20,40,.04); }',
+      '.aw-ru-pve-audit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0 16px; }',
+      '.aw-ru-pve-audit-card { border: 1px solid rgba(120,120,120,.22); border-radius: 8px; padding: 12px; background: rgba(255,255,255,.02); }',
+      '.aw-ru-pve-audit-card h5 { margin: 0 0 6px; font-size: 13px; opacity: .8; }',
+      '.aw-ru-pve-audit-value { font-size: 24px; font-weight: 700; }',
+      '.aw-ru-pve-audit-table { width: 100%; border-collapse: collapse; margin-top: 8px; }',
+      '.aw-ru-pve-audit-table th, .aw-ru-pve-audit-table td { padding: 6px 8px; border-bottom: 1px solid rgba(120,120,120,.18); vertical-align: top; text-align: left; font-size: 13px; }',
+      '.aw-ru-pve-audit-muted { opacity: .72; font-size: 13px; }'
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -370,11 +378,9 @@
     const day = decodeURIComponent(match[2] || "");
     const viewId = decodeURIComponent(match[3] || "");
     if (!isPveLikeHost(host)) return;
-    if (/^(summary|window|worktime)$/i.test(viewId)) {
-      const safeHash = "#/activity/" + encodeURIComponent(host) + "/day/" + encodeURIComponent(day) + "/view/" + encodeURIComponent("DLP");
-      if (safeHash !== hash) {
-        window.location.replace(safeHash);
-      }
+    const safeHash = "#/activity/" + encodeURIComponent(host) + "/day/" + encodeURIComponent(day) + "/view/" + encodeURIComponent("pve_audit");
+    if (safeHash !== hash && !/^pve_audit$/i.test(viewId)) {
+      window.location.replace(safeHash);
     }
   }
 
@@ -721,6 +727,12 @@
       state.loading = false;
     }
     return state;
+  }
+
+  function isPveActivityRoute() {
+    const hash = window.location.hash || "";
+    const match = hash.match(/^#\/activity\/([^/]+)/i);
+    return !!(match && isPveLikeHost(decodeURIComponent(match[1] || "")));
   }
 
   function extractHostFromBucket(bucketId, bucketMeta) {
@@ -1282,6 +1294,90 @@
     }
   }
 
+  async function refreshPveAuditCenter(center, host) {
+    const message = center.querySelector("[data-aw-ru-pve-audit-message]");
+    const recentBody = center.querySelector("[data-aw-ru-pve-audit-events]");
+    message.textContent = "Загрузка audit-событий...";
+    try {
+      const [webEvents, taskEvents, sshEvents, cmdEvents] = await Promise.all([
+        loadBucketEvents("aw-pve-webadmin-events_" + host, 50).catch(function () { return []; }),
+        loadBucketEvents("aw-pve-task-events_" + host, 50).catch(function () { return []; }),
+        loadBucketEvents("aw-ssh-sessions_" + host, 50).catch(function () { return []; }),
+        loadBucketEvents("aw-console-commands_" + host, 50).catch(function () { return []; })
+      ]);
+      const data = {
+        web: webEvents || [],
+        tasks: taskEvents || [],
+        ssh: sshEvents || [],
+        cmd: cmdEvents || []
+      };
+      center.querySelector("[data-aw-ru-pve-web-count]").textContent = String(data.web.length);
+      center.querySelector("[data-aw-ru-pve-task-count]").textContent = String(data.tasks.length);
+      center.querySelector("[data-aw-ru-pve-ssh-count]").textContent = String(data.ssh.length);
+      center.querySelector("[data-aw-ru-pve-cmd-count]").textContent = String(data.cmd.length);
+      const recent = []
+        .concat(data.web.map(function (event) { return { kind: "Web-admin", event: event, text: (event.data && (event.data.method || "") + " " + (event.data.path || "")) || "" }; }))
+        .concat(data.tasks.map(function (event) { return { kind: "PVE task", event: event, text: (event.data && ((event.data.action || "") + " " + (event.data.target || ""))) || "" }; }))
+        .concat(data.ssh.map(function (event) { return { kind: "SSH", event: event, text: (event.data && ((event.data.event || "") + " " + (event.data.tty || ""))) || "" }; }))
+        .concat(data.cmd.slice(0, 25).map(function (event) { return { kind: "Shell", event: event, text: (event.data && (event.data.command || "")) || "" }; }))
+        .sort(function (a, b) { return String(b.event && b.event.timestamp || "").localeCompare(String(a.event && a.event.timestamp || "")); })
+        .slice(0, 25);
+      recentBody.innerHTML = recent.length ? recent.map(function (item) {
+        const ev = item.event || {};
+        const d = ev.data || {};
+        return "<tr>" +
+          "<td>" + escapeHtml(new Date(ev.timestamp).toLocaleString()) + "</td>" +
+          "<td>" + escapeHtml(item.kind) + "</td>" +
+          "<td>" + escapeHtml(d.user || d.username || "-") + "</td>" +
+          "<td>" + escapeHtml(d.remote_ip || d.tty || d.host || "-") + "</td>" +
+          "<td>" + escapeHtml(item.text) + "</td>" +
+        "</tr>";
+      }).join("") : '<tr><td colspan="5">Пока нет audit-событий.</td></tr>';
+      message.textContent = "Audit-панель обновлена.";
+    } catch (error) {
+      recentBody.innerHTML = '<tr><td colspan="5">Не удалось загрузить audit-события.</td></tr>';
+      message.textContent = "Ошибка загрузки audit-событий: " + error.message;
+    }
+  }
+
+  function injectPveAuditCenter(root) {
+    if (!isPveActivityRoute()) return;
+    const host = getCurrentHostFromHash();
+    if (!host) return;
+    const heading = root.querySelector("h3");
+    if (!heading || !heading.parentElement) return;
+    let center = root.querySelector("[data-aw-ru-pve-audit='1']");
+    if (!center) {
+      center = document.createElement("section");
+      center.className = "aw-ru-pve-audit";
+      center.setAttribute("data-aw-ru-pve-audit", "1");
+      center.innerHTML =
+        "<h4>PVE Audit</h4>" +
+        '<p class="aw-ru-pve-audit-muted">Для Proxmox-хоста показывается audit-панель вместо desktop-виджетов ActivityWatch, так как у этого хоста нет window/afk watcher данных.</p>' +
+        '<div class="aw-ru-pve-audit-grid">' +
+          '<div class="aw-ru-pve-audit-card"><h5>Web-admin</h5><div class="aw-ru-pve-audit-value" data-aw-ru-pve-web-count>0</div></div>' +
+          '<div class="aw-ru-pve-audit-card"><h5>PVE tasks</h5><div class="aw-ru-pve-audit-value" data-aw-ru-pve-task-count>0</div></div>' +
+          '<div class="aw-ru-pve-audit-card"><h5>SSH events</h5><div class="aw-ru-pve-audit-value" data-aw-ru-pve-ssh-count>0</div></div>' +
+          '<div class="aw-ru-pve-audit-card"><h5>Shell commands</h5><div class="aw-ru-pve-audit-value" data-aw-ru-pve-cmd-count>0</div></div>' +
+        "</div>" +
+        '<table class="aw-ru-pve-audit-table">' +
+          "<thead><tr><th>Время</th><th>Тип</th><th>Пользователь</th><th>Источник</th><th>Детали</th></tr></thead>" +
+          '<tbody data-aw-ru-pve-audit-events><tr><td colspan="5">Загрузка...</td></tr></tbody>' +
+        "</table>" +
+        '<div class="aw-ru-dlp-message" data-aw-ru-pve-audit-message></div>';
+      heading.parentElement.insertBefore(center, heading.nextSibling);
+    }
+    Array.from(heading.parentElement.children).forEach(function (child) {
+      if (child === heading || child === center) return;
+      child.style.display = "none";
+    });
+    const routeKey = host + "|" + (window.location.hash || "");
+    if (center.getAttribute("data-aw-ru-pve-route") !== routeKey) {
+      center.setAttribute("data-aw-ru-pve-route", routeKey);
+      refreshPveAuditCenter(center, host);
+    }
+  }
+
   function injectDlpAlertsCenter(root) {
     if (!isAlertsRoute()) return;
     const host = window.__awRuPatchSettingsHost || getCurrentHostFromHash();
@@ -1322,6 +1418,7 @@
 
   let trendsRedirectInFlight = false;
   let settingsHostFetchInFlight = false;
+  let applyPatchScheduled = false;
 
   function getTrendsHostFromSettings(settings) {
     if (!settings || typeof settings !== "object") return "";
@@ -1389,6 +1486,7 @@
     walk(document.body);
     translateAttributes(document.body);
     hideNoiseNavigation(document.body);
+    injectPveAuditCenter(document.body);
     injectDlpNavigation(document.body);
     injectDlpReviewCenter(document.body);
     injectDlpAlertsCenter(document.body);
@@ -1396,15 +1494,25 @@
     redirectBareTrendsRoute();
   }
 
+  function scheduleApplyPatch() {
+    if (applyPatchScheduled) return;
+    applyPatchScheduled = true;
+    window.setTimeout(function () {
+      applyPatchScheduled = false;
+      applyPatch();
+    }, 50);
+  }
+
   const observer = new MutationObserver(function () {
-    applyPatch();
+    scheduleApplyPatch();
   });
 
   window.addEventListener("load", function () {
     applyPatch();
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, { childList: true, subtree: true });
   });
   window.addEventListener("hashchange", function () {
     redirectBareTrendsRoute();
+    scheduleApplyPatch();
   });
 })();
