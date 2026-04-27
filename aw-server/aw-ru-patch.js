@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v10-pve-detmir-audit-stable";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v10-pve-detmir-audit-stable");
+  window.__awRuPatchVersion = "template-v11-category-builder-host-fix";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v11-category-builder-host-fix");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -1419,6 +1419,7 @@
   let trendsRedirectInFlight = false;
   let settingsHostFetchInFlight = false;
   let applyPatchScheduled = false;
+  let networkPatchesInstalled = false;
 
   function getTrendsHostFromSettings(settings) {
     if (!settings || typeof settings !== "object") return "";
@@ -1479,13 +1480,108 @@
       });
   }
 
+  function getPreferredWindowHostFromBuckets() {
+    const state = getHostGroupsState();
+    const rawBuckets = state && state.buckets ? state.buckets : {};
+    const settingsHost = normalizeText(window.__awRuPatchSettingsHost || "");
+    const bucketIds = Array.isArray(rawBuckets)
+      ? rawBuckets.map(function (item) { return item && item.id ? String(item.id) : ""; })
+      : Object.keys(rawBuckets || {});
+    const hosts = bucketIds
+      .filter(function (bucketId) { return /^aw-watcher-window_/i.test(bucketId); })
+      .map(function (bucketId) { return bucketId.replace(/^aw-watcher-window_/i, ""); })
+      .filter(Boolean)
+      .filter(function (host) { return !/^unknown$/i.test(host); });
+    if (settingsHost && hosts.indexOf(settingsHost) >= 0) return settingsHost;
+    if (settingsHost) return settingsHost;
+    hosts.sort();
+    return hosts[0] || "";
+  }
+
+  function rewriteUnknownCategoryBuilderQueryBody(body) {
+    if (typeof body !== "string") return body;
+    if (body.indexOf("aw-watcher-window_unknown") === -1 && body.indexOf("aw-watcher-afk_unknown") === -1) {
+      return body;
+    }
+    const preferredHost = getPreferredWindowHostFromBuckets();
+    if (!preferredHost) return body;
+    return body
+      .replace(/aw-watcher-window_unknown/g, "aw-watcher-window_" + preferredHost)
+      .replace(/aw-watcher-afk_unknown/g, "aw-watcher-afk_" + preferredHost);
+  }
+
+  function installCategoryBuilderNetworkPatch() {
+    if (networkPatchesInstalled) return;
+    networkPatchesInstalled = true;
+
+    const originalFetch = window.fetch ? window.fetch.bind(window) : null;
+    if (originalFetch) {
+      window.fetch = function (input, init) {
+        try {
+          const url = typeof input === "string" ? input : String(input && input.url || "");
+          if (/\/api\/0\/query\/?$/i.test(url) && init && typeof init.body === "string") {
+            init = Object.assign({}, init, {
+              body: rewriteUnknownCategoryBuilderQueryBody(init.body)
+            });
+          }
+        } catch (error) {
+        }
+        return originalFetch(input, init);
+      };
+    }
+
+    if (window.XMLHttpRequest && window.XMLHttpRequest.prototype) {
+      const proto = window.XMLHttpRequest.prototype;
+      if (!proto.__awRuCategoryBuilderPatched) {
+        const originalOpen = proto.open;
+        const originalSend = proto.send;
+        proto.open = function (method, url) {
+          this.__awRuMethod = method;
+          this.__awRuUrl = url;
+          return originalOpen.apply(this, arguments);
+        };
+        proto.send = function (body) {
+          try {
+            const url = String(this.__awRuUrl || "");
+            if (/\/api\/0\/query\/?$/i.test(url) && typeof body === "string") {
+              body = rewriteUnknownCategoryBuilderQueryBody(body);
+            }
+          } catch (error) {
+          }
+          return originalSend.call(this, body);
+        };
+        proto.__awRuCategoryBuilderPatched = true;
+      }
+    }
+  }
+
+  function patchCategoryBuilderHostLabel(root) {
+    if (!/^#\/settings\/category-builder(?:[/?#]|$)/i.test(window.location.hash || "")) return;
+    const preferredHost = getPreferredWindowHostFromBuckets();
+    if (!preferredHost) return;
+    Array.from(root.querySelectorAll("*")).forEach(function (element) {
+      if (element.children.length) return;
+      const text = element.textContent || "";
+      if (!/Имя хоста:\s*(unknown|неизвестно)\b|Hostname:\s*unknown\b/i.test(text)) return;
+      const next = text
+        .replace(/Имя хоста:\s*(unknown|неизвестно)\b/i, "Имя хоста: " + preferredHost)
+        .replace(/Hostname:\s*unknown\b/i, "Hostname: " + preferredHost);
+      if (next !== text) {
+        element.textContent = next;
+      }
+    });
+  }
+
   function applyPatch() {
     enforceSafeActivityViewForPveHost();
     ensureSettingsHost();
+    ensureHostGroupsData().catch(function () {});
+    installCategoryBuilderNetworkPatch();
     injectStyles();
     walk(document.body);
     translateAttributes(document.body);
     hideNoiseNavigation(document.body);
+    patchCategoryBuilderHostLabel(document.body);
     injectPveAuditCenter(document.body);
     injectDlpNavigation(document.body);
     injectDlpReviewCenter(document.body);

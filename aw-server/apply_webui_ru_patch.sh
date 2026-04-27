@@ -23,6 +23,8 @@ TRENDS_NEEDLE='this.activityStore.query_category_time_by_period(r)'
 TRENDS_REPLACEMENT='this.activityStore.ensure_loaded(r)'
 TIMESPIRAL_NEEDLE='start:new Date("2022-08-08")'
 TIMESPIRAL_REPLACEMENT='start:new Date(Date.now()-12*36e5)'
+CATEGORY_HELPER_NEEDLE='hostname:t.hostnameChoices[0]'
+CATEGORY_HELPER_REPLACEMENT='hostname:t.hostnameChoices.filter((function(t){return"unknown"!==t}))[0]||t.hostnameChoices[0]'
 
 [[ -f "$PATCH_JS_SRC" ]] || { echo "missing $PATCH_JS_SRC" >&2; exit 1; }
 [[ -f "$SW_CLEANUP_SRC" ]] || { echo "missing $SW_CLEANUP_SRC" >&2; exit 1; }
@@ -83,6 +85,27 @@ else:
 PY
 else
   echo "Timespiral hotfix skipped: chunk not found"
+fi
+
+category_helper_chunk="$(grep -Rsl "$CATEGORY_HELPER_NEEDLE" "$WEBUI_DIR/js"/*.js 2>/dev/null | head -n 1 || true)"
+if [[ -n "$category_helper_chunk" ]]; then
+  cp "$category_helper_chunk" "$category_helper_chunk.bak.$TS"
+  python3 - "$category_helper_chunk" "$CATEGORY_HELPER_NEEDLE" "$CATEGORY_HELPER_REPLACEMENT" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+old = sys.argv[2]
+new = sys.argv[3]
+content = path.read_text()
+if old in content:
+    path.write_text(content.replace(old, new, 1))
+    print(f"Category helper host hotfix applied to {path}")
+else:
+    print(f"Category helper host hotfix already present in {path}")
+PY
+else
+  echo "Category helper host hotfix skipped: chunk not found"
 fi
 
 echo "RU patch applied to $WEBUI_DIR (ru-patch-v5.js?v=$patch_hash)"
