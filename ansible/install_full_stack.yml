@@ -1,0 +1,16 @@
+---
+# Full-stack installer for AWatch-rus.
+# Runs end-to-end rollout in one command:
+# 1) Proxmox CT provision + AW bootstrap (if [proxmox] exists in inventory)
+# 2) AW server deploy on [aw_server] hosts
+# 3) Windows phase2 rollout on [aw_windows] hosts
+# 4) pfSense poller deploy on [aw_pfsense_pollers] hosts
+#
+# Notes:
+# - Keep only relevant inventory groups filled for your environment.
+# - Plays with unmatched host groups are skipped automatically by Ansible.
+
+- import_playbook: provision_proxmox_ct_and_deploy_aw.yml
+- import_playbook: deploy_aw_server.yml
+- import_playbook: deploy_aw_windows_phase2.yml
+- import_playbook: deploy_aw_pfsense_poller.yml

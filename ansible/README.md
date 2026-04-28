@@ -14,6 +14,7 @@
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый full-stack playbook (несколько CT).
 - `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows_phase2.yml` — WinRM playbook для развёртывания phase-2 Windows collector'ов.
 - `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_pfsense_poller.yml` — deployment pfSense poller'а.
+- `/home/igor/tmp/AWatch-rus/ansible/install_full_stack.yml` — полный установочный playbook (оркестратор всех этапов).
 - `/home/igor/tmp/AWatch-rus/ansible/inventory.example.ini` — шаблон inventory.
 - `/home/igor/tmp/AWatch-rus/ansible/group_vars/all.example.yml` — шаблон переменных.
 - `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.example.yml` — шаблон переменных CT в Proxmox.
@@ -33,6 +34,24 @@
 cd /home/igor/tmp/AWatch-rus/ansible
 ansible-playbook -i inventory.ini deploy_aw_server.yml
 ```
+
+## Полный установочный playbook (всё за один запуск)
+
+Если нужно прогнать полный цикл одной командой:
+
+```bash
+cd /home/igor/tmp/AWatch-rus/ansible
+ansible-playbook -i inventory.ini install_full_stack.yml
+```
+
+Что делает:
+
+- `provision_proxmox_ct_and_deploy_aw.yml` (если есть хосты в группе `[proxmox]`);
+- `deploy_aw_server.yml` (группа `[aw_server]`);
+- `deploy_aw_windows_phase2.yml` (группа `[aw_windows]`);
+- `deploy_aw_pfsense_poller.yml` (группа `[aw_pfsense_pollers]`).
+
+Пустые группы в `inventory.ini` безопасны: соответствующий play будет пропущен.
 
 ## Полный запуск с нуля в Proxmox
 
