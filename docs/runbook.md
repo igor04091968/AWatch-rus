@@ -101,6 +101,60 @@ Get-CimInstance Win32_Process |
 1. Поставить `incidentCapture.screenshotEnabled = false` в `deployment-config.json` (для каждого StateRoot).
 2. Запустить `Start-ScheduledTask -TaskName 'ActivityWatch Recovery'`.
 
+### SHARKON2025: `Активное время = 0s`, хотя `window`-события есть
+
+Симптом:
+
+- в Activity view за день видно `Worktime = 0s`;
+- `Top Window Titles / Top Categories / Category Tree` пустые;
+- при этом bucket `aw-watcher-window_SHARKON2025` содержит свежие события.
+
+Подтвержденная причина:
+
+- watcher `afk` "залип" в `status=afk` без `not-afk`;
+- из-за этого дневная сводка не считает подтвержденную активность.
+
+Быстрый recovery (с Linux admin host):
+
+1. Проверить учетку входа. Для этого кейса рабочая учетная запись: `SHARKON2025\Администратор` (не `Administrator`).
+2. Поднять remote execution через `wmiexec.py` с auth-file:
+
+```sh
+cat > /tmp/sharkon_ru.auth << 'EOF'
+username = Администратор
+password = <PASSWORD>
+domain = SHARKON2025
+EOF
+chmod 600 /tmp/sharkon_ru.auth
+```
+
+3. Запустить recovery task:
+
+```sh
+wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.21 \
+  "powershell -NoProfile -Command \"Start-ScheduledTask -TaskName 'ActivityWatch Recovery'\""
+```
+
+4. Запустить все launch tasks:
+
+```sh
+wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.21 \
+  "powershell -NoProfile -Command \"Get-ScheduledTask | Where-Object TaskName -like 'ActivityWatch Launch *' | ForEach-Object { Start-ScheduledTask -TaskName \$_.TaskName }\""
+```
+
+5. Подождать 10-20 секунд и проверить API на AW server (`10.10.10.13:5600`):
+
+```sh
+curl -fsS 'http://10.10.10.13:5600/api/0/buckets/aw-watcher-afk_SHARKON2025/events?limit=30' \
+  | jq '{latest:.[0].timestamp, statuses:(group_by(.data.status)|map({status:.[0].data.status,count:length}))}'
+```
+
+Ожидаемо после фикса:
+
+- в свежих AFK-событиях появляется `status=not-afk`;
+- `aw-watcher-window_SHARKON2025` продолжает обновляться;
+- после обновления страницы UI дневная сводка перестает быть `0s`.
+
 ### Сервис не стартует
 
 ```sh

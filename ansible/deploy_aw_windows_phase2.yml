@@ -31,6 +31,12 @@
     aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
     aw_windows_validation_remote_path: "C:\\Windows\\Temp\\aw_validate_phase2_ansible.json"
     aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+    aw_windows_launch_task_pattern: "ActivityWatch Launch *"
+    aw_windows_recovery_task_name: "ActivityWatch Recovery"
+    aw_windows_force_task_restart: true
+    aw_windows_api_smoke_check_enabled: true
+    aw_windows_api_smoke_check_bucket: "aw-watcher-afk_SHARKON2025"
+    aw_windows_api_smoke_check_limit: 10
 
   tasks:
     - name: Validate required variables
@@ -104,6 +110,36 @@
           $params.SkipHardening = $true
           {% endif %}
           & "{{ aw_windows_deploy_root }}\windows\deploy-ensemble.ps1" @params
+
+    - name: Force start ActivityWatch recovery and launch tasks
+      when: aw_windows_force_task_restart | bool
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
+          Get-ScheduledTask |
+            Where-Object TaskName -like "{{ aw_windows_launch_task_pattern }}" |
+            ForEach-Object { Start-ScheduledTask -TaskName $_.TaskName }
+
+    - name: Wait for fresh AFK events to appear on AW server
+      when: aw_windows_api_smoke_check_enabled | bool
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "http://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
+        method: GET
+        return_content: true
+      register: aw_windows_api_smoke
+      until: >
+        aw_windows_api_smoke.status == 200 and
+        (aw_windows_api_smoke.json | length) > 0 and
+        (
+          aw_windows_api_smoke.json
+          | selectattr('data.status', 'equalto', 'not-afk')
+          | list
+          | length
+        ) > 0
+      retries: 10
+      delay: 6
 
     - name: Run validation and store report on target
       ansible.windows.win_powershell:

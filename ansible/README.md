@@ -66,6 +66,8 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
    - `cp /home/igor/tmp/AWatch-rus/ansible/inventory.example.ini /home/igor/tmp/AWatch-rus/ansible/inventory.ini`
    - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/windows.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/windows.yml`
 2. Заполните `inventory.ini` (секция `[aw_windows]`) и `group_vars/windows.yml`.
+   - Для русской локализации Windows часто нужен `ansible_user=Администратор` (а не `Administrator`).
+   - Если WinRM закрыт, playbook не сможет стартовать и нужно сначала открыть `5985/5986` и `wsman`.
 3. Запустите:
 
 ```bash
@@ -77,6 +79,8 @@ Playbook:
 
 - выгружает `windows/*` toolkit на целевой хост в `C:\Deploy\AWatch-rus\windows`;
 - выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с phase-2 policy/rules;
+- после deploy принудительно запускает `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи;
+- выполняет API smoke-check bucket `aw-watcher-afk_SHARKON2025` и ожидает свежие `not-afk` события;
 - запускает `validate-deployment.ps1`;
 - забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation` по умолчанию).
 
