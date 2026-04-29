@@ -53,6 +53,7 @@ $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
 $effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
 $effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
 $effectiveEndpointCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$existingConfig.paths.endpointCollectorScript } else { Join-Path $effectiveStateRoot 'dlp-endpoint-signals-collector.ps1' }
+$effectiveSessionCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$existingConfig.paths.sessionCollectorScript } else { Join-Path $effectiveStateRoot 'worktime-session-collector.ps1' }
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 
@@ -96,6 +97,7 @@ Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
     -EndpointCollectorScriptSource (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') `
+    -SessionCollectorScriptSource (Join-Path $PSScriptRoot 'worktime-session-collector.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
     -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
@@ -115,6 +117,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
     -EndpointCollectorScript $effectiveEndpointCollector `
+    -SessionCollectorScript $effectiveSessionCollector `
     -RulesPath $effectiveRules `
     -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `

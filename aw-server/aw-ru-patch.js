@@ -1,6 +1,6 @@
 (function () {
-  window.__awRuPatchVersion = "template-v12-activity-heading-ru";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v12-activity-heading-ru");
+  window.__awRuPatchVersion = "template-v13-pve-audit-day-filter";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v13-pve-audit-day-filter");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -333,6 +333,11 @@
       '.aw-ru-host-item-title { font-weight: 600; margin-bottom: 6px; }',
       '.aw-ru-host-links { display: flex; flex-wrap: wrap; gap: 6px; }',
       '.aw-ru-host-links a { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(90,140,255,.15); text-decoration: none; }',
+      '.aw-ru-worktime-center { margin: 16px 0; padding: 16px; border: 1px solid rgba(120,120,120,.35); border-radius: 8px; background: rgba(20,20,20,.03); }',
+      '.aw-ru-worktime-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin-bottom: 10px; }',
+      '.aw-ru-worktime-controls label { font-size: 12px; display:flex; flex-direction:column; gap:4px; }',
+      '.aw-ru-worktime-table { width: 100%; border-collapse: collapse; font-size: 13px; }',
+      '.aw-ru-worktime-table th, .aw-ru-worktime-table td { border: 1px solid rgba(120,120,120,.25); padding: 6px 8px; text-align: left; }',
       '.aw-ru-pve-audit { margin: 16px 0; padding: 16px; border: 1px solid rgba(120,120,120,.35); border-radius: 8px; background: rgba(10,20,40,.04); }',
       '.aw-ru-pve-audit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0 16px; }',
       '.aw-ru-pve-audit-card { border: 1px solid rgba(120,120,120,.22); border-radius: 8px; padding: 12px; background: rgba(255,255,255,.02); }',
@@ -733,6 +738,23 @@
     const hash = window.location.hash || "";
     const match = hash.match(/^#\/activity\/([^/]+)/i);
     return !!(match && isPveLikeHost(decodeURIComponent(match[1] || "")));
+  }
+
+  function getSelectedDayFromHash() {
+    const hash = window.location.hash || "";
+    const match = hash.match(/^#\/activity\/[^/]+\/day\/([^/?#]+)/i);
+    return match && match[1] ? decodeURIComponent(match[1]) : "";
+  }
+
+  function filterEventsBySelectedDay(events) {
+    const day = getSelectedDayFromHash();
+    if (!day) return Array.isArray(events) ? events : [];
+    const start = new Date(day + "T00:00:00");
+    const end = new Date(day + "T23:59:59.999");
+    return (Array.isArray(events) ? events : []).filter(function (event) {
+      const timestamp = event && event.timestamp ? new Date(event.timestamp) : null;
+      return timestamp && !isNaN(timestamp.getTime()) && timestamp >= start && timestamp <= end;
+    });
   }
 
   function extractHostFromBucket(bucketId, bucketMeta) {
@@ -1306,10 +1328,10 @@
         loadBucketEvents("aw-console-commands_" + host, 50).catch(function () { return []; })
       ]);
       const data = {
-        web: webEvents || [],
-        tasks: taskEvents || [],
-        ssh: sshEvents || [],
-        cmd: cmdEvents || []
+        web: filterEventsBySelectedDay(webEvents || []),
+        tasks: filterEventsBySelectedDay(taskEvents || []),
+        ssh: filterEventsBySelectedDay(sshEvents || []),
+        cmd: filterEventsBySelectedDay(cmdEvents || [])
       };
       center.querySelector("[data-aw-ru-pve-web-count]").textContent = String(data.web.length);
       center.querySelector("[data-aw-ru-pve-task-count]").textContent = String(data.tasks.length);
@@ -1584,6 +1606,124 @@
     });
   }
 
+  function ms(v) {
+    return new Date(v).getTime();
+  }
+
+  function fmtHours(sec) {
+    return (Math.round((sec / 3600) * 100) / 100).toFixed(2);
+  }
+
+  function rangesIntersect(a0, a1, b0, b1) {
+    return Math.max(a0, b0) < Math.min(a1, b1);
+  }
+
+  function intersectDurationSeconds(a0, a1, b0, b1) {
+    return Math.max(0, (Math.min(a1, b1) - Math.max(a0, b0)) / 1000);
+  }
+
+  async function renderPersonalWorktime(host, fromIso, toIso, target) {
+    const sessionBucket = "aw-worktime-sessions_" + host;
+    const windowBucket = "aw-watcher-window_" + host;
+    const afkBucket = "aw-watcher-afk_" + host;
+    const [sessionEvents, windowEvents, afkEvents] = await Promise.all([
+      loadBucketEvents(sessionBucket, 5000).catch(function () { return []; }),
+      loadBucketEvents(windowBucket, 10000).catch(function () { return []; }),
+      loadBucketEvents(afkBucket, 10000).catch(function () { return []; })
+    ]);
+
+    const fromMs = ms(fromIso);
+    const toMs = ms(toIso);
+    const userRanges = {};
+    (sessionEvents || []).forEach(function (e) {
+      const d = e && e.data ? e.data : {};
+      const u = String(d.username || "").trim();
+      if (!u) return;
+      const t0 = ms(e.timestamp);
+      const t1 = t0 + Math.max(1, Number(e.duration || 0)) * 1000;
+      if (!rangesIntersect(t0, t1, fromMs, toMs)) return;
+      userRanges[u] = userRanges[u] || [];
+      userRanges[u].push([t0, t1]);
+    });
+
+    const activeRanges = [];
+    const afkByTs = new Map();
+    (afkEvents || []).forEach(function (e) { afkByTs.set(String(e.timestamp || ""), e); });
+    (windowEvents || []).forEach(function (e) {
+      const t0 = ms(e.timestamp);
+      const t1 = t0 + Math.max(1, Number(e.duration || 0)) * 1000;
+      if (!rangesIntersect(t0, t1, fromMs, toMs)) return;
+      const afk = afkByTs.get(String(e.timestamp || ""));
+      const status = String(afk && afk.data && afk.data.status || "");
+      if (status && status.toLowerCase() === "afk") return;
+      activeRanges.push([t0, t1]);
+    });
+
+    const rows = Object.keys(userRanges).sort().map(function (u) {
+      let presentSec = 0;
+      let activeSec = 0;
+      userRanges[u].forEach(function (r) {
+        presentSec += intersectDurationSeconds(r[0], r[1], fromMs, toMs);
+        activeRanges.forEach(function (a) {
+          activeSec += intersectDurationSeconds(r[0], r[1], a[0], a[1]);
+        });
+      });
+      const idleSec = Math.max(0, presentSec - activeSec);
+      return { user: u, presentSec: presentSec, activeSec: activeSec, idleSec: idleSec };
+    });
+
+    if (!rows.length) {
+      target.innerHTML = '<div class="aw-ru-pve-audit-muted">Нет данных в aw-worktime-sessions_' + host + ' за выбранный интервал.</div>';
+      return;
+    }
+
+    target.innerHTML = '<table class="aw-ru-worktime-table"><thead><tr><th>Пользователь</th><th>Активно, ч</th><th>В сессии, ч</th><th>Простой, ч</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + r.user + '</td><td>' + fmtHours(r.activeSec) + '</td><td>' + fmtHours(r.presentSec) + '</td><td>' + fmtHours(r.idleSec) + '</td></tr>';
+      }).join("") +
+      '</tbody></table>';
+  }
+
+  async function injectPersonalWorktimeCenter(root) {
+    const isActivity = /^#\/activity\//i.test(window.location.hash || "");
+    if (!isActivity) return;
+    if (root.querySelector(".aw-ru-worktime-center")) return;
+    const host = getCurrentHostFromHash();
+    if (!host) return;
+
+    const container = document.createElement("div");
+    container.className = "aw-ru-worktime-center";
+    const now = new Date();
+    const day = now.toISOString().slice(0, 10);
+    container.innerHTML =
+      '<h3 style="margin-top:0">Персональный учёт рабочего времени</h3>' +
+      '<div class="aw-ru-worktime-controls">' +
+      '<label>Дата <input type="date" data-aw-wt-date value="' + day + '"></label>' +
+      '<label>С <input type="time" data-aw-wt-from value="09:00"></label>' +
+      '<label>По <input type="time" data-aw-wt-to value="18:00"></label>' +
+      '<button type="button" data-aw-wt-run>Рассчитать</button>' +
+      '</div>' +
+      '<div data-aw-wt-result class="aw-ru-pve-audit-muted">Нажмите "Рассчитать".</div>';
+
+    root.insertBefore(container, root.firstChild);
+
+    const run = async function () {
+      const date = container.querySelector("[data-aw-wt-date]").value;
+      const tFrom = container.querySelector("[data-aw-wt-from]").value || "09:00";
+      const tTo = container.querySelector("[data-aw-wt-to]").value || "18:00";
+      const result = container.querySelector("[data-aw-wt-result]");
+      result.textContent = "Расчёт...";
+      const fromIso = new Date(date + "T" + tFrom + ":00").toISOString();
+      const toIso = new Date(date + "T" + tTo + ":00").toISOString();
+      try {
+        await renderPersonalWorktime(host, fromIso, toIso, result);
+      } catch (e) {
+        result.textContent = "Ошибка расчёта: " + String(e.message || e);
+      }
+    };
+    container.querySelector("[data-aw-wt-run]").addEventListener("click", function () { run(); });
+  }
+
   function applyPatch() {
     enforceSafeActivityViewForPveHost();
     ensureSettingsHost();
@@ -1599,6 +1739,7 @@
     injectDlpNavigation(document.body);
     injectDlpReviewCenter(document.body);
     injectDlpAlertsCenter(document.body);
+    injectPersonalWorktimeCenter(document.body).catch(function () {});
     injectHostGroupsCenter(document.body).catch(function () {});
     redirectBareTrendsRoute();
   }
