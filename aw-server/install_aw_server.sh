@@ -34,7 +34,7 @@ done
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y curl ca-certificates unzip jq
+apt-get install -y curl ca-certificates unzip jq python3
 
 if ! getent group "$AW_SERVER_GROUP" >/dev/null; then
   groupadd --system "$AW_SERVER_GROUP"
@@ -95,6 +95,17 @@ for _ in $(seq 1 20); do
   fi
   sleep 2
 done
+
+if [[ "${AW_SERVER_ENABLE_RU_PATCH:-1}" == "1" ]]; then
+  if [[ -x /root/bootstrap/apply_webui_ru_patch.sh ]]; then
+    /root/bootstrap/apply_webui_ru_patch.sh
+    echo "Applied Web UI Russian patch"
+  else
+    echo "RU patch script not found or not executable, skipped: /root/bootstrap/apply_webui_ru_patch.sh"
+  fi
+else
+  echo "RU patch disabled by AW_SERVER_ENABLE_RU_PATCH=${AW_SERVER_ENABLE_RU_PATCH}"
+fi
 
 if [[ -f "$CLASSES_JSON" ]]; then
   curl -fsS -X POST \
