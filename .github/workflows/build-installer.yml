@@ -1,0 +1,34 @@
+name: Build Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'windows/**'
+      - '.github/workflows/build-installer.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      SIGNTOOL_CMD: ${{ secrets.SIGNTOOL_CMD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Inno
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          ./windows/installer/build-installer.ps1
+
+      - name: Upload Setup.exe artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: awatch-rus-setup
+          path: windows/installer/output/*.exe
+          if-no-files-found: error

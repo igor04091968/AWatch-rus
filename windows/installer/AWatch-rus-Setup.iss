@@ -23,6 +23,8 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 SetupLogging=yes
+; Optional production code signing. Configure SIGNTOOL_CMD in CI/local env
+SignTool=byparam $q$zSIGNTOOL_CMD $f$q
 DisableWelcomePage=no
 AllowNoIcons=yes
 UninstallDisplayIcon={app}\tools\validate-deployment.ps1
@@ -71,6 +73,11 @@ var
   StateRootEdit: TEdit;
   AfkCheck: TNewCheckBox;
   WindowCheck: TNewCheckBox;
+
+procedure ApplyCmdParamIfPresent(const ParamName: string; Edit: TEdit);
+forward;
+procedure ApplyCmdBoolIfPresent(const ParamName: string; Check: TNewCheckBox);
+forward;
 
 procedure InitializeWizard;
 begin
@@ -131,6 +138,35 @@ begin
   WindowCheck.Top := ScaleY(224);
   WindowCheck.Caption := 'Enable Window watcher';
   WindowCheck.Checked := True;
+  ApplyCmdParamIfPresent('SERVERHOST', ServerHostEdit);
+  ApplyCmdParamIfPresent('SERVERPORT', ServerPortEdit);
+  ApplyCmdParamIfPresent('DOMAIN', DomainEdit);
+  ApplyCmdParamIfPresent('USERS', UsersEdit);
+  ApplyCmdParamIfPresent('INSTALLROOT', InstallRootEdit);
+  ApplyCmdParamIfPresent('STATEROOT', StateRootEdit);
+  ApplyCmdBoolIfPresent('AFKENABLED', AfkCheck);
+  ApplyCmdBoolIfPresent('WINDOWENABLED', WindowCheck);
+end;
+
+
+procedure ApplyCmdParamIfPresent(const ParamName: string; Edit: TEdit);
+var
+  V: string;
+begin
+  V := ExpandConstant('{param:' + ParamName + '|}');
+  if Trim(V) <> '' then
+    Edit.Text := V;
+end;
+
+procedure ApplyCmdBoolIfPresent(const ParamName: string; Check: TNewCheckBox);
+var
+  V: string;
+begin
+  V := Lowercase(Trim(ExpandConstant('{param:' + ParamName + '|}')));
+  if (V = '1') or (V = 'true') or (V = 'yes') then
+    Check.Checked := True
+  else if (V = '0') or (V = 'false') or (V = 'no') then
+    Check.Checked := False;
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
