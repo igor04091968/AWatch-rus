@@ -67,7 +67,8 @@ cat > "$CONFIG_PATH" <<EOF
   "access_log": "/var/log/pveproxy/access.log",
   "tasks_index": "/var/log/pve/tasks/index",
   "web_bucket": "aw-pve-webadmin-events_${HOST_SHORT}",
-  "task_bucket": "aw-pve-task-events_${HOST_SHORT}"
+  "task_bucket": "aw-pve-task-events_${HOST_SHORT}",
+  "category_bucket": "aw-detmir-web-category_${HOST_SHORT}"
 }
 EOF
 
@@ -133,6 +134,7 @@ class Collector:
         self.poll = max(1, int(cfg.get("poll_interval_seconds", 5)))
         self.web_bucket = cfg["web_bucket"]
         self.task_bucket = cfg["task_bucket"]
+        self.category_bucket = cfg.get("category_bucket", f"aw-detmir-web-category_{self.host}")
         self.access_log = pathlib.Path(cfg["access_log"])
         self.tasks_index = pathlib.Path(cfg["tasks_index"])
         self.state_dir = pathlib.Path(cfg["state_dir"])
@@ -235,6 +237,9 @@ class Collector:
                 },
             }
             self.heartbeat(self.web_bucket, event, "app.pve.webadmin.event")
+            category_event = self.classify_access_event(event)
+            if category_event:
+                self.heartbeat(self.category_bucket, category_event, "web.tab.current")
 
     def process_tasks(self):
         for line in self.read_new_lines(self.tasks_index, self.tasks_state):
@@ -259,6 +264,44 @@ class Collector:
                 },
             }
             self.heartbeat(self.task_bucket, event, "app.pve.task.event")
+
+    def classify_access_event(self, source_event: dict):
+        data = source_event.get("data", {})
+        path = str(data.get("path") or "")
+        user = str(data.get("user") or "")
+        remote_ip = str(data.get("remote_ip") or "")
+        method = str(data.get("method") or "")
+        status = int(data.get("status") or 0)
+        # Keep only meaningful API/UI actions for worktime.
+        if not path.startswith("/api2/"):
+            return None
+        if method == "GET" and ("/cluster/resources" in path or "/status/current" in path):
+            return None
+        category = "Администрирование"
+        category_group = "work"
+        if status in (401, 403):
+            category = "Безопасность"
+        title = f"Proxmox API {method} {path}"
+        return {
+            "timestamp": source_event.get("timestamp") or iso_now(),
+            "duration": 0,
+            "data": {
+                "source": "pve-webadmin-bridge",
+                "service": "proxmox",
+                "host": self.host,
+                "app": "proxmox-webui",
+                "title": title[:512],
+                "url": f"https://{self.host}:8006{path}",
+                "domain": self.host,
+                "rootDomain": "proxmox-webui",
+                "categoryGroup": category_group,
+                "category": category,
+                "user": user,
+                "remote_ip": remote_ip,
+                "method": method,
+                "status": status,
+            },
+        }
 
     def run(self):
         while True:
@@ -303,4 +346,4 @@ systemctl --no-pager --full status aw-pve-webadmin-logger.service || true
 
 echo "Installed aw-pve-webadmin-logger"
 echo "Config: ${CONFIG_PATH}"
-echo "Buckets: aw-pve-webadmin-events_${HOST_SHORT}, aw-pve-task-events_${HOST_SHORT}"
+echo "Buckets: aw-pve-webadmin-events_${HOST_SHORT}, aw-pve-task-events_${HOST_SHORT}, aw-detmir-web-category_${HOST_SHORT}"

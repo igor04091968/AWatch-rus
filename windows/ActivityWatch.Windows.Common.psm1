@@ -243,6 +243,8 @@ function Copy-ActivityWatchCollectorAssets {
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScriptSource,
         [Parameter(Mandatory = $true)]
+        [string]$SessionCollectorScriptSource,
+        [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
         [Parameter(Mandatory = $true)]
         [string]$ExamplePolicySource,
@@ -256,6 +258,7 @@ function Copy-ActivityWatchCollectorAssets {
 
     $collectorTarget = Join-Path $StateRoot 'browser-domains-native-collector.ps1'
     $endpointCollectorTarget = Join-Path $StateRoot 'dlp-endpoint-signals-collector.ps1'
+    $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
     $examplePolicyTarget = Join-Path $StateRoot 'dlp-policy.example.json'
@@ -263,6 +266,7 @@ function Copy-ActivityWatchCollectorAssets {
 
     Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
     Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
+    Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
     Copy-Item -LiteralPath $ExampleRulesSource -Destination $exampleRulesTarget -Force
     Copy-Item -LiteralPath $ExamplePolicySource -Destination $examplePolicyTarget -Force
 
@@ -282,6 +286,7 @@ function Copy-ActivityWatchCollectorAssets {
     return [pscustomobject]@{
         CollectorScript         = $collectorTarget
         EndpointCollectorScript = $endpointCollectorTarget
+        SessionCollectorScript  = $sessionCollectorTarget
         ExampleRules            = $exampleRulesTarget
         ActiveRules             = $rulesTarget
         ExamplePolicy           = $examplePolicyTarget
@@ -307,6 +312,8 @@ function New-ActivityWatchDeploymentConfig {
         [string]$CollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScript,
+        [Parameter(Mandatory = $true)]
+        [string]$SessionCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
         [Parameter(Mandatory = $true)]
@@ -349,6 +356,7 @@ function New-ActivityWatchDeploymentConfig {
             logsRoot       = $LogsRoot
             collectorScript = $CollectorScript
             endpointCollectorScript = $EndpointCollectorScript
+            sessionCollectorScript = $SessionCollectorScript
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -631,6 +639,7 @@ function Start-CollectorScriptIfNeeded {
 `$script:KnownBuckets = @{}
 `$collectorScript = [string]`$config.paths.collectorScript
 `$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { '' }
+`$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { '' }
 `$afkExe = Join-Path `$installRoot 'aw-watcher-afk\aw-watcher-afk.exe'
 `$windowExe = Join-Path `$installRoot 'aw-watcher-window\aw-watcher-window.exe'
 `$serverArgs = @('--host', [string]`$config.server.host, '--port', [string]`$config.server.port)
@@ -661,6 +670,7 @@ catch {
 }
 Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+Start-CollectorScriptIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 "@
 
     Set-Content -LiteralPath $Path -Value $content -Encoding UTF8

@@ -681,6 +681,19 @@
           ]
         },
         {
+          id: "linux-remote",
+          name: "Linux remote workers",
+          description: "Linux-хосты удалённых сотрудников: GUI активность, SSH/console и browser admin UI.",
+          patterns: ["^(LINUX-WS|LINUX-DESKTOP|LX-|DESKTOP-|ADMIN-|WORKSTATION-|DEVBOX-)"],
+          links: [
+            { label: "Активность", type: "activity" },
+            { label: "SSH сессии", type: "bucket", bucket_prefix: "aw-ssh-sessions_" },
+            { label: "Команды shell", type: "bucket", bucket_prefix: "aw-console-commands_" },
+            { label: "Web категории", type: "bucket", bucket_prefix: "aw-detmir-web-category_" },
+            { label: "Все бакеты", type: "buckets" }
+          ]
+        },
+        {
           id: "virtual-infra",
           name: "Virtual servers + Proxmox",
           description: "Инфраструктурные VM, Proxmox и сетевые узлы.",
@@ -740,7 +753,15 @@
     const prefixes = [
       "aw-watcher-window_",
       "aw-watcher-afk_",
+      "aw-console-commands_",
+      "aw-ssh-sessions_",
+      "aw-linux-web-context_",
+      "aw-detmir-web-category_",
       "aw-dlp-endpoint-signals_",
+      "aw-session-events_",
+      "aw-worktime-sessions_",
+      "aw-pve-webadmin-events_",
+      "aw-pve-task-events_",
       "aw-dlp-incidents_",
       "aw-pfsense-health_",
       "aw-pfsense-gateways_",
@@ -770,7 +791,27 @@
     return result;
   }
 
-  function matchHostGroup(host, groups) {
+  function hostHasBucketPrefix(hostBuckets, prefix) {
+    return (hostBuckets || []).some(function (bucketId) {
+      return String(bucketId || "").indexOf(prefix) === 0;
+    });
+  }
+
+  function matchHostGroup(host, groups, hostBuckets) {
+    const bucketList = hostBuckets || [];
+    if (hostHasBucketPrefix(bucketList, "aw-dlp-endpoint-signals_") || hostHasBucketPrefix(bucketList, "aw-session-events_")) {
+      return "windows-rdp";
+    }
+    if (
+      hostHasBucketPrefix(bucketList, "aw-console-commands_") ||
+      hostHasBucketPrefix(bucketList, "aw-ssh-sessions_") ||
+      hostHasBucketPrefix(bucketList, "aw-linux-web-context_") ||
+      hostHasBucketPrefix(bucketList, "aw-detmir-web-category_")
+    ) {
+      if (!hostHasBucketPrefix(bucketList, "aw-pve-webadmin-events_") && !hostHasBucketPrefix(bucketList, "aw-pve-task-events_")) {
+        return "linux-remote";
+      }
+    }
     for (const group of groups) {
       const patterns = Array.isArray(group.patterns) ? group.patterns : [];
       for (const pattern of patterns) {
@@ -813,7 +854,7 @@
     grouped.set("__ungrouped__", []);
 
     Array.from(hostBuckets.keys()).sort().forEach(function (host) {
-      const groupId = matchHostGroup(host, groups) || "__ungrouped__";
+      const groupId = matchHostGroup(host, groups, hostBuckets.get(host) || []) || "__ungrouped__";
       grouped.get(groupId).push(host);
     });
 
@@ -869,7 +910,7 @@
       center.setAttribute("data-aw-ru-host-groups", "1");
       center.innerHTML =
         '<h4>Разделы хостов</h4>' +
-        '<p>Здесь хосты разделены на пользовательские Windows RDP и инфраструктурные виртуальные серверы/Proxmox.</p>' +
+        '<p>Здесь хосты разделены на Windows RDP, Linux remote workers и инфраструктурные узлы.</p>' +
         '<div class="aw-ru-host-groups-grid" data-aw-ru-host-groups-grid><section class="aw-ru-host-group-card"><p>Загрузка...</p></section></div>';
       heading.parentElement.insertBefore(center, heading.nextSibling);
     }

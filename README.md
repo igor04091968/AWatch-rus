@@ -10,16 +10,19 @@
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
+- `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.
 - `docs/console-ssh-logger.md` — логирование только консольных команд и SSH-сессий в AW.
 - `docs/dlp-gap-analysis.md` — разрыв до enterprise DLP и roadmap.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `pfsense/` — внешний poller для pfSense API и systemd unit под Debian/Ubuntu utility VM.
-- `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, phase-2 DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`).
+- `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, phase-2 DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`) и session-level presence для удалённых Windows/RDP пользователей (`aw-worktime-sessions_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
 - `scripts/install_aw_linux_client.sh` — установка Linux bundle + autostart для remote AW server.
 - `scripts/install_aw_console_ssh_logger.sh` — user-space установка console/ssh logger.
+- `scripts/install_aw_linux_web_category_logger.sh` — user-space классификация browser admin UI по title/class.
+- `scripts/install_aw_linux_remote_worker.sh` — полный Linux remote-worker installer.
 
 ## Базовый сценарий
 
@@ -50,6 +53,11 @@
 
 - `docs/linux-client.md`
 - `scripts/install_aw_linux_client.sh`
+
+Для полного Linux remote-worker сценария:
+
+- `docs/linux-remote-worker.md`
+- `scripts/install_aw_linux_remote_worker.sh`
 
 Для режима “только консоль/ssh” без GUI watcher'ов:
 

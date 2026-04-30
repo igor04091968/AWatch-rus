@@ -20,7 +20,7 @@
     "name": ["Работа", "Документы"],
     "rule": {
       "type": "regex",
-      "regex": "\\b(winword|excel|powerpnt|outlook|acrord32|acrord64)\\.exe\\b|Adobe Reader|Acrobat",
+      "regex": "\\b(winword|excel|powerpnt|outlook|acrord32|acrord64|libreoffice|writer|calc)\\.exe\\b|LibreOffice|OnlyOffice|Adobe Reader|Acrobat",
       "ignore_case": true
     },
     "data": { "color": "#2E7D32" }
@@ -40,7 +40,7 @@
     "name": ["Работа", "Администрирование"],
     "rule": {
       "type": "regex",
-      "regex": "\\b(mstsc|putty|kitty|winscp|anydesk|teamviewer|vncviewer|mmc|regedit|services|control|powershell|cmd)\\.exe\\b",
+      "regex": "\\b(mstsc|putty|kitty|winscp|anydesk|teamviewer|vncviewer|mmc|regedit|services|control|powershell|cmd|gnome-terminal|gnome-terminal-server|xfce4-terminal|konsole|tilix|alacritty|xterm|remmina|virt-manager)\\.exe\\b|\\b(gnome-terminal|gnome-terminal-server|xfce4-terminal|konsole|tilix|alacritty|xterm|remmina|virt-manager)\\b|Proxmox Virtual Environment|\\bpfSense\\b|\\bGrafana\\b|\\bKibana\\b|\\bPortainer\\b",
       "ignore_case": true
     },
     "data": { "color": "#6D4C41" }
@@ -56,7 +56,7 @@
     "name": ["Интернет", "Браузер"],
     "rule": {
       "type": "regex",
-      "regex": "\\b(chrome|msedge|firefox|opera|brave|vivaldi|browser)\\.exe\\b",
+      "regex": "\\b(chrome|msedge|firefox|opera|brave|vivaldi|browser|chromium)\\.exe\\b|\\b(chrome|chromium|firefox|opera|brave|vivaldi)\\b",
       "ignore_case": true
     },
     "data": { "color": "#00897B" }
@@ -82,7 +82,7 @@
     "name": ["ActivityWatch"],
     "rule": {
       "type": "regex",
-      "regex": "ActivityWatch|\\baw-(watcher|qt)\\.exe\\b",
+      "regex": "ActivityWatch|\\baw-(watcher|qt)\\.exe\\b|\\baw-(watcher|qt)\\b",
       "ignore_case": true
     },
     "data": {}
