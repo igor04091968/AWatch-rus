@@ -37,6 +37,12 @@ aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ans
 aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
 aw_windows_fail_on_validation_error: true
 
+# Безопасная миграция текущего прода со старых путей в единый профиль AWatch-rus.
+aw_windows_migration_enabled: true
+aw_windows_legacy_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
+aw_windows_legacy_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+aw_windows_migration_report_remote_path: "{{ aw_windows_state_root }}\\aw_migration_ansible.json"
+
 # По умолчанию AFK bucket вычисляется как aw-watcher-afk_<COMPUTERNAME>.
 # Задайте явное значение только если watcher пишет в нестандартный bucket.
 aw_windows_api_smoke_check_enabled: true

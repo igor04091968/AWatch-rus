@@ -42,6 +42,10 @@
     aw_windows_api_smoke_check_bucket: ""
     aw_windows_api_smoke_check_limit: 10
     aw_windows_fail_on_validation_error: true
+    aw_windows_migration_enabled: true
+    aw_windows_legacy_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
+    aw_windows_legacy_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+    aw_windows_migration_report_remote_path: "{{ aw_windows_state_root }}\\aw_migration_ansible.json"
 
   tasks:
     - name: Проверить обязательные переменные
@@ -74,6 +78,7 @@
         - browser-domains-native-collector.ps1
         - dlp-endpoint-signals-collector.ps1
         - worktime-session-collector.ps1
+        - migrate-awatch-rus-paths.ps1
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1
         - hardening-recovery.ps1
@@ -88,6 +93,27 @@
           {% for user in aw_windows_users_effective -%}
           {{ user }}
           {% endfor -%}
+
+    - name: Проверить нужен ли migration с legacy ActivityWatch путей
+      when: aw_windows_migration_enabled | bool
+      ansible.windows.win_stat:
+        path: "{{ aw_windows_legacy_state_root }}\\deployment-config.json"
+      register: aw_windows_legacy_config
+
+    - name: Выполнить безопасную migration legacy prod в AWatch-rus
+      when:
+        - aw_windows_migration_enabled | bool
+        - aw_windows_legacy_config.stat.exists | default(false)
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $result = & "{{ aw_windows_deploy_root }}\windows\migrate-awatch-rus-paths.ps1" `
+            -OldInstallRoot "{{ aw_windows_legacy_install_root }}" `
+            -OldStateRoot "{{ aw_windows_legacy_state_root }}" `
+            -NewInstallRoot "{{ aw_windows_install_root }}" `
+            -NewStateRoot "{{ aw_windows_state_root }}" `
+            -ToolkitRoot "{{ aw_windows_deploy_root }}\windows"
+          $result | ConvertTo-Json -Depth 8 | Out-File -FilePath "{{ aw_windows_migration_report_remote_path }}" -Encoding utf8
 
     - name: Запустить Windows/RDP ensemble развёртывание
       ansible.windows.win_powershell:

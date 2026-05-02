@@ -143,9 +143,37 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
 
 Если список уже содержит `DOMAIN\user`, параметр `-Domain` не нужен.
 
-## Рекомендуемый phased rollout (изолированный профиль)
+## Безопасная миграция текущего production
 
-Для безопасного параллельного запуска рядом с legacy-инсталляцией используйте отдельные пути:
+Если текущий RDP production уже работает в `C:\Program Files\ActivityWatch-Phase2` и
+`C:\ProgramData\ActivityWatch-Phase2`, не запускайте обычный update без миграции.
+Сначала выполните перенос в единый профиль AWatch-rus:
+
+```powershell
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1 -WhatIf
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1
+```
+
+Скрипт делает безопасный порядок:
+
+1. Находит старый `deployment-config.json`.
+2. Останавливает `ActivityWatch Recovery` и `ActivityWatch Launch *`.
+3. Создаёт backup старых и новых каталогов в
+   `C:\ProgramData\AWatch-rus\migration-backups\YYYYMMDD-HHMMSS`.
+4. Копирует бинарники/состояние в единые пути:
+   - `C:\Program Files\AWatch-rus\bin`
+   - `C:\ProgramData\AWatch-rus`
+5. Переписывает пути в `deployment-config.json`.
+6. Пересоздаёт launcher/recovery scripts и scheduled tasks.
+7. Запускает `validate-deployment.ps1`; при ошибке оставляет backup path в сообщении.
+
+Ansible playbook `ansible/deploy_aw_windows.yml` выполняет этот migration guard
+автоматически, если на хосте найден
+`C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`.
+
+## Рекомендуемый rollout
+
+Для запуска после миграции используйте единые пути:
 
 ```powershell
 .\windows\deploy-domain-users.ps1 `
@@ -207,7 +235,7 @@ Single-user pilot в таком же стиле:
 - `C:\ProgramData\AWatch-rus\dlp-policy.json` — активная DLP-политика.
 - `C:\ProgramData\AWatch-rus\logs\` — логи collector'а.
 
-Для phased rollout те же файлы формируются в каталоге `StateRoot`, переданном параметром.
+При переопределении `StateRoot` те же файлы формируются в указанном каталоге.
 
 ## Повторный прогон
 

@@ -93,6 +93,7 @@ ansible-playbook -i inventory.ini deploy_aw_windows.yml
 Playbook:
 
 - выгружает полный `windows/*` toolkit на целевой хост в InnoSetup-compatible каталог `C:\Program Files\AWatch-rus\windows`, включая DLP и `worktime-session-collector.ps1`;
+- если найден legacy config `C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`, выполняет безопасную миграцию через `migrate-awatch-rus-paths.ps1`: backup, остановка задач, перенос данных, переписывание путей, пересоздание scheduled tasks и validation;
 - выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с policy/rules из AWatch-rus toolkit;
 - после deploy принудительно запускает `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи;
 - выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие `not-afk` события;
@@ -110,6 +111,9 @@ Playbook:
 - `aw_windows_install_root: 'C:\Program Files\AWatch-rus\bin'` — каталог бинарников, совпадает с InnoSetup `AwDefaultInstallRoot`;
 - `aw_windows_state_root: 'C:\ProgramData\AWatch-rus'` — каталог состояния/отчётов, совпадает с InnoSetup `AwDefaultStateRoot`;
 - `aw_windows_validation_remote_path: '{{ aw_windows_state_root }}\aw_validate_ansible.json'` — отчёт Ansible-валидации хранится рядом с `ensemble-report-*.json`;
+- `aw_windows_migration_enabled: true` — включить guard миграции текущего production из `ActivityWatch-Phase2` в единый `AWatch-rus`;
+- `aw_windows_legacy_install_root` / `aw_windows_legacy_state_root` — старые production paths, откуда выполняется перенос;
+- `aw_windows_migration_report_remote_path` — JSON-отчёт о миграции на Windows-хосте;
 - `aw_windows_package_version`, `aw_windows_package_url`, `aw_windows_package_zip_path` — версия и источник Windows-пакета ActivityWatch;
 - `aw_windows_api_smoke_check_bucket: ""` — автоматически использовать `aw-watcher-afk_<COMPUTERNAME>`;
 - `aw_windows_fail_on_validation_error: true` — завершать playbook ошибкой, если `validate-deployment.ps1` возвращает `overallOk=false`;

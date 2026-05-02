@@ -187,6 +187,19 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
 ### 3.2 Массовое доменное развёртывание (рекомендуется)
 
+Если текущий production ещё работает в старых каталогах
+`C:\Program Files\ActivityWatch-Phase2` и `C:\ProgramData\ActivityWatch-Phase2`,
+сначала выполните безопасную миграцию:
+
+```powershell
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1 -WhatIf
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1
+```
+
+Скрипт остановит `ActivityWatch Recovery`/`ActivityWatch Launch *`, создаст backup в
+`C:\ProgramData\AWatch-rus\migration-backups\...`, перенесёт файлы в единые пути,
+пересоздаст `deployment-config.json`/scheduled tasks и запустит validation.
+
 Пример со списком пользователей:
 
 ```powershell

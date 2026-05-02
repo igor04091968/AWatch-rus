@@ -31,6 +31,7 @@
 - `windows/deploy-ensemble.ps1`
 - `windows/hardening-recovery.ps1`
 - `windows/validate-deployment.ps1`
+- `windows/migrate-awatch-rus-paths.ps1`
 
 ### 1.3 Коллекторы
 - `windows/worktime-session-collector.ps1` (RDP/session presence)
@@ -76,6 +77,7 @@
 - `windows\deploy-ensemble.ps1`
 - `windows\hardening-recovery.ps1`
 - `windows\validate-deployment.ps1`
+- `windows\migrate-awatch-rus-paths.ps1`
 - `windows\worktime-session-collector.ps1`
 - `windows\browser-domains-native-collector.ps1`
 - `windows\dlp-endpoint-signals-collector.ps1`
