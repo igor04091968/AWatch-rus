@@ -44,8 +44,7 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Uri,
         [Parameter(Mandatory = $true)][string]$Json
     )
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json' -Body $Json | Out-Null
 }
 
 function Ensure-Bucket {
