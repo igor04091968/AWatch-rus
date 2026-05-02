@@ -49,7 +49,9 @@ function Get-ActivityWatchArchive {
     }
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $archivePath = Join-Path $WorkingRoot ("activitywatch-{0}.zip" -f $Version.TrimStart('v'))
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $suffix = ([guid]::NewGuid().Guid.Substring(0, 8))
+    $archivePath = Join-Path $WorkingRoot ("activitywatch-{0}-{1}-{2}.zip" -f $Version.TrimStart('v'), $stamp, $suffix)
     Invoke-WebRequest -Uri $PackageUrl -OutFile $archivePath
     return $archivePath
 }
@@ -84,6 +86,16 @@ function Install-ActivityWatchPackage {
 
     New-ActivityWatchDirectory -Path $WorkingRoot
     New-ActivityWatchDirectory -Path $BackupRoot
+
+    # Ensure nothing is holding locks inside InstallRoot during upgrade.
+    foreach ($procName in @('aw-watcher-afk', 'aw-watcher-window', 'aw-server', 'aw-qt')) {
+        try {
+            Get-Process -Name $procName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
+    Start-Sleep -Seconds 2
 
     $extractRoot = Join-Path $WorkingRoot ('extract-' + [guid]::NewGuid().Guid)
     if (Test-Path -LiteralPath $extractRoot) {
@@ -614,6 +626,10 @@ function Start-CollectorScriptIfNeeded {
         [int]`$SessionId
     )
 
+    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
+        return
+    }
+
     if (-not (Test-Path -LiteralPath `$ScriptPath)) {
         return
     }
@@ -634,12 +650,13 @@ function Start-CollectorScriptIfNeeded {
 `$config = Get-DeploymentConfig -Path `$ConfigPath
 `$sessionId = (Get-Process -Id `$PID).SessionId
 `$installRoot = [string]`$config.paths.installRoot
+`$stateRoot = [string]`$config.paths.stateRoot
 `$script:ApiBase = '{0}://{1}:{2}/api/0' -f [string]`$config.server.scheme, [string]`$config.server.host, [string]`$config.server.port
 `$script:Hostname = `$env:COMPUTERNAME
 `$script:KnownBuckets = @{}
 `$collectorScript = [string]`$config.paths.collectorScript
-`$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { '' }
-`$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { '' }
+`$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { Join-Path `$stateRoot 'dlp-endpoint-signals-collector.ps1' }
+`$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { Join-Path `$stateRoot 'worktime-session-collector.ps1' }
 `$afkExe = Join-Path `$installRoot 'aw-watcher-afk\aw-watcher-afk.exe'
 `$windowExe = Join-Path `$installRoot 'aw-watcher-window\aw-watcher-window.exe'
 `$serverArgs = @('--host', [string]`$config.server.host, '--port', [string]`$config.server.port)
