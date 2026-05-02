@@ -4,7 +4,7 @@
 
 ```powershell
 $report = .\windows\validate-deployment.ps1 `
-  -ConfigPath C:\ProgramData\ActivityWatch\deployment-config.json
+  -ConfigPath C:\ProgramData\ActivityWatch-Phase2\deployment-config.json
 $report | ConvertTo-Json -Depth 12
 ```
 
@@ -19,11 +19,11 @@ $report | ConvertTo-Json -Depth 12
 ### 1. Проверить установленные файлы
 
 ```powershell
-Test-Path 'C:\Program Files\ActivityWatch\aw-watcher-afk\aw-watcher-afk.exe'
-Test-Path 'C:\Program Files\ActivityWatch\aw-watcher-window\aw-watcher-window.exe'
-Test-Path 'C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1'
-Test-Path 'C:\ProgramData\ActivityWatch\dlp-policy.json'
-Test-Path 'C:\ProgramData\ActivityWatch\deployment-config.json'
+Test-Path 'C:\Program Files\ActivityWatch-Phase2\aw-watcher-afk\aw-watcher-afk.exe'
+Test-Path 'C:\Program Files\ActivityWatch-Phase2\aw-watcher-window\aw-watcher-window.exe'
+Test-Path 'C:\ProgramData\ActivityWatch-Phase2\browser-domains-native-collector.ps1'
+Test-Path 'C:\ProgramData\ActivityWatch-Phase2\dlp-policy.json'
+Test-Path 'C:\ProgramData\ActivityWatch-Phase2\deployment-config.json'
 ```
 
 Ожидаемый результат — везде `True`.
@@ -50,7 +50,7 @@ Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Recovery'
 ### 2.1 Проверить incidentCapture в конфиге
 
 ```powershell
-$cfg = Get-Content 'C:\ProgramData\ActivityWatch\deployment-config.json' -Raw | ConvertFrom-Json
+$cfg = Get-Content 'C:\ProgramData\ActivityWatch-Phase2\deployment-config.json' -Raw | ConvertFrom-Json
 $cfg.incidentCapture
 ```
 
@@ -119,7 +119,7 @@ Invoke-WebRequest http://aw.example.local:5600/api/0/buckets | Select-Object -Ex
 4. Проверьте локальный лог:
 
 ```powershell
-Get-Content "C:\ProgramData\ActivityWatch\logs\dlp-incidents-$env:USERNAME.log" -Tail 50
+Get-Content "C:\ProgramData\ActivityWatch-Phase2\logs\dlp-incidents-$env:USERNAME.log" -Tail 50
 ```
 
 Если `screenshotEnabled = True`, проверьте наличие скриншота в инциденте:
@@ -188,7 +188,7 @@ Invoke-WebRequest http://aw.example.local:5600/api/0/buckets/aw-dlp-endpoint-sig
 4. Проверьте локальный лог:
 
 ```powershell
-Get-Content "C:\ProgramData\ActivityWatch\logs\endpoint-signals-$env:USERNAME.log" -Tail 50
+Get-Content "C:\ProgramData\ActivityWatch-Phase2\logs\endpoint-signals-$env:USERNAME.log" -Tail 50
 ```
 
 ## Проверка восстановления
@@ -206,9 +206,9 @@ Start-ScheduledTask -TaskName 'ActivityWatch Recovery'
 ## Проверка ACL
 
 ```powershell
-icacls 'C:\Program Files\ActivityWatch'
-icacls 'C:\ProgramData\ActivityWatch'
-icacls 'C:\ProgramData\ActivityWatch\logs'
+icacls 'C:\Program Files\ActivityWatch-Phase2'
+icacls 'C:\ProgramData\ActivityWatch-Phase2'
+icacls 'C:\ProgramData\ActivityWatch-Phase2\logs'
 ```
 
 Ожидаемо:

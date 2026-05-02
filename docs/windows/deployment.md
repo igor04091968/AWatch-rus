@@ -15,14 +15,14 @@
 ## Что делает пакет
 
 - Ставит `aw-watcher-afk` и `aw-watcher-window` из официального Windows ZIP ActivityWatch.
-- Копирует browser-domain collector в `C:\ProgramData\ActivityWatch`.
-- Копирует DLP policy в `C:\ProgramData\ActivityWatch\dlp-policy.json`.
+- Копирует browser-domain collector в `C:\ProgramData\ActivityWatch-Phase2`.
+- Копирует DLP policy в `C:\ProgramData\ActivityWatch-Phase2\dlp-policy.json`.
 - Включает `incidentCapture` в `deployment-config.json` для DLP-инцидентов:
   - `incidentCapture.screenshotEnabled = true`
   - `incidentCapture.artifactsRoot = <StateRoot>\incident-artifacts`
 - Создаёт per-user задачи `ActivityWatch Launch [...]` с запуском при логоне.
 - Создаёт системную задачу `ActivityWatch Recovery`, которая циклически перезапускает per-user launch tasks.
-- Применяет ACL к `C:\Program Files\ActivityWatch`, `C:\ProgramData\ActivityWatch` и каталогу логов.
+- Применяет ACL к `C:\Program Files\ActivityWatch-Phase2`, `C:\ProgramData\ActivityWatch-Phase2` и каталогу логов.
 - Не содержит хардкодов инфраструктуры: сервер, домен, список пользователей и правила передаются параметрами.
 - Корректно регистрирует задачи через `-LogonType Interactive` (совместимо с Windows Server, где `InteractiveToken` не поддерживается).
 - Поддерживает отключение шумных watcher'ов через `-AfkEnabled:$false` и `-WindowEnabled:$false`.
@@ -155,8 +155,8 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
   -Users user2,user3,user4,user5 `
   -InstallRoot 'C:\Program Files\ActivityWatch-Phase2-u2u5' `
   -StateRoot 'C:\ProgramData\ActivityWatch-Phase2-u2u5' `
-  -CustomRulesPath C:\Deploy\AWatch-rus\windows\web-category-rules.example.json `
-  -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json
+  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json `
+  -CustomPolicyPath C:\Program Files\AWatch-rus\windows\dlp-policy.example.json
 ```
 
 Single-user pilot в таком же стиле:
@@ -168,8 +168,8 @@ Single-user pilot в таком же стиле:
   -TargetUser 'SHARKON2025\user1' `
   -InstallRoot 'C:\Program Files\ActivityWatch-Phase2' `
   -StateRoot 'C:\ProgramData\ActivityWatch-Phase2-user1' `
-  -CustomRulesPath C:\Deploy\AWatch-rus\windows\web-category-rules.example.json `
-  -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json
+  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json `
+  -CustomPolicyPath C:\Program Files\AWatch-rus\windows\dlp-policy.example.json
 ```
 
 ## Ensemble deploy (production workflow)
@@ -186,31 +186,31 @@ Single-user pilot в таком же стиле:
 
 Итоговый отчёт:
 
-- `C:\ProgramData\ActivityWatch\ensemble-report-YYYYMMDD-HHMMSS.json`
+- `C:\ProgramData\ActivityWatch-Phase2\ensemble-report-YYYYMMDD-HHMMSS.json`
 
 ## Категоризация доменов
 
 - Встроенные категории покрывают базовые рабочие, нейтральные и личные домены.
 - Для кастомизации скопируйте `windows/web-category-rules.example.json` и отредактируйте домены.
-- Передайте файл через `-CustomRulesPath`; он будет сохранён как `C:\ProgramData\ActivityWatch\web-category-rules.json`.
+- Передайте файл через `-CustomRulesPath`; он будет сохранён как `C:\ProgramData\ActivityWatch-Phase2\web-category-rules.json`.
 - Пользовательские правила имеют приоритет над встроенными.
 
 ## Структура после установки
 
-- `C:\Program Files\ActivityWatch` — бинарники watcher'ов.
-- `C:\ProgramData\ActivityWatch\deployment-config.json` — итоговая конфигурация.
-- `C:\ProgramData\ActivityWatch\incident-artifacts\` — скриншоты DLP-инцидентов (если `incidentCapture.screenshotEnabled=true`).
-- `C:\ProgramData\ActivityWatch\launch-watchers.ps1` — per-user launcher.
-- `C:\ProgramData\ActivityWatch\recovery-loop.ps1` — system recovery loop.
-- `C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1` — runtime collector.
-- `C:\ProgramData\ActivityWatch\dlp-endpoint-signals-collector.ps1` — runtime endpoint collector.
-- `C:\ProgramData\ActivityWatch\dlp-policy.json` — активная DLP-политика.
-- `C:\ProgramData\ActivityWatch\logs\` — логи collector'а.
+- `C:\Program Files\ActivityWatch-Phase2` — бинарники watcher'ов.
+- `C:\ProgramData\ActivityWatch-Phase2\deployment-config.json` — итоговая конфигурация.
+- `C:\ProgramData\ActivityWatch-Phase2\incident-artifacts\` — скриншоты DLP-инцидентов (если `incidentCapture.screenshotEnabled=true`).
+- `C:\ProgramData\ActivityWatch-Phase2\launch-watchers.ps1` — per-user launcher.
+- `C:\ProgramData\ActivityWatch-Phase2\recovery-loop.ps1` — system recovery loop.
+- `C:\ProgramData\ActivityWatch-Phase2\browser-domains-native-collector.ps1` — runtime collector.
+- `C:\ProgramData\ActivityWatch-Phase2\dlp-endpoint-signals-collector.ps1` — runtime endpoint collector.
+- `C:\ProgramData\ActivityWatch-Phase2\dlp-policy.json` — активная DLP-политика.
+- `C:\ProgramData\ActivityWatch-Phase2\logs\` — логи collector'а.
 
 Для phased rollout те же файлы формируются в каталоге `StateRoot`, переданном параметром.
 
 ## Повторный прогон
 
 - Скрипты идемпотентны: переустанавливают задачи и обновляют runtime-файлы.
-- Предыдущая установка ActivityWatch бэкапится в `C:\ProgramData\ActivityWatch\backups\install-YYYYMMDD-HHMMSS`.
+- Предыдущая установка ActivityWatch бэкапится в `C:\ProgramData\ActivityWatch-Phase2\backups\install-YYYYMMDD-HHMMSS`.
 - Для жёсткого восстановления запускайте `windows/hardening-recovery.ps1`.

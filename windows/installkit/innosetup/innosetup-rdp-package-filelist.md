@@ -53,10 +53,10 @@
 
 Эти файлы/папки появляются на целевом Windows-хосте во время/после деплоя:
 
-- `C:\ProgramData\ActivityWatch\deployment-config.json`
-- `C:\ProgramData\ActivityWatch\web-category-rules.json`
-- `C:\ProgramData\ActivityWatch\dlp-policy.json`
-- `C:\ProgramData\ActivityWatch\logs\*`
+- `C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`
+- `C:\ProgramData\ActivityWatch-Phase2\web-category-rules.json`
+- `C:\ProgramData\ActivityWatch-Phase2\dlp-policy.json`
+- `C:\ProgramData\ActivityWatch-Phase2\logs\*`
 - `%LOCALAPPDATA%\ActivityWatch-Phase2\incident-artifacts\*`
 
 ## 4) Опционально приложить в операторский install-kit

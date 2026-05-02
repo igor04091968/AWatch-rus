@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch-Phase2\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
@@ -45,8 +45,8 @@ if (-not $existingConfig -and (-not $ServerHost)) {
     throw 'deployment-config.json отсутствует. Укажите -ServerHost и параметры пользователей либо сначала выполните скрипт развёртывания.'
 }
 
-$effectiveStateRoot = if ($StateRoot) { $StateRoot } elseif ($existingConfig) { [string]$existingConfig.paths.stateRoot } else { 'C:\ProgramData\ActivityWatch' }
-$effectiveInstallRoot = if ($InstallRoot) { $InstallRoot } elseif ($existingConfig) { [string]$existingConfig.paths.installRoot } else { 'C:\Program Files\ActivityWatch' }
+$effectiveStateRoot = if ($StateRoot) { $StateRoot } elseif ($existingConfig) { [string]$existingConfig.paths.stateRoot } else { 'C:\ProgramData\ActivityWatch-Phase2' }
+$effectiveInstallRoot = if ($InstallRoot) { $InstallRoot } elseif ($existingConfig) { [string]$existingConfig.paths.installRoot } else { 'C:\Program Files\ActivityWatch-Phase2' }
 $effectiveLogsRoot = if ($existingConfig) { [string]$existingConfig.paths.logsRoot } else { Join-Path $effectiveStateRoot 'logs' }
 $effectiveConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $effectiveStateRoot 'deployment-config.json' }
 $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'

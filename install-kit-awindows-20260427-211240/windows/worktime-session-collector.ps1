@@ -1,5 +1,5 @@
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch-Phase2\deployment-config.json',
     [string]$Hostname,
     [int]$PollSeconds = 30
 )

@@ -92,7 +92,7 @@ ansible-playbook -i inventory.ini deploy_aw_windows_phase2.yml
 
 Playbook:
 
-- выгружает полный `windows/*` toolkit на целевой хост в `C:\Deploy\AWatch-rus\windows`, включая DLP и `worktime-session-collector.ps1`;
+- выгружает полный `windows/*` toolkit на целевой хост в InnoSetup-compatible каталог `C:\Program Files\AWatch-rus\windows`, включая DLP и `worktime-session-collector.ps1`;
 - выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с phase-2 policy/rules;
 - после deploy принудительно запускает `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи;
 - выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие `not-afk` события;
@@ -106,6 +106,10 @@ Playbook:
 - `aw_windows_incident_capture_enabled: false` — отключить блок incidentCapture;
 - `aw_windows_incident_screenshot_enabled: false` — не делать скриншот при DLP-инциденте;
 - `aw_windows_incident_artifacts_root: 'C:\...\incident-artifacts'` — переопределить путь артефактов;
+- `aw_windows_deploy_root: 'C:\Program Files\AWatch-rus'` — каталог toolkit, совпадает с InnoSetup `{app}`;
+- `aw_windows_install_root: 'C:\Program Files\ActivityWatch-Phase2'` — каталог бинарников, совпадает с InnoSetup `AwDefaultInstallRoot`;
+- `aw_windows_state_root: 'C:\ProgramData\ActivityWatch-Phase2'` — каталог состояния/отчётов, совпадает с InnoSetup `AwDefaultStateRoot`;
+- `aw_windows_validation_remote_path: '{{ aw_windows_state_root }}\aw_validate_phase2_ansible.json'` — отчёт Ansible-валидации хранится рядом с `ensemble-report-*.json`;
 - `aw_windows_package_version`, `aw_windows_package_url`, `aw_windows_package_zip_path` — версия и источник Windows-пакета ActivityWatch;
 - `aw_windows_api_smoke_check_bucket: ""` — автоматически использовать `aw-watcher-afk_<COMPUTERNAME>`;
 - `aw_windows_fail_on_validation_error: true` — завершать playbook ошибкой, если `validate-deployment.ps1` возвращает `overallOk=false`;
