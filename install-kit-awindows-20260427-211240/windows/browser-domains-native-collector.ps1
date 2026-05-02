@@ -158,12 +158,12 @@ function Get-HostFromUrl {
 
     try {
         $uri = [Uri]$Url
-        $host = $uri.Host.ToLowerInvariant()
-        if ($host.StartsWith('www.')) {
-            return $host.Substring(4)
+        $uriHost = $uri.Host.ToLowerInvariant()
+        if ($uriHost.StartsWith('www.')) {
+            return $uriHost.Substring(4)
         }
 
-        return $host
+        return $uriHost
     }
     catch {
         return $null

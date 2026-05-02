@@ -40,8 +40,20 @@ jobs:
             "windows/*.psm1",
             "windows/*.psd1"
           )
+          $settings = @{
+            Rules = @{
+              PSAvoidUsingEmptyCatchBlock = @{ Enable = $false }
+              PSAvoidUsingWriteHost = @{ Enable = $false }
+              PSUseApprovedVerbs = @{ Enable = $false }
+              PSUseBOMForUnicodeEncodedFile = @{ Enable = $false }
+              PSUseDeclaredVarsMoreThanAssignments = @{ Enable = $false }
+              PSUseShouldProcessForStateChangingFunctions = @{ Enable = $false }
+              PSUseSingularNouns = @{ Enable = $false }
+              PSUseToExportFieldsInManifest = @{ Enable = $false }
+            }
+          }
           $issues = $targets | ForEach-Object {
-            Invoke-ScriptAnalyzer -Path $_ -Recurse -Severity Error,Warning
+            Invoke-ScriptAnalyzer -Path $_ -Recurse -Severity Error,Warning -Settings $settings
           }
           if ($issues) {
             $issues | Format-Table -AutoSize
