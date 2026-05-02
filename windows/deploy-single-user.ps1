@@ -101,9 +101,9 @@ Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptP
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $recoveryScriptPath -ConfigPath $configPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
-Write-Host "ActivityWatch deployed for $TargetUser"
-Write-Host "Server: ${ServerScheme}://$ServerHost`:$ServerPort"
-Write-Host "Install root: $InstallRoot"
-Write-Host "State root: $StateRoot"
-Write-Host "Rules file: $($assetResult.ActiveRules)"
-Write-Host "Policy file: $($assetResult.ActivePolicy)"
+Write-Host "ActivityWatch развёрнут для пользователя: $TargetUser"
+Write-Host "Сервер: ${ServerScheme}://$ServerHost`:$ServerPort"
+Write-Host "Каталог установки: $InstallRoot"
+Write-Host "Каталог данных: $StateRoot"
+Write-Host "Файл правил: $($assetResult.ActiveRules)"
+Write-Host "Файл DLP-политики: $($assetResult.ActivePolicy)"

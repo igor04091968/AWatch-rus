@@ -65,7 +65,7 @@ $tasks = foreach ($taskName in $taskNames) {
     else {
         [pscustomobject]@{
             taskName = $taskName
-            state = 'Missing'
+            state = 'Отсутствует'
             present = $false
         }
     }

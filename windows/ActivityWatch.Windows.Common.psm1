@@ -5,7 +5,7 @@ function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Run this script from an elevated PowerShell session.'
+        throw 'Запустите этот скрипт из PowerShell с правами администратора.'
     }
 }
 
@@ -64,7 +64,7 @@ function Get-ActivityWatchPackageRoot {
         Select-Object -First 1
 
     if (-not $afkBinary) {
-        throw "Cannot find aw-watcher-afk.exe under $ExpandedRoot."
+        throw "Не удалось найти aw-watcher-afk.exe в $ExpandedRoot."
     }
 
     return (Split-Path -Path (Split-Path -Path $afkBinary.FullName -Parent) -Parent)
@@ -130,7 +130,7 @@ function Get-ActivityWatchExecutableMap {
 
     foreach ($entry in $map.GetEnumerator()) {
         if (-not (Test-Path -LiteralPath $entry.Value)) {
-            throw "Missing required ActivityWatch binary: $($entry.Value)"
+            throw "Не найден обязательный исполняемый файл ActivityWatch: $($entry.Value)"
         }
     }
 
@@ -194,7 +194,7 @@ function Normalize-ActivityWatchUsers {
         Sort-Object -Unique
 
     if (-not $normalized -or $normalized.Count -eq 0) {
-        throw 'No target users resolved. Provide -Users or -UserListPath.'
+        throw 'Не удалось определить целевых пользователей. Укажите -Users или -UserListPath.'
     }
 
     return @($normalized)
@@ -421,7 +421,7 @@ function Read-ActivityWatchDeploymentConfig {
     )
 
     if (-not (Test-Path -LiteralPath $Path)) {
-        throw "Deployment config not found: $Path"
+        throw "Конфигурация развёртывания не найдена: $Path"
     }
 
     return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
@@ -648,11 +648,11 @@ function Start-CollectorScriptIfNeeded {
 `$windowEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]`$config.collectors.windowEnabled } else { `$true }
 
 if (`$afkEnabled -and -not (Test-Path -LiteralPath `$afkExe)) {
-    throw "Missing aw-watcher-afk.exe: `$afkExe"
+    throw "Не найден aw-watcher-afk.exe: `$afkExe"
 }
 
 if (`$windowEnabled -and -not (Test-Path -LiteralPath `$windowExe)) {
-    throw "Missing aw-watcher-window.exe: `$windowExe"
+    throw "Не найден aw-watcher-window.exe: `$windowExe"
 }
 
 if (`$afkEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-afk' -SessionId `$sessionId)) {
@@ -860,7 +860,7 @@ function Set-ActivityWatchScheduledTaskAction {
     $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
     & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "schtasks.exe /Change failed for $TaskName"
+        throw "schtasks.exe /Change завершился с ошибкой для $TaskName"
     }
 }
 
@@ -961,17 +961,17 @@ function Set-ActivityWatchAcl {
 
     & icacls $InstallRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "icacls failed for $InstallRoot"
+        throw "icacls завершился с ошибкой для $InstallRoot"
     }
 
     & icacls $StateRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "icacls failed for $StateRoot"
+        throw "icacls завершился с ошибкой для $StateRoot"
     }
 
     & icacls $LogsRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(M)' | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "icacls failed for $LogsRoot"
+        throw "icacls завершился с ошибкой для $LogsRoot"
     }
 }
 

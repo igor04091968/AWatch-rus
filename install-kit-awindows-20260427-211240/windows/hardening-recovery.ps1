@@ -42,7 +42,7 @@ if (Test-Path -LiteralPath $ConfigPath) {
 }
 
 if (-not $existingConfig -and (-not $ServerHost)) {
-    throw 'deployment-config.json is missing. Provide -ServerHost and user parameters, or run a deploy script first.'
+    throw 'deployment-config.json отсутствует. Укажите -ServerHost и параметры пользователей либо сначала выполните скрипт развёртывания.'
 }
 
 $effectiveStateRoot = if ($StateRoot) { $StateRoot } elseif ($existingConfig) { [string]$existingConfig.paths.stateRoot } else { 'C:\ProgramData\ActivityWatch' }
@@ -78,7 +78,7 @@ elseif ($existingConfig) {
     @($existingConfig.userTasks | ForEach-Object { [string]$_.userId })
 }
 else {
-    throw 'Target users are missing.'
+    throw 'Не указаны целевые пользователи.'
 }
 
 New-ActivityWatchDirectory -Path $effectiveStateRoot
@@ -96,6 +96,7 @@ Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
     -EndpointCollectorScriptSource (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') `
+    -SessionCollectorScriptSource (Join-Path $PSScriptRoot 'worktime-session-collector.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
     -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
@@ -139,6 +140,6 @@ Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptP
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
-Write-Host 'ActivityWatch hardening/recovery completed.'
-Write-Host "Config: $effectiveConfigPath"
-Write-Host "Users repaired: $($effectiveUsers -join ', ')"
+Write-Host 'Укрепление и восстановление ActivityWatch завершены.'
+Write-Host "Конфигурация: $effectiveConfigPath"
+Write-Host "Пользователи восстановлены: $($effectiveUsers -join ', ')"

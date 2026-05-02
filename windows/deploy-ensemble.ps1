@@ -46,7 +46,7 @@ $hardeningScript = Join-Path $PSScriptRoot 'hardening-recovery.ps1'
 $validationScript = Join-Path $PSScriptRoot 'validate-deployment.ps1'
 
 if (-not (Test-Path -LiteralPath $deployScript)) {
-    throw "Missing script: $deployScript"
+    throw "Не найден скрипт: $deployScript"
 }
 
 & $deployScript `
@@ -118,7 +118,7 @@ $report = [ordered]@{
 
 if ($ValidateAfterDeploy) {
     if (-not (Test-Path -LiteralPath $validationScript)) {
-        throw "Missing script: $validationScript"
+        throw "Не найден скрипт: $validationScript"
     }
 
     $validation = & $validationScript -ConfigPath (Join-Path $StateRoot 'deployment-config.json')
@@ -132,6 +132,6 @@ if ($reportDirectory) {
 
 $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $effectiveReportPath -Encoding UTF8
 
-Write-Host 'ActivityWatch ensemble deploy completed.'
-Write-Host "Users: $($resolvedUsers -join ', ')"
-Write-Host "Report: $effectiveReportPath"
+Write-Host 'Комплексное развёртывание ActivityWatch завершено.'
+Write-Host "Пользователи: $($resolvedUsers -join ', ')"
+Write-Host "Отчёт: $effectiveReportPath"

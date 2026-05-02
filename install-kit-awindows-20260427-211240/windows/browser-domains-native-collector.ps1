@@ -49,7 +49,7 @@ function Get-DeploymentConfig {
 }
 
 $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
-$resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'ServerHost is required.' }
+$resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'Укажите ServerHost или подготовьте deployment-config.json.' }
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
 $resolvedRulesPath = if ($RulesPath) { $RulesPath } elseif ($deploymentConfig) { [string]$deploymentConfig.paths.rulesPath } else { 'C:\ProgramData\ActivityWatch\web-category-rules.json' }
@@ -263,11 +263,11 @@ function Load-CustomCategoryRules {
 
         if ($rules.Count -gt 0) {
             $script:CategoryRules = @($rules) + @($script:CategoryRules)
-            Write-CollectorLog ("custom rules loaded: {0}" -f $rules.Count)
+            Write-CollectorLog ("пользовательские правила загружены: {0}" -f $rules.Count)
         }
     }
     catch {
-        Write-CollectorLog ("custom rules load failed: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("не удалось загрузить пользовательские правила: {0}" -f $_.Exception.Message)
     }
 }
 
@@ -338,7 +338,7 @@ function Load-DlpPolicy {
     param([string]$Path)
 
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
-        Write-CollectorLog ("dlp policy not found, disabled: {0}" -f $Path)
+        Write-CollectorLog ("DLP-политика не найдена, DLP отключен: {0}" -f $Path)
         return
     }
 
@@ -372,7 +372,7 @@ function Load-DlpPolicy {
                 enabled = if ($rule.PSObject.Properties.Name -contains 'enabled') { [bool]$rule.enabled } else { $true }
                 action = if ($rule.action) { [string]$rule.action } else { [string]$script:DlpDefaults.action }
                 severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:DlpDefaults.severity }
-                message = if ($rule.message) { [string]$rule.message } else { "DLP rule matched: $($rule.id)" }
+                message = if ($rule.message) { [string]$rule.message } else { "Сработало DLP-правило: $($rule.id)" }
                 cooldownSeconds = if ($rule.cooldownSeconds) { [int]$rule.cooldownSeconds } else { [int]$script:DlpDefaults.cooldownSeconds }
                 when = [pscustomobject]@{
                     domains = if ($when.PSObject.Properties.Name -contains 'domains') { @($when.domains | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Where-Object { $_ }) } else { @() }
@@ -388,10 +388,10 @@ function Load-DlpPolicy {
         }
 
         $script:DlpRules = @($loaded)
-        Write-CollectorLog ("dlp policy loaded: enabled={0}, rules={1}" -f $script:DlpDefaults.enabled, $script:DlpRules.Count)
+        Write-CollectorLog ("DLP-политика загружена: включена={0}, правил={1}" -f $script:DlpDefaults.enabled, $script:DlpRules.Count)
     }
     catch {
-        Write-CollectorLog ("dlp policy parse failed: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("не удалось разобрать DLP-политику: {0}" -f $_.Exception.Message)
     }
 }
 
@@ -625,7 +625,7 @@ function Capture-IncidentScreenshot {
         }
     }
     catch {
-        Write-CollectorLog ("screenshot capture failed: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("не удалось сделать снимок инцидента: {0}" -f $_.Exception.Message)
         return @{}
     }
 }
@@ -775,7 +775,7 @@ function Send-CategoryHeartbeat {
 
 Load-CustomCategoryRules -Path $resolvedRulesPath
 Load-DlpPolicy -Path $resolvedPolicyPath
-Write-CollectorLog ("collector started against {0}" -f $script:ApiBase)
+Write-CollectorLog ("коллектор запущен для {0}" -f $script:ApiBase)
 
 while ($true) {
     try {
@@ -815,7 +815,7 @@ while ($true) {
         }
     }
     catch {
-        Write-CollectorLog ("collector error: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("ошибка коллектора: {0}" -f $_.Exception.Message)
     }
 
     Start-Sleep -Seconds $resolvedPollSeconds
