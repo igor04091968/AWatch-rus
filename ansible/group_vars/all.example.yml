@@ -4,6 +4,7 @@ aw_server_bind_host: "0.0.0.0"
 aw_server_port: 5600
 aw_server_webui_dir: "/opt/activitywatch/webui-ru"
 aw_server_data_dir: "/var/lib/activitywatch"
+aw_server_db_path: "/var/lib/activitywatch/.local/share/activitywatch/aw-server-rust/sqlite.db"
 aw_server_log_dir: "/var/log/activitywatch"
 aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
@@ -30,3 +31,5 @@ aw_server_cors_origins:
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
+aw_server_always_active_pattern: "aw-watcher-window"
+aw_server_landingpage: "/activity/SHARKON2025/view/"

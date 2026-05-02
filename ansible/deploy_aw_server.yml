@@ -54,6 +54,7 @@
         - "{{ aw_server_webui_dir }}"
         - "{{ aw_server_webui_dir }}/js"
         - "{{ aw_server_data_dir }}"
+        - "{{ aw_server_db_path | dirname }}"
         - "{{ aw_server_data_dir }}/.config"
         - "{{ aw_server_data_dir }}/.config/activitywatch"
         - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
@@ -78,6 +79,7 @@
         - "{{ aw_server_webui_dir }}"
         - "{{ aw_server_webui_dir }}/js"
         - "{{ aw_server_data_dir }}"
+        - "{{ aw_server_db_path | dirname }}"
         - "{{ aw_server_data_dir }}/.config"
         - "{{ aw_server_data_dir }}/.config/activitywatch"
         - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
@@ -293,10 +295,107 @@
               AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
               AW_SERVER_PORT={{ aw_server_port }}
               AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
+              AW_SERVER_DB_PATH={{ aw_server_db_path }}
               AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
               AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
               AW_SERVER_USER={{ aw_server_user }}
               AW_SERVER_GROUP={{ aw_server_group }}
+              XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
+              XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
+
+        - name: Скопировать merge script AW DB на сервер
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/merge_aw_server_dbs.py"
+            dest: /usr/local/bin/merge_aw_server_dbs.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Проверить наличие legacy root DB
+          ansible.builtin.stat:
+            path: /root/.local/share/activitywatch/aw-server-rust/sqlite.db
+          register: aw_legacy_root_db
+
+        - name: Проверить наличие target DB
+          ansible.builtin.stat:
+            path: "{{ aw_server_db_path }}"
+          register: aw_target_db
+
+        - name: Остановить сервис перед merge server DB
+          ansible.builtin.systemd:
+            name: activitywatch-server.service
+            state: stopped
+          when: aw_legacy_root_db.stat.exists | default(false)
+
+        - name: Создать backup каталоги server DB
+          ansible.builtin.file:
+            path: "{{ aw_server_data_dir }}/backups/db"
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          when: aw_legacy_root_db.stat.exists | default(false)
+
+        - name: Backup target DB перед merge
+          ansible.builtin.copy:
+            remote_src: true
+            src: "{{ aw_server_db_path }}"
+            dest: "{{ aw_server_data_dir }}/backups/db/target-before-merge-{{ ansible_date_time.iso8601_basic_short }}.sqlite.db"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          when:
+            - aw_legacy_root_db.stat.exists | default(false)
+            - aw_target_db.stat.exists | default(false)
+
+        - name: Backup legacy root DB перед merge
+          ansible.builtin.copy:
+            remote_src: true
+            src: /root/.local/share/activitywatch/aw-server-rust/sqlite.db
+            dest: "{{ aw_server_data_dir }}/backups/db/legacy-root-{{ ansible_date_time.iso8601_basic_short }}.sqlite.db"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          when: aw_legacy_root_db.stat.exists | default(false)
+
+        - name: Merge legacy root DB в target DB
+          ansible.builtin.command:
+            argv:
+              - python3
+              - /usr/local/bin/merge_aw_server_dbs.py
+              - --base
+              - /root/.local/share/activitywatch/aw-server-rust/sqlite.db
+              - --overlay
+              - "{{ aw_server_db_path }}"
+              - --output
+              - "{{ aw_server_db_path }}.merged"
+          when:
+            - aw_legacy_root_db.stat.exists | default(false)
+            - aw_target_db.stat.exists | default(false)
+
+        - name: Install merged DB as active target DB
+          ansible.builtin.copy:
+            remote_src: true
+            src: "{{ aw_server_db_path }}.merged"
+            dest: "{{ aw_server_db_path }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          when:
+            - aw_legacy_root_db.stat.exists | default(false)
+            - aw_target_db.stat.exists | default(false)
+
+        - name: Скопировать legacy root DB в target DB если target ещё не существует
+          ansible.builtin.copy:
+            remote_src: true
+            src: /root/.local/share/activitywatch/aw-server-rust/sqlite.db
+            dest: "{{ aw_server_db_path }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          when:
+            - aw_legacy_root_db.stat.exists | default(false)
+            - not (aw_target_db.stat.exists | default(false))
 
         - name: Записать aw-server-rust config.toml с разрешёнными CORS origin
           ansible.builtin.copy:
@@ -436,6 +535,30 @@
           Content-Type: application/json
         status_code: [200, 201]
       when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Применить always_active_pattern для fallback без AFK
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/always_active_pattern"
+        method: POST
+        body: "\"{{ aw_server_always_active_pattern }}\""
+        headers:
+          Content-Type: application/json
+        status_code: [200, 201]
+      when:
+        - aw_apply_worktime_settings | default(false) | bool
+        - (aw_server_always_active_pattern | default('') | string | length) > 0
+
+    - name: Применить landingpage профиля
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/landingpage"
+        method: POST
+        body: "\"{{ aw_server_landingpage }}\""
+        headers:
+          Content-Type: application/json
+        status_code: [200, 201]
+      when:
+        - aw_apply_worktime_settings | default(false) | bool
+        - (aw_server_landingpage | default('') | string | length) > 0
 
   handlers:
     - name: Перезагрузить systemd

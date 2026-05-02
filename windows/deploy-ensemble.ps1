@@ -18,6 +18,7 @@ param(
     [int]$RecoveryIntervalSeconds = 180,
     [bool]$AfkEnabled = $true,
     [bool]$WindowEnabled = $true,
+    [bool]$FileOpsEnabled = $true,
     [bool]$LocalAgentLogsEnabled = $false,
     [bool]$IncidentCaptureEnabled = $true,
     [bool]$IncidentScreenshotEnabled = $true,
@@ -64,6 +65,7 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
     -AfkEnabled $AfkEnabled `
     -WindowEnabled $WindowEnabled `
+    -FileOpsEnabled $FileOpsEnabled `
     -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
     -IncidentCaptureEnabled $IncidentCaptureEnabled `
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
@@ -86,6 +88,7 @@ if (-not $SkipHardening) {
         -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
         -AfkEnabled $AfkEnabled `
         -WindowEnabled $WindowEnabled `
+        -FileOpsEnabled $FileOpsEnabled `
         -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
         -IncidentCaptureEnabled $IncidentCaptureEnabled `
         -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
@@ -112,6 +115,7 @@ $report = [ordered]@{
     collectors = [ordered]@{
         afkEnabled = $AfkEnabled
         windowEnabled = $WindowEnabled
+        fileOpsEnabled = $FileOpsEnabled
     }
     hardeningApplied = (-not $SkipHardening)
 }
