@@ -99,16 +99,13 @@ function Send-FileOperationEvent {
     Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=15" -Json $payload
 }
 
-# --- Инициализация ---
-Write-Host "Debug: Loading config from $ConfigPath"
 $config = Get-DeploymentConfig -Path $ConfigPath
-if (-not $config) { Write-Host "Error: Config not found"; exit 1 }
+if (-not $config) { throw "Не найден конфигурационный файл: $ConfigPath" }
 
 $scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { $config.server.scheme } else { 'http' }
 $hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
 $port = if ($ServerPort) { $ServerPort } elseif ($config.server.port) { $config.server.port } else { 5600 }
 $script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
-Write-Host "Debug: API Base is $script:ApiBase"
 
 # Разрешение путей для мониторинга
 $resolvedPaths = @()
@@ -121,12 +118,8 @@ foreach ($p in $WatchPaths) {
             elseif ($p -eq 'Downloads') { $fullPath = Join-Path $env:USERPROFILE 'Downloads' }
         } catch {}
     }
-    Write-Host "Debug: Checking path $fullPath"
     if ($fullPath -and (Test-Path -LiteralPath $fullPath)) {
         $resolvedPaths += $fullPath
-        Write-Host "Debug: Path $fullPath is VALID"
-    } else {
-        Write-Host "Debug: Path $fullPath is INVALID or NOT FOUND"
     }
 }
 
@@ -135,6 +128,8 @@ if ($resolvedPaths.Count -eq 0) {
     exit 0
 }
 
+$bucketId = 'aw-file-operations_' + $script:Hostname
+Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
 Write-FileCollectorLog "Запуск мониторинга путей: $($resolvedPaths -join ', ')"
 
 $watchers = @()
