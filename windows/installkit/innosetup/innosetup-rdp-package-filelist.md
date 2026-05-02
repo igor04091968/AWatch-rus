@@ -42,10 +42,12 @@
 
 ## 2) Бинарный payload ActivityWatch
 
-Нужен один из двух режимов:
+Поддерживаются оба режима:
 
-- **Online**: скрипты скачивают `activitywatch-<version>-windows-x86_64.zip` из GitHub Releases.
-- **Offline**: ZIP добавляется в пакет (например `payload\activitywatch-v0.13.2-windows-x86_64.zip`) и передаётся через `-PackageZipPath`.
+- **Online**: ZIP скачивается из GitHub Releases.
+- **Offline**: ZIP кладётся в installer (`payload\activitywatch-v0.13.2-windows-x86_64.zip`) и передаётся в deploy через `-PackageZipPath`.
+
+Для нашей закрытой среды обычно используется **offline-режим**.
 
 ## 3) Что НЕ включать в installer как статические файлы
 
@@ -83,7 +85,9 @@
 ## 6) Контроль перед сборкой .iss
 
 1. Все файлы из раздела 1 присутствуют.
-2. Выбран режим payload: online или offline.
-3. Для offline-режима ZIP действительно лежит в `payload\`.
-4. В .iss есть запуск нужного deploy-сценария (`deploy-ensemble.ps1` или `deploy-domain-users.ps1`).
-5. После установки запускается `validate-deployment.ps1` с сохранением JSON-отчёта.
+2. В .iss не осталось вызова `deploy-ensemble.ps1` без параметров: нужны `-ServerHost` и `-Users`.
+3. Для **Phase2** используются пути:
+   - `InstallRoot = C:\Program Files\ActivityWatch-Phase2`
+   - `StateRoot = C:\ProgramData\ActivityWatch-Phase2`
+4. Для offline-режима ZIP лежит в `windows/installkit/innosetup/payload/` (имя: `activitywatch-v0.13.2-windows-x86_64.zip`).
+5. Для проверки используется `-ValidateAfterDeploy` (отчёт `ensemble-report-*.json` пишется в `C:\ProgramData\ActivityWatch-Phase2\`).

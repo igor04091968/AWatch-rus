@@ -1,0 +1,6 @@
+# Build outputs
+/*.exe
+
+# Offline payload ZIPs should not be committed
+/*.zip
+/payload/*.zip
