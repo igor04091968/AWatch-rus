@@ -451,7 +451,7 @@
       register: aw_classes_current
       when: aw_apply_worktime_settings | default(false) | bool
 
-    - name: Сохранить backup текущих server-side settings/views/classes
+    - name: Создать backup текущих server-side settings/views/classes
       ansible.builtin.copy:
         dest: "{{ aw_server_data_dir }}/backups/{{ item.name }}-{{ ansible_date_time.iso8601_basic_short }}.json"
         owner: "{{ aw_server_user }}"
@@ -466,6 +466,66 @@
         - name: classes
           payload: "{{ aw_classes_current.json | default(none) }}"
       when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Настроить DLP Aggregator (Phase 2)
+      block:
+        - name: Создать каталог для скриптов
+          ansible.builtin.file:
+            path: "/opt/activitywatch/scripts"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Скопировать агрегатор событий DLP
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/aggregate_dlp_events.py"
+            dest: "/opt/activitywatch/scripts/aggregate_dlp_events.py"
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить systemd unit для агрегатора
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/activitywatch-dlp-aggregator.service
+            content: |
+              [Unit]
+              Description=ActivityWatch DLP Event Aggregator
+              After=activitywatch-server.service
+
+              [Service]
+              Type=oneshot
+              User={{ aw_server_user }}
+              WorkingDirectory={{ aw_server_data_dir }}
+              ExecStart=/usr/bin/python3 /opt/activitywatch/scripts/aggregate_dlp_events.py \
+                --aw-url http://127.0.0.1:{{ aw_server_port }}/api/0 \
+                --sqlite-path {{ aw_server_data_dir }}/dlp_warehouse.sqlite \
+                --state-path {{ aw_server_data_dir }}/dlp-aggregator-state.json
+
+              [Install]
+              WantedBy=multi-user.target
+
+        - name: Установить systemd timer для агрегатора
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/activitywatch-dlp-aggregator.timer
+            content: |
+              [Unit]
+              Description=Run ActivityWatch DLP Aggregator every 5 minutes
+
+              [Timer]
+              OnBootSec=1min
+              OnUnitActiveSec=5min
+              AccuracySec=1s
+
+              [Install]
+              WantedBy=timers.target
+
+        - name: Включить и запустить таймер агрегатора
+          ansible.builtin.systemd:
+            name: activitywatch-dlp-aggregator.timer
+            enabled: true
+            state: started
+            daemon_reload: true
 
     - name: Применить базовые worktime settings (classes)
       ansible.builtin.uri:
