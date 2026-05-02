@@ -86,6 +86,18 @@
         - web-category-rules.example.json
         - dlp-policy.example.json
 
+    - name: Нормализовать кодировку PowerShell файлов (UTF-8 BOM для Windows PowerShell)
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $toolkitDir = "{{ aw_windows_deploy_root }}\windows"
+          $encIn = New-Object System.Text.UTF8Encoding($false)
+          $encOut = New-Object System.Text.UTF8Encoding($true)
+          Get-ChildItem -LiteralPath $toolkitDir -File -Include *.ps1,*.psm1,*.psd1 | ForEach-Object {
+            $text = [System.IO.File]::ReadAllText($_.FullName, $encIn)
+            [System.IO.File]::WriteAllText($_.FullName, $text, $encOut)
+          }
+
     - name: Загрузить список пользователей для доменного развёртывания
       ansible.windows.win_copy:
         dest: "{{ aw_windows_deploy_root }}\\windows\\users.txt"

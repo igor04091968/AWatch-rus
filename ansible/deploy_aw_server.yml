@@ -76,98 +76,140 @@
         - "{{ aw_server_data_dir }}"
         - "{{ aw_server_log_dir }}"
 
-    - name: Скачать архив релиза ActivityWatch
-      ansible.builtin.get_url:
-        url: "{{ aw_server_download_url }}"
-        dest: "{{ aw_archive_path }}"
-        mode: "0644"
+    - name: (Check mode) Пропустить установку релиза ActivityWatch
+      ansible.builtin.debug:
+        msg: "ansible_check_mode=true: download/unarchive/install of ActivityWatch release is skipped."
+      when: ansible_check_mode
 
-    - name: Распаковать релиз ActivityWatch
-      ansible.builtin.unarchive:
-        src: "{{ aw_archive_path }}"
-        dest: "{{ aw_release_dir }}"
-        remote_src: true
-        extra_opts: ["-o"]
+    - name: Установить релиз ActivityWatch (download/unarchive/install)
+      when: not ansible_check_mode
+      block:
+        - name: Скачать архив релиза ActivityWatch
+          ansible.builtin.get_url:
+            url: "{{ aw_server_download_url }}"
+            dest: "{{ aw_archive_path }}"
+            mode: "0644"
 
-    - name: Найти распакованный каталог ActivityWatch
-      ansible.builtin.find:
-        paths: "{{ aw_release_dir }}"
-        file_type: directory
-        patterns: "activitywatch*"
-      register: aw_release_find
+        - name: Распаковать релиз ActivityWatch
+          ansible.builtin.unarchive:
+            src: "{{ aw_archive_path }}"
+            dest: "{{ aw_release_dir }}"
+            remote_src: true
+            extra_opts: ["-o"]
 
-    - name: Найти бинарный файл AW server
-      ansible.builtin.find:
-        paths: "{{ aw_release_dir }}"
-        file_type: file
-        patterns:
-          - aw-server-rust
-          - aw-server
-      register: aw_server_binary_find
+        - name: Найти распакованный каталог ActivityWatch
+          ansible.builtin.find:
+            paths: "{{ aw_release_dir }}"
+            recurse: true
+            file_type: directory
+            patterns: "activitywatch*"
+          register: aw_release_find
 
-    - name: Найти каталог WebUI
-      ansible.builtin.find:
-        paths: "{{ aw_release_dir }}"
-        file_type: directory
-        patterns:
-          - aw-webui
-          - webui
-      register: aw_webui_dir_find
+        - name: Найти бинарный файл AW server
+          ansible.builtin.find:
+            paths: "{{ aw_release_dir }}"
+            recurse: true
+            file_type: file
+            patterns:
+              - aw-server-rust
+              - aw-server
+          register: aw_server_binary_find
 
-    - name: Сохранить пути распакованного релиза
-      ansible.builtin.set_fact:
-        aw_release_extracted: "{{ (aw_release_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list | first) | default('') }}"
-        aw_server_binary_path: "{{ (aw_server_binary_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list | first) | default('') }}"
-        aw_webui_source_path: "{{ (aw_webui_dir_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list | first) | default('') }}"
+        - name: Найти index.html WebUI
+          ansible.builtin.find:
+            paths: "{{ aw_release_dir }}"
+            recurse: true
+            file_type: file
+            patterns:
+              - index.html
+          register: aw_webui_index_find
 
-    - name: Проверить, что компоненты релиза найдены
-      ansible.builtin.assert:
-        that:
-          - aw_release_extracted is defined
-          - aw_release_extracted | length > 0
-          - aw_server_binary_path is defined
-          - aw_server_binary_path | length > 0
-          - aw_webui_source_path is defined
-          - aw_webui_source_path | length > 0
-        fail_msg: "Не удалось найти бинарный файл или WebUI в распакованном релизе ActivityWatch."
+        - name: Сохранить пути распакованного релиза (binary + webui index)
+          ansible.builtin.set_fact:
+            aw_release_extracted: "{{ (aw_release_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list | first) | default('') }}"
+            aw_server_binary_path: >-
+              {{
+                (
+                  (
+                    (aw_server_binary_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list)
+                    | select('match', '.*/aw-server-rust$') | list | first
+                  )
+                  | default(
+                      (
+                        (aw_server_binary_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list | first)
+                      ),
+                      true
+                    )
+                ) | default('')
+              }}
+            aw_webui_index_path: >-
+              {{
+                (
+                  (
+                    (aw_webui_index_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list)
+                    | select('search', '/static/index\\.html$') | list | first
+                  )
+                  | default(
+                      (
+                        (aw_webui_index_find.files | default([]) | sort(attribute='path') | map(attribute='path') | list | first)
+                      ),
+                      true
+                    )
+                ) | default('')
+              }}
 
-    - name: Создать каталог установленного релиза
-      ansible.builtin.file:
-        path: "{{ aw_release_install_dir }}"
-        state: directory
-        owner: "{{ aw_server_user }}"
-        group: "{{ aw_server_group }}"
-        mode: "0755"
+        - name: Сохранить каталог WebUI (dirname index.html)
+          ansible.builtin.set_fact:
+            aw_webui_source_path: "{{ aw_webui_index_path | dirname }}"
 
-    - name: Установить бинарный файл AW server
-      ansible.builtin.copy:
-        remote_src: true
-        src: "{{ aw_server_binary_path }}"
-        dest: "{{ aw_release_install_dir }}/aw-server-rust"
-        owner: "{{ aw_server_user }}"
-        group: "{{ aw_server_group }}"
-        mode: "0755"
+        - name: Проверить, что компоненты релиза найдены
+          ansible.builtin.assert:
+            that:
+              - aw_release_extracted is defined
+              - aw_release_extracted | length > 0
+              - aw_server_binary_path is defined
+              - aw_server_binary_path | length > 0
+              - aw_webui_source_path is defined
+              - aw_webui_source_path | length > 0
+            fail_msg: "Не удалось найти бинарный файл или WebUI в распакованном релизе ActivityWatch."
 
-    - name: Создать ссылку на активный бинарный файл AW server
-      ansible.builtin.file:
-        src: "{{ aw_release_install_dir }}/aw-server-rust"
-        dest: /opt/activitywatch/bin/aw-server-rust
-        owner: "{{ aw_server_user }}"
-        group: "{{ aw_server_group }}"
-        state: link
-        force: true
+        - name: Создать каталог установленного релиза
+          ansible.builtin.file:
+            path: "{{ aw_release_install_dir }}"
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
 
-    - name: Синхронизировать WebUI в RU каталог
-      ansible.builtin.command:
-        cmd: "rsync -a {{ aw_webui_source_path }}/ {{ aw_server_webui_dir }}/"
+        - name: Установить бинарный файл AW server
+          ansible.builtin.copy:
+            remote_src: true
+            src: "{{ aw_server_binary_path }}"
+            dest: "{{ aw_release_install_dir }}/aw-server-rust"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
 
-    - name: Настроить владельца файлов /opt/activitywatch
-      ansible.builtin.file:
-        path: /opt/activitywatch
-        state: directory
-        owner: "{{ aw_server_user }}"
-        group: "{{ aw_server_group }}"
-        recurse: true
+        - name: Создать ссылку на активный бинарный файл AW server
+          ansible.builtin.file:
+            src: "{{ aw_release_install_dir }}/aw-server-rust"
+            dest: /opt/activitywatch/bin/aw-server-rust
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            state: link
+            force: true
+
+        - name: Синхронизировать WebUI в RU каталог
+          ansible.builtin.command:
+            cmd: "rsync -a {{ aw_webui_source_path }}/ {{ aw_server_webui_dir }}/"
+
+        - name: Настроить владельца файлов /opt/activitywatch
+          ansible.builtin.file:
+            path: /opt/activitywatch
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            recurse: true
 
     - name: Установить systemd service из шаблона репозитория
       ansible.builtin.copy:
@@ -184,78 +226,86 @@
         - Перезагрузить systemd
         - Перезапустить activitywatch
 
-    - name: Скопировать RU patch файлы WebUI из репозитория
-      ansible.builtin.copy:
-        src: "{{ item.src }}"
-        dest: "{{ item.dest }}"
-        mode: "{{ item.mode }}"
-        owner: "{{ aw_server_user }}"
-        group: "{{ aw_server_group }}"
-      loop:
-        - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "{{ aw_server_webui_dir }}/js/ru-patch-v5.js", mode: "0644" }
-        - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "{{ aw_server_webui_dir }}/js/sw-cleanup.js", mode: "0644" }
-        - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "{{ aw_server_webui_dir }}/js/aw-host-groups.json", mode: "0644" }
+    - name: (Check mode) Пропустить WebUI patch и запуск сервиса
+      ansible.builtin.debug:
+        msg: "ansible_check_mode=true: WebUI patch + service start + API checks are skipped."
+      when: ansible_check_mode
 
-    - name: Проверить наличие index.html после копирования
-      ansible.builtin.stat:
-        path: "{{ aw_server_webui_dir }}/index.html"
-      register: aw_webui_ru_index
+    - name: Применить WebUI RU patch и запустить сервис
+      when: not ansible_check_mode
+      block:
+        - name: Скопировать RU patch файлы WebUI из репозитория
+          ansible.builtin.copy:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: "{{ item.mode }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+          loop:
+            - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "{{ aw_server_webui_dir }}/js/ru-patch-v5.js", mode: "0644" }
+            - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "{{ aw_server_webui_dir }}/js/sw-cleanup.js", mode: "0644" }
+            - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "{{ aw_server_webui_dir }}/js/aw-host-groups.json", mode: "0644" }
 
-    - name: Проверить, что index.html доступен для RU patch
-      ansible.builtin.assert:
-        that:
-          - aw_webui_ru_index.stat.exists
-        fail_msg: "Не найден index.html WebUI для применения RU patch."
+        - name: Проверить наличие index.html после копирования
+          ansible.builtin.stat:
+            path: "{{ aw_server_webui_dir }}/index.html"
+          register: aw_webui_ru_index
 
-    - name: Удалить старые теги RU patch из index.html
-      ansible.builtin.replace:
-        path: "{{ aw_server_webui_dir }}/index.html"
-        regexp: '<script[^>]+(?:ru-patch-v5\.js|sw-cleanup\.js|aw-ru-patch\.js|aw-sw-cleanup\.js)[^>]*></script>'
-        replace: ''
+        - name: Проверить, что index.html доступен для RU patch
+          ansible.builtin.assert:
+            that:
+              - aw_webui_ru_index.stat.exists
+            fail_msg: "Не найден index.html WebUI для применения RU patch."
 
-    - name: Добавить cleanup script RU patch в index.html
-      ansible.builtin.replace:
-        path: "{{ aw_server_webui_dir }}/index.html"
-        regexp: '</head>'
-        replace: '<script src="/js/sw-cleanup.js?v={{ aw_sw_cleanup_cache_bust }}"></script></head>'
+        - name: Удалить старые теги RU patch из index.html
+          ansible.builtin.replace:
+            path: "{{ aw_server_webui_dir }}/index.html"
+            regexp: '<script[^>]+(?:ru-patch-v5\.js|sw-cleanup\.js|aw-ru-patch\.js|aw-sw-cleanup\.js)[^>]*></script>'
+            replace: ''
 
-    - name: Добавить загрузчик RU patch перед закрытием body
-      ansible.builtin.replace:
-        path: "{{ aw_server_webui_dir }}/index.html"
-        regexp: '</body>'
-        replace: '<script defer="defer" src="/js/ru-patch-v5.js?v={{ aw_ru_patch_cache_bust }}"></script></body>'
+        - name: Добавить cleanup script RU patch в index.html
+          ansible.builtin.replace:
+            path: "{{ aw_server_webui_dir }}/index.html"
+            regexp: '</head>'
+            replace: '<script src="/js/sw-cleanup.js?v={{ aw_sw_cleanup_cache_bust }}"></script></head>'
 
-    - name: Записать /etc/activitywatch/aw-server.env
-      ansible.builtin.copy:
-        dest: /etc/activitywatch/aw-server.env
-        mode: "0640"
-        owner: root
-        group: root
-        content: |
-          AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
-          AW_SERVER_PORT={{ aw_server_port }}
-          AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
-          AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
-          AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
-          AW_SERVER_USER={{ aw_server_user }}
-          AW_SERVER_GROUP={{ aw_server_group }}
+        - name: Добавить загрузчик RU patch перед закрытием body
+          ansible.builtin.replace:
+            path: "{{ aw_server_webui_dir }}/index.html"
+            regexp: '</body>'
+            replace: '<script defer="defer" src="/js/ru-patch-v5.js?v={{ aw_ru_patch_cache_bust }}"></script></body>'
 
-    - name: Включить и запустить сервис
-      ansible.builtin.systemd:
-        name: activitywatch-server.service
-        enabled: true
-        state: restarted
-        daemon_reload: true
+        - name: Записать /etc/activitywatch/aw-server.env
+          ansible.builtin.copy:
+            dest: /etc/activitywatch/aw-server.env
+            mode: "0640"
+            owner: root
+            group: root
+            content: |
+              AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
+              AW_SERVER_PORT={{ aw_server_port }}
+              AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
+              AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
+              AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
+              AW_SERVER_USER={{ aw_server_user }}
+              AW_SERVER_GROUP={{ aw_server_group }}
 
-    - name: Дождаться ответа API
-      ansible.builtin.uri:
-        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/info"
-        method: GET
-        status_code: 200
-      register: aw_api
-      retries: 10
-      delay: 3
-      until: aw_api.status == 200
+        - name: Включить и запустить сервис
+          ansible.builtin.systemd:
+            name: activitywatch-server.service
+            enabled: true
+            state: restarted
+            daemon_reload: true
+
+        - name: Дождаться ответа API
+          ansible.builtin.uri:
+            url: "http://127.0.0.1:{{ aw_server_port }}/api/0/info"
+            method: GET
+            status_code: 200
+          register: aw_api
+          retries: 10
+          delay: 3
+          until: aw_api.status == 200
 
     - name: Применить базовые worktime settings (classes)
       ansible.builtin.uri:

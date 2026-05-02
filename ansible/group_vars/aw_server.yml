@@ -1,0 +1,9 @@
+# Secret handling:
+# - put the real SSH password into env var before running Ansible:
+#   export AW_SSH_PASSWORD='...'
+ansible_password: "{{ lookup('env', 'AW_SSH_PASSWORD') }}"
+
+ansible_become: true
+ansible_become_method: sudo
+# If sudo password differs, set AW_SUDO_PASSWORD. Otherwise it will reuse AW_SSH_PASSWORD.
+ansible_become_password: "{{ lookup('env', 'AW_SUDO_PASSWORD') | default(lookup('env', 'AW_SSH_PASSWORD'), true) }}"

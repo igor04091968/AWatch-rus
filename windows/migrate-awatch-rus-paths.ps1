@@ -154,7 +154,36 @@ if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Миграция ActivityWatch W
             @{ Source = $NewStateRoot; Name = 'new-state' }
         )) {
         if (Test-Path -LiteralPath $item.Source) {
-            Copy-Item -LiteralPath $item.Source -Destination (Join-Path $backupRoot $item.Name) -Recurse -Force
+            $backupDest = Join-Path $backupRoot $item.Name
+            New-ActivityWatchDirectory -Path $backupDest
+
+            $excludeDirs = @()
+            if ($item.Source -eq $NewStateRoot) {
+                # Avoid infinite recursion: backupRoot is inside NewStateRoot by default.
+                $excludeDirs += $backupRoot
+            }
+
+            $robocopyArgs = @(
+                $item.Source,
+                $backupDest,
+                '/E',
+                '/R:1',
+                '/W:1',
+                '/NFL',
+                '/NDL',
+                '/NJH',
+                '/NJS',
+                '/NP'
+            )
+            if ($excludeDirs.Count -gt 0) {
+                $robocopyArgs += '/XD'
+                $robocopyArgs += $excludeDirs
+            }
+
+            & robocopy @robocopyArgs | Out-Null
+            if ($LASTEXITCODE -ge 8) {
+                throw "Backup robocopy failed (exit=$LASTEXITCODE) for source '$($item.Source)' to '$backupDest'"
+            }
         }
     }
 

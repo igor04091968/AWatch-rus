@@ -1,0 +1,52 @@
+# Secret handling:
+# - put the real password into env var before running Ansible:
+#   export AW_WINRM_PASSWORD='...'
+ansible_password: "{{ lookup('env', 'AW_WINRM_PASSWORD') }}"
+
+aw_windows_repo_root: "{{ playbook_dir | dirname }}"
+aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
+aw_windows_server_scheme: "http"
+aw_windows_server_host: "10.10.10.13"
+aw_windows_server_port: 5600
+
+aw_windows_package_version: "v0.13.2"
+aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
+aw_windows_package_zip_path: ""
+
+aw_windows_domain: "SHARKON2025"
+aw_windows_users:
+  - user1
+  - user2
+  - user3
+  - user4
+  - user5
+aw_windows_extra_users: []
+
+aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
+aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
+
+aw_windows_afk_enabled: true
+aw_windows_window_enabled: true
+aw_windows_local_agent_logs_enabled: false
+aw_windows_incident_capture_enabled: true
+aw_windows_incident_screenshot_enabled: true
+aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
+aw_windows_logon_marker_enabled: true
+aw_windows_skip_hardening: false
+
+aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
+aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
+
+aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
+aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+aw_windows_fail_on_validation_error: true
+
+aw_windows_migration_enabled: true
+aw_windows_legacy_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
+aw_windows_legacy_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+aw_windows_migration_report_remote_path: "{{ aw_windows_state_root }}\\aw_migration_ansible.json"
+
+aw_windows_api_smoke_check_enabled: true
+aw_windows_api_smoke_check_bucket: ""
+aw_windows_api_smoke_check_limit: 10
+

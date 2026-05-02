@@ -50,12 +50,14 @@ $runningProcesses = @()
 if ($processNames.Count -gt 0) {
     $runningProcesses = Get-Process -Name $processNames -ErrorAction SilentlyContinue | Select-Object Name, Id, SessionId
 }
-$sessionCollectorProcesses = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-    Where-Object {
-        ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and
-        $_.CommandLine -match [Regex]::Escape($sessionCollectorScript)
-    } |
-    Select-Object Name, ProcessId, SessionId, CommandLine
+$sessionCollectorProcesses = @(
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and
+            $_.CommandLine -match [Regex]::Escape($sessionCollectorScript)
+        } |
+        Select-Object Name, ProcessId, SessionId, CommandLine
+)
 
 $taskNames = @()
 if ($config.userTasks) {
@@ -64,25 +66,28 @@ if ($config.userTasks) {
 $taskNames += [string]$config.recovery.taskName
 $taskNames = $taskNames | Sort-Object -Unique
 
-$tasks = foreach ($taskName in $taskNames) {
-    $task = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -eq $taskName } | Select-Object -First 1
-    if ($task) {
-        [pscustomobject]@{
-            taskName = $task.TaskName
-            state = [string]$task.State
-            present = $true
+$tasks = @(
+    foreach ($taskName in $taskNames) {
+        $task = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -eq $taskName } | Select-Object -First 1
+        if ($task) {
+            [pscustomobject]@{
+                taskName = $task.TaskName
+                state = [string]$task.State
+                present = $true
+            }
+        }
+        else {
+            [pscustomobject]@{
+                taskName = $taskName
+                state = 'Отсутствует'
+                present = $false
+            }
         }
     }
-    else {
-        [pscustomobject]@{
-            taskName = $taskName
-            state = 'Отсутствует'
-            present = $false
-        }
-    }
-}
+)
 
 $serverUrl = '{0}://{1}:{2}' -f [string]$config.server.scheme, [string]$config.server.host, [int]$config.server.port
+$uniqueRunningProcessNames = @($runningProcesses | Select-Object -ExpandProperty Name -Unique)
 $result = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     configPath = $ConfigPath
@@ -105,7 +110,7 @@ $result = [ordered]@{
         ok = [bool](
             (
                 ($processNames.Count -eq 0) -or
-                (($runningProcesses | Select-Object -ExpandProperty Name -Unique).Count -ge $processNames.Count)
+                ($uniqueRunningProcessNames.Count -ge $processNames.Count)
             ) -and
             ($sessionCollectorProcesses.Count -ge 1)
         )
