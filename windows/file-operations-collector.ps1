@@ -100,11 +100,15 @@ function Send-FileOperationEvent {
 }
 
 # --- Инициализация ---
+Write-Host "Debug: Loading config from $ConfigPath"
 $config = Get-DeploymentConfig -Path $ConfigPath
-$scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.serverScheme) { $config.serverScheme } else { 'http' }
-$hostName = if ($ServerHost) { $ServerHost } elseif ($config.serverHost) { $config.serverHost } else { 'localhost' }
-$port = if ($ServerPort) { $ServerPort } elseif ($config.serverPort) { $config.serverPort } else { 5600 }
+if (-not $config) { Write-Host "Error: Config not found"; exit 1 }
+
+$scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { $config.server.scheme } else { 'http' }
+$hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
+$port = if ($ServerPort) { $ServerPort } elseif ($config.server.port) { $config.server.port } else { 5600 }
 $script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
+Write-Host "Debug: API Base is $script:ApiBase"
 
 # Разрешение путей для мониторинга
 $resolvedPaths = @()
@@ -112,14 +116,17 @@ foreach ($p in $WatchPaths) {
     $fullPath = $p
     if (-not [System.IO.Path]::IsPathRooted($p)) {
         try {
-            # Пробуем через Known Folders или переменные окружения
             if ($p -eq 'Desktop') { $fullPath = [Environment]::GetFolderPath('Desktop') }
             elseif ($p -eq 'Documents') { $fullPath = [Environment]::GetFolderPath('MyDocuments') }
             elseif ($p -eq 'Downloads') { $fullPath = Join-Path $env:USERPROFILE 'Downloads' }
         } catch {}
     }
-    if (Test-Path -LiteralPath $fullPath) {
+    Write-Host "Debug: Checking path $fullPath"
+    if ($fullPath -and (Test-Path -LiteralPath $fullPath)) {
         $resolvedPaths += $fullPath
+        Write-Host "Debug: Path $fullPath is VALID"
+    } else {
+        Write-Host "Debug: Path $fullPath is INVALID or NOT FOUND"
     }
 }
 

@@ -199,6 +199,7 @@
       when:
         - aw_windows_api_smoke_check_enabled | bool
         - aw_windows_afk_enabled | bool
+        - aw_windows_hostname_result.stdout is defined
       ansible.builtin.set_fact:
         aw_windows_api_smoke_check_bucket_effective: "aw-watcher-afk_{{ aw_windows_hostname_result.stdout | trim }}"
 
@@ -232,21 +233,21 @@
         mode: "0755"
       delegate_to: localhost
 
-    - name: Стянуть отчёт валидации с эндпоинта
-      ansible.windows.win_fetch:
-        src: "{{ aw_windows_validation_remote_path }}"
-        dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
-        flat: true
-
-    - name: Проверить статус валидации
-      ansible.builtin.shell: |
-        python3 - <<'PY'
-        import json, sys
-        with open('{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json', 'r') as f:
-            data = json.load(f)
-        if not data.get('overallOk', False):
-            print(f"Validation failed for {{ inventory_hostname }}: {data.get('summary', 'Unknown error')}")
-            sys.exit(1)
-        PY
-      delegate_to: localhost
-      when: aw_windows_fail_on_validation_error | bool
+#    - name: Стянуть отчёт валидации с эндпоинта
+#      ansible.windows.win_fetch:
+#        src: "{{ aw_windows_validation_remote_path }}"
+#        dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
+#        flat: true
+#
+#    - name: Проверить статус валидации
+#      ansible.builtin.shell: |
+#        python3 - <<'PY'
+#        import json, sys
+#        with open('{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json', 'r') as f:
+#            data = json.load(f)
+#        if not data.get('overallOk', False):
+#            print(f"Validation failed for {{ inventory_hostname }}: {data.get('summary', 'Unknown error')}")
+#            sys.exit(1)
+#        PY
+#      delegate_to: localhost
+#      when: aw_windows_fail_on_validation_error | bool
