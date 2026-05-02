@@ -8,17 +8,17 @@ aw_server_log_dir: "/var/log/activitywatch"
 aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
 
-aw_repo_root: "/home/igor/tmp/AWatch-rus"
+aw_repo_root: "{{ playbook_dir | dirname }}"
 
-# Optional: apply a baseline worktime-focused categorization and views via AW settings API.
-# WARNING: this overwrites existing server-side settings/classes/views.
+# Опционально: применить базовые категории и views для рабочего времени через AW settings API.
+# Внимание: это перезаписывает существующие server-side settings/classes/views.
 aw_apply_worktime_settings: false
 
-# Optional defaults for the worktime period in Web UI.
-# startOfDay controls day-boundary and default report window start.
-# durationDefault controls default time range (seconds) shown in UI.
+# Опциональные значения периода рабочего времени в Web UI.
+# startOfDay задаёт границу дня и стартовое время окна отчёта.
+# durationDefault задаёт диапазон по умолчанию в секундах.
 #
-# Recommended: set worktime window explicitly and let the playbook derive duration.
+# Рекомендуется явно задать рабочий интервал и дать playbook вычислить duration.
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"

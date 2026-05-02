@@ -1,5 +1,5 @@
 ---
-- name: Provision single Proxmox CT and deploy AWatch-rus
+- name: Создать один Proxmox CT и развернуть AWatch-rus
   hosts: proxmox
   gather_facts: false
 
@@ -17,7 +17,7 @@
       - settings/views-default.json
 
   tasks:
-    - name: Execute single-CT provisioning workflow
+    - name: Выполнить workflow создания одного CT
       ansible.builtin.include_tasks: tasks/provision_ct_and_deploy_aw.yml
       vars:
         ct_id: "{{ proxmox_ct_id }}"

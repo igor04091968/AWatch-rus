@@ -1,7 +1,11 @@
-aw_windows_repo_root: "/home/igor/tmp/AWatch-rus"
+aw_windows_repo_root: "{{ playbook_dir | dirname }}"
 aw_windows_deploy_root: "C:\\Deploy\\AWatch-rus"
+aw_windows_server_scheme: "http"
 aw_windows_server_host: "10.10.10.13"
 aw_windows_server_port: 5600
+aw_windows_package_version: "v0.13.2"
+aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
+aw_windows_package_zip_path: ""
 aw_windows_domain: "SHARKON2025"
 aw_windows_users:
   - user1
@@ -31,3 +35,10 @@ aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.examp
 
 aw_windows_validation_remote_path: "C:\\Windows\\Temp\\aw_validate_phase2_ansible.json"
 aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+aw_windows_fail_on_validation_error: true
+
+# По умолчанию AFK bucket вычисляется как aw-watcher-afk_<COMPUTERNAME>.
+# Задайте явное значение только если watcher пишет в нестандартный bucket.
+aw_windows_api_smoke_check_enabled: true
+aw_windows_api_smoke_check_bucket: ""
+aw_windows_api_smoke_check_limit: 10

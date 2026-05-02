@@ -1,13 +1,17 @@
 ---
-- name: Deploy AWatch-rus Windows phase2 collectors
+- name: Развернуть Windows/RDP phase-2 collector'ы AWatch-rus
   hosts: aw_windows
   gather_facts: false
 
   vars:
-    aw_windows_repo_root: "/home/igor/tmp/AWatch-rus"
+    aw_windows_repo_root: "{{ playbook_dir | dirname }}"
     aw_windows_deploy_root: "C:\\Deploy\\AWatch-rus"
+    aw_windows_server_scheme: "http"
     aw_windows_server_host: "10.10.10.13"
     aw_windows_server_port: 5600
+    aw_windows_package_version: "v0.13.2"
+    aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
+    aw_windows_package_zip_path: ""
     aw_windows_domain: "SHARKON2025"
     aw_windows_users:
       - user1
@@ -35,22 +39,24 @@
     aw_windows_recovery_task_name: "ActivityWatch Recovery"
     aw_windows_force_task_restart: true
     aw_windows_api_smoke_check_enabled: true
-    aw_windows_api_smoke_check_bucket: "aw-watcher-afk_SHARKON2025"
+    aw_windows_api_smoke_check_bucket: ""
     aw_windows_api_smoke_check_limit: 10
+    aw_windows_fail_on_validation_error: true
 
   tasks:
-    - name: Validate required variables
+    - name: Проверить обязательные переменные
       ansible.builtin.assert:
         that:
           - aw_windows_server_host is defined
           - aw_windows_server_port is defined
+          - aw_windows_server_scheme is defined
           - aw_windows_domain is defined
           - aw_windows_users_effective | length > 0
           - aw_windows_install_root is defined
           - aw_windows_state_root is defined
-        fail_msg: "Missing required Windows deployment variables."
+        fail_msg: "Не заданы обязательные переменные Windows-развёртывания."
 
-    - name: Ensure deploy directories exist
+    - name: Создать каталоги развёртывания
       ansible.windows.win_file:
         path: "{{ item }}"
         state: directory
@@ -58,7 +64,7 @@
         - "{{ aw_windows_deploy_root }}"
         - "{{ aw_windows_deploy_root }}\\windows"
 
-    - name: Upload Windows deployment toolkit
+    - name: Загрузить Windows toolkit развёртывания
       ansible.windows.win_copy:
         src: "{{ aw_windows_repo_root }}/windows/{{ item }}"
         dest: "{{ aw_windows_deploy_root }}\\windows\\{{ item }}"
@@ -67,6 +73,7 @@
         - ActivityWatch.Windows.Common.psm1
         - browser-domains-native-collector.ps1
         - dlp-endpoint-signals-collector.ps1
+        - worktime-session-collector.ps1
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1
         - hardening-recovery.ps1
@@ -74,24 +81,23 @@
         - web-category-rules.example.json
         - dlp-policy.example.json
 
-    - name: Upload user list for domain deploy
+    - name: Загрузить список пользователей для доменного развёртывания
       ansible.windows.win_copy:
         dest: "{{ aw_windows_deploy_root }}\\windows\\users.txt"
         content: |
-          {% for user in aw_windows_users -%}
-          {{ user }}
-          {% endfor -%}
-          {% for user in aw_windows_extra_users -%}
+          {% for user in aw_windows_users_effective -%}
           {{ user }}
           {% endfor -%}
 
-    - name: Run phase2 ensemble deployment
+    - name: Запустить phase-2 ensemble развёртывание
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
           $params = @{
+            ServerScheme = "{{ aw_windows_server_scheme }}"
             ServerHost = "{{ aw_windows_server_host }}"
             ServerPort = {{ aw_windows_server_port }}
+            Version = "{{ aw_windows_package_version }}"
             Domain = "{{ aw_windows_domain }}"
             UserListPath = "{{ aw_windows_deploy_root }}\windows\users.txt"
             InstallRoot = "{{ aw_windows_install_root }}"
@@ -106,12 +112,18 @@
             CustomRulesPath = "{{ aw_windows_rules_path }}"
             CustomPolicyPath = "{{ aw_windows_policy_path }}"
           }
+          {% if (aw_windows_package_url | default('') | string | length) > 0 %}
+          $params.PackageUrl = "{{ aw_windows_package_url }}"
+          {% endif %}
+          {% if (aw_windows_package_zip_path | default('') | string | length) > 0 %}
+          $params.PackageZipPath = "{{ aw_windows_package_zip_path }}"
+          {% endif %}
           {% if aw_windows_skip_hardening | bool %}
           $params.SkipHardening = $true
           {% endif %}
           & "{{ aw_windows_deploy_root }}\windows\deploy-ensemble.ps1" @params
 
-    - name: Force start ActivityWatch recovery and launch tasks
+    - name: Принудительно запустить ActivityWatch recovery и launch tasks
       when: aw_windows_force_task_restart | bool
       ansible.windows.win_powershell:
         script: |
@@ -121,11 +133,33 @@
             Where-Object TaskName -like "{{ aw_windows_launch_task_pattern }}" |
             ForEach-Object { Start-ScheduledTask -TaskName $_.TaskName }
 
-    - name: Wait for fresh AFK events to appear on AW server
-      when: aw_windows_api_smoke_check_enabled | bool
+    - name: Получить Windows hostname для AW smoke-check bucket
+      when:
+        - aw_windows_api_smoke_check_enabled | bool
+        - aw_windows_afk_enabled | bool
+      ansible.windows.win_command: powershell.exe -NoProfile -Command "$env:COMPUTERNAME"
+      register: aw_windows_hostname_result
+      changed_when: false
+
+    - name: Вычислить AW AFK smoke-check bucket
+      when:
+        - aw_windows_api_smoke_check_enabled | bool
+        - aw_windows_afk_enabled | bool
+      ansible.builtin.set_fact:
+        aw_windows_api_smoke_check_bucket_effective: >-
+          {{
+            aw_windows_api_smoke_check_bucket
+            if (aw_windows_api_smoke_check_bucket | default('') | string | length) > 0
+            else 'aw-watcher-afk_' ~ (aw_windows_hostname_result.stdout | trim)
+          }}
+
+    - name: Дождаться свежих AFK событий на AW server
+      when:
+        - aw_windows_api_smoke_check_enabled | bool
+        - aw_windows_afk_enabled | bool
       delegate_to: localhost
       ansible.builtin.uri:
-        url: "http://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
+        url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
         return_content: true
       register: aw_windows_api_smoke
@@ -141,29 +175,32 @@
       retries: 10
       delay: 6
 
-    - name: Run validation and store report on target
+    - name: Выполнить валидацию и сохранить отчёт на целевом Windows host
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
           $report = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
             -ConfigPath "{{ aw_windows_state_root }}\deployment-config.json"
           $report | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
+          if ({{ '$true' if (aw_windows_fail_on_validation_error | bool) else '$false' }} -and -not [bool]$report.overallOk) {
+            throw "Проверка развёртывания ActivityWatch завершилась ошибкой. Отчёт: {{ aw_windows_validation_remote_path }}"
+          }
 
-    - name: Ensure local validation directory exists
+    - name: Создать локальный каталог для validation reports
       ansible.builtin.file:
         path: "{{ aw_windows_validation_local_dir }}"
         state: directory
         mode: "0755"
       delegate_to: localhost
 
-    - name: Fetch validation report
+    - name: Забрать validation report
       ansible.builtin.fetch:
         src: "{{ aw_windows_validation_remote_path }}"
-        dest: "{{ aw_windows_validation_local_dir }}/"
-        flat: false
+        dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_phase2_ansible.json"
+        flat: true
 
-    - name: Show report location
+    - name: Показать путь к отчёту
       ansible.builtin.debug:
         msg:
-          - "Windows phase2 deploy completed on {{ inventory_hostname }}."
-          - "Validation report: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}/C$/Windows/Temp/aw_validate_phase2_ansible.json"
+          - "Windows phase2 развёртывание завершено на {{ inventory_hostname }}."
+          - "Отчёт проверки: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_phase2_ansible.json"

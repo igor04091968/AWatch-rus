@@ -1,5 +1,5 @@
 ---
-- name: Deploy pfSense ActivityWatch poller
+- name: Развернуть pfSense ActivityWatch poller
   hosts: aw_pfsense_pollers
   become: true
   gather_facts: true
@@ -10,14 +10,14 @@
     aw_pfsense_service_name: "aw-pfsense-poller.service"
 
   tasks:
-    - name: Install required packages
+    - name: Установить обязательные пакеты
       ansible.builtin.apt:
         name:
           - python3
         state: present
         update_cache: true
 
-    - name: Ensure directories exist
+    - name: Создать каталоги
       ansible.builtin.file:
         path: "{{ item }}"
         state: directory
@@ -26,29 +26,29 @@
         - "{{ aw_pfsense_install_root }}"
         - "{{ aw_pfsense_config_dir }}"
 
-    - name: Install pfSense poller script
+    - name: Установить скрипт pfSense poller
       ansible.builtin.copy:
         src: "{{ aw_repo_root }}/pfsense/pfsense-aw-poller.py"
         dest: "{{ aw_pfsense_install_root }}/pfsense-aw-poller.py"
         mode: "0755"
 
-    - name: Install systemd service
+    - name: Установить systemd service
       ansible.builtin.copy:
         src: "{{ aw_repo_root }}/pfsense/pfsense-aw-poller.service"
         dest: "/etc/systemd/system/{{ aw_pfsense_service_name }}"
         mode: "0644"
       notify:
-        - Reload systemd
+        - Перезагрузить systemd
 
-    - name: Write pfSense poller config
+    - name: Записать конфигурацию pfSense poller
       ansible.builtin.copy:
         dest: "{{ aw_pfsense_config_dir }}/poller.json"
         mode: "0600"
         content: "{{ aw_pfsense_poller_config | to_nice_json }}"
       notify:
-        - Restart pfSense poller
+        - Перезапустить pfSense poller
 
-    - name: Enable and start pfSense poller
+    - name: Включить и запустить pfSense poller
       ansible.builtin.systemd:
         name: "{{ aw_pfsense_service_name }}"
         enabled: true
@@ -56,11 +56,11 @@
         daemon_reload: true
 
   handlers:
-    - name: Reload systemd
+    - name: Перезагрузить systemd
       ansible.builtin.systemd:
         daemon_reload: true
 
-    - name: Restart pfSense poller
+    - name: Перезапустить pfSense poller
       ansible.builtin.systemd:
         name: "{{ aw_pfsense_service_name }}"
         state: restarted

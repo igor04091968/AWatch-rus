@@ -1,82 +1,101 @@
 # Ansible ensemble for AWatch-rus
 
-Эта директория содержит Ansible-ensemble для двух сценариев:
+Эта директория содержит Ansible-ensemble для полного развёртывания AWatch-rus:
 
 - деплой на уже существующий Debian host/CT;
-- полный цикл с нуля в Proxmox: создание CT + bootstrap + установка ActivityWatch + RU patch.
-- централизованный деплой Windows phase-2 collectors по WinRM.
-- deployment внешнего pfSense poller'а на Debian/Ubuntu utility VM.
+- полный цикл с нуля в Proxmox: создание CT + bootstrap + установка ActivityWatch + RU patch;
+- централизованное развёртывание Windows phase-2 collector'ов по WinRM;
+- развёртывание внешнего pfSense poller'а на Debian/Ubuntu utility VM.
 
 ## Файлы
 
-- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_server.yml` — основной playbook.
-- `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_and_deploy_aw.yml` — full-stack playbook для Proxmox.
-- `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый full-stack playbook (несколько CT).
-- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows_phase2.yml` — WinRM playbook для развёртывания phase-2 Windows collector'ов.
-- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_pfsense_poller.yml` — deployment pfSense poller'а.
-- `/home/igor/tmp/AWatch-rus/ansible/inventory.example.ini` — шаблон inventory.
-- `/home/igor/tmp/AWatch-rus/ansible/group_vars/all.example.yml` — шаблон переменных.
-- `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.example.yml` — шаблон переменных CT в Proxmox.
-- `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox-matrix.example.yml` — шаблон матрицы CT.
-- `/home/igor/tmp/AWatch-rus/ansible/group_vars/windows.example.yml` — шаблон переменных Windows phase-2.
-- `/home/igor/tmp/AWatch-rus/ansible/group_vars/pfsense-poller.example.yml` — шаблон переменных pfSense poller'а.
+- `ansible/deploy_aw_server.yml` — основной playbook для уже существующего Debian/CT host.
+- `ansible/provision_proxmox_ct_and_deploy_aw.yml` — полный playbook для Proxmox.
+- `ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый полный playbook (несколько CT).
+- `ansible/deploy_aw_windows_phase2.yml` — WinRM playbook для развёртывания Windows/RDP collector'ов.
+- `ansible/deploy_aw_pfsense_poller.yml` — развёртывание pfSense poller'а.
+- `ansible/install_full_stack.yml` — полный установочный playbook (оркестратор всех этапов).
+- `ansible/inventory.example.ini` — шаблон inventory.
+- `ansible/group_vars/*.example.yml` — шаблоны переменных.
 
 ## Быстрый запуск
 
 1. Скопируйте шаблоны:
-   - `cp /home/igor/tmp/AWatch-rus/ansible/inventory.example.ini /home/igor/tmp/AWatch-rus/ansible/inventory.ini`
-   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/all.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/all.yml`
+   - `cp ansible/inventory.example.ini ansible/inventory.ini`
+   - `cp ansible/group_vars/all.example.yml ansible/group_vars/all.yml`
 2. Заполните значения в `inventory.ini` и `group_vars/all.yml`.
 3. Запустите:
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd ansible
 ansible-playbook -i inventory.ini deploy_aw_server.yml
 ```
+
+## Полный установочный playbook (всё за один запуск)
+
+Если нужно прогнать полный цикл одной командой:
+
+```bash
+cd ansible
+ansible-playbook -i inventory.ini install_full_stack.yml
+```
+
+Что делает:
+
+- `provision_proxmox_ct_and_deploy_aw.yml` (если есть хосты в группе `[proxmox]`);
+- `deploy_aw_server.yml` (группа `[aw_server]`);
+- `deploy_aw_windows_phase2.yml` (группа `[aw_windows]`);
+- `deploy_aw_pfsense_poller.yml` (группа `[aw_pfsense_pollers]`).
+
+Пустые группы в `inventory.ini` безопасны: соответствующий play будет пропущен.
 
 ## Полный запуск с нуля в Proxmox
 
 1. Подготовьте inventory и vars:
-   - `cp /home/igor/tmp/AWatch-rus/ansible/inventory.example.ini /home/igor/tmp/AWatch-rus/ansible/inventory.ini`
-   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/all.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/all.yml`
-   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.yml`
+   - `cp ansible/inventory.example.ini ansible/inventory.ini`
+   - `cp ansible/group_vars/all.example.yml ansible/group_vars/all.yml`
+   - `cp ansible/group_vars/proxmox.example.yml ansible/group_vars/proxmox.yml`
 2. Заполните `group_vars/proxmox.yml` и `group_vars/all.yml`.
 3. Запустите playbook:
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 ```
 
 ## Массовый запуск (матрица CT)
 
 1. Подготовьте матрицу:
-   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox-matrix.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox-matrix.yml`
+   - `cp ansible/group_vars/proxmox-matrix.example.yml ansible/group_vars/proxmox-matrix.yml`
 2. Заполните `proxmox-matrix.yml`.
 3. Запустите:
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 ```
 
 ## Windows phase-2 rollout (WinRM)
 
 1. Подготовьте inventory и vars:
-   - `cp /home/igor/tmp/AWatch-rus/ansible/inventory.example.ini /home/igor/tmp/AWatch-rus/ansible/inventory.ini`
-   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/windows.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/windows.yml`
+   - `cp ansible/inventory.example.ini ansible/inventory.ini`
+   - `cp ansible/group_vars/windows.example.yml ansible/group_vars/windows.yml`
 2. Заполните `inventory.ini` (секция `[aw_windows]`) и `group_vars/windows.yml`.
+   - Для русской локализации Windows часто нужен `ansible_user=Администратор` (а не `Administrator`).
+   - Если WinRM закрыт, playbook не сможет стартовать и нужно сначала открыть `5985/5986` и `wsman`.
 3. Запустите:
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd ansible
 ansible-playbook -i inventory.ini deploy_aw_windows_phase2.yml
 ```
 
 Playbook:
 
-- выгружает `windows/*` toolkit на целевой хост в `C:\Deploy\AWatch-rus\windows`;
+- выгружает полный `windows/*` toolkit на целевой хост в `C:\Deploy\AWatch-rus\windows`, включая DLP и `worktime-session-collector.ps1`;
 - выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с phase-2 policy/rules;
+- после deploy принудительно запускает `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи;
+- выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие `not-afk` события;
 - запускает `validate-deployment.ps1`;
 - забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation` по умолчанию).
 
@@ -87,17 +106,20 @@ Playbook:
 - `aw_windows_incident_capture_enabled: false` — отключить блок incidentCapture;
 - `aw_windows_incident_screenshot_enabled: false` — не делать скриншот при DLP-инциденте;
 - `aw_windows_incident_artifacts_root: 'C:\...\incident-artifacts'` — переопределить путь артефактов;
+- `aw_windows_package_version`, `aw_windows_package_url`, `aw_windows_package_zip_path` — версия и источник Windows-пакета ActivityWatch;
+- `aw_windows_api_smoke_check_bucket: ""` — автоматически использовать `aw-watcher-afk_<COMPUTERNAME>`;
+- `aw_windows_fail_on_validation_error: true` — завершать playbook ошибкой, если `validate-deployment.ps1` возвращает `overallOk=false`;
 - `aw_windows_skip_hardening: true` — пропустить `hardening-recovery.ps1` внутри ensemble-скрипта.
 
-## pfSense poller rollout
+## Развёртывание pfSense poller
 
 1. Подготовьте vars:
-   - `cp /home/igor/tmp/AWatch-rus/ansible/group_vars/pfsense-poller.example.yml /home/igor/tmp/AWatch-rus/ansible/group_vars/pfsense-poller.yml`
+   - `cp ansible/group_vars/pfsense-poller.example.yml ansible/group_vars/pfsense-poller.yml`
 2. Добавьте inventory group `[aw_pfsense_pollers]`.
 3. Запустите:
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd ansible
 ansible-playbook -i inventory.ini deploy_aw_pfsense_poller.yml
 ```
 
@@ -116,4 +138,6 @@ Playbook:
 - Для Web UI используется checksum-based cache-bust для `ru-patch-v5.js` и `sw-cleanup.js`, чтобы браузер не держал старую DLP/русскую статику после деплоя.
 - На `#/home` Web UI делит хосты на `Windows RDP` и `Virtual servers + Proxmox`.
 - Выполнена валидация API `http://127.0.0.1:5600/api/0/info`.
-- Для full-stack сценария CT создаётся автоматически через `pct create`.
+- Для полного сценария CT создаётся автоматически через `pct create`.
+- На Windows/RDP host развёрнуты AFK/window watchers, browser domain collector, DLP endpoint collector и worktime session collector.
+- Проверочный JSON-отчёт Windows playbook должен иметь `overallOk=true`.
