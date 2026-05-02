@@ -1,19 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Applies Inno Setup documentation reorganization in a clean/local repo state:
-# 1) Create windows/installkit/innosetup
-# 2) Place canonical checklist there
-# 3) Leave compatibility pointer at old docs path
-
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$REPO_ROOT"
-
 TARGET_DIR="windows/installkit/innosetup"
 TARGET_FILE="$TARGET_DIR/innosetup-rdp-package-filelist.md"
 POINTER_FILE="docs/windows/innosetup-rdp-package-filelist.md"
+ISS_FILE="$TARGET_DIR/AWatch-rus-InnoSetup.iss"
+PAYLOAD_DIR="$TARGET_DIR/payload"
 
-mkdir -p "$TARGET_DIR"
+mkdir -p "$TARGET_DIR" "$PAYLOAD_DIR" "docs/windows"
 
 cat > "$TARGET_FILE" <<'DOC'
 # Inno Setup: файл-лист для Windows RDP deployment
@@ -60,10 +54,11 @@ cat > "$TARGET_FILE" <<'DOC'
 
 ## 2) Бинарный payload ActivityWatch
 
-Нужен один из двух режимов:
+Для закрытой среды используется **offline-режим по умолчанию**:
 
-- **Online**: скрипты скачивают `activitywatch-<version>-windows-x86_64.zip` из GitHub Releases.
-- **Offline**: ZIP добавляется в пакет (например `payload\activitywatch-v0.13.2-windows-x86_64.zip`) и передаётся через `-PackageZipPath`.
+- В комплект Inno Setup сразу включается `payload\activitywatch-v0.13.2-windows-x86_64.zip`.
+- Deploy запускается с параметром `-PackageZipPath` на локальный ZIP из `{app}\payload`.
+- Online-загрузка из GitHub Releases в закрытой среде не требуется.
 
 ## 3) Что НЕ включать в installer как статические файлы
 
@@ -96,28 +91,67 @@ cat > "$TARGET_FILE" <<'DOC'
 - `windows\dlp-endpoint-signals-collector.ps1`
 - `windows\web-category-rules.example.json`
 - `windows\dlp-policy.example.json`
-- `payload\activitywatch-v0.13.2-windows-x86_64.zip` (только для offline-режима)
+- `payload\activitywatch-v0.13.2-windows-x86_64.zip`
 
 ## 6) Контроль перед сборкой .iss
 
 1. Все файлы из раздела 1 присутствуют.
-2. Выбран режим payload: online или offline.
-3. Для offline-режима ZIP действительно лежит в `payload\`.
-4. В .iss есть запуск нужного deploy-сценария (`deploy-ensemble.ps1` или `deploy-domain-users.ps1`).
+2. ZIP `activitywatch-v0.13.2-windows-x86_64.zip` лежит в `windows/installkit/innosetup/payload/`.
+3. В .iss добавлен `Source: "payload\activitywatch-v0.13.2-windows-x86_64.zip"`.
+4. Deploy в .iss запускается с `-PackageZipPath` на локальный ZIP.
 5. После установки запускается `validate-deployment.ps1` с сохранением JSON-отчёта.
 DOC
 
-mkdir -p "$(dirname "$POINTER_FILE")"
 cat > "$POINTER_FILE" <<'DOC'
-# Moved
-
-Документ перенесён в новую структуру install-kit:
-
-- `windows/installkit/innosetup/innosetup-rdp-package-filelist.md`
-
-Этот файл оставлен как совместимый указатель, чтобы не ломать существующие ссылки в документации/автоматизации.
+windows/installkit/innosetup/innosetup-rdp-package-filelist.md
 DOC
 
-echo "Done. Updated files:"
-echo "- $TARGET_FILE"
-echo "- $POINTER_FILE"
+cat > "$ISS_FILE" <<'DOC'
+#define MyAppName "AWatch-rus InstallKit"
+#define MyAppVersion "1.0.0"
+#define MyAppPublisher "AWatch-rus"
+
+[Setup]
+AppId={{6D6A1F74-0F4F-4A57-B5E3-1C2C2F56C0E9}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+DefaultDirName={autopf}\AWatch-rus
+DefaultGroupName=AWatch-rus
+OutputDir=.
+OutputBaseFilename=AWatch-rus-InstallKit-offline
+Compression=lzma
+SolidCompression=yes
+ArchitecturesInstallIn64BitMode=x64
+PrivilegesRequired=admin
+
+[Languages]
+Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
+
+[Files]
+Source: "..\..\ActivityWatch.Windows.Common.psd1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\ActivityWatch.Windows.Common.psm1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\deploy-single-user.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\deploy-domain-users.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\deploy-ensemble.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\hardening-recovery.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\validate-deployment.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\worktime-session-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\browser-domains-native-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\dlp-endpoint-signals-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\web-category-rules.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\dlp-policy.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "payload\activitywatch-v0.13.2-windows-x86_64.zip"; DestDir: "{app}\payload"; Flags: ignoreversion
+Source: "innosetup-rdp-package-filelist.md"; DestDir: "{app}\windows\installkit\innosetup"; Flags: ignoreversion
+
+[Run]
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\windows\deploy-ensemble.ps1\" -PackageZipPath \"{app}\payload\activitywatch-v0.13.2-windows-x86_64.zip\""; Flags: runhidden
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\windows\validate-deployment.ps1\""; Flags: runhidden
+DOC
+
+touch "$PAYLOAD_DIR/.gitkeep"
+
+echo "$TARGET_FILE"
+echo "$POINTER_FILE"
+echo "$ISS_FILE"
+echo "$PAYLOAD_DIR/.gitkeep"

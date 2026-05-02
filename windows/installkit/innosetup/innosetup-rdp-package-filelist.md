@@ -42,10 +42,11 @@
 
 ## 2) Бинарный payload ActivityWatch
 
-Нужен один из двух режимов:
+Для закрытой среды используется **offline-режим по умолчанию**:
 
-- **Online**: скрипты скачивают `activitywatch-<version>-windows-x86_64.zip` из GitHub Releases.
-- **Offline**: ZIP добавляется в пакет (например `payload\activitywatch-v0.13.2-windows-x86_64.zip`) и передаётся через `-PackageZipPath`.
+- В комплект Inno Setup сразу включается `payload\activitywatch-v0.13.2-windows-x86_64.zip`.
+- Deploy запускается с параметром `-PackageZipPath` на локальный ZIP из `{app}\payload`.
+- Online-загрузка из GitHub Releases в закрытой среде не требуется.
 
 ## 3) Что НЕ включать в installer как статические файлы
 
@@ -83,7 +84,7 @@
 ## 6) Контроль перед сборкой .iss
 
 1. Все файлы из раздела 1 присутствуют.
-2. Выбран режим payload: online или offline.
-3. Для offline-режима ZIP действительно лежит в `payload\`.
-4. В .iss есть запуск нужного deploy-сценария (`deploy-ensemble.ps1` или `deploy-domain-users.ps1`).
+2. ZIP `activitywatch-v0.13.2-windows-x86_64.zip` лежит в `windows/installkit/innosetup/payload/`.
+3. В .iss добавлен `Source: "payload\activitywatch-v0.13.2-windows-x86_64.zip"`.
+4. Deploy в .iss запускается с `-PackageZipPath` на локальный ZIP.
 5. После установки запускается `validate-deployment.ps1` с сохранением JSON-отчёта.
