@@ -908,6 +908,37 @@ function Get-ActivityWatchScheduledTaskByCommand {
     return $null
 }
 
+function Remove-StaleActivityWatchUserTasks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject[]]$TaskDefinitions,
+        [Parameter(Mandatory = $true)]
+        [string]$LaunchScriptPath
+    )
+
+    $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $LaunchScriptPath
+    $desiredTaskNames = @($TaskDefinitions | ForEach-Object { [string]$_.LaunchTaskName })
+
+    foreach ($candidate in @(Get-ScheduledTask | Where-Object { $_.TaskName -like 'ActivityWatch Launch*' })) {
+        $taskName = [string]$candidate.TaskName
+        if ($desiredTaskNames -contains $taskName) {
+            continue
+        }
+
+        $usesCurrentLauncher = $false
+        foreach ($action in @($candidate.Actions)) {
+            if ([string]$action.Arguments -like "*$launcherPath*") {
+                $usesCurrentLauncher = $true
+                break
+            }
+        }
+
+        if ($usesCurrentLauncher) {
+            Remove-ActivityWatchScheduledTask -TaskName $taskName
+        }
+    }
+}
+
 function Register-ActivityWatchUserTasks {
     param(
         [Parameter(Mandatory = $true)]
@@ -921,6 +952,7 @@ function Register-ActivityWatchUserTasks {
     $wscriptExe = Join-Path $env:SystemRoot 'System32\wscript.exe'
     $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $LaunchScriptPath
     Write-ActivityWatchHiddenPowerShellWrapper -Path $launcherPath -ScriptPath $LaunchScriptPath -ConfigPath $ConfigPath
+    Remove-StaleActivityWatchUserTasks -TaskDefinitions $TaskDefinitions -LaunchScriptPath $LaunchScriptPath
 
     foreach ($definition in $TaskDefinitions) {
         $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument "//B //NoLogo `"$launcherPath`""

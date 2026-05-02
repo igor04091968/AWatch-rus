@@ -161,6 +161,19 @@
           {% endif %}
           & "{{ aw_windows_deploy_root }}\windows\deploy-ensemble.ps1" @params
 
+    - name: Удалить лишние ActivityWatch Launch tasks вне текущего deployment-config
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $config = Get-Content -Raw -LiteralPath "{{ aw_windows_state_root }}\deployment-config.json" | ConvertFrom-Json
+          $desired = @($config.userTasks | ForEach-Object { [string]$_.LaunchTaskName })
+          foreach ($task in @(Get-ScheduledTask | Where-Object { $_.TaskName -like 'ActivityWatch Launch *' })) {
+            if ($desired -notcontains [string]$task.TaskName) {
+              Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+              & cmd.exe /c "schtasks /Delete /TN `"$($task.TaskName)`" /F >nul 2>&1" | Out-Null
+            }
+          }
+
     - name: Принудительно запустить ActivityWatch recovery и launch tasks
       when: aw_windows_force_task_restart | bool
       ansible.windows.win_powershell:

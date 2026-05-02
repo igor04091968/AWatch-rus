@@ -11,9 +11,14 @@ aw_server_group: "activitywatch"
 aw_repo_root: "{{ playbook_dir | dirname }}"
 
 # Optional: apply worktime settings via server-side settings API.
-aw_apply_worktime_settings: false
+aw_apply_worktime_settings: true
+
+aw_server_cors_origins:
+  - "http://127.0.0.1:5600"
+  - "http://localhost:5600"
+  - "http://10.10.10.13:5600"
+  - "http://aw-server:5600"
 
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
-

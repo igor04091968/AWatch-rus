@@ -54,6 +54,10 @@
         - "{{ aw_server_webui_dir }}"
         - "{{ aw_server_webui_dir }}/js"
         - "{{ aw_server_data_dir }}"
+        - "{{ aw_server_data_dir }}/.config"
+        - "{{ aw_server_data_dir }}/.config/activitywatch"
+        - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
+        - "{{ aw_server_data_dir }}/backups"
         - "{{ aw_server_log_dir }}"
         - /etc/activitywatch
         - "{{ aw_bootstrap_dir }}"
@@ -74,6 +78,10 @@
         - "{{ aw_server_webui_dir }}"
         - "{{ aw_server_webui_dir }}/js"
         - "{{ aw_server_data_dir }}"
+        - "{{ aw_server_data_dir }}/.config"
+        - "{{ aw_server_data_dir }}/.config/activitywatch"
+        - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
+        - "{{ aw_server_data_dir }}/backups"
         - "{{ aw_server_log_dir }}"
 
     - name: (Check mode) Пропустить установку релиза ActivityWatch
@@ -290,6 +298,19 @@
               AW_SERVER_USER={{ aw_server_user }}
               AW_SERVER_GROUP={{ aw_server_group }}
 
+        - name: Записать aw-server-rust config.toml с разрешёнными CORS origin
+          ansible.builtin.copy:
+            dest: "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust/config.toml"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+            content: |
+              cors = [
+              {% for origin in aw_server_cors_origins | default([]) %}
+                "{{ origin }}"{% if not loop.last %},{% endif %}
+              {% endfor %}
+              ]
+
         - name: Включить и запустить сервис
           ansible.builtin.systemd:
             name: activitywatch-server.service
@@ -306,6 +327,46 @@
           retries: 10
           delay: 3
           until: aw_api.status == 200
+
+    - name: Считать текущие server-side settings
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/"
+        method: GET
+        status_code: 200
+      register: aw_settings_current
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Считать текущие server-side views
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/views"
+        method: GET
+        status_code: 200
+      register: aw_views_current
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Считать текущие server-side classes
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/classes"
+        method: GET
+        status_code: 200
+      register: aw_classes_current
+      when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Сохранить backup текущих server-side settings/views/classes
+      ansible.builtin.copy:
+        dest: "{{ aw_server_data_dir }}/backups/{{ item.name }}-{{ ansible_date_time.iso8601_basic_short }}.json"
+        owner: "{{ aw_server_user }}"
+        group: "{{ aw_server_group }}"
+        mode: "0644"
+        content: "{{ item.payload | to_nice_json }}"
+      loop:
+        - name: settings
+          payload: "{{ aw_settings_current.json | default({}) }}"
+        - name: views
+          payload: "{{ aw_views_current.json | default(none) }}"
+        - name: classes
+          payload: "{{ aw_classes_current.json | default(none) }}"
+      when: aw_apply_worktime_settings | default(false) | bool
 
     - name: Применить базовые worktime settings (classes)
       ansible.builtin.uri:
@@ -327,16 +388,12 @@
 
     - name: Вычислить worktime durationDefault из aw_worktime_from/to
       ansible.builtin.set_fact:
-        aw_worktime_from_h: "{{ (aw_worktime_from | default('08:00')).split(':')[0] | int }}"
-        aw_worktime_from_m: "{{ (aw_worktime_from | default('08:00')).split(':')[1] | int }}"
-        aw_worktime_to_h: "{{ (aw_worktime_to | default('17:00')).split(':')[0] | int }}"
-        aw_worktime_to_m: "{{ (aw_worktime_to | default('17:00')).split(':')[1] | int }}"
         aw_worktime_duration_default_derived: >-
           {{
             (
               (
-                ((aw_worktime_to_h | int) * 60 + (aw_worktime_to_m | int)) -
-                ((aw_worktime_from_h | int) * 60 + (aw_worktime_from_m | int))
+                (((aw_worktime_to | default('17:00')).split(':')[0] | int) * 60 + ((aw_worktime_to | default('17:00')).split(':')[1] | int)) -
+                (((aw_worktime_from | default('08:00')).split(':')[0] | int) * 60 + ((aw_worktime_from | default('08:00')).split(':')[1] | int))
               ) * 60
             )
           }}
@@ -364,18 +421,20 @@
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/startOfDay"
         method: POST
-        body: "{{ aw_worktime_start_of_day }}"
-        body_format: json
-        status_code: 200
+        body: "\"{{ aw_worktime_start_of_day }}\""
+        headers:
+          Content-Type: application/json
+        status_code: [200, 201]
       when: aw_apply_worktime_settings | default(false) | bool
 
     - name: Применить базовый период worktime (durationDefault seconds)
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/durationDefault"
         method: POST
-        body: "{{ aw_worktime_duration_default_effective }}"
-        body_format: json
-        status_code: 200
+        body: "{{ aw_worktime_duration_default_effective | string }}"
+        headers:
+          Content-Type: application/json
+        status_code: [200, 201]
       when: aw_apply_worktime_settings | default(false) | bool
 
   handlers:
