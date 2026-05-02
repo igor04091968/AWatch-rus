@@ -107,6 +107,9 @@ $hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $con
 $port = if ($ServerPort) { $ServerPort } elseif ($config.server.port) { $config.server.port } else { 5600 }
 $script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
 
+$bucketId = 'aw-file-operations_' + $script:Hostname
+Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
+
 # Разрешение путей для мониторинга
 $resolvedPaths = @()
 foreach ($p in $WatchPaths) {
@@ -128,8 +131,6 @@ if ($resolvedPaths.Count -eq 0) {
     exit 0
 }
 
-$bucketId = 'aw-file-operations_' + $script:Hostname
-Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
 Write-FileCollectorLog "Запуск мониторинга путей: $($resolvedPaths -join ', ')"
 
 $watchers = @()
