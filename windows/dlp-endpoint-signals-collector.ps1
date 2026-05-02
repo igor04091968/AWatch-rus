@@ -13,6 +13,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.Net.Http
+
 function Get-DeploymentConfig {
     param([string]$Path)
     if ($Path -and (Test-Path -LiteralPath $Path)) {
@@ -39,8 +42,20 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Json
     )
 
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+    $httpClient = New-Object System.Net.Http.HttpClient
+    try {
+        $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, 'application/json')
+        $response = $httpClient.PostAsync($Uri, $content).Result
+        if (-not $response.IsSuccessStatusCode) {
+            Write-EndpointLog ("POST {0} returned {1}" -f $Uri, [int]$response.StatusCode)
+        }
+    }
+    catch {
+        Write-EndpointLog ("POST error {0}: {1}" -f $Uri, $_.Exception.Message)
+    }
+    finally {
+        $httpClient.Dispose()
+    }
 }
 
 function Ensure-Bucket {
@@ -409,7 +424,7 @@ function Test-DocumentNameNeedsFallback {
     $trimmed = $Value.Trim()
     if (Test-LooksLikeMojibakeQuestionMarks -Value $trimmed) { return $true }
     if ($trimmed -match '^[0-9]+$') { return $true }
-    if ($trimmed -match '^(?i)(print document|document|local downlevel document)$') { return $true }
+    if ($trimmed -match '^(?i)(print document|document|local downlevel document|печать документа)$') { return $true }
     return $false
 }
 
@@ -807,11 +822,13 @@ while ($true) {
                 $documentName = [string]$job.Document
                 $owner = [string]$job.Owner
                 $documentNameOriginal = $documentName
+                $documentNameSource = 'win32-printjob'
 
                 if (Test-DocumentNameNeedsFallback -Value $documentName) {
                     $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -JobId $jobId -Owner $owner -PrinterName $printerName
                     if ($eventDocumentName) {
                         $documentName = $eventDocumentName
+                        $documentNameSource = 'printservice-307-fallback'
                     }
                 }
 
@@ -819,6 +836,7 @@ while ($true) {
                     printerName  = $printerName
                     documentName = $documentName
                     documentNameOriginal = $documentNameOriginal
+                    documentNameSource = $documentNameSource
                     owner        = $owner
                     printJobId   = $jobId
                 }
@@ -865,6 +883,7 @@ while ($true) {
                     printerName  = $printerName
                     documentName = if ($resolvedDocument) { $resolvedDocument } else { $documentName }
                     documentNameOriginal = $documentName
+                    documentNameSource = if ($resolvedDocument) { 'printservice-307-fallback' } else { 'printservice-307' }
                     owner        = $owner
                     eventRecordId = $recordId
                     eventSource = 'printservice-307'

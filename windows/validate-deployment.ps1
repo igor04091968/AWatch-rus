@@ -24,6 +24,20 @@ $recoveryScript = [string]$config.paths.recoveryScript
 $afkExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$config.collectors.afkEnabled } else { $true }
 $windowExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$config.collectors.windowEnabled } else { $true }
 $fileOpsExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]$config.collectors.fileOpsEnabled } else { $true }
+$printServiceOperationalEnabled = $false
+try {
+    $printServiceLog = Get-WinEvent -ListLog 'Microsoft-Windows-PrintService/Operational' -ErrorAction Stop
+    $printServiceOperationalEnabled = [bool]$printServiceLog.IsEnabled
+}
+catch {
+}
+$printJobTitlePolicyEnabled = $false
+try {
+    $printPolicy = Get-ItemProperty -LiteralPath 'HKLM:\Software\Policies\Microsoft\Windows NT\Printers' -Name 'ShowJobTitleInEventLogs' -ErrorAction Stop
+    $printJobTitlePolicyEnabled = ([int]$printPolicy.ShowJobTitleInEventLogs -eq 1)
+}
+catch {
+}
 $requiredFiles = @(
     $collectorScript,
     $endpointCollectorScript,
@@ -120,8 +134,13 @@ $result = [ordered]@{
             ($sessionCollectorProcesses.Count -ge 1)
         )
     }
+    printTelemetry = [ordered]@{
+        operationalLogEnabled = $printServiceOperationalEnabled
+        jobTitlePolicyEnabled = $printJobTitlePolicyEnabled
+        ok = [bool]($printServiceOperationalEnabled -and $printJobTitlePolicyEnabled)
+    }
 }
 
-$result.overallOk = [bool]($result.files.ok -and $result.tasks.ok -and $result.processes.ok)
+$result.overallOk = [bool]($result.files.ok -and $result.tasks.ok -and $result.processes.ok -and $result.printTelemetry.ok)
 
 $result

@@ -20,6 +20,17 @@ function New-ActivityWatchDirectory {
     }
 }
 
+function Enable-ActivityWatchPrintTelemetry {
+    $policyPath = 'HKLM:\Software\Policies\Microsoft\Windows NT\Printers'
+    if (-not (Test-Path -LiteralPath $policyPath)) {
+        New-Item -Path $policyPath -Force | Out-Null
+    }
+    New-ItemProperty -Path $policyPath -Name 'ShowJobTitleInEventLogs' -Value 1 -PropertyType DWord -Force | Out-Null
+
+    & wevtutil.exe sl 'Microsoft-Windows-PrintService/Operational' /e:true | Out-Null
+}
+
+
 function Get-ActivityWatchPackageUrl {
     param(
         [string]$Version = 'v0.13.2'
@@ -465,6 +476,9 @@ param(
 Set-StrictMode -Version Latest
 `$ErrorActionPreference = 'Stop'
 
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.Net.Http
+
 function Get-DeploymentConfig {
     param([string]`$Path)
     return Get-Content -LiteralPath `$Path -Raw | ConvertFrom-Json
@@ -502,8 +516,21 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = `$true)][string]`$Json
     )
 
-    `$bytes = [Text.Encoding]::UTF8.GetBytes(`$Json)
-    Invoke-RestMethod -Method Post -Uri `$Uri -ContentType 'application/json; charset=utf-8' -Body `$bytes | Out-Null
+    `$httpClient = New-Object System.Net.Http.HttpClient
+    try {
+        `$content = New-Object System.Net.Http.StringContent(`$Json, [System.Text.Encoding]::UTF8, 'application/json')
+        `$response = `$httpClient.PostAsync(`$Uri, `$content).Result
+        if (-not `$response.IsSuccessStatusCode) {
+            return `$false
+        }
+        return `$true
+    }
+    catch {
+        return `$false
+    }
+    finally {
+        `$httpClient.Dispose()
+    }
 }
 
 function Ensure-Bucket {
@@ -532,7 +559,9 @@ function Ensure-Bucket {
     } | ConvertTo-Json -Compress
 
     try {
-        Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" -Json `$body
+        if (-not (Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" -Json `$body)) {
+            return
+        }
     }
     catch {
         try {

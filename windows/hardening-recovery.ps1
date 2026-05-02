@@ -87,6 +87,7 @@ else {
 
 New-ActivityWatchDirectory -Path $effectiveStateRoot
 New-ActivityWatchDirectory -Path $effectiveLogsRoot
+Enable-ActivityWatchPrintTelemetry
 
 if ($RepairPackage) {
     $workingRoot = Join-Path $env:TEMP 'activitywatch-windows-deploy'
