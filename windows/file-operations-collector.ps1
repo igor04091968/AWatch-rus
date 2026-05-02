@@ -14,7 +14,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Реестр известных бакетов
+# Force TLS 1.2 and load networking types
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.Net.Http
+
+# Bucket registry
 $script:KnownBuckets = @{}
 $script:Hostname = $env:COMPUTERNAME
 $script:SessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
@@ -44,7 +48,14 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Uri,
         [Parameter(Mandatory = $true)][string]$Json
     )
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json' -Body $Json | Out-Null
+    try {
+        $httpClient = New-Object System.Net.Http.HttpClient
+        $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, "application/json")
+        $response = $httpClient.PostAsync($Uri, $content).Result
+        $httpClient.Dispose()
+    } catch {
+        Write-FileCollectorLog "POST Error: $($_.Exception.Message)"
+    }
 }
 
 function Ensure-Bucket {
@@ -99,7 +110,7 @@ function Send-FileOperationEvent {
 }
 
 $config = Get-DeploymentConfig -Path $ConfigPath
-if (-not $config) { throw "Не найден конфигурационный файл: $ConfigPath" }
+if (-not $config) { throw "Configuration file not found: $ConfigPath" }
 
 $scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { $config.server.scheme } else { 'http' }
 $hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
@@ -109,7 +120,7 @@ $script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
 $bucketId = 'aw-file-operations_' + $script:Hostname
 Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
 
-# Разрешение путей для мониторинга
+# Resolve paths for monitoring
 $resolvedPaths = @()
 foreach ($p in $WatchPaths) {
     $fullPath = $p
@@ -126,11 +137,11 @@ foreach ($p in $WatchPaths) {
 }
 
 if ($resolvedPaths.Count -eq 0) {
-    Write-FileCollectorLog "Нет доступных путей для мониторинга. Завершение."
+    Write-FileCollectorLog "No valid watch paths found. Exiting."
     exit 0
 }
 
-Write-FileCollectorLog "Запуск мониторинга путей: $($resolvedPaths -join ', ')"
+Write-FileCollectorLog "Starting watch on paths: $($resolvedPaths -join ', ')"
 
 $watchers = @()
 foreach ($path in $resolvedPaths) {
@@ -155,7 +166,7 @@ foreach ($path in $resolvedPaths) {
     $watchers += $watcher
 }
 
-Write-FileCollectorLog "Коллектор запущен. Ожидание событий..."
+Write-FileCollectorLog "Collector started. Waiting for events..."
 
 try {
     while ($true) {
@@ -163,7 +174,7 @@ try {
     }
 }
 finally {
-    Write-FileCollectorLog "Остановка коллектора..."
+    Write-FileCollectorLog "Stopping collector..."
     foreach ($w in $watchers) {
         $w.EnableRaisingEvents = $false
         $w.Dispose()
