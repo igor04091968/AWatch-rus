@@ -22,8 +22,8 @@ C:\Program Files\AWatch-rus\windows\deploy-ensemble.ps1 `
   -ServerPort 5600 `
   -Domain SHARKON2025 `
   -Users user1,user2,user3,user4,user5 `
-  -InstallRoot 'C:\Program Files\ActivityWatch-Phase2' `
-  -StateRoot 'C:\ProgramData\ActivityWatch-Phase2' `
+  -InstallRoot 'C:\Program Files\AWatch-rus\bin' `
+  -StateRoot 'C:\ProgramData\AWatch-rus' `
   -AfkEnabled:$false `
   -CustomPolicyPath C:\Program Files\AWatch-rus\windows\dlp-policy.example.json `
   -ValidateAfterDeploy
@@ -43,7 +43,7 @@ C:\Program Files\AWatch-rus\windows\deploy-ensemble.ps1 `
 
 ```powershell
 $report = C:\Program Files\AWatch-rus\windows\validate-deployment.ps1 `
-  -ConfigPath C:\ProgramData\ActivityWatch-Phase2\deployment-config.json
+  -ConfigPath C:\ProgramData\AWatch-rus\deployment-config.json
 $report | ConvertTo-Json -Depth 12
 ```
 

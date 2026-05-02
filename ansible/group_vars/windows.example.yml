@@ -18,9 +18,9 @@ aw_windows_extra_users: []
 # aw_windows_extra_users:
 #   - Администратор
 
-# Рекомендуемый изолированный профиль для фазового раската.
-aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
-aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+# Единые Windows/RDP пути: те же, что использует InnoSetup.
+aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
+aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
 aw_windows_local_agent_logs_enabled: false
@@ -33,7 +33,7 @@ aw_windows_skip_hardening: false
 aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
 aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
 
-aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_phase2_ansible.json"
+aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
 aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
 aw_windows_fail_on_validation_error: true
 

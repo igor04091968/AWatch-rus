@@ -32,4 +32,4 @@ The installer wizard asks for:
 - `ServerHost` / `ServerPort` (defaults to our AW server `10.10.10.13:5600`)
 - `Users` (CSV)
 - Whether to use offline payload (auto-enabled when the ZIP exists at compile time)
-- Whether to validate after deploy (`-ValidateAfterDeploy`, report written to `C:\ProgramData\ActivityWatch-Phase2\ensemble-report-*.json`)
+- Whether to validate after deploy (`-ValidateAfterDeploy`, report written to `C:\ProgramData\AWatch-rus\ensemble-report-*.json`)

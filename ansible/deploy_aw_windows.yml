@@ -1,5 +1,5 @@
 ---
-- name: Развернуть Windows/RDP phase-2 collector'ы AWatch-rus
+- name: Развернуть Windows/RDP collector'ы AWatch-rus
   hosts: aw_windows
   gather_facts: false
 
@@ -21,8 +21,8 @@
       - user5
     aw_windows_extra_users: []
     aw_windows_users_effective: "{{ (aw_windows_users + aw_windows_extra_users) | unique }}"
-    aw_windows_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
-    aw_windows_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
+    aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
+    aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
     aw_windows_afk_enabled: true
     aw_windows_window_enabled: true
     aw_windows_local_agent_logs_enabled: false
@@ -33,7 +33,7 @@
     aw_windows_skip_hardening: false
     aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
     aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
-    aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_phase2_ansible.json"
+    aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
     aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
     aw_windows_launch_task_pattern: "ActivityWatch Launch *"
     aw_windows_recovery_task_name: "ActivityWatch Recovery"
@@ -89,7 +89,7 @@
           {{ user }}
           {% endfor -%}
 
-    - name: Запустить phase-2 ensemble развёртывание
+    - name: Запустить Windows/RDP ensemble развёртывание
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
@@ -196,11 +196,11 @@
     - name: Забрать validation report
       ansible.builtin.fetch:
         src: "{{ aw_windows_validation_remote_path }}"
-        dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_phase2_ansible.json"
+        dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
         flat: true
 
     - name: Показать путь к отчёту
       ansible.builtin.debug:
         msg:
-          - "Windows phase2 развёртывание завершено на {{ inventory_hostname }}."
-          - "Отчёт проверки: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_phase2_ansible.json"
+          - "Windows/RDP развёртывание завершено на {{ inventory_hostname }}."
+          - "Отчёт проверки: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"

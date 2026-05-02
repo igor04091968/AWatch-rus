@@ -5,8 +5,8 @@
 #define AwDefaultServerHost "10.10.10.13"
 #define AwDefaultServerPort "5600"
 #define AwDefaultUsers "user1,user2,user3,user4,user5"
-#define AwDefaultInstallRoot "C:\\Program Files\\ActivityWatch-Phase2"
-#define AwDefaultStateRoot "C:\\ProgramData\\ActivityWatch-Phase2"
+#define AwDefaultInstallRoot "C:\\Program Files\\AWatch-rus\\bin"
+#define AwDefaultStateRoot "C:\\ProgramData\\AWatch-rus"
 #define AwDefaultZipName "activitywatch-v0.13.2-windows-x86_64.zip"
 
 [Setup]

@@ -21,7 +21,7 @@
 - `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_server.yml`
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_and_deploy_aw.yml`
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
-- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows_phase2.yml`
+- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows.yml`
 
 ---
 
@@ -217,7 +217,7 @@ C:\Program Files\AWatch-rus\windows\deploy-ensemble.ps1 `
 
 Отчёт сохраняется в:
 
-- `C:\ProgramData\ActivityWatch-Phase2\ensemble-report-YYYYMMDD-HHMMSS.json`
+- `C:\ProgramData\AWatch-rus\ensemble-report-YYYYMMDD-HHMMSS.json`
 
 ### 3.3 Single-user развёртывание
 
@@ -233,14 +233,14 @@ C:\Program Files\AWatch-rus\windows\deploy-single-user.ps1 `
 
 ```powershell
 C:\Program Files\AWatch-rus\windows\hardening-recovery.ps1 `
-  -ConfigPath C:\ProgramData\ActivityWatch-Phase2\deployment-config.json
+  -ConfigPath C:\ProgramData\AWatch-rus\deployment-config.json
 ```
 
 ### 3.5 Валидация deployment-а (PowerShell report)
 
 ```powershell
 $report = C:\Program Files\AWatch-rus\windows\validate-deployment.ps1 `
-  -ConfigPath C:\ProgramData\ActivityWatch-Phase2\deployment-config.json
+  -ConfigPath C:\ProgramData\AWatch-rus\deployment-config.json
 $report | ConvertTo-Json -Depth 12
 ```
 
@@ -248,13 +248,13 @@ $report | ConvertTo-Json -Depth 12
 
 ## 4) Что должно появиться на Windows после установки
 
-- `C:\Program Files\ActivityWatch-Phase2`
-- `C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`
-- `C:\ProgramData\ActivityWatch-Phase2\launch-watchers.ps1`
-- `C:\ProgramData\ActivityWatch-Phase2\recovery-loop.ps1`
-- `C:\ProgramData\ActivityWatch-Phase2\browser-domains-native-collector.ps1`
-- `C:\ProgramData\ActivityWatch-Phase2\web-category-rules.json`
-- `C:\ProgramData\ActivityWatch-Phase2\logs\`
+- `C:\Program Files\AWatch-rus\bin`
+- `C:\ProgramData\AWatch-rus\deployment-config.json`
+- `C:\ProgramData\AWatch-rus\launch-watchers.ps1`
+- `C:\ProgramData\AWatch-rus\recovery-loop.ps1`
+- `C:\ProgramData\AWatch-rus\browser-domains-native-collector.ps1`
+- `C:\ProgramData\AWatch-rus\web-category-rules.json`
+- `C:\ProgramData\AWatch-rus\logs\`
 
 Задачи планировщика:
 

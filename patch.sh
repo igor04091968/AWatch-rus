@@ -17,13 +17,14 @@ cat > windows/installkit/innosetup/innosetup-rdp-package-filelist.md <<'EOF'
 - Он описывает, **что не класть** (генерируется уже на целевом хосте).
 - Он **не меняет** текущие deploy-скрипты и логику проекта.
 
-## Важное уточнение по `phase2`
+## Важное уточнение по единой Windows-директории
 
 Чтобы исключить путаницу:
 
-1. В каталоге `windows/` нет файлов с именами `phase2-*`.
-2. `phase2` в проекте — это обозначение этапа/набора телеметрии (DLP + endpoint signals).
-3. Файлы вида `phase2-*.deployment-config.json` — это **примерные конфиги install-kit**, они лежат в `install-kit-*/server-configs-*`.
+1. InnoSetup и Ansible используют один набор путей.
+2. Toolkit лежит в `{app}\windows` = `C:\Program Files\AWatch-rus\windows`.
+3. Бинарники ActivityWatch лежат в `C:\Program Files\AWatch-rus\bin`.
+4. Runtime-конфиг, collectors, логи и отчёты лежат в `C:\ProgramData\AWatch-rus`.
 
 ## 1) Обязательные файлы для Inno Setup пакета
 
@@ -58,11 +59,11 @@ cat > windows/installkit/innosetup/innosetup-rdp-package-filelist.md <<'EOF'
 
 Эти файлы/папки появляются на целевом Windows-хосте во время/после деплоя:
 
-- `C:\ProgramData\ActivityWatch\deployment-config.json`
-- `C:\ProgramData\ActivityWatch\web-category-rules.json`
-- `C:\ProgramData\ActivityWatch\dlp-policy.json`
-- `C:\ProgramData\ActivityWatch\logs\*`
-- `%LOCALAPPDATA%\ActivityWatch-Phase2\incident-artifacts\*`
+- `C:\ProgramData\AWatch-rus\deployment-config.json`
+- `C:\ProgramData\AWatch-rus\web-category-rules.json`
+- `C:\ProgramData\AWatch-rus\dlp-policy.json`
+- `C:\ProgramData\AWatch-rus\logs\*`
+- `%LOCALAPPDATA%\AWatch-rus\incident-artifacts\*`
 
 ## 4) Опционально приложить в операторский install-kit
 
@@ -152,4 +153,3 @@ echo "windows/installkit/innosetup/innosetup-rdp-package-filelist.md"
 echo "docs/windows/innosetup-rdp-package-filelist.md"
 echo "windows/installkit/innosetup/AWatch-rus-InnoSetup.iss"
 echo "windows/installkit/innosetup/payload/.gitkeep"
-

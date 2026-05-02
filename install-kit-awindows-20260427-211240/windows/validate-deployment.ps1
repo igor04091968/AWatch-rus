@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch-Phase2\deployment-config.json'
+    [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json'
 )
 
 Set-StrictMode -Version Latest

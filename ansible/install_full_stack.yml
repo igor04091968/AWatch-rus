@@ -12,5 +12,5 @@
 
 - import_playbook: provision_proxmox_ct_and_deploy_aw.yml
 - import_playbook: deploy_aw_server.yml
-- import_playbook: deploy_aw_windows_phase2.yml
+- import_playbook: deploy_aw_windows.yml
 - import_playbook: deploy_aw_pfsense_poller.yml

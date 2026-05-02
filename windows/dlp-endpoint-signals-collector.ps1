@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch-Phase2\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
@@ -81,7 +81,7 @@ function Send-EndpointSignalHeartbeat {
             username   = $env:USERNAME
             sessionId  = $script:SessionId
             hostname   = $script:Hostname
-            source     = 'endpoint-signals-phase2'
+            source     = 'endpoint-signals-awatch-rus'
         } + $Data
     } | ConvertTo-Json -Depth 6 -Compress
 
@@ -122,7 +122,7 @@ function Send-DlpIncidentHeartbeat {
             username  = $env:USERNAME
             sessionId = $script:SessionId
             hostname  = $script:Hostname
-            source    = 'endpoint-signals-phase2'
+            source    = 'endpoint-signals-awatch-rus'
         } + $Data + $captureData
     } | ConvertTo-Json -Depth 7 -Compress
 
@@ -713,12 +713,12 @@ $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
 $resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'Укажите ServerHost или подготовьте deployment-config.json.' }
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
-$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\ActivityWatch-Phase2\dlp-policy.json' }
+$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\AWatch-rus\dlp-policy.json' }
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
-$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch-Phase2\logs' }
+$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\AWatch-rus\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("endpoint-signals-{0}.log" -f $env:USERNAME) }
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
-$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'ActivityWatch-Phase2\\incident-artifacts' }
+$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {

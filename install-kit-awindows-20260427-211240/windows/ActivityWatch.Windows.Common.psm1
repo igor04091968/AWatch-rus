@@ -547,7 +547,7 @@ function Send-LogonMarkerIfNeeded {
     `$stateRoot = [string]`$Config.paths.stateRoot
     `$markerRoots = New-Object System.Collections.Generic.List[string]
     if (-not [string]::IsNullOrWhiteSpace(`$env:LOCALAPPDATA)) {
-        `$markerRoots.Add((Join-Path `$env:LOCALAPPDATA 'ActivityWatch-Phase2\markers'))
+        `$markerRoots.Add((Join-Path `$env:LOCALAPPDATA 'AWatch-rus\markers'))
     }
     if (-not [string]::IsNullOrWhiteSpace(`$stateRoot)) {
         `$markerRoots.Add((Join-Path `$stateRoot 'markers'))
@@ -593,7 +593,7 @@ function Send-LogonMarkerIfNeeded {
             userId    = "`$(`$env:USERDOMAIN)\`$(`$env:USERNAME)"
             sessionId = `$SessionId
             hostname  = `$script:Hostname
-            source    = 'launch-watchers-phase2'
+            source    = 'launch-watchers-awatch-rus'
         }
     } | ConvertTo-Json -Depth 5 -Compress
 
