@@ -14,6 +14,7 @@ $installRoot = [string]$config.paths.installRoot
 $stateRoot = [string]$config.paths.stateRoot
 $collectorScript = [string]$config.paths.collectorScript
 $endpointCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$config.paths.endpointCollectorScript } else { Join-Path $stateRoot 'dlp-endpoint-signals-collector.ps1' }
+$fileCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$config.paths.fileCollectorScript } else { Join-Path $stateRoot 'file-operations-collector.ps1' }
 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
 $rulesPath = [string]$config.paths.rulesPath
 $policyPath = if ($config.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$config.paths.policyPath } else { Join-Path $stateRoot 'dlp-policy.json' }
@@ -22,6 +23,7 @@ $recoveryScript = [string]$config.paths.recoveryScript
 
 $afkExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$config.collectors.afkEnabled } else { $true }
 $windowExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$config.collectors.windowEnabled } else { $true }
+$fileOpsExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]$config.collectors.fileOpsEnabled } else { $true }
 $requiredFiles = @(
     $collectorScript,
     $endpointCollectorScript,
@@ -32,6 +34,9 @@ $requiredFiles = @(
     $recoveryScript,
     $ConfigPath
 )
+if ($fileOpsExpected) {
+    $requiredFiles += $fileCollectorScript
+}
 if ($afkExpected) {
     $requiredFiles += (Join-Path $installRoot 'aw-watcher-afk\aw-watcher-afk.exe')
 }

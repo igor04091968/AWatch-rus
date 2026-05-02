@@ -234,7 +234,7 @@
       delegate_to: localhost
 
     - name: Стянуть отчёт валидации с эндпоинта
-      ansible.windows.win_fetch:
+      ansible.builtin.fetch:
         src: "{{ aw_windows_validation_remote_path }}"
         dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
         flat: true
