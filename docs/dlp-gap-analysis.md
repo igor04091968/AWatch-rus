@@ -29,8 +29,8 @@
 
 - USB/print/clipboard collectors (endpoint signals) — внедрено.
 - Incident pipeline расширен на endpoint события — внедрено.
-- File-operation telemetry (create/copy/archive/upload hints) — в backlog.
-- Central incident aggregation/export — в backlog.
+- File-operation telemetry (create/delete/rename/archive hints) — прототип внедрён (`windows/file-operations-collector.ps1`).
+- Central incident aggregation/export — прототип внедрён (`scripts/aggregate_dlp_events.py`, `docs/dlp-aggregator.md`).
 
 ### Phase 3
 
