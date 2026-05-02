@@ -70,16 +70,25 @@ function Get-SessionRecords {
                 continue
             }
 
+            $sessionName = ''
+            $sessionIdIndex = 2
+            if ($parts[1] -match '^\d+$') {
+                $sessionIdIndex = 1
+            }
+            else {
+                $sessionName = $parts[1]
+            }
+
             $sessionId = 0
-            if ($parts[2] -match '^\d+$') {
-                $sessionId = [int]$parts[2]
+            if ($parts[$sessionIdIndex] -match '^\d+$') {
+                $sessionId = [int]$parts[$sessionIdIndex]
             }
 
             $records += [pscustomobject]@{
                 username    = $parts[0]
-                sessionName = $parts[1]
+                sessionName = $sessionName
                 sessionId   = $sessionId
-                state       = $parts[3]
+                state       = $parts[$sessionIdIndex + 1]
             }
         }
     }

@@ -116,6 +116,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
     -EndpointCollectorScript $effectiveEndpointCollector `
+    -SessionCollectorScript $effectiveSessionCollector `
     -RulesPath $effectiveRules `
     -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `
