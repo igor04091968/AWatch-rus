@@ -1541,14 +1541,28 @@
 
   function rewriteUnknownCategoryBuilderQueryBody(body) {
     if (typeof body !== "string") return body;
-    if (body.indexOf("aw-watcher-window_unknown") === -1 && body.indexOf("aw-watcher-afk_unknown") === -1) {
-      return body;
+    if (body.indexOf("undefined") !== -1) {
+      body = body
+        .replace(/flood\(query_bucket\(find_bucket\(\\"undefined\\"\)\)\)/g, '[]')
+        .replace(/query_bucket\(find_bucket\(\\"undefined\\"\)\)/g, '[]')
+        .replace(/flood\(query_bucket\(\\"undefined\\"\)\)/g, '[]')
+        .replace(/query_bucket\(\\"undefined\\"\)/g, '[]');
+      const ph = getPreferredWindowHostFromBuckets();
+      if (ph) {
+        body = body
+          .replace(/aw-watcher-window_undefined/g, "aw-watcher-window_" + ph)
+          .replace(/aw-watcher-afk_undefined/g, "aw-watcher-afk_" + ph);
+      }
     }
-    const preferredHost = getPreferredWindowHostFromBuckets();
-    if (!preferredHost) return body;
-    return body
-      .replace(/aw-watcher-window_unknown/g, "aw-watcher-window_" + preferredHost)
-      .replace(/aw-watcher-afk_unknown/g, "aw-watcher-afk_" + preferredHost);
+    if (body.indexOf("aw-watcher-window_unknown") !== -1 || body.indexOf("aw-watcher-afk_unknown") !== -1) {
+      const preferredHost = getPreferredWindowHostFromBuckets();
+      if (preferredHost) {
+        body = body
+          .replace(/aw-watcher-window_unknown/g, "aw-watcher-window_" + preferredHost)
+          .replace(/aw-watcher-afk_unknown/g, "aw-watcher-afk_" + preferredHost);
+      }
+    }
+    return body;
   }
 
   function installCategoryBuilderNetworkPatch() {
