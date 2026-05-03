@@ -41,6 +41,15 @@
 - Телеметрия enforcement (`enforced: true/false` в incident heartbeat) — внедрено.
 - Документация: `docs/dlp-enforcement.md`.
 
+### Phase 2.5 — Email Outbound Collector (внедрено)
+
+- Мониторинг исходящей почты через Outlook COM (Sent Items polling) — внедрено.
+- SMTP network connection detection (порты 25/587/465/2525) — внедрено.
+- DLP-правила `endpoint.email[]` (regex по теме, получателям, вложениям, externalOnly) — внедрено.
+- Enforcement: перемещение в Drafts при `action: "block"` (Outlook mode) — внедрено.
+- Приватность: тема/получатели как SHA256, тело не читается — внедрено.
+- Документация: `docs/email-outbound-collector.md`.
+
 ### Phase 3
 
 - Policy engine service (server-side), versioned policies, approval workflow.
