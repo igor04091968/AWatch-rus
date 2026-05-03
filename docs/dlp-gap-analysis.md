@@ -32,6 +32,15 @@
 - File-operation telemetry (create/copy/archive/upload hints) — в backlog.
 - Central incident aggregation/export — в backlog.
 
+### Phase 2.5 — Enforcement (внедрено)
+
+- USB write-block (`Set-Disk -IsReadOnly`) при `action: "block"` — внедрено.
+- Print job cancel (`Remove-CimInstance Win32_PrintJob`) при `action: "block"` — внедрено.
+- Clipboard clear (`Set-Clipboard -Value $null`) при `action: "block"` — внедрено.
+- Windows balloon notification пользователю при блокировке — внедрено.
+- Телеметрия enforcement (`enforced: true/false` в incident heartbeat) — внедрено.
+- Документация: `docs/dlp-enforcement.md`.
+
 ### Phase 3
 
 - Policy engine service (server-side), versioned policies, approval workflow.
