@@ -215,6 +215,99 @@ function Capture-IncidentScreenshot {
     }
 }
 
+# ---------------------------------------------------------------------------
+# Enforcement functions (action = "block")
+# ---------------------------------------------------------------------------
+
+function Show-EnforcementNotification {
+    param(
+        [Parameter(Mandatory = $true)][string]$Title,
+        [Parameter(Mandatory = $true)][string]$Body
+    )
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        $icon = New-Object System.Windows.Forms.NotifyIcon
+        $icon.Icon = [System.Drawing.SystemIcons]::Warning
+        $icon.BalloonTipTitle = $Title
+        $icon.BalloonTipText = $Body
+        $icon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning
+        $icon.Visible = $true
+        $icon.ShowBalloonTip(5000)
+        Start-Sleep -Milliseconds 200
+        $icon.Dispose()
+    }
+    catch {
+        Write-EndpointLog ("notification failed: {0}" -f $_.Exception.Message)
+    }
+}
+
+function Invoke-ClipboardEnforcement {
+    [OutputType([bool])]
+    param()
+    try {
+        Set-Clipboard -Value $null -ErrorAction Stop
+        Write-EndpointLog "enforcement: clipboard cleared"
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("enforcement: clipboard clear failed: {0}" -f $_.Exception.Message)
+        return $false
+    }
+}
+
+function Invoke-UsbWriteBlockEnforcement {
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $true)][string]$DriveLetter
+    )
+    try {
+        $partition = Get-Partition -DriveLetter ($DriveLetter.TrimEnd(':')) -ErrorAction Stop
+        $disk = Get-Disk -Number $partition.DiskNumber -ErrorAction Stop
+        if ($disk.BusType -ne 'USB') {
+            Write-EndpointLog ("enforcement: skip non-USB disk {0} bus={1}" -f $disk.Number, $disk.BusType)
+            return $false
+        }
+        if (-not $disk.IsReadOnly) {
+            Set-Disk -Number $disk.Number -IsReadOnly $true -ErrorAction Stop
+            Write-EndpointLog ("enforcement: USB disk {0} ({1}) set read-only" -f $disk.Number, $DriveLetter)
+        }
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("enforcement: USB write-block failed drive={0}: {1}" -f $DriveLetter, $_.Exception.Message)
+        return $false
+    }
+}
+
+function Invoke-PrintJobEnforcement {
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $true)][string]$PrinterName,
+        [string]$DocumentName,
+        [string]$Owner
+    )
+    $cancelled = $false
+    try {
+        $jobs = Get-CimInstance Win32_PrintJob -ErrorAction SilentlyContinue
+        foreach ($job in @($jobs)) {
+            $jobPrinter = [string]$job.Name
+            $jobOwner = [string]$job.Owner
+            $jobDoc = [string]$job.Document
+            $matchPrinter = ($jobPrinter -like "*$PrinterName*")
+            $matchOwner = (-not $Owner) -or ($jobOwner -like "*$Owner*") -or ($jobOwner -like "*$env:USERNAME*")
+            if ($matchPrinter -and $matchOwner) {
+                Remove-CimInstance -InputObject $job -ErrorAction Stop
+                Write-EndpointLog ("enforcement: print job cancelled id={0} printer={1} doc={2}" -f $job.JobId, $jobPrinter, $jobDoc)
+                $cancelled = $true
+            }
+        }
+    }
+    catch {
+        Write-EndpointLog ("enforcement: print cancel failed printer={0}: {1}" -f $PrinterName, $_.Exception.Message)
+    }
+    return $cancelled
+}
+
 function Get-StringHash {
     param([AllowNull()][string]$Value)
     if ($null -eq $Value) { return $null }
@@ -321,11 +414,18 @@ function Evaluate-ClipboardRules {
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
         $message = if ($rule.message) { [string]$rule.message } else { "Clipboard rule matched: $ruleId" }
 
+        $enforced = $false
+        if ($action -eq 'block') {
+            $enforced = Invoke-ClipboardEnforcement
+            Show-EnforcementNotification -Title 'DLP: буфер обмена очищен' -Body $message
+        }
+
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'clipboard' -Data @{
             clipboardHash = $ClipboardHash
             clipboardLength = $ClipboardText.Length
+            enforced = $enforced
         }
-        Write-EndpointLog ("incident clipboard rule={0} action={1} severity={2}" -f $ruleId, $action, $severity)
+        Write-EndpointLog ("incident clipboard rule={0} action={1} severity={2} enforced={3}" -f $ruleId, $action, $severity, $enforced)
     }
 }
 
@@ -349,11 +449,18 @@ function Evaluate-UsbRules {
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
         $message = if ($rule.message) { [string]$rule.message } else { "USB rule matched: $ruleId" }
 
+        $enforced = $false
+        if ($action -eq 'block') {
+            $enforced = Invoke-UsbWriteBlockEnforcement -DriveLetter $DriveLetter
+            Show-EnforcementNotification -Title 'DLP: USB заблокирован для записи' -Body $message
+        }
+
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'usb_insert' -Data @{
             driveLetter = $DriveLetter
             volumeName  = $VolumeName
+            enforced = $enforced
         }
-        Write-EndpointLog ("incident usb rule={0} action={1} severity={2} drive={3}" -f $ruleId, $action, $severity, $DriveLetter)
+        Write-EndpointLog ("incident usb rule={0} action={1} severity={2} drive={3} enforced={4}" -f $ruleId, $action, $severity, $DriveLetter, $enforced)
     }
 }
 
@@ -387,12 +494,19 @@ function Evaluate-PrintRules {
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
         $message = if ($rule.message) { [string]$rule.message } else { "Print rule matched: $ruleId" }
 
+        $enforced = $false
+        if ($action -eq 'block') {
+            $enforced = Invoke-PrintJobEnforcement -PrinterName $PrinterName -DocumentName $DocumentName -Owner $Owner
+            Show-EnforcementNotification -Title 'DLP: печать заблокирована' -Body $message
+        }
+
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'print_job' -Data @{
             printerName  = $PrinterName
             documentName = $DocumentName
             owner        = $Owner
+            enforced = $enforced
         }
-        Write-EndpointLog ("incident print rule={0} action={1} severity={2} printer={3}" -f $ruleId, $action, $severity, $PrinterName)
+        Write-EndpointLog ("incident print rule={0} action={1} severity={2} printer={3} enforced={4}" -f $ruleId, $action, $severity, $PrinterName, $enforced)
     }
 }
 
