@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
@@ -12,9 +12,6 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-Add-Type -AssemblyName System.Net.Http
 
 function Get-DeploymentConfig {
     param([string]$Path)
@@ -42,20 +39,8 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Json
     )
 
-    $httpClient = New-Object System.Net.Http.HttpClient
-    try {
-        $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, 'application/json')
-        $response = $httpClient.PostAsync($Uri, $content).Result
-        if (-not $response.IsSuccessStatusCode) {
-            Write-EndpointLog ("POST {0} returned {1}" -f $Uri, [int]$response.StatusCode)
-        }
-    }
-    catch {
-        Write-EndpointLog ("POST error {0}: {1}" -f $Uri, $_.Exception.Message)
-    }
-    finally {
-        $httpClient.Dispose()
-    }
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
+    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
 }
 
 function Ensure-Bucket {
@@ -96,7 +81,7 @@ function Send-EndpointSignalHeartbeat {
             username   = $env:USERNAME
             sessionId  = $script:SessionId
             hostname   = $script:Hostname
-            source     = 'endpoint-signals-awatch-rus'
+            source     = 'endpoint-signals-phase2'
         } + $Data
     } | ConvertTo-Json -Depth 6 -Compress
 
@@ -137,7 +122,7 @@ function Send-DlpIncidentHeartbeat {
             username  = $env:USERNAME
             sessionId = $script:SessionId
             hostname  = $script:Hostname
-            source    = 'endpoint-signals-awatch-rus'
+            source    = 'endpoint-signals-phase2'
         } + $Data + $captureData
     } | ConvertTo-Json -Depth 7 -Compress
 
@@ -225,9 +210,102 @@ function Capture-IncidentScreenshot {
         }
     }
     catch {
-        Write-EndpointLog ("не удалось сделать снимок инцидента: {0}" -f $_.Exception.Message)
+        Write-EndpointLog ("screenshot capture failed: {0}" -f $_.Exception.Message)
         return @{}
     }
+}
+
+# ---------------------------------------------------------------------------
+# Enforcement functions (action = "block")
+# ---------------------------------------------------------------------------
+
+function Show-EnforcementNotification {
+    param(
+        [Parameter(Mandatory = $true)][string]$Title,
+        [Parameter(Mandatory = $true)][string]$Body
+    )
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+        $icon = New-Object System.Windows.Forms.NotifyIcon
+        $icon.Icon = [System.Drawing.SystemIcons]::Warning
+        $icon.BalloonTipTitle = $Title
+        $icon.BalloonTipText = $Body
+        $icon.BalloonTipIcon = [System.Windows.Forms.ToolTipIcon]::Warning
+        $icon.Visible = $true
+        $icon.ShowBalloonTip(5000)
+        Start-Sleep -Milliseconds 200
+        $icon.Dispose()
+    }
+    catch {
+        Write-EndpointLog ("notification failed: {0}" -f $_.Exception.Message)
+    }
+}
+
+function Invoke-ClipboardEnforcement {
+    [OutputType([bool])]
+    param()
+    try {
+        Set-Clipboard -Value $null -ErrorAction Stop
+        Write-EndpointLog "enforcement: clipboard cleared"
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("enforcement: clipboard clear failed: {0}" -f $_.Exception.Message)
+        return $false
+    }
+}
+
+function Invoke-UsbWriteBlockEnforcement {
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $true)][string]$DriveLetter
+    )
+    try {
+        $partition = Get-Partition -DriveLetter ($DriveLetter.TrimEnd(':')) -ErrorAction Stop
+        $disk = Get-Disk -Number $partition.DiskNumber -ErrorAction Stop
+        if ($disk.BusType -ne 'USB') {
+            Write-EndpointLog ("enforcement: skip non-USB disk {0} bus={1}" -f $disk.Number, $disk.BusType)
+            return $false
+        }
+        if (-not $disk.IsReadOnly) {
+            Set-Disk -Number $disk.Number -IsReadOnly $true -ErrorAction Stop
+            Write-EndpointLog ("enforcement: USB disk {0} ({1}) set read-only" -f $disk.Number, $DriveLetter)
+        }
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("enforcement: USB write-block failed drive={0}: {1}" -f $DriveLetter, $_.Exception.Message)
+        return $false
+    }
+}
+
+function Invoke-PrintJobEnforcement {
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory = $true)][string]$PrinterName,
+        [string]$DocumentName,
+        [string]$Owner
+    )
+    $cancelled = $false
+    try {
+        $jobs = Get-CimInstance Win32_PrintJob -ErrorAction SilentlyContinue
+        foreach ($job in @($jobs)) {
+            $jobPrinter = [string]$job.Name
+            $jobOwner = [string]$job.Owner
+            $jobDoc = [string]$job.Document
+            $matchPrinter = ($jobPrinter -like "*$PrinterName*")
+            $matchOwner = (-not $Owner) -or ($jobOwner -like "*$Owner*") -or ($jobOwner -like "*$env:USERNAME*")
+            if ($matchPrinter -and $matchOwner) {
+                Remove-CimInstance -InputObject $job -ErrorAction Stop
+                Write-EndpointLog ("enforcement: print job cancelled id={0} printer={1} doc={2}" -f $job.JobId, $jobPrinter, $jobDoc)
+                $cancelled = $true
+            }
+        }
+    }
+    catch {
+        Write-EndpointLog ("enforcement: print cancel failed printer={0}: {1}" -f $PrinterName, $_.Exception.Message)
+    }
+    return $cancelled
 }
 
 function Get-StringHash {
@@ -261,7 +339,7 @@ function Load-DlpPolicy {
     }
 
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
-        Write-EndpointLog ("DLP-политика не найдена, используются значения по умолчанию: {0}" -f $Path)
+        Write-EndpointLog ("policy not found, using defaults: {0}" -f $Path)
         return
     }
 
@@ -281,7 +359,7 @@ function Load-DlpPolicy {
         }
     }
     catch {
-        Write-EndpointLog ("не удалось разобрать DLP-политику: {0}" -f $_.Exception.Message)
+        Write-EndpointLog ("policy parse failed: {0}" -f $_.Exception.Message)
     }
 }
 
@@ -334,13 +412,20 @@ function Evaluate-ClipboardRules {
 
         $action = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
-        $message = if ($rule.message) { [string]$rule.message } else { "Сработало правило буфера обмена: $ruleId" }
+        $message = if ($rule.message) { [string]$rule.message } else { "Clipboard rule matched: $ruleId" }
+
+        $enforced = $false
+        if ($action -eq 'block') {
+            $enforced = Invoke-ClipboardEnforcement
+            Show-EnforcementNotification -Title 'DLP: буфер обмена очищен' -Body $message
+        }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'clipboard' -Data @{
             clipboardHash = $ClipboardHash
             clipboardLength = $ClipboardText.Length
+            enforced = $enforced
         }
-        Write-EndpointLog ("инцидент буфера обмена правило={0} действие={1} важность={2}" -f $ruleId, $action, $severity)
+        Write-EndpointLog ("incident clipboard rule={0} action={1} severity={2} enforced={3}" -f $ruleId, $action, $severity, $enforced)
     }
 }
 
@@ -362,13 +447,20 @@ function Evaluate-UsbRules {
 
         $action = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
-        $message = if ($rule.message) { [string]$rule.message } else { "Сработало правило USB-носителя: $ruleId" }
+        $message = if ($rule.message) { [string]$rule.message } else { "USB rule matched: $ruleId" }
+
+        $enforced = $false
+        if ($action -eq 'block') {
+            $enforced = Invoke-UsbWriteBlockEnforcement -DriveLetter $DriveLetter
+            Show-EnforcementNotification -Title 'DLP: USB заблокирован для записи' -Body $message
+        }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'usb_insert' -Data @{
             driveLetter = $DriveLetter
             volumeName  = $VolumeName
+            enforced = $enforced
         }
-        Write-EndpointLog ("инцидент USB правило={0} действие={1} важность={2} диск={3}" -f $ruleId, $action, $severity, $DriveLetter)
+        Write-EndpointLog ("incident usb rule={0} action={1} severity={2} drive={3} enforced={4}" -f $ruleId, $action, $severity, $DriveLetter, $enforced)
     }
 }
 
@@ -400,14 +492,21 @@ function Evaluate-PrintRules {
 
         $action = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
-        $message = if ($rule.message) { [string]$rule.message } else { "Сработало правило печати: $ruleId" }
+        $message = if ($rule.message) { [string]$rule.message } else { "Print rule matched: $ruleId" }
+
+        $enforced = $false
+        if ($action -eq 'block') {
+            $enforced = Invoke-PrintJobEnforcement -PrinterName $PrinterName -DocumentName $DocumentName -Owner $Owner
+            Show-EnforcementNotification -Title 'DLP: печать заблокирована' -Body $message
+        }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'print_job' -Data @{
             printerName  = $PrinterName
             documentName = $DocumentName
             owner        = $Owner
+            enforced = $enforced
         }
-        Write-EndpointLog ("инцидент печати правило={0} действие={1} важность={2} принтер={3}" -f $ruleId, $action, $severity, $PrinterName)
+        Write-EndpointLog ("incident print rule={0} action={1} severity={2} printer={3} enforced={4}" -f $ruleId, $action, $severity, $PrinterName, $enforced)
     }
 }
 
@@ -415,52 +514,6 @@ function Test-LooksLikeMojibakeQuestionMarks {
     param([AllowNull()][string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
     return $Value -match '\?{2,}'
-}
-
-function Test-DocumentNameNeedsFallback {
-    param([AllowNull()][string]$Value)
-
-    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
-    $trimmed = $Value.Trim()
-    if (Test-LooksLikeMojibakeQuestionMarks -Value $trimmed) { return $true }
-    if ($trimmed -match '^[0-9]+$') { return $true }
-    if ($trimmed -match '^(?i)(print document|document|local downlevel document|печать документа)$') { return $true }
-    return $false
-}
-
-function Get-EventXmlValue {
-    param(
-        [Parameter(Mandatory = $true)][xml]$EventXml,
-        [Parameter(Mandatory = $true)][string]$Name
-    )
-
-    $node = $EventXml.Event.UserData.DocumentPrinted.$Name
-    if ($null -ne $node) {
-        return [string]$node
-    }
-
-    return ''
-}
-
-function Get-PrintJobPrinterName {
-    param(
-        [AllowNull()][string]$JobName,
-        [AllowNull()][string]$FallbackPrinterName
-    )
-
-    if ([string]::IsNullOrWhiteSpace($JobName)) {
-        if (-not [string]::IsNullOrWhiteSpace($FallbackPrinterName)) {
-            return $FallbackPrinterName.Trim()
-        }
-        return ''
-    }
-
-    $parts = $JobName -split ',', 2
-    if ($parts.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace($parts[0])) {
-        return $parts[0].Trim()
-    }
-
-    return $JobName.Trim()
 }
 
 function Normalize-OwnerForMatch {
@@ -530,50 +583,13 @@ function Get-PrintServiceEventSummary {
         $propertyValues += [string]$prop.Value
     }
 
-    $xml = $null
-    try {
-        $xml = [xml]$Event.ToXml()
-    }
-    catch {
-    }
-
-    $jobId = ''
-    $documentName = ''
-    $owner = ''
-    $portName = ''
-    $printerName = ''
-    $sizeBytes = ''
-    $pageCount = ''
-
-    if ($xml) {
-        $jobId = Get-EventXmlValue -EventXml $xml -Name 'Param1'
-        $documentName = Get-EventXmlValue -EventXml $xml -Name 'Param2'
-        $owner = Get-EventXmlValue -EventXml $xml -Name 'Param3'
-        $portName = Get-EventXmlValue -EventXml $xml -Name 'Param4'
-        $printerName = Get-EventXmlValue -EventXml $xml -Name 'Param5'
-        $sizeBytes = Get-EventXmlValue -EventXml $xml -Name 'Param7'
-        $pageCount = Get-EventXmlValue -EventXml $xml -Name 'Param8'
-    }
-
-    if ([string]::IsNullOrWhiteSpace($jobId) -and $props.Count -ge 1) { $jobId = [string]$props[0].Value }
-    if ([string]::IsNullOrWhiteSpace($documentName) -and $props.Count -ge 2) { $documentName = [string]$props[1].Value }
-    if ([string]::IsNullOrWhiteSpace($owner) -and $props.Count -ge 3) { $owner = [string]$props[2].Value }
-    if ([string]::IsNullOrWhiteSpace($portName) -and $props.Count -ge 4) { $portName = [string]$props[3].Value }
-    if ([string]::IsNullOrWhiteSpace($printerName) -and $props.Count -ge 5) { $printerName = [string]$props[4].Value }
-    if ([string]::IsNullOrWhiteSpace($sizeBytes) -and $props.Count -ge 7) { $sizeBytes = [string]$props[6].Value }
-    if ([string]::IsNullOrWhiteSpace($pageCount) -and $props.Count -ge 8) { $pageCount = [string]$props[7].Value }
-
     [pscustomobject]@{
         RecordId      = [string]$Event.RecordId
         TimeCreated   = if ($Event.TimeCreated) { $Event.TimeCreated.ToString('o') } else { '' }
         PropertyCount  = $props.Count
-        JobId          = $jobId
-        DocumentName   = $documentName
-        Owner          = $owner
-        PortName       = $portName
-        PrinterName    = $printerName
-        SizeBytes      = $sizeBytes
-        PageCount      = $pageCount
+        DocumentName   = if ($props.Count -ge 1) { [string]$props[0].Value } else { '' }
+        Owner         = if ($props.Count -ge 2) { [string]$props[1].Value } else { '' }
+        PrinterName   = if ($props.Count -ge 4) { [string]$props[3].Value } else { '' }
         PropertyValues = $propertyValues
     }
 }
@@ -586,7 +602,7 @@ function Get-PrintServiceDocumentFallback {
     )
 
     $preferred = [string]$EventSummary.DocumentName
-    if (-not (Test-DocumentNameNeedsFallback -Value $preferred)) {
+    if (-not (Test-LooksLikeMojibakeQuestionMarks -Value $preferred) -and $preferred -notmatch '^[0-9]+$') {
         return $preferred
     }
 
@@ -597,10 +613,9 @@ function Get-PrintServiceDocumentFallback {
         $candidate = [string]$value
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
         if ($candidate -eq $preferred) { continue }
-        if ($EventSummary.JobId -and $candidate -eq [string]$EventSummary.JobId) { continue }
         if ($Owner -and $candidate -like "*$Owner*") { continue }
         if ($PrinterName -and $candidate -like "*$PrinterName*") { continue }
-        if (Test-DocumentNameNeedsFallback -Value $candidate) { continue }
+        if (Test-LooksLikeMojibakeQuestionMarks -Value $candidate) { continue }
 
         if ($candidate -match '[\\/:]' -and $candidate -match '\.[A-Za-z0-9]{1,8}$') {
             $pathCandidates.Add($candidate)
@@ -645,7 +660,7 @@ function Write-PrintServiceEventTrace {
     }
 
     Write-EndpointLog (
-        'printservice-307 этап={0} recordId={1} время={2} владелец={3} принтер={4} документ={5} итоговыйДокумент={6} свойства=[{7}] причина={8}' -f
+        'printservice-307 phase={0} recordId={1} time={2} owner={3} printer={4} document={5} resolved={6} properties=[{7}] reason={8}' -f
         $Phase,
         $EventSummary.RecordId,
         $EventSummary.TimeCreated,
@@ -660,7 +675,6 @@ function Write-PrintServiceEventTrace {
 
 function Get-BetterDocumentNameFromPrintServiceEvents {
     param(
-        [string]$JobId,
         [string]$Owner,
         [string]$PrinterName
     )
@@ -678,41 +692,32 @@ function Get-BetterDocumentNameFromPrintServiceEvents {
                 $summary = Get-PrintServiceEventSummary -Event $event
                 $resolvedDocument = Get-PrintServiceDocumentFallback -EventSummary $summary -Owner $Owner -PrinterName $PrinterName
 
-                $jobMatches = if ($JobId) { [string]$summary.JobId -eq [string]$JobId } else { $true }
                 $ownerMatches = if ($Owner) { Test-OwnerLooseMatch -Expected $Owner -Actual $summary.Owner } else { $true }
                 $printerMatches = if ($PrinterName) { Test-PrinterLooseMatch -Expected $PrinterName -Actual $summary.PrinterName } else { $true }
 
                 if ($pass -eq 'strict') {
-                    if ($JobId -and -not $jobMatches) {
-                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'несовпадение-jobid-strict' -ResolvedDocument $resolvedDocument
-                        continue
-                    }
                     if ($Owner -and -not $ownerMatches) {
-                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'несовпадение-владельца-strict' -ResolvedDocument $resolvedDocument
+                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'owner-mismatch-strict' -ResolvedDocument $resolvedDocument
                         continue
                     }
                     if ($PrinterName -and -not $printerMatches) {
-                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'несовпадение-принтера-strict' -ResolvedDocument $resolvedDocument
+                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'printer-mismatch-strict' -ResolvedDocument $resolvedDocument
                         continue
                     }
                 }
                 else {
-                    if ($JobId -and (-not $jobMatches) -and $Owner -and $PrinterName -and -not $ownerMatches -and -not $printerMatches) {
-                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'несовпадение-владельца-и-принтера-relaxed' -ResolvedDocument $resolvedDocument
-                        continue
-                    }
-                    if ((-not $JobId) -and $Owner -and $PrinterName -and -not $ownerMatches -and -not $printerMatches) {
-                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'несовпадение-владельца-и-принтера-relaxed' -ResolvedDocument $resolvedDocument
+                    if ($Owner -and $PrinterName -and -not $ownerMatches -and -not $printerMatches) {
+                        Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason 'owner-and-printer-mismatch-relaxed' -ResolvedDocument $resolvedDocument
                         continue
                     }
                 }
 
                 if ([string]::IsNullOrWhiteSpace($resolvedDocument)) {
-                    Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason ('нет-кандидата-документа-' + $pass) -ResolvedDocument ''
+                    Write-PrintServiceEventTrace -EventSummary $summary -Phase 'scan' -MatchReason ('no-document-candidate-' + $pass) -ResolvedDocument ''
                     continue
                 }
 
-                $matchReasonBase = if (Test-DocumentNameNeedsFallback -Value $summary.DocumentName) { 'использован-резервный-вариант' } else { 'напрямую' }
+                $matchReasonBase = if (Test-LooksLikeMojibakeQuestionMarks -Value $summary.DocumentName) { 'fallback-used' } else { 'direct' }
                 Write-PrintServiceEventTrace -EventSummary $summary -Phase 'selected' -MatchReason ($matchReasonBase + '-' + $pass) -ResolvedDocument $resolvedDocument
                 return $resolvedDocument
             }
@@ -725,15 +730,15 @@ function Get-BetterDocumentNameFromPrintServiceEvents {
 }
 
 $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
-$resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'Укажите ServerHost или подготовьте deployment-config.json.' }
+$resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'ServerHost is required.' }
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
-$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\AWatch-rus\dlp-policy.json' }
+$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\ActivityWatch\dlp-policy.json' }
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
-$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\AWatch-rus\logs' }
+$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("endpoint-signals-{0}.log" -f $env:USERNAME) }
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
-$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
+$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'ActivityWatch-Phase2\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
@@ -757,7 +762,7 @@ $script:IncidentScreenshotEnabled = $resolvedIncidentScreenshotEnabled
 $script:ScreenshotTypesLoaded = $false
 
 Load-DlpPolicy -Path $resolvedPolicyPath
-Write-EndpointLog ("endpoint-коллектор запущен для {0}" -f $script:ApiBase)
+Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
 
 while ($true) {
     try {
@@ -818,17 +823,15 @@ while ($true) {
                 if ($script:SeenPrintJob.ContainsKey($jobId)) { continue }
                 $script:SeenPrintJob[$jobId] = (Get-Date).ToUniversalTime()
 
-                $printerName = Get-PrintJobPrinterName -JobName ([string]$job.Name) -FallbackPrinterName ([string]$job.DriverName)
+                $printerName = [string]$job.Name
                 $documentName = [string]$job.Document
                 $owner = [string]$job.Owner
                 $documentNameOriginal = $documentName
-                $documentNameSource = 'win32-printjob'
 
-                if (Test-DocumentNameNeedsFallback -Value $documentName) {
-                    $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -JobId $jobId -Owner $owner -PrinterName $printerName
+                if (Test-LooksLikeMojibakeQuestionMarks -Value $documentName) {
+                    $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -Owner $owner -PrinterName $printerName
                     if ($eventDocumentName) {
                         $documentName = $eventDocumentName
-                        $documentNameSource = 'printservice-307-fallback'
                     }
                 }
 
@@ -836,9 +839,7 @@ while ($true) {
                     printerName  = $printerName
                     documentName = $documentName
                     documentNameOriginal = $documentNameOriginal
-                    documentNameSource = $documentNameSource
                     owner        = $owner
-                    printJobId   = $jobId
                 }
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName $documentName -Owner $owner
             }
@@ -883,7 +884,6 @@ while ($true) {
                     printerName  = $printerName
                     documentName = if ($resolvedDocument) { $resolvedDocument } else { $documentName }
                     documentNameOriginal = $documentName
-                    documentNameSource = if ($resolvedDocument) { 'printservice-307-fallback' } else { 'printservice-307' }
                     owner        = $owner
                     eventRecordId = $recordId
                     eventSource = 'printservice-307'
@@ -903,7 +903,7 @@ while ($true) {
         }
     }
     catch {
-        Write-EndpointLog ("ошибка коллектора: {0}" -f $_.Exception.Message)
+        Write-EndpointLog ("collector error: {0}" -f $_.Exception.Message)
     }
 
     Start-Sleep -Seconds $resolvedPollSeconds
