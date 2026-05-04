@@ -11,6 +11,11 @@ scrape_configs:
     static_configs:
       - targets: ["localhost:9090"]
 
+  - job_name: aw_activitywatch_exporter
+    static_configs:
+      - targets: ["aw-exporter:9398"]
+    scrape_interval: 30s
+
   - job_name: onec_sql_exporter
     static_configs:
       - targets: ["sql-exporter:9399"]
