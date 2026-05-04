@@ -13,12 +13,14 @@
 - `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.
 - `docs/console-ssh-logger.md` — логирование только консольных команд и SSH-сессий в AW.
 - `docs/dlp-gap-analysis.md` — разрыв до enterprise DLP и roadmap.
+- `docs/dlp-aggregator.md` — прототип централизованной агрегации DLP/file-operation событий.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `pfsense/` — внешний poller для pfSense API и systemd unit под Debian/Ubuntu utility VM.
-- `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, phase-2 DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`) и session-level presence для удалённых Windows/RDP пользователей (`aw-worktime-sessions_*`).
+- `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, Windows/RDP DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`) и session-level presence для удалённых Windows/RDP пользователей (`aw-worktime-sessions_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
+- `scripts/aggregate_dlp_events.py` — сбор `aw-file-operations_*` и `aw-dlp-incidents_*` в SQLite/PostgreSQL.
 - `scripts/install_aw_linux_client.sh` — установка Linux bundle + autostart для remote AW server.
 - `scripts/install_aw_console_ssh_logger.sh` — user-space установка console/ssh logger.
 - `scripts/install_aw_linux_web_category_logger.sh` — user-space классификация browser admin UI по title/class.
@@ -41,9 +43,9 @@
 - `ansible/provision_proxmox_ct_and_deploy_aw.yml`
 - `ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` (массово по матрице CT)
 
-Для централизованного phase-2 деплоя Windows-клиентов через WinRM:
+Для централизованного деплоя Windows/RDP-клиентов через WinRM:
 
-- `ansible/deploy_aw_windows_phase2.yml`
+- `ansible/deploy_aw_windows.yml`
 
 Для внешнего pfSense poller'а:
 

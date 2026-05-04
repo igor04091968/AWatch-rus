@@ -1,5 +1,5 @@
 ---
-- name: Validate required per-CT variables
+- name: Проверить обязательные переменные CT
   ansible.builtin.assert:
     that:
       - ct_id is defined
@@ -27,14 +27,14 @@
       - aw_server_log_dir is defined
       - aw_server_user is defined
       - aw_server_group is defined
-    fail_msg: "Missing required variables for CT provisioning/deploy."
+    fail_msg: "Не заданы обязательные переменные для создания CT и развёртывания."
 
-- name: Build CT network string
+- name: Сформировать сетевую строку CT
   ansible.builtin.set_fact:
     ct_net0: >-
       name=eth0,bridge={{ ct_bridge }},ip={{ ct_ip }},gw={{ ct_gw }}{% if (ct_vlan | default('') | string | length) > 0 %},tag={{ ct_vlan }}{% endif %}
 
-- name: Check whether CT already exists
+- name: Проверить, существует ли CT
   ansible.builtin.command:
     argv:
       - pct
@@ -44,7 +44,7 @@
   failed_when: false
   changed_when: false
 
-- name: Create CT when absent
+- name: Создать CT, если он отсутствует
   ansible.builtin.command:
     argv:
       - pct
@@ -78,8 +78,9 @@
       - --ostype
       - debian
   when: ct_status_check.rc != 0
+  no_log: true
 
-- name: Check current CT runtime state
+- name: Проверить текущее состояние CT
   ansible.builtin.command:
     argv:
       - pct
@@ -88,7 +89,7 @@
   register: ct_runtime_status
   changed_when: false
 
-- name: Start CT when stopped
+- name: Запустить CT, если он остановлен
   ansible.builtin.command:
     argv:
       - pct
@@ -96,20 +97,23 @@
       - "{{ ct_id }}"
   when: "'stopped' in ct_runtime_status.stdout"
 
-- name: Ensure bootstrap directory on Proxmox host
+- name: Создать bootstrap каталог на Proxmox host
   ansible.builtin.file:
-    path: "{{ proxmox_bootstrap_dir }}"
+    path: "{{ item }}"
     state: directory
     mode: "0700"
+  loop:
+    - "{{ proxmox_bootstrap_dir }}"
+    - "{{ proxmox_bootstrap_dir }}/settings"
 
-- name: Copy AW bootstrap files to Proxmox host temp
+- name: Скопировать AW bootstrap файлы во временный каталог Proxmox host
   ansible.builtin.copy:
     src: "{{ aw_repo_root }}/aw-server/{{ item }}"
     dest: "{{ proxmox_bootstrap_dir }}/{{ item }}"
     mode: "0644"
   loop: "{{ aw_bootstrap_files }}"
 
-- name: Bootstrap CT OS dependencies
+- name: Установить базовые зависимости ОС внутри CT
   ansible.builtin.command:
     argv:
       - pct
@@ -122,12 +126,16 @@
         set -euo pipefail
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
-        apt-get install -y curl ca-certificates bash unzip xz-utils jq rsync openssh-server
-        mkdir -p /root/bootstrap /etc/activitywatch
+        apt-get install -y curl ca-certificates bash unzip xz-utils jq rsync openssh-server python3
+        mkdir -p /root/bootstrap/settings /etc/activitywatch
         systemctl enable ssh || true
         systemctl restart ssh || true
+  register: ct_bootstrap_result
+  retries: 10
+  delay: 6
+  until: ct_bootstrap_result.rc == 0
 
-- name: Push bootstrap files into CT
+- name: Передать bootstrap файлы внутрь CT
   ansible.builtin.command:
     argv:
       - pct
@@ -137,7 +145,7 @@
       - "/root/bootstrap/{{ item }}"
   loop: "{{ aw_bootstrap_files }}"
 
-- name: Write AW server env file on Proxmox host temp
+- name: Записать AW server env во временный каталог Proxmox host
   ansible.builtin.copy:
     dest: "{{ proxmox_bootstrap_dir }}/aw-server.env"
     mode: "0600"
@@ -151,8 +159,9 @@
       AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
       AW_SERVER_USER={{ aw_server_user }}
       AW_SERVER_GROUP={{ aw_server_group }}
+  no_log: true
 
-- name: Push AW server env into CT
+- name: Передать AW server env внутрь CT
   ansible.builtin.command:
     argv:
       - pct
@@ -160,8 +169,9 @@
       - "{{ ct_id }}"
       - "{{ proxmox_bootstrap_dir }}/aw-server.env"
       - /etc/activitywatch/aw-server.env
+  no_log: true
 
-- name: Set mode for env inside CT
+- name: Настроить права env файла внутри CT
   ansible.builtin.command:
     argv:
       - pct
@@ -172,7 +182,7 @@
       - "0600"
       - /etc/activitywatch/aw-server.env
 
-- name: Install server and apply RU patch inside CT
+- name: Установить сервер и применить RU patch внутри CT
   ansible.builtin.command:
     argv:
       - pct
@@ -188,7 +198,7 @@
         bash /root/bootstrap/apply_webui_ru_patch.sh
         systemctl restart activitywatch-server.service
 
-- name: Validate AW API from inside CT
+- name: Проверить AW API изнутри CT
   ansible.builtin.command:
     argv:
       - pct
@@ -199,7 +209,7 @@
       - -lc
       - "curl -fsS http://127.0.0.1:{{ aw_server_port }}/api/0/info >/dev/null"
 
-- name: Validate RU patch hooks in index
+- name: Проверить hooks RU patch в index.html
   ansible.builtin.command:
     argv:
       - pct
@@ -210,8 +220,8 @@
       - -lc
       - "grep -q 'ru-patch-v5.js' {{ aw_server_webui_dir }}/index.html && grep -q 'sw-cleanup.js' {{ aw_server_webui_dir }}/index.html"
 
-- name: Show final endpoint
+- name: Показать итоговый endpoint
   ansible.builtin.debug:
     msg:
-      - "CT {{ ct_id }} is provisioned and configured."
-      - "ActivityWatch endpoint: http://{{ ct_ip | regex_replace('/[0-9]+$', '') }}:{{ aw_server_port }}"
+      - "CT {{ ct_id }} создан и настроен."
+      - "Endpoint ActivityWatch: http://{{ ct_ip | regex_replace('/[0-9]+$', '') }}:{{ aw_server_port }}"

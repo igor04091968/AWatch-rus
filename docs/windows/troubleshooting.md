@@ -23,7 +23,7 @@ Start-ScheduledTask -TaskName 'ActivityWatch Launch [CONTOSO_user01]'
 
 - Скрипт работает через UI Automation и foreground window.
 - Некоторые браузеры/страницы могут скрывать адресную строку или блокировать UIA.
-- Проверьте лог `C:\ProgramData\ActivityWatch\logs\browser-domains-<user>.log`.
+- Проверьте лог `C:\ProgramData\AWatch-rus\logs\browser-domains-<user>.log`.
 - Убедитесь, что активное окно — поддерживаемый браузер: Edge, Chrome, Brave, Vivaldi, Opera, Firefox.
 
 ### Сервер недоступен
@@ -44,7 +44,7 @@ Invoke-WebRequest http://aw.example.local:5600/api/0/info
 
 ### Неправильная категоризация домена
 
-- Проверьте содержимое `C:\ProgramData\ActivityWatch\web-category-rules.json`.
+- Проверьте содержимое `C:\ProgramData\AWatch-rus\web-category-rules.json`.
 - Пользовательские правила должны быть валидным JSON.
 - Один и тот же домен лучше определять только в одной категории.
 - После изменения правил достаточно перезапустить collector или задачу пользователя:
@@ -112,7 +112,7 @@ Get-CimInstance Win32_Process |
 Проверить конфиг:
 
 ```powershell
-Get-Content C:\ProgramData\ActivityWatch\deployment-config.json -Raw
+Get-Content C:\ProgramData\AWatch-rus\deployment-config.json -Raw
 ```
 
 ## Когда запускать hardening/recovery

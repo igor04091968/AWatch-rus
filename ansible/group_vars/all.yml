@@ -11,23 +11,15 @@ aw_server_group: "activitywatch"
 
 aw_repo_root: "{{ playbook_dir | dirname }}"
 
-# Применить базовые категории и views для рабочего времени через AW settings API.
-# При прод-обновлениях это нужно оставлять включённым, иначе UI остаётся без views/classes.
+# Optional: apply worktime settings via server-side settings API.
 aw_apply_worktime_settings: true
 
-# Дополнительные origin для aw-server-rust CORS.
-# Обязательно включите тот origin, с которого реально открывается Web UI.
 aw_server_cors_origins:
   - "http://127.0.0.1:5600"
   - "http://localhost:5600"
   - "http://10.10.10.13:5600"
   - "http://aw-server:5600"
 
-# Опциональные значения периода рабочего времени в Web UI.
-# startOfDay задаёт границу дня и стартовое время окна отчёта.
-# durationDefault задаёт диапазон по умолчанию в секундах.
-#
-# Рекомендуется явно задать рабочий интервал и дать playbook вычислить duration.
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"

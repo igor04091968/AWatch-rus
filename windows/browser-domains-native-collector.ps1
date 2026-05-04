@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
@@ -49,18 +49,18 @@ function Get-DeploymentConfig {
 }
 
 $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
-$resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'ServerHost is required.' }
+$resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'Укажите ServerHost или подготовьте deployment-config.json.' }
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
-$resolvedRulesPath = if ($RulesPath) { $RulesPath } elseif ($deploymentConfig) { [string]$deploymentConfig.paths.rulesPath } else { 'C:\ProgramData\ActivityWatch\web-category-rules.json' }
-$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig) { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\ActivityWatch\dlp-policy.json' }
+$resolvedRulesPath = if ($RulesPath) { $RulesPath } elseif ($deploymentConfig) { [string]$deploymentConfig.paths.rulesPath } else { 'C:\ProgramData\AWatch-rus\web-category-rules.json' }
+$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig) { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\AWatch-rus\dlp-policy.json' }
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
 $resolvedPulseSeconds = if ($PSBoundParameters.ContainsKey('PulseSeconds')) { $PulseSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pulseSeconds } else { 30 }
-$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch\logs' }
+$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\AWatch-rus\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("browser-domains-{0}.log" -f $env:USERNAME) }
 $resolvedIncidentLogPath = if ($IncidentLogPath) { $IncidentLogPath } else { Join-Path $resolvedLogsRoot ("dlp-incidents-{0}.log" -f $env:USERNAME) }
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
-$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'ActivityWatch-Phase2\\incident-artifacts' }
+$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
@@ -158,12 +158,12 @@ function Get-HostFromUrl {
 
     try {
         $uri = [Uri]$Url
-        $host = $uri.Host.ToLowerInvariant()
-        if ($host.StartsWith('www.')) {
-            return $host.Substring(4)
+        $uriHost = $uri.Host.ToLowerInvariant()
+        if ($uriHost.StartsWith('www.')) {
+            return $uriHost.Substring(4)
         }
 
-        return $host
+        return $uriHost
     }
     catch {
         return $null
@@ -263,11 +263,11 @@ function Load-CustomCategoryRules {
 
         if ($rules.Count -gt 0) {
             $script:CategoryRules = @($rules) + @($script:CategoryRules)
-            Write-CollectorLog ("custom rules loaded: {0}" -f $rules.Count)
+            Write-CollectorLog ("пользовательские правила загружены: {0}" -f $rules.Count)
         }
     }
     catch {
-        Write-CollectorLog ("custom rules load failed: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("не удалось загрузить пользовательские правила: {0}" -f $_.Exception.Message)
     }
 }
 
@@ -338,7 +338,7 @@ function Load-DlpPolicy {
     param([string]$Path)
 
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
-        Write-CollectorLog ("dlp policy not found, disabled: {0}" -f $Path)
+        Write-CollectorLog ("DLP-политика не найдена, DLP отключен: {0}" -f $Path)
         return
     }
 
@@ -372,7 +372,7 @@ function Load-DlpPolicy {
                 enabled = if ($rule.PSObject.Properties.Name -contains 'enabled') { [bool]$rule.enabled } else { $true }
                 action = if ($rule.action) { [string]$rule.action } else { [string]$script:DlpDefaults.action }
                 severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:DlpDefaults.severity }
-                message = if ($rule.message) { [string]$rule.message } else { "DLP rule matched: $($rule.id)" }
+                message = if ($rule.message) { [string]$rule.message } else { "Сработало DLP-правило: $($rule.id)" }
                 cooldownSeconds = if ($rule.cooldownSeconds) { [int]$rule.cooldownSeconds } else { [int]$script:DlpDefaults.cooldownSeconds }
                 when = [pscustomobject]@{
                     domains = if ($when.PSObject.Properties.Name -contains 'domains') { @($when.domains | ForEach-Object { ([string]$_).Trim().ToLowerInvariant() } | Where-Object { $_ }) } else { @() }
@@ -388,10 +388,10 @@ function Load-DlpPolicy {
         }
 
         $script:DlpRules = @($loaded)
-        Write-CollectorLog ("dlp policy loaded: enabled={0}, rules={1}" -f $script:DlpDefaults.enabled, $script:DlpRules.Count)
+        Write-CollectorLog ("DLP-политика загружена: включена={0}, правил={1}" -f $script:DlpDefaults.enabled, $script:DlpRules.Count)
     }
     catch {
-        Write-CollectorLog ("dlp policy parse failed: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("не удалось разобрать DLP-политику: {0}" -f $_.Exception.Message)
     }
 }
 
@@ -625,7 +625,7 @@ function Capture-IncidentScreenshot {
         }
     }
     catch {
-        Write-CollectorLog ("screenshot capture failed: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("не удалось сделать снимок инцидента: {0}" -f $_.Exception.Message)
         return @{}
     }
 }
@@ -775,7 +775,7 @@ function Send-CategoryHeartbeat {
 
 Load-CustomCategoryRules -Path $resolvedRulesPath
 Load-DlpPolicy -Path $resolvedPolicyPath
-Write-CollectorLog ("collector started against {0}" -f $script:ApiBase)
+Write-CollectorLog ("коллектор запущен для {0}" -f $script:ApiBase)
 
 while ($true) {
     try {
@@ -815,7 +815,7 @@ while ($true) {
         }
     }
     catch {
-        Write-CollectorLog ("collector error: {0}" -f $_.Exception.Message)
+        Write-CollectorLog ("ошибка коллектора: {0}" -f $_.Exception.Message)
     }
 
     Start-Sleep -Seconds $resolvedPollSeconds

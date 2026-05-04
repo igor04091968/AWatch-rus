@@ -10,13 +10,14 @@
 - Он описывает, **что не класть** (генерируется уже на целевом хосте).
 - Он **не меняет** текущие deploy-скрипты и логику проекта.
 
-## Важное уточнение по `phase2`
+## Важное уточнение по единой Windows-директории
 
 Чтобы исключить путаницу:
 
-1. В каталоге `windows/` нет файлов с именами `phase2-*`.
-2. `phase2` в проекте — это обозначение этапа/набора телеметрии (DLP + endpoint signals).
-3. Файлы вида `phase2-*.deployment-config.json` — это **примерные конфиги install-kit**, они лежат в `install-kit-*/server-configs-*`.
+1. InnoSetup и Ansible используют один набор путей.
+2. Toolkit лежит в `{app}\windows` = `C:\Program Files\AWatch-rus\windows`.
+3. Бинарники ActivityWatch лежат в `C:\Program Files\AWatch-rus\bin`.
+4. Runtime-конфиг, collectors, логи и отчёты лежат в `C:\ProgramData\AWatch-rus`.
 
 ## 1) Обязательные файлы для Inno Setup пакета
 
@@ -30,6 +31,7 @@
 - `windows/deploy-ensemble.ps1`
 - `windows/hardening-recovery.ps1`
 - `windows/validate-deployment.ps1`
+- `windows/migrate-awatch-rus-paths.ps1`
 
 ### 1.3 Коллекторы
 - `windows/worktime-session-collector.ps1` (RDP/session presence)
@@ -53,11 +55,11 @@
 
 Эти файлы/папки появляются на целевом Windows-хосте во время/после деплоя:
 
-- `C:\ProgramData\ActivityWatch\deployment-config.json`
-- `C:\ProgramData\ActivityWatch\web-category-rules.json`
-- `C:\ProgramData\ActivityWatch\dlp-policy.json`
-- `C:\ProgramData\ActivityWatch\logs\*`
-- `%LOCALAPPDATA%\ActivityWatch-Phase2\incident-artifacts\*`
+- `C:\ProgramData\AWatch-rus\deployment-config.json`
+- `C:\ProgramData\AWatch-rus\web-category-rules.json`
+- `C:\ProgramData\AWatch-rus\dlp-policy.json`
+- `C:\ProgramData\AWatch-rus\logs\*`
+- `%LOCALAPPDATA%\AWatch-rus\incident-artifacts\*`
 
 ## 4) Опционально приложить в операторский install-kit
 
@@ -75,6 +77,7 @@
 - `windows\deploy-ensemble.ps1`
 - `windows\hardening-recovery.ps1`
 - `windows\validate-deployment.ps1`
+- `windows\migrate-awatch-rus-paths.ps1`
 - `windows\worktime-session-collector.ps1`
 - `windows\browser-domains-native-collector.ps1`
 - `windows\dlp-endpoint-signals-collector.ps1`
@@ -86,8 +89,8 @@
 
 1. Все файлы из раздела 1 присутствуют.
 2. В .iss не осталось вызова `deploy-ensemble.ps1` без параметров: нужны `-ServerHost` и `-Users`.
-3. Для **Phase2** используются пути:
-   - `InstallRoot = C:\Program Files\ActivityWatch-Phase2`
-   - `StateRoot = C:\ProgramData\ActivityWatch-Phase2`
+3. Для Windows/RDP используются единые пути:
+   - `InstallRoot = C:\Program Files\AWatch-rus\bin`
+   - `StateRoot = C:\ProgramData\AWatch-rus`
 4. Для offline-режима ZIP лежит в `windows/installkit/innosetup/payload/` (имя: `activitywatch-v0.13.2-windows-x86_64.zip`).
-5. Для проверки используется `-ValidateAfterDeploy` (отчёт `ensemble-report-*.json` пишется в `C:\ProgramData\ActivityWatch-Phase2\`).
+5. Для проверки используется `-ValidateAfterDeploy` (отчёт `ensemble-report-*.json` пишется в `C:\ProgramData\AWatch-rus\`).

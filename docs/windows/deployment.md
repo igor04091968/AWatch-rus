@@ -8,21 +8,21 @@
 - `windows/hardening-recovery.ps1` — повторная регистрация задач, ACL и recovery-loop.
 - `windows/validate-deployment.ps1` — машинная проверка состояния и JSON-отчёт.
 - `windows/browser-domains-native-collector.ps1` — native collector доменов браузера с категоризацией.
-- `windows/dlp-endpoint-signals-collector.ps1` — phase-2 collector (clipboard/USB/print signals).
+- `windows/dlp-endpoint-signals-collector.ps1` — Windows/RDP collector (clipboard/USB/print signals).
 - `windows/web-category-rules.example.json` — пример кастомных правил категоризации.
 - `windows/dlp-policy.example.json` — пример DLP-политики (phase-1: alerting incidents).
 
 ## Что делает пакет
 
 - Ставит `aw-watcher-afk` и `aw-watcher-window` из официального Windows ZIP ActivityWatch.
-- Копирует browser-domain collector в `C:\ProgramData\ActivityWatch`.
-- Копирует DLP policy в `C:\ProgramData\ActivityWatch\dlp-policy.json`.
+- Копирует browser-domain collector в `C:\ProgramData\AWatch-rus`.
+- Копирует DLP policy в `C:\ProgramData\AWatch-rus\dlp-policy.json`.
 - Включает `incidentCapture` в `deployment-config.json` для DLP-инцидентов:
   - `incidentCapture.screenshotEnabled = true`
   - `incidentCapture.artifactsRoot = <StateRoot>\incident-artifacts`
 - Создаёт per-user задачи `ActivityWatch Launch [...]` с запуском при логоне.
 - Создаёт системную задачу `ActivityWatch Recovery`, которая циклически перезапускает per-user launch tasks.
-- Применяет ACL к `C:\Program Files\ActivityWatch`, `C:\ProgramData\ActivityWatch` и каталогу логов.
+- Применяет ACL к `C:\Program Files\AWatch-rus\bin`, `C:\ProgramData\AWatch-rus` и каталогу логов.
 - Не содержит хардкодов инфраструктуры: сервер, домен, список пользователей и правила передаются параметрами.
 - Корректно регистрирует задачи через `-LogonType Interactive` (совместимо с Windows Server, где `InteractiveToken` не поддерживается).
 - Поддерживает отключение шумных watcher'ов через `-AfkEnabled:$false` и `-WindowEnabled:$false`.
@@ -143,9 +143,37 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
 
 Если список уже содержит `DOMAIN\user`, параметр `-Domain` не нужен.
 
-## Рекомендуемый phased rollout (изолированный профиль)
+## Безопасная миграция текущего production
 
-Для безопасного параллельного запуска рядом с legacy-инсталляцией используйте отдельные пути:
+Если текущий RDP production уже работает в `C:\Program Files\ActivityWatch-Phase2` и
+`C:\ProgramData\ActivityWatch-Phase2`, не запускайте обычный update без миграции.
+Сначала выполните перенос в единый профиль AWatch-rus:
+
+```powershell
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1 -WhatIf
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1
+```
+
+Скрипт делает безопасный порядок:
+
+1. Находит старый `deployment-config.json`.
+2. Останавливает `ActivityWatch Recovery` и `ActivityWatch Launch *`.
+3. Создаёт backup старых и новых каталогов в
+   `C:\ProgramData\AWatch-rus\migration-backups\YYYYMMDD-HHMMSS`.
+4. Копирует бинарники/состояние в единые пути:
+   - `C:\Program Files\AWatch-rus\bin`
+   - `C:\ProgramData\AWatch-rus`
+5. Переписывает пути в `deployment-config.json`.
+6. Пересоздаёт launcher/recovery scripts и scheduled tasks.
+7. Запускает `validate-deployment.ps1`; при ошибке оставляет backup path в сообщении.
+
+Ansible playbook `ansible/deploy_aw_windows.yml` выполняет этот migration guard
+автоматически, если на хосте найден
+`C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`.
+
+## Рекомендуемый rollout
+
+Для запуска после миграции используйте единые пути:
 
 ```powershell
 .\windows\deploy-domain-users.ps1 `
@@ -153,10 +181,10 @@ CSV-формат: колонка `User`, `Username`, `SamAccountName` или `Lo
   -ServerPort 5600 `
   -Domain SHARKON2025 `
   -Users user2,user3,user4,user5 `
-  -InstallRoot 'C:\Program Files\ActivityWatch-Phase2-u2u5' `
-  -StateRoot 'C:\ProgramData\ActivityWatch-Phase2-u2u5' `
-  -CustomRulesPath C:\Deploy\AWatch-rus\windows\web-category-rules.example.json `
-  -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json
+  -InstallRoot 'C:\Program Files\AWatch-rus\bin' `
+  -StateRoot 'C:\ProgramData\AWatch-rus' `
+  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json `
+  -CustomPolicyPath C:\Program Files\AWatch-rus\windows\dlp-policy.example.json
 ```
 
 Single-user pilot в таком же стиле:
@@ -166,10 +194,10 @@ Single-user pilot в таком же стиле:
   -ServerHost 10.10.10.13 `
   -ServerPort 5600 `
   -TargetUser 'SHARKON2025\user1' `
-  -InstallRoot 'C:\Program Files\ActivityWatch-Phase2' `
-  -StateRoot 'C:\ProgramData\ActivityWatch-Phase2-user1' `
-  -CustomRulesPath C:\Deploy\AWatch-rus\windows\web-category-rules.example.json `
-  -CustomPolicyPath C:\Deploy\AWatch-rus\windows\dlp-policy.example.json
+  -InstallRoot 'C:\Program Files\AWatch-rus\bin' `
+  -StateRoot 'C:\ProgramData\AWatch-rus' `
+  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json `
+  -CustomPolicyPath C:\Program Files\AWatch-rus\windows\dlp-policy.example.json
 ```
 
 ## Ensemble deploy (production workflow)
@@ -186,31 +214,31 @@ Single-user pilot в таком же стиле:
 
 Итоговый отчёт:
 
-- `C:\ProgramData\ActivityWatch\ensemble-report-YYYYMMDD-HHMMSS.json`
+- `C:\ProgramData\AWatch-rus\ensemble-report-YYYYMMDD-HHMMSS.json`
 
 ## Категоризация доменов
 
 - Встроенные категории покрывают базовые рабочие, нейтральные и личные домены.
 - Для кастомизации скопируйте `windows/web-category-rules.example.json` и отредактируйте домены.
-- Передайте файл через `-CustomRulesPath`; он будет сохранён как `C:\ProgramData\ActivityWatch\web-category-rules.json`.
+- Передайте файл через `-CustomRulesPath`; он будет сохранён как `C:\ProgramData\AWatch-rus\web-category-rules.json`.
 - Пользовательские правила имеют приоритет над встроенными.
 
 ## Структура после установки
 
-- `C:\Program Files\ActivityWatch` — бинарники watcher'ов.
-- `C:\ProgramData\ActivityWatch\deployment-config.json` — итоговая конфигурация.
-- `C:\ProgramData\ActivityWatch\incident-artifacts\` — скриншоты DLP-инцидентов (если `incidentCapture.screenshotEnabled=true`).
-- `C:\ProgramData\ActivityWatch\launch-watchers.ps1` — per-user launcher.
-- `C:\ProgramData\ActivityWatch\recovery-loop.ps1` — system recovery loop.
-- `C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1` — runtime collector.
-- `C:\ProgramData\ActivityWatch\dlp-endpoint-signals-collector.ps1` — runtime endpoint collector.
-- `C:\ProgramData\ActivityWatch\dlp-policy.json` — активная DLP-политика.
-- `C:\ProgramData\ActivityWatch\logs\` — логи collector'а.
+- `C:\Program Files\AWatch-rus\bin` — бинарники watcher'ов.
+- `C:\ProgramData\AWatch-rus\deployment-config.json` — итоговая конфигурация.
+- `C:\ProgramData\AWatch-rus\incident-artifacts\` — скриншоты DLP-инцидентов (если `incidentCapture.screenshotEnabled=true`).
+- `C:\ProgramData\AWatch-rus\launch-watchers.ps1` — per-user launcher.
+- `C:\ProgramData\AWatch-rus\recovery-loop.ps1` — system recovery loop.
+- `C:\ProgramData\AWatch-rus\browser-domains-native-collector.ps1` — runtime collector.
+- `C:\ProgramData\AWatch-rus\dlp-endpoint-signals-collector.ps1` — runtime endpoint collector.
+- `C:\ProgramData\AWatch-rus\dlp-policy.json` — активная DLP-политика.
+- `C:\ProgramData\AWatch-rus\logs\` — логи collector'а.
 
-Для phased rollout те же файлы формируются в каталоге `StateRoot`, переданном параметром.
+При переопределении `StateRoot` те же файлы формируются в указанном каталоге.
 
 ## Повторный прогон
 
 - Скрипты идемпотентны: переустанавливают задачи и обновляют runtime-файлы.
-- Предыдущая установка ActivityWatch бэкапится в `C:\ProgramData\ActivityWatch\backups\install-YYYYMMDD-HHMMSS`.
+- Предыдущая установка ActivityWatch бэкапится в `C:\ProgramData\AWatch-rus\backups\install-YYYYMMDD-HHMMSS`.
 - Для жёсткого восстановления запускайте `windows/hardening-recovery.ps1`.

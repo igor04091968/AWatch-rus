@@ -11,13 +11,14 @@ param(
     [string]$Version = 'v0.13.2',
     [string]$PackageUrl,
     [string]$PackageZipPath,
-    [string]$InstallRoot = 'C:\Program Files\ActivityWatch',
-    [string]$StateRoot = 'C:\ProgramData\ActivityWatch',
+    [string]$InstallRoot = 'C:\Program Files\AWatch-rus\bin',
+    [string]$StateRoot = 'C:\ProgramData\AWatch-rus',
     [int]$PollSeconds = 5,
     [int]$PulseSeconds = 30,
     [int]$RecoveryIntervalSeconds = 180,
     [bool]$AfkEnabled = $true,
     [bool]$WindowEnabled = $true,
+    [bool]$FileOpsEnabled = $true,
     [bool]$LocalAgentLogsEnabled = $false,
     [bool]$IncidentCaptureEnabled = $true,
     [bool]$IncidentScreenshotEnabled = $true,
@@ -46,7 +47,7 @@ $hardeningScript = Join-Path $PSScriptRoot 'hardening-recovery.ps1'
 $validationScript = Join-Path $PSScriptRoot 'validate-deployment.ps1'
 
 if (-not (Test-Path -LiteralPath $deployScript)) {
-    throw "Missing script: $deployScript"
+    throw "Не найден скрипт: $deployScript"
 }
 
 & $deployScript `
@@ -64,6 +65,7 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
     -AfkEnabled $AfkEnabled `
     -WindowEnabled $WindowEnabled `
+    -FileOpsEnabled $FileOpsEnabled `
     -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
     -IncidentCaptureEnabled $IncidentCaptureEnabled `
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
@@ -86,6 +88,7 @@ if (-not $SkipHardening) {
         -RecoveryIntervalSeconds $RecoveryIntervalSeconds `
         -AfkEnabled $AfkEnabled `
         -WindowEnabled $WindowEnabled `
+        -FileOpsEnabled $FileOpsEnabled `
         -LocalAgentLogsEnabled $LocalAgentLogsEnabled `
         -IncidentCaptureEnabled $IncidentCaptureEnabled `
         -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
@@ -112,13 +115,14 @@ $report = [ordered]@{
     collectors = [ordered]@{
         afkEnabled = $AfkEnabled
         windowEnabled = $WindowEnabled
+        fileOpsEnabled = $FileOpsEnabled
     }
     hardeningApplied = (-not $SkipHardening)
 }
 
 if ($ValidateAfterDeploy) {
     if (-not (Test-Path -LiteralPath $validationScript)) {
-        throw "Missing script: $validationScript"
+        throw "Не найден скрипт: $validationScript"
     }
 
     $validation = & $validationScript -ConfigPath (Join-Path $StateRoot 'deployment-config.json')
@@ -132,6 +136,6 @@ if ($reportDirectory) {
 
 $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $effectiveReportPath -Encoding UTF8
 
-Write-Host 'ActivityWatch ensemble deploy completed.'
-Write-Host "Users: $($resolvedUsers -join ', ')"
-Write-Host "Report: $effectiveReportPath"
+Write-Host 'Комплексное развёртывание ActivityWatch завершено.'
+Write-Host "Пользователи: $($resolvedUsers -join ', ')"
+Write-Host "Отчёт: $effectiveReportPath"

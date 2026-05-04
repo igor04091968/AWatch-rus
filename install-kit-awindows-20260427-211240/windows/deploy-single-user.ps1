@@ -10,8 +10,8 @@ param(
     [string]$Version = 'v0.13.2',
     [string]$PackageUrl,
     [string]$PackageZipPath,
-    [string]$InstallRoot = 'C:\Program Files\ActivityWatch',
-    [string]$StateRoot = 'C:\ProgramData\ActivityWatch',
+    [string]$InstallRoot = 'C:\Program Files\AWatch-rus\bin',
+    [string]$StateRoot = 'C:\ProgramData\AWatch-rus',
     [int]$PollSeconds = 5,
     [int]$PulseSeconds = 30,
     [int]$RecoveryIntervalSeconds = 180,
@@ -42,6 +42,7 @@ $launchScriptPath = Join-Path $StateRoot 'launch-watchers.ps1'
 $recoveryScriptPath = Join-Path $StateRoot 'recovery-loop.ps1'
 $collectorSource = Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1'
 $endpointCollectorSource = Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1'
+$sessionCollectorSource = Join-Path $PSScriptRoot 'worktime-session-collector.ps1'
 $exampleRulesSource = Join-Path $PSScriptRoot 'web-category-rules.example.json'
 $examplePolicySource = Join-Path $PSScriptRoot 'dlp-policy.example.json'
 
@@ -55,6 +56,7 @@ Get-ActivityWatchExecutableMap -InstallRoot $InstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource $collectorSource `
     -EndpointCollectorScriptSource $endpointCollectorSource `
+    -SessionCollectorScriptSource $sessionCollectorSource `
     -ExampleRulesSource $exampleRulesSource `
     -ExamplePolicySource $examplePolicySource `
     -StateRoot $StateRoot `
@@ -74,6 +76,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $logsRoot `
     -CollectorScript $assetResult.CollectorScript `
     -EndpointCollectorScript $assetResult.EndpointCollectorScript `
+    -SessionCollectorScript $assetResult.SessionCollectorScript `
     -RulesPath $assetResult.ActiveRules `
     -PolicyPath $assetResult.ActivePolicy `
     -PollSeconds $PollSeconds `
@@ -98,9 +101,9 @@ Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptP
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $recoveryScriptPath -ConfigPath $configPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
-Write-Host "ActivityWatch deployed for $TargetUser"
-Write-Host "Server: ${ServerScheme}://$ServerHost`:$ServerPort"
-Write-Host "Install root: $InstallRoot"
-Write-Host "State root: $StateRoot"
-Write-Host "Rules file: $($assetResult.ActiveRules)"
-Write-Host "Policy file: $($assetResult.ActivePolicy)"
+Write-Host "ActivityWatch развёрнут для пользователя: $TargetUser"
+Write-Host "Сервер: ${ServerScheme}://$ServerHost`:$ServerPort"
+Write-Host "Каталог установки: $InstallRoot"
+Write-Host "Каталог данных: $StateRoot"
+Write-Host "Файл правил: $($assetResult.ActiveRules)"
+Write-Host "Файл DLP-политики: $($assetResult.ActivePolicy)"

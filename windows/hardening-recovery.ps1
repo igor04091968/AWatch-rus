@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
@@ -15,6 +15,7 @@ param(
     [int]$RecoveryIntervalSeconds,
     [bool]$AfkEnabled,
     [bool]$WindowEnabled,
+    [bool]$FileOpsEnabled,
     [bool]$LocalAgentLogsEnabled,
     [bool]$IncidentCaptureEnabled,
     [bool]$IncidentScreenshotEnabled,
@@ -42,17 +43,19 @@ if (Test-Path -LiteralPath $ConfigPath) {
 }
 
 if (-not $existingConfig -and (-not $ServerHost)) {
-    throw 'deployment-config.json is missing. Provide -ServerHost and user parameters, or run a deploy script first.'
+    throw 'deployment-config.json отсутствует. Укажите -ServerHost и параметры пользователей либо сначала выполните скрипт развёртывания.'
 }
 
-$effectiveStateRoot = if ($StateRoot) { $StateRoot } elseif ($existingConfig) { [string]$existingConfig.paths.stateRoot } else { 'C:\ProgramData\ActivityWatch' }
-$effectiveInstallRoot = if ($InstallRoot) { $InstallRoot } elseif ($existingConfig) { [string]$existingConfig.paths.installRoot } else { 'C:\Program Files\ActivityWatch' }
+$effectiveStateRoot = if ($StateRoot) { $StateRoot } elseif ($existingConfig) { [string]$existingConfig.paths.stateRoot } else { 'C:\ProgramData\AWatch-rus' }
+$effectiveInstallRoot = if ($InstallRoot) { $InstallRoot } elseif ($existingConfig) { [string]$existingConfig.paths.installRoot } else { 'C:\Program Files\AWatch-rus\bin' }
 $effectiveLogsRoot = if ($existingConfig) { [string]$existingConfig.paths.logsRoot } else { Join-Path $effectiveStateRoot 'logs' }
 $effectiveConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $effectiveStateRoot 'deployment-config.json' }
 $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
 $effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
 $effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
 $effectiveEndpointCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$existingConfig.paths.endpointCollectorScript } else { Join-Path $effectiveStateRoot 'dlp-endpoint-signals-collector.ps1' }
+$effectiveFileCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$existingConfig.paths.fileCollectorScript } else { Join-Path $effectiveStateRoot 'file-operations-collector.ps1' }
+$effectiveSessionCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$existingConfig.paths.sessionCollectorScript } else { Join-Path $effectiveStateRoot 'worktime-session-collector.ps1' }
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 
@@ -64,6 +67,7 @@ $effectivePulseSeconds = if ($PSBoundParameters.ContainsKey('PulseSeconds')) { $
 $effectiveRecoveryInterval = if ($PSBoundParameters.ContainsKey('RecoveryIntervalSeconds')) { $RecoveryIntervalSeconds } elseif ($existingConfig) { [int]$existingConfig.recovery.intervalSeconds } else { 180 }
 $effectiveAfkEnabled = if ($PSBoundParameters.ContainsKey('AfkEnabled')) { [bool]$AfkEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$existingConfig.collectors.afkEnabled } else { $true }
 $effectiveWindowEnabled = if ($PSBoundParameters.ContainsKey('WindowEnabled')) { [bool]$WindowEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$existingConfig.collectors.windowEnabled } else { $true }
+$effectiveFileOpsEnabled = if ($PSBoundParameters.ContainsKey('FileOpsEnabled')) { [bool]$FileOpsEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]$existingConfig.collectors.fileOpsEnabled } else { $true }
 $effectiveLocalAgentLogsEnabled = if ($PSBoundParameters.ContainsKey('LocalAgentLogsEnabled')) { [bool]$LocalAgentLogsEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'logging' -and $existingConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$existingConfig.logging.localAgentLogsEnabled } else { $false }
 $effectiveIncidentCaptureEnabled = if ($PSBoundParameters.ContainsKey('IncidentCaptureEnabled')) { [bool]$IncidentCaptureEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.incidentCapture.enabled } else { $true }
 $effectiveIncidentScreenshotEnabled = if ($PSBoundParameters.ContainsKey('IncidentScreenshotEnabled')) { [bool]$IncidentScreenshotEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$existingConfig.incidentCapture.screenshotEnabled } else { $true }
@@ -78,11 +82,12 @@ elseif ($existingConfig) {
     @($existingConfig.userTasks | ForEach-Object { [string]$_.userId })
 }
 else {
-    throw 'Target users are missing.'
+    throw 'Не указаны целевые пользователи.'
 }
 
 New-ActivityWatchDirectory -Path $effectiveStateRoot
 New-ActivityWatchDirectory -Path $effectiveLogsRoot
+Enable-ActivityWatchPrintTelemetry
 
 if ($RepairPackage) {
     $workingRoot = Join-Path $env:TEMP 'activitywatch-windows-deploy'
@@ -96,6 +101,8 @@ Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
     -EndpointCollectorScriptSource (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') `
+    -FileCollectorScriptSource (Join-Path $PSScriptRoot 'file-operations-collector.ps1') `
+    -SessionCollectorScriptSource (Join-Path $PSScriptRoot 'worktime-session-collector.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
     -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
@@ -115,6 +122,8 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
     -EndpointCollectorScript $effectiveEndpointCollector `
+    -FileCollectorScript $effectiveFileCollector `
+    -SessionCollectorScript $effectiveSessionCollector `
     -RulesPath $effectiveRules `
     -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `
@@ -122,6 +131,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -RecoveryIntervalSeconds $effectiveRecoveryInterval `
     -AfkEnabled $effectiveAfkEnabled `
     -WindowEnabled $effectiveWindowEnabled `
+    -FileOpsEnabled $effectiveFileOpsEnabled `
     -LocalAgentLogsEnabled $effectiveLocalAgentLogsEnabled `
     -IncidentCaptureEnabled $effectiveIncidentCaptureEnabled `
     -IncidentScreenshotEnabled $effectiveIncidentScreenshotEnabled `
@@ -139,6 +149,6 @@ Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptP
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
-Write-Host 'ActivityWatch hardening/recovery completed.'
-Write-Host "Config: $effectiveConfigPath"
-Write-Host "Users repaired: $($effectiveUsers -join ', ')"
+Write-Host 'Укрепление и восстановление ActivityWatch завершены.'
+Write-Host "Конфигурация: $effectiveConfigPath"
+Write-Host "Пользователи восстановлены: $($effectiveUsers -join ', ')"

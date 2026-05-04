@@ -5,7 +5,7 @@ function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Run this script from an elevated PowerShell session.'
+        throw 'Запустите этот скрипт из PowerShell с правами администратора.'
     }
 }
 
@@ -19,6 +19,17 @@ function New-ActivityWatchDirectory {
         New-Item -Path $Path -ItemType Directory -Force | Out-Null
     }
 }
+
+function Enable-ActivityWatchPrintTelemetry {
+    $policyPath = 'HKLM:\Software\Policies\Microsoft\Windows NT\Printers'
+    if (-not (Test-Path -LiteralPath $policyPath)) {
+        New-Item -Path $policyPath -Force | Out-Null
+    }
+    New-ItemProperty -Path $policyPath -Name 'ShowJobTitleInEventLogs' -Value 1 -PropertyType DWord -Force | Out-Null
+
+    & wevtutil.exe sl 'Microsoft-Windows-PrintService/Operational' /e:true | Out-Null
+}
+
 
 function Get-ActivityWatchPackageUrl {
     param(
@@ -49,7 +60,9 @@ function Get-ActivityWatchArchive {
     }
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $archivePath = Join-Path $WorkingRoot ("activitywatch-{0}.zip" -f $Version.TrimStart('v'))
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $suffix = ([guid]::NewGuid().Guid.Substring(0, 8))
+    $archivePath = Join-Path $WorkingRoot ("activitywatch-{0}-{1}-{2}.zip" -f $Version.TrimStart('v'), $stamp, $suffix)
     Invoke-WebRequest -Uri $PackageUrl -OutFile $archivePath
     return $archivePath
 }
@@ -64,7 +77,7 @@ function Get-ActivityWatchPackageRoot {
         Select-Object -First 1
 
     if (-not $afkBinary) {
-        throw "Cannot find aw-watcher-afk.exe under $ExpandedRoot."
+        throw "Не удалось найти aw-watcher-afk.exe в $ExpandedRoot."
     }
 
     return (Split-Path -Path (Split-Path -Path $afkBinary.FullName -Parent) -Parent)
@@ -84,6 +97,16 @@ function Install-ActivityWatchPackage {
 
     New-ActivityWatchDirectory -Path $WorkingRoot
     New-ActivityWatchDirectory -Path $BackupRoot
+
+    # Ensure nothing is holding locks inside InstallRoot during upgrade.
+    foreach ($procName in @('aw-watcher-afk', 'aw-watcher-window', 'aw-server', 'aw-qt')) {
+        try {
+            Get-Process -Name $procName -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
+    Start-Sleep -Seconds 2
 
     $extractRoot = Join-Path $WorkingRoot ('extract-' + [guid]::NewGuid().Guid)
     if (Test-Path -LiteralPath $extractRoot) {
@@ -130,7 +153,7 @@ function Get-ActivityWatchExecutableMap {
 
     foreach ($entry in $map.GetEnumerator()) {
         if (-not (Test-Path -LiteralPath $entry.Value)) {
-            throw "Missing required ActivityWatch binary: $($entry.Value)"
+            throw "Не найден обязательный исполняемый файл ActivityWatch: $($entry.Value)"
         }
     }
 
@@ -194,7 +217,7 @@ function Normalize-ActivityWatchUsers {
         Sort-Object -Unique
 
     if (-not $normalized -or $normalized.Count -eq 0) {
-        throw 'No target users resolved. Provide -Users or -UserListPath.'
+        throw 'Не удалось определить целевых пользователей. Укажите -Users или -UserListPath.'
     }
 
     return @($normalized)
@@ -243,6 +266,8 @@ function Copy-ActivityWatchCollectorAssets {
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScriptSource,
         [Parameter(Mandatory = $true)]
+        [string]$FileCollectorScriptSource,
+        [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
@@ -258,6 +283,7 @@ function Copy-ActivityWatchCollectorAssets {
 
     $collectorTarget = Join-Path $StateRoot 'browser-domains-native-collector.ps1'
     $endpointCollectorTarget = Join-Path $StateRoot 'dlp-endpoint-signals-collector.ps1'
+    $fileCollectorTarget = Join-Path $StateRoot 'file-operations-collector.ps1'
     $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
@@ -266,6 +292,7 @@ function Copy-ActivityWatchCollectorAssets {
 
     Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
     Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
+    Copy-Item -LiteralPath $FileCollectorScriptSource -Destination $fileCollectorTarget -Force
     Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
     Copy-Item -LiteralPath $ExampleRulesSource -Destination $exampleRulesTarget -Force
     Copy-Item -LiteralPath $ExamplePolicySource -Destination $examplePolicyTarget -Force
@@ -286,6 +313,7 @@ function Copy-ActivityWatchCollectorAssets {
     return [pscustomobject]@{
         CollectorScript         = $collectorTarget
         EndpointCollectorScript = $endpointCollectorTarget
+        FileCollectorScript     = $fileCollectorTarget
         SessionCollectorScript  = $sessionCollectorTarget
         ExampleRules            = $exampleRulesTarget
         ActiveRules             = $rulesTarget
@@ -313,6 +341,8 @@ function New-ActivityWatchDeploymentConfig {
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScript,
         [Parameter(Mandatory = $true)]
+        [string]$FileCollectorScript,
+        [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
@@ -326,6 +356,7 @@ function New-ActivityWatchDeploymentConfig {
         [int]$RecoveryIntervalSeconds,
         [bool]$AfkEnabled = $true,
         [bool]$WindowEnabled = $true,
+        [bool]$FileOpsEnabled = $true,
         [bool]$LocalAgentLogsEnabled = $true,
         [bool]$IncidentCaptureEnabled = $true,
         [bool]$IncidentScreenshotEnabled = $true,
@@ -356,6 +387,7 @@ function New-ActivityWatchDeploymentConfig {
             logsRoot       = $LogsRoot
             collectorScript = $CollectorScript
             endpointCollectorScript = $EndpointCollectorScript
+            fileCollectorScript = $FileCollectorScript
             sessionCollectorScript = $SessionCollectorScript
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
@@ -369,6 +401,7 @@ function New-ActivityWatchDeploymentConfig {
         collectors = [pscustomobject]@{
             afkEnabled   = $AfkEnabled
             windowEnabled = $WindowEnabled
+            fileOpsEnabled = $FileOpsEnabled
         }
         logging = [pscustomobject]@{
             localAgentLogsEnabled = $LocalAgentLogsEnabled
@@ -421,7 +454,7 @@ function Read-ActivityWatchDeploymentConfig {
     )
 
     if (-not (Test-Path -LiteralPath $Path)) {
-        throw "Deployment config not found: $Path"
+        throw "Конфигурация развёртывания не найдена: $Path"
     }
 
     return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
@@ -442,6 +475,9 @@ param(
 
 Set-StrictMode -Version Latest
 `$ErrorActionPreference = 'Stop'
+
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.Net.Http
 
 function Get-DeploymentConfig {
     param([string]`$Path)
@@ -480,8 +516,21 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = `$true)][string]`$Json
     )
 
-    `$bytes = [Text.Encoding]::UTF8.GetBytes(`$Json)
-    Invoke-RestMethod -Method Post -Uri `$Uri -ContentType 'application/json; charset=utf-8' -Body `$bytes | Out-Null
+    `$httpClient = New-Object System.Net.Http.HttpClient
+    try {
+        `$content = New-Object System.Net.Http.StringContent(`$Json, [System.Text.Encoding]::UTF8, 'application/json')
+        `$response = `$httpClient.PostAsync(`$Uri, `$content).Result
+        if (-not `$response.IsSuccessStatusCode) {
+            return `$false
+        }
+        return `$true
+    }
+    catch {
+        return `$false
+    }
+    finally {
+        `$httpClient.Dispose()
+    }
 }
 
 function Ensure-Bucket {
@@ -510,7 +559,9 @@ function Ensure-Bucket {
     } | ConvertTo-Json -Compress
 
     try {
-        Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" -Json `$body
+        if (-not (Invoke-AwJsonPost -Uri "`$(`$script:ApiBase)/buckets/`$BucketId" -Json `$body)) {
+            return
+        }
     }
     catch {
         try {
@@ -547,7 +598,7 @@ function Send-LogonMarkerIfNeeded {
     `$stateRoot = [string]`$Config.paths.stateRoot
     `$markerRoots = New-Object System.Collections.Generic.List[string]
     if (-not [string]::IsNullOrWhiteSpace(`$env:LOCALAPPDATA)) {
-        `$markerRoots.Add((Join-Path `$env:LOCALAPPDATA 'ActivityWatch-Phase2\markers'))
+        `$markerRoots.Add((Join-Path `$env:LOCALAPPDATA 'AWatch-rus\markers'))
     }
     if (-not [string]::IsNullOrWhiteSpace(`$stateRoot)) {
         `$markerRoots.Add((Join-Path `$stateRoot 'markers'))
@@ -593,7 +644,7 @@ function Send-LogonMarkerIfNeeded {
             userId    = "`$(`$env:USERDOMAIN)\`$(`$env:USERNAME)"
             sessionId = `$SessionId
             hostname  = `$script:Hostname
-            source    = 'launch-watchers-phase2'
+            source    = 'launch-watchers-awatch-rus'
         }
     } | ConvertTo-Json -Depth 5 -Compress
 
@@ -613,6 +664,10 @@ function Start-CollectorScriptIfNeeded {
         [string]`$PowerShellExe,
         [int]`$SessionId
     )
+
+    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
+        return
+    }
 
     if (-not (Test-Path -LiteralPath `$ScriptPath)) {
         return
@@ -634,25 +689,28 @@ function Start-CollectorScriptIfNeeded {
 `$config = Get-DeploymentConfig -Path `$ConfigPath
 `$sessionId = (Get-Process -Id `$PID).SessionId
 `$installRoot = [string]`$config.paths.installRoot
+`$stateRoot = [string]`$config.paths.stateRoot
 `$script:ApiBase = '{0}://{1}:{2}/api/0' -f [string]`$config.server.scheme, [string]`$config.server.host, [string]`$config.server.port
 `$script:Hostname = `$env:COMPUTERNAME
 `$script:KnownBuckets = @{}
 `$collectorScript = [string]`$config.paths.collectorScript
-`$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { '' }
-`$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { '' }
+`$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { Join-Path `$stateRoot 'dlp-endpoint-signals-collector.ps1' }
+`$fileCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]`$config.paths.fileCollectorScript } else { Join-Path `$stateRoot 'file-operations-collector.ps1' }
+`$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { Join-Path `$stateRoot 'worktime-session-collector.ps1' }
 `$afkExe = Join-Path `$installRoot 'aw-watcher-afk\aw-watcher-afk.exe'
 `$windowExe = Join-Path `$installRoot 'aw-watcher-window\aw-watcher-window.exe'
 `$serverArgs = @('--host', [string]`$config.server.host, '--port', [string]`$config.server.port)
 `$powershellExe = Join-Path `$env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 `$afkEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]`$config.collectors.afkEnabled } else { `$true }
 `$windowEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]`$config.collectors.windowEnabled } else { `$true }
+`$fileOpsEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]`$config.collectors.fileOpsEnabled } else { `$true }
 
 if (`$afkEnabled -and -not (Test-Path -LiteralPath `$afkExe)) {
-    throw "Missing aw-watcher-afk.exe: `$afkExe"
+    throw "Не найден aw-watcher-afk.exe: `$afkExe"
 }
 
 if (`$windowEnabled -and -not (Test-Path -LiteralPath `$windowExe)) {
-    throw "Missing aw-watcher-window.exe: `$windowExe"
+    throw "Не найден aw-watcher-window.exe: `$windowExe"
 }
 
 if (`$afkEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-afk' -SessionId `$sessionId)) {
@@ -670,6 +728,9 @@ catch {
 }
 Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+if (`$fileOpsEnabled) {
+    Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+}
 Start-CollectorScriptIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 "@
 
@@ -860,7 +921,7 @@ function Set-ActivityWatchScheduledTaskAction {
     $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
     & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "schtasks.exe /Change failed for $TaskName"
+        throw "schtasks.exe /Change завершился с ошибкой для $TaskName"
     }
 }
 
@@ -891,6 +952,37 @@ function Get-ActivityWatchScheduledTaskByCommand {
     return $null
 }
 
+function Remove-StaleActivityWatchUserTasks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject[]]$TaskDefinitions,
+        [Parameter(Mandatory = $true)]
+        [string]$LaunchScriptPath
+    )
+
+    $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $LaunchScriptPath
+    $desiredTaskNames = @($TaskDefinitions | ForEach-Object { [string]$_.LaunchTaskName })
+
+    foreach ($candidate in @(Get-ScheduledTask | Where-Object { $_.TaskName -like 'ActivityWatch Launch*' })) {
+        $taskName = [string]$candidate.TaskName
+        if ($desiredTaskNames -contains $taskName) {
+            continue
+        }
+
+        $usesCurrentLauncher = $false
+        foreach ($action in @($candidate.Actions)) {
+            if ([string]$action.Arguments -like "*$launcherPath*") {
+                $usesCurrentLauncher = $true
+                break
+            }
+        }
+
+        if ($usesCurrentLauncher) {
+            Remove-ActivityWatchScheduledTask -TaskName $taskName
+        }
+    }
+}
+
 function Register-ActivityWatchUserTasks {
     param(
         [Parameter(Mandatory = $true)]
@@ -904,6 +996,7 @@ function Register-ActivityWatchUserTasks {
     $wscriptExe = Join-Path $env:SystemRoot 'System32\wscript.exe'
     $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $LaunchScriptPath
     Write-ActivityWatchHiddenPowerShellWrapper -Path $launcherPath -ScriptPath $LaunchScriptPath -ConfigPath $ConfigPath
+    Remove-StaleActivityWatchUserTasks -TaskDefinitions $TaskDefinitions -LaunchScriptPath $LaunchScriptPath
 
     foreach ($definition in $TaskDefinitions) {
         $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument "//B //NoLogo `"$launcherPath`""
@@ -961,17 +1054,17 @@ function Set-ActivityWatchAcl {
 
     & icacls $InstallRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "icacls failed for $InstallRoot"
+        throw "icacls завершился с ошибкой для $InstallRoot"
     }
 
     & icacls $StateRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "icacls failed for $StateRoot"
+        throw "icacls завершился с ошибкой для $StateRoot"
     }
 
     & icacls $LogsRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(M)' | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "icacls failed for $LogsRoot"
+        throw "icacls завершился с ошибкой для $LogsRoot"
     }
 }
 

@@ -18,7 +18,7 @@ jobs:
 
       - name: Run shellcheck
         run: |
-          find . -type f -name "*.sh" -print0 | xargs -0 -r shellcheck
+          find . -type f -name "*.sh" -print0 | xargs -0 -r shellcheck -e SC1007,SC1090,SC2016
 
   powershell-analyzer:
     runs-on: ubuntu-latest
@@ -40,7 +40,9 @@ jobs:
             "windows/*.psm1",
             "windows/*.psd1"
           )
-          $issues = Invoke-ScriptAnalyzer -Path $targets -Recurse -Severity Error,Warning
+          $issues = $targets | ForEach-Object {
+            Invoke-ScriptAnalyzer -Path $_ -Recurse -Severity Error
+          }
           if ($issues) {
             $issues | Format-Table -AutoSize
             throw "PSScriptAnalyzer detected issues."

@@ -21,7 +21,7 @@
 - `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_server.yml`
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_and_deploy_aw.yml`
 - `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
-- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows_phase2.yml`
+- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows.yml`
 
 ---
 
@@ -177,7 +177,7 @@ grep -n 'aw-ru-patch\|aw-sw-cleanup' /opt/activitywatch/webui-ru/index.html
 
 например в:
 
-- `C:\Deploy\ActivityWatch-Russian\windows`
+- `C:\Program Files\AWatch-rus\windows`
 
 Откройте **elevated PowerShell**:
 
@@ -187,15 +187,28 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
 ### 3.2 Массовое доменное развёртывание (рекомендуется)
 
+Если текущий production ещё работает в старых каталогах
+`C:\Program Files\ActivityWatch-Phase2` и `C:\ProgramData\ActivityWatch-Phase2`,
+сначала выполните безопасную миграцию:
+
+```powershell
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1 -WhatIf
+C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1
+```
+
+Скрипт остановит `ActivityWatch Recovery`/`ActivityWatch Launch *`, создаст backup в
+`C:\ProgramData\AWatch-rus\migration-backups\...`, перенесёт файлы в единые пути,
+пересоздаст `deployment-config.json`/scheduled tasks и запустит validation.
+
 Пример со списком пользователей:
 
 ```powershell
-C:\Deploy\ActivityWatch-Russian\windows\deploy-domain-users.ps1 `
+C:\Program Files\AWatch-rus\windows\deploy-domain-users.ps1 `
   -ServerHost aw.example.local `
   -ServerPort 5600 `
   -Domain CONTOSO `
   -UserListPath C:\Deploy\aw-users.txt `
-  -CustomRulesPath C:\Deploy\ActivityWatch-Russian\windows\web-category-rules.example.json
+  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json
 ```
 
 Поддерживаемые варианты:
@@ -207,7 +220,7 @@ C:\Deploy\ActivityWatch-Russian\windows\deploy-domain-users.ps1 `
 ### 3.2.1 Ensemble orchestration (рекомендуется для production)
 
 ```powershell
-C:\Deploy\ActivityWatch-Russian\windows\deploy-ensemble.ps1 `
+C:\Program Files\AWatch-rus\windows\deploy-ensemble.ps1 `
   -ServerHost aw.example.local `
   -ServerPort 5600 `
   -Domain CONTOSO `
@@ -217,30 +230,30 @@ C:\Deploy\ActivityWatch-Russian\windows\deploy-ensemble.ps1 `
 
 Отчёт сохраняется в:
 
-- `C:\ProgramData\ActivityWatch\ensemble-report-YYYYMMDD-HHMMSS.json`
+- `C:\ProgramData\AWatch-rus\ensemble-report-YYYYMMDD-HHMMSS.json`
 
 ### 3.3 Single-user развёртывание
 
 ```powershell
-C:\Deploy\ActivityWatch-Russian\windows\deploy-single-user.ps1 `
+C:\Program Files\AWatch-rus\windows\deploy-single-user.ps1 `
   -ServerHost aw.example.local `
   -ServerPort 5600 `
   -TargetUser 'CONTOSO\user01' `
-  -CustomRulesPath C:\Deploy\ActivityWatch-Russian\windows\web-category-rules.example.json
+  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json
 ```
 
 ### 3.4 Recovery / hardening
 
 ```powershell
-C:\Deploy\ActivityWatch-Russian\windows\hardening-recovery.ps1 `
-  -ConfigPath C:\ProgramData\ActivityWatch\deployment-config.json
+C:\Program Files\AWatch-rus\windows\hardening-recovery.ps1 `
+  -ConfigPath C:\ProgramData\AWatch-rus\deployment-config.json
 ```
 
 ### 3.5 Валидация deployment-а (PowerShell report)
 
 ```powershell
-$report = C:\Deploy\ActivityWatch-Russian\windows\validate-deployment.ps1 `
-  -ConfigPath C:\ProgramData\ActivityWatch\deployment-config.json
+$report = C:\Program Files\AWatch-rus\windows\validate-deployment.ps1 `
+  -ConfigPath C:\ProgramData\AWatch-rus\deployment-config.json
 $report | ConvertTo-Json -Depth 12
 ```
 
@@ -248,13 +261,13 @@ $report | ConvertTo-Json -Depth 12
 
 ## 4) Что должно появиться на Windows после установки
 
-- `C:\Program Files\ActivityWatch`
-- `C:\ProgramData\ActivityWatch\deployment-config.json`
-- `C:\ProgramData\ActivityWatch\launch-watchers.ps1`
-- `C:\ProgramData\ActivityWatch\recovery-loop.ps1`
-- `C:\ProgramData\ActivityWatch\browser-domains-native-collector.ps1`
-- `C:\ProgramData\ActivityWatch\web-category-rules.json`
-- `C:\ProgramData\ActivityWatch\logs\`
+- `C:\Program Files\AWatch-rus\bin`
+- `C:\ProgramData\AWatch-rus\deployment-config.json`
+- `C:\ProgramData\AWatch-rus\launch-watchers.ps1`
+- `C:\ProgramData\AWatch-rus\recovery-loop.ps1`
+- `C:\ProgramData\AWatch-rus\browser-domains-native-collector.ps1`
+- `C:\ProgramData\AWatch-rus\web-category-rules.json`
+- `C:\ProgramData\AWatch-rus\logs\`
 
 Задачи планировщика:
 

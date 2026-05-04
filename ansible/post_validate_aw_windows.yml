@@ -1,0 +1,90 @@
+---
+- name: Post-deploy validation for Windows/RDP AWatch-rus
+  hosts: aw_windows
+  gather_facts: false
+
+  vars:
+    aw_windows_launch_task_pattern: "ActivityWatch Launch *"
+    aw_windows_recovery_task_name: "ActivityWatch Recovery"
+    aw_windows_force_task_restart: true
+    aw_windows_api_smoke_check_enabled: true
+    aw_windows_api_smoke_check_bucket: ""
+    aw_windows_api_smoke_check_limit: 10
+
+  tasks:
+    - name: Принудительно запустить ActivityWatch recovery и launch tasks
+      when: aw_windows_force_task_restart | bool
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
+          Get-ScheduledTask |
+            Where-Object TaskName -like "{{ aw_windows_launch_task_pattern }}" |
+            ForEach-Object { Start-ScheduledTask -TaskName $_.TaskName }
+
+    - name: Получить Windows hostname для AW smoke-check bucket
+      when: aw_windows_api_smoke_check_enabled | bool
+      ansible.windows.win_command: powershell.exe -NoProfile -Command "$env:COMPUTERNAME"
+      register: aw_windows_hostname_result
+      changed_when: false
+
+    - name: Вычислить AW AFK smoke-check bucket
+      when: aw_windows_api_smoke_check_enabled | bool
+      ansible.builtin.set_fact:
+        aw_windows_api_smoke_check_bucket_effective: >-
+          {{
+            aw_windows_api_smoke_check_bucket
+            if (aw_windows_api_smoke_check_bucket | default('') | string | length) > 0
+            else 'aw-watcher-afk_' ~ (aw_windows_hostname_result.stdout | trim)
+          }}
+
+    - name: Дождаться свежих AFK событий на AW server
+      when: aw_windows_api_smoke_check_enabled | bool
+      delegate_to: localhost
+      ansible.builtin.uri:
+        url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
+        method: GET
+        return_content: true
+      register: aw_windows_api_smoke
+      until: >
+        aw_windows_api_smoke.status == 200 and
+        (aw_windows_api_smoke.json | length) > 0 and
+        (
+          aw_windows_api_smoke.json
+          | selectattr('data.status', 'equalto', 'not-afk')
+          | list
+          | length
+        ) > 0
+      retries: 10
+      delay: 6
+
+    - name: Выполнить валидацию и сохранить отчёт на целевом Windows host
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $report = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
+            -ConfigPath "{{ aw_windows_state_root }}\deployment-config.json"
+          $report | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
+          if ({{ '$true' if (aw_windows_fail_on_validation_error | bool) else '$false' }} -and -not [bool]$report.overallOk) {
+            throw "ActivityWatch validation failed. Report: {{ aw_windows_validation_remote_path }}"
+          }
+
+    - name: Создать локальный каталог для validation reports
+      ansible.builtin.file:
+        path: "{{ aw_windows_validation_local_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Забрать validation report
+      ansible.builtin.fetch:
+        src: "{{ aw_windows_validation_remote_path }}"
+        dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
+        flat: true
+
+    - name: Показать путь к отчёту
+      ansible.builtin.debug:
+        msg:
+          - "Validation OK on {{ inventory_hostname }}."
+          - "Report: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
+

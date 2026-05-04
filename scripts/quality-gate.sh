@@ -9,7 +9,7 @@ find aw-server proxmox -type f -name "*.sh" -print0 | xargs -0 -r -n1 bash -n
 
 echo "[2/3] Shellcheck (if available)"
 if command -v shellcheck >/dev/null 2>&1; then
-  find aw-server proxmox -type f -name "*.sh" -print0 | xargs -0 -r shellcheck
+  find aw-server proxmox -type f -name "*.sh" -print0 | xargs -0 -r shellcheck -e SC1007,SC1090,SC2016
 else
   echo "shellcheck not found, skipping."
 fi

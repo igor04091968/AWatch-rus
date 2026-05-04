@@ -1,0 +1,57 @@
+{
+    "version":  1,
+    "generatedAtUtc":  "2026-04-27T01:09:38.9519788Z",
+    "server":  {
+                   "host":  "10.10.10.13",
+                   "port":  5600,
+                   "scheme":  "http"
+               },
+    "paths":  {
+                  "installRoot":  "C:\\Program Files\\AWatch-rus\\bin",
+                  "stateRoot":  "C:\\ProgramData\\AWatch-rus",
+                  "logsRoot":  "C:\\ProgramData\\AWatch-rus\\logs",
+                  "collectorScript":  "C:\\ProgramData\\AWatch-rus\\browser-domains-native-collector.ps1",
+                  "endpointCollectorScript":  "C:\\ProgramData\\AWatch-rus\\dlp-endpoint-signals-collector.ps1",
+                  "rulesPath":  "C:\\ProgramData\\AWatch-rus\\web-category-rules.json",
+                  "policyPath":  "C:\\ProgramData\\AWatch-rus\\dlp-policy.json",
+                  "launchScript":  "C:\\ProgramData\\AWatch-rus\\launch-watchers.ps1",
+                  "recoveryScript":  "C:\\ProgramData\\AWatch-rus\\recovery-loop.ps1"
+              },
+    "collector":  {
+                      "pollSeconds":  5,
+                      "pulseSeconds":  30
+                  },
+    "collectors":  {
+                       "afkEnabled":  true,
+                       "windowEnabled":  true
+                   },
+    "logging":  {
+                    "localAgentLogsEnabled":  false
+                },
+    "incidentCapture":  {
+                            "enabled":  true,
+                            "screenshotEnabled":  true,
+                            "artifactsRoot":  "C:\\ProgramData\\AWatch-rus\\incident-artifacts"
+                        },
+    "sessionEvents":  {
+                          "logonEnabled":  true,
+                          "bucketPrefix":  "aw-session-events"
+                      },
+    "recovery":  {
+                     "intervalSeconds":  180,
+                     "taskName":  "ActivityWatch Recovery"
+                 },
+    "dlp":  {
+                "incidentBucketPrefix":  "aw-dlp-incidents",
+                "enabled":  true
+            },
+    "package":  {
+                    "version":  "v0.13.2"
+                },
+    "userTasks":  [
+                      {
+                          "UserId":  "SHARKON2025\\user1",
+                          "LaunchTaskName":  "ActivityWatch Launch [SHARKON2025_user1]"
+                      }
+                  ]
+}

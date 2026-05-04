@@ -1,11 +1,13 @@
 # Local secrets
 secrets/deploy.secrets.env
+secrets/runtime.env
 
 # Runtime / reports
 *.log
 *.tmp
 *.bak
 windows/*.report.json
+.rollout-logs/
 
 # IDE
 .idea/
