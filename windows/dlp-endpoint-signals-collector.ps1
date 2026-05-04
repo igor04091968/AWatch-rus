@@ -1,6 +1,6 @@
 ﻿[CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
@@ -33,6 +33,66 @@ function Write-EndpointLog {
     }
 }
 
+
+function Get-NewEventId { return ([guid]::NewGuid().ToString()) }
+
+function Initialize-TransportQueue {
+    param([Parameter(Mandatory = $true)][string]$QueuePath)
+    $script:QueuePath = $QueuePath
+    try {
+        $dir = Split-Path -Path $QueuePath -Parent
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
+        if (-not (Test-Path -LiteralPath $QueuePath)) { New-Item -ItemType File -Path $QueuePath -Force | Out-Null }
+    }
+    catch {
+        Write-EndpointLog ("Queue init error: {0}" -f $_.Exception.Message)
+    }
+}
+
+function Add-TransportQueueRecord {
+    param([string]$Uri,[string]$Json)
+    if (-not $script:QueuePath) { return }
+    $record = @{ id = (Get-NewEventId); createdAt = (Get-Date).ToUniversalTime().ToString('o'); uri = $Uri; payload = $Json }
+    Add-Content -LiteralPath $script:QueuePath -Value ($record | ConvertTo-Json -Compress)
+    $script:TransportStats.eventsEnqueued++
+}
+
+function Get-QueueDepth {
+    if (-not $script:QueuePath -or -not (Test-Path -LiteralPath $script:QueuePath)) { return 0 }
+    return @((Get-Content -LiteralPath $script:QueuePath)).Count
+}
+
+function Send-WithQueue {
+    param([string]$Uri,[string]$Json)
+    Add-TransportQueueRecord -Uri $Uri -Json $Json
+    Try-FlushTransportQueue -MaxItems 20
+}
+
+function Try-FlushTransportQueue {
+    param([int]$MaxItems = 20)
+    if (-not $script:QueuePath -or -not (Test-Path -LiteralPath $script:QueuePath)) { return }
+    $lines = @(Get-Content -LiteralPath $script:QueuePath)
+    if ($lines.Count -eq 0) { return }
+    $remaining = New-Object System.Collections.Generic.List[string]
+    $sent = 0
+    foreach ($line in $lines) {
+        if ($sent -ge $MaxItems) { $remaining.Add($line); continue }
+        try { $rec = $line | ConvertFrom-Json } catch { $remaining.Add($line); continue }
+        if (Invoke-AwJsonPost -Uri ([string]$rec.uri) -Json ([string]$rec.payload)) {
+            $script:TransportStats.eventsSent++
+            $script:TransportStats.lastSendStatus = 'ok'
+            $sent++
+        }
+        else {
+            $script:TransportStats.sendFailures++
+            $script:TransportStats.lastSendStatus = 'failed'
+            $remaining.Add($line)
+            break
+        }
+    }
+    Set-Content -LiteralPath $script:QueuePath -Value $remaining
+}
+
 function Invoke-AwJsonPost {
     param(
         [Parameter(Mandatory = $true)][string]$Uri,
@@ -40,7 +100,14 @@ function Invoke-AwJsonPost {
     )
 
     $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+    try {
+        Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("POST Error: {0}" -f $_.Exception.Message)
+        return $false
+    }
 }
 
 function Ensure-Bucket {
@@ -60,7 +127,7 @@ function Ensure-Bucket {
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
+    Send-WithQueue -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
     $script:KnownBuckets[$BucketId] = $true
 }
 
@@ -77,6 +144,8 @@ function Send-EndpointSignalHeartbeat {
         timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         duration  = 0
         data      = @{
+            eventId    = (Get-NewEventId)
+            eventCreatedAt = (Get-Date).ToUniversalTime().ToString('o')
             signalType = $SignalType
             username   = $env:USERNAME
             sessionId  = $script:SessionId
@@ -85,7 +154,7 @@ function Send-EndpointSignalHeartbeat {
         } + $Data
     } | ConvertTo-Json -Depth 6 -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
+    Send-WithQueue -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
 }
 
 function Send-DlpIncidentHeartbeat {
@@ -114,6 +183,8 @@ function Send-DlpIncidentHeartbeat {
         timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
         duration  = 0
         data      = @{
+            eventId   = (Get-NewEventId)
+            eventCreatedAt = (Get-Date).ToUniversalTime().ToString('o')
             ruleId    = $RuleId
             action    = $Action
             severity  = $Severity
@@ -126,7 +197,7 @@ function Send-DlpIncidentHeartbeat {
         } + $Data + $captureData
     } | ConvertTo-Json -Depth 7 -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
+    Send-WithQueue -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
 }
 
 function Get-FileSha256Hex {
@@ -760,6 +831,11 @@ $script:LogPath = $resolvedLogPath
 $script:IncidentArtifactsRoot = $resolvedIncidentArtifactsRoot
 $script:IncidentScreenshotEnabled = $resolvedIncidentScreenshotEnabled
 $script:ScreenshotTypesLoaded = $false
+$script:TransportStats = @{ eventsEnqueued = 0; eventsSent = 0; sendFailures = 0; lastSendStatus = 'init' }
+$script:QueuePath = $null
+
+$queueFile = Join-Path $resolvedLogsRoot ("endpoint-queue-{0}.jsonl" -f $env:USERNAME)
+Initialize-TransportQueue -QueuePath $queueFile
 
 Load-DlpPolicy -Path $resolvedPolicyPath
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
@@ -906,5 +982,7 @@ while ($true) {
         Write-EndpointLog ("collector error: {0}" -f $_.Exception.Message)
     }
 
+    Try-FlushTransportQueue -MaxItems 50
+    Write-EndpointLog ("transport metrics queueDepth={0} enqueued={1} sent={2} failures={3} lastStatus={4}" -f (Get-QueueDepth), $script:TransportStats.eventsEnqueued, $script:TransportStats.eventsSent, $script:TransportStats.sendFailures, $script:TransportStats.lastSendStatus)
     Start-Sleep -Seconds $resolvedPollSeconds
 }
