@@ -1,4 +1,3 @@
-﻿﻿\xEF\xBB\xBF-ne \xEF\xBB\xBF
 ﻿[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
