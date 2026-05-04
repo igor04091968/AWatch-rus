@@ -478,6 +478,7 @@ Set-StrictMode -Version Latest
 
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 Add-Type -AssemblyName System.Net.Http
+`$script:MaxCollectorPowerShellProcesses = 24
 
 function Get-DeploymentConfig {
     param([string]`$Path)
@@ -508,6 +509,46 @@ function Test-CollectorRunning {
         }
 
     return [bool](`$processes | Select-Object -First 1)
+}
+
+function Get-CollectorPowerShellProcessCount {
+    `$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            (`$_.Name -ieq 'powershell.exe' -or `$_.Name -ieq 'pwsh.exe') -and
+            `$_.CommandLine -match 'AWatch-rus' -and
+            `$_.CommandLine -match '\.ps1'
+        }
+
+    return @(`$processes).Count
+}
+
+function New-LaunchLock {
+    param([string]`$StateRoot, [int]`$SessionId)
+
+    if (-not (Test-Path -LiteralPath `$StateRoot)) {
+        New-Item -Path `$StateRoot -ItemType Directory -Force | Out-Null
+    }
+
+    `$lockPath = Join-Path `$StateRoot ("launch-watchers-session-{0}.lock" -f `$SessionId)
+    if (Test-Path -LiteralPath `$lockPath) {
+        try {
+            `$lockData = Get-Content -LiteralPath `$lockPath -Raw | ConvertFrom-Json
+            `$existingPid = [int]`$lockData.pid
+            if (`$existingPid -gt 0 -and (Get-Process -Id `$existingPid -ErrorAction SilentlyContinue)) {
+                return `$null
+            }
+        }
+        catch {
+        }
+    }
+
+    `$payload = @{
+        pid       = `$PID
+        sessionId = `$SessionId
+        createdAt = (Get-Date).ToUniversalTime().ToString('o')
+    } | ConvertTo-Json -Compress
+    Set-Content -LiteralPath `$lockPath -Value `$payload -Encoding UTF8
+    return `$lockPath
 }
 
 function Invoke-AwJsonPost {
@@ -677,6 +718,10 @@ function Start-CollectorScriptIfNeeded {
         return
     }
 
+    if ((Get-CollectorPowerShellProcessCount) -ge `$script:MaxCollectorPowerShellProcesses) {
+        return
+    }
+
     Start-Process -FilePath `$PowerShellExe -ArgumentList @(
         '-NoProfile',
         '-WindowStyle', 'Hidden',
@@ -704,34 +749,45 @@ function Start-CollectorScriptIfNeeded {
 `$afkEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]`$config.collectors.afkEnabled } else { `$true }
 `$windowEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]`$config.collectors.windowEnabled } else { `$true }
 `$fileOpsEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]`$config.collectors.fileOpsEnabled } else { `$true }
-
-if (`$afkEnabled -and -not (Test-Path -LiteralPath `$afkExe)) {
-    throw "Не найден aw-watcher-afk.exe: `$afkExe"
-}
-
-if (`$windowEnabled -and -not (Test-Path -LiteralPath `$windowExe)) {
-    throw "Не найден aw-watcher-window.exe: `$windowExe"
-}
-
-if (`$afkEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-afk' -SessionId `$sessionId)) {
-    Start-Process -FilePath `$afkExe -ArgumentList `$serverArgs -WindowStyle Hidden
-}
-
-if (`$windowEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-window' -SessionId `$sessionId)) {
-    Start-Process -FilePath `$windowExe -ArgumentList `$serverArgs -WindowStyle Hidden
+`$launchLockPath = New-LaunchLock -StateRoot `$stateRoot -SessionId `$sessionId
+if (-not `$launchLockPath) {
+    return
 }
 
 try {
-    Send-LogonMarkerIfNeeded -Config `$config -SessionId `$sessionId
+    if (`$afkEnabled -and -not (Test-Path -LiteralPath `$afkExe)) {
+        throw "Не найден aw-watcher-afk.exe: `$afkExe"
+    }
+
+    if (`$windowEnabled -and -not (Test-Path -LiteralPath `$windowExe)) {
+        throw "Не найден aw-watcher-window.exe: `$windowExe"
+    }
+
+    if (`$afkEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-afk' -SessionId `$sessionId)) {
+        Start-Process -FilePath `$afkExe -ArgumentList `$serverArgs -WindowStyle Hidden
+    }
+
+    if (`$windowEnabled -and -not (Test-ProcessInSession -Name 'aw-watcher-window' -SessionId `$sessionId)) {
+        Start-Process -FilePath `$windowExe -ArgumentList `$serverArgs -WindowStyle Hidden
+    }
+
+    try {
+        Send-LogonMarkerIfNeeded -Config `$config -SessionId `$sessionId
+    }
+    catch {
+    }
+    Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    if (`$fileOpsEnabled) {
+        Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    }
+    Start-CollectorScriptIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 }
-catch {
+finally {
+    if (`$launchLockPath -and (Test-Path -LiteralPath `$launchLockPath)) {
+        Remove-Item -LiteralPath `$launchLockPath -Force -ErrorAction SilentlyContinue
+    }
 }
-Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
-Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
-if (`$fileOpsEnabled) {
-    Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
-}
-Start-CollectorScriptIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
 "@
 
     Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
@@ -810,23 +866,84 @@ function Get-RecoveryTaskNames {
     return @(`$taskNames)
 }
 
-while (`$true) {
-    `$sleepSeconds = 180
-    try {
-        `$configPaths = Get-RecoveryConfigPaths -PrimaryConfigPath `$ConfigPath
-        foreach (`$taskName in Get-RecoveryTaskNames -ConfigPaths `$configPaths) {
-            Start-ScheduledTask -TaskName `$taskName -ErrorAction SilentlyContinue
-        }
+function New-RecoveryLock {
+    param([string]`$PrimaryConfigPath)
 
-        `$config = Get-DeploymentConfig -Path `$ConfigPath
-        if (`$config -and `$config.recovery -and `$config.recovery.intervalSeconds) {
-            `$sleepSeconds = [Math]::Max([int]`$config.recovery.intervalSeconds, 30)
+    `$stateRoot = if (`$PrimaryConfigPath) { Split-Path -Path `$PrimaryConfigPath -Parent } else { Join-Path `$env:ProgramData 'AWatch-rus' }
+    if (-not (Test-Path -LiteralPath `$stateRoot)) {
+        New-Item -Path `$stateRoot -ItemType Directory -Force | Out-Null
+    }
+
+    `$lockPath = Join-Path `$stateRoot 'recovery-loop.lock'
+    if (Test-Path -LiteralPath `$lockPath) {
+        try {
+            `$lockData = Get-Content -LiteralPath `$lockPath -Raw | ConvertFrom-Json
+            `$existingPid = [int]`$lockData.pid
+            if (`$existingPid -gt 0 -and (Get-Process -Id `$existingPid -ErrorAction SilentlyContinue)) {
+                return `$null
+            }
         }
+        catch {
+        }
+    }
+
+    `$payload = @{
+        pid       = `$PID
+        createdAt = (Get-Date).ToUniversalTime().ToString('o')
+    } | ConvertTo-Json -Compress
+    Set-Content -LiteralPath `$lockPath -Value `$payload -Encoding UTF8
+    return `$lockPath
+}
+
+function Start-TaskIfNotRunning {
+    param([string]`$TaskName)
+    if ([string]::IsNullOrWhiteSpace(`$TaskName)) {
+        return
+    }
+
+    try {
+        `$task = Get-ScheduledTask -TaskName `$TaskName -ErrorAction SilentlyContinue
+        if (-not `$task) {
+            return
+        }
+        if ([string]`$task.State -eq 'Running') {
+            return
+        }
+        Start-ScheduledTask -TaskName `$TaskName -ErrorAction SilentlyContinue
     }
     catch {
     }
+}
 
-    Start-Sleep -Seconds `$sleepSeconds
+`$recoveryLockPath = New-RecoveryLock -PrimaryConfigPath `$ConfigPath
+if (-not `$recoveryLockPath) {
+    return
+}
+
+try {
+    while (`$true) {
+        `$sleepSeconds = 180
+        try {
+            `$configPaths = Get-RecoveryConfigPaths -PrimaryConfigPath `$ConfigPath
+            foreach (`$taskName in Get-RecoveryTaskNames -ConfigPaths `$configPaths) {
+                Start-TaskIfNotRunning -TaskName `$taskName
+            }
+
+            `$config = Get-DeploymentConfig -Path `$ConfigPath
+            if (`$config -and `$config.recovery -and `$config.recovery.intervalSeconds) {
+                `$sleepSeconds = [Math]::Max([int]`$config.recovery.intervalSeconds, 30)
+            }
+        }
+        catch {
+        }
+
+        Start-Sleep -Seconds `$sleepSeconds
+    }
+}
+finally {
+    if (`$recoveryLockPath -and (Test-Path -LiteralPath `$recoveryLockPath)) {
+        Remove-Item -LiteralPath `$recoveryLockPath -Force -ErrorAction SilentlyContinue
+    }
 }
 "@
 

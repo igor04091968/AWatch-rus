@@ -1574,7 +1574,8 @@
       window.fetch = function (input, init) {
         try {
           const url = typeof input === "string" ? input : String(input && input.url || "");
-          if (/\/api\/0\/query\/?$/i.test(url) && init && typeof init.body === "string") {
+          const isCategoryBuilderRoute = /^#\/settings\/category-builder(?:[/?#]|$)/i.test(window.location.hash || "");
+          if (isCategoryBuilderRoute && /\/api\/0\/query\/?$/i.test(url) && init && typeof init.body === "string") {
             init = Object.assign({}, init, {
               body: rewriteUnknownCategoryBuilderQueryBody(init.body)
             });
@@ -1598,7 +1599,8 @@
         proto.send = function (body) {
           try {
             const url = String(this.__awRuUrl || "");
-            if (/\/api\/0\/query\/?$/i.test(url) && typeof body === "string") {
+            const isCategoryBuilderRoute = /^#\/settings\/category-builder(?:[/?#]|$)/i.test(window.location.hash || "");
+            if (isCategoryBuilderRoute && /\/api\/0\/query\/?$/i.test(url) && typeof body === "string") {
               body = rewriteUnknownCategoryBuilderQueryBody(body);
             }
           } catch (error) {
