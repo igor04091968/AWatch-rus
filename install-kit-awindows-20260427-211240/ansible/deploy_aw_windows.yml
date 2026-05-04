@@ -77,6 +77,7 @@
         - ActivityWatch.Windows.Common.psm1
         - browser-domains-native-collector.ps1
         - dlp-endpoint-signals-collector.ps1
+        - email-outbound-collector.ps1
         - worktime-session-collector.ps1
         - migrate-awatch-rus-paths.ps1
         - deploy-domain-users.ps1

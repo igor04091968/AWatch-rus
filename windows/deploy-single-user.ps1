@@ -42,6 +42,7 @@ $launchScriptPath = Join-Path $StateRoot 'launch-watchers.ps1'
 $recoveryScriptPath = Join-Path $StateRoot 'recovery-loop.ps1'
 $collectorSource = Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1'
 $endpointCollectorSource = Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1'
+$emailCollectorSource = Join-Path $PSScriptRoot 'email-outbound-collector.ps1'
 $sessionCollectorSource = Join-Path $PSScriptRoot 'worktime-session-collector.ps1'
 $exampleRulesSource = Join-Path $PSScriptRoot 'web-category-rules.example.json'
 $examplePolicySource = Join-Path $PSScriptRoot 'dlp-policy.example.json'
@@ -56,6 +57,7 @@ Get-ActivityWatchExecutableMap -InstallRoot $InstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource $collectorSource `
     -EndpointCollectorScriptSource $endpointCollectorSource `
+    -EmailCollectorScriptSource $emailCollectorSource `
     -SessionCollectorScriptSource $sessionCollectorSource `
     -ExampleRulesSource $exampleRulesSource `
     -ExamplePolicySource $examplePolicySource `
@@ -76,6 +78,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $logsRoot `
     -CollectorScript $assetResult.CollectorScript `
     -EndpointCollectorScript $assetResult.EndpointCollectorScript `
+    -EmailCollectorScript $assetResult.EmailCollectorScript `
     -SessionCollectorScript $assetResult.SessionCollectorScript `
     -RulesPath $assetResult.ActiveRules `
     -PolicyPath $assetResult.ActivePolicy `
