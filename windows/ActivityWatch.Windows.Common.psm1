@@ -718,11 +718,11 @@ function Start-CollectorScriptIfNeeded {
         return
     }
 
-    $staParam = if (`$ScriptPath -like "*endpoint-signals*") { "-STA" } else { $null }
-    $argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass')
-    if ($staParam) { $argumentList += $staParam }
-    $argumentList += @('-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
-    Start-Process -FilePath `$PowerShellExe -ArgumentList $argumentList -WindowStyle Hidden
+    `$staParam = if (`$ScriptPath -like "*endpoint-signals*") { "-STA" } else { $null }
+    `$argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass')
+    if (`$staParam) { `$argumentList += `$staParam }
+    `$argumentList += @('-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
+    Start-Process -FilePath `$PowerShellExe -ArgumentList `$argumentList -WindowStyle Hidden
 }
 
 `$config = Get-DeploymentConfig -Path `$ConfigPath
