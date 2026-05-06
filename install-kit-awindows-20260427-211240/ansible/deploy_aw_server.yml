@@ -233,6 +233,7 @@
           AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
           AW_SERVER_USER={{ aw_server_user }}
           AW_SERVER_GROUP={{ aw_server_group }}
+          AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
           XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
           XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
 

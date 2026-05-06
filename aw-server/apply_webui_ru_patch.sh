@@ -10,6 +10,7 @@ fi
 source "$ENV_FILE"
 
 WEBUI_DIR="${AW_SERVER_WEBUI_DIR:-${AW_WEBUI_DIR:-/opt/activitywatch/webui-ru}}"
+REPORT_BASE="${AW_WORKTIME_REPORT_BASE:-http://10.10.10.13:5610}"
 PATCH_JS_SRC="/root/bootstrap/aw-ru-patch.js"
 SW_CLEANUP_SRC="/root/bootstrap/aw-sw-cleanup.js"
 HOST_GROUPS_SRC="/root/bootstrap/aw-host-groups.json"
@@ -43,6 +44,18 @@ sw_hash="$(sha1sum "$SW_TARGET" | awk '{print substr($1,1,12)}')"
 sed -i '/ru-patch-v5.js/d;/sw-cleanup.js/d;/aw-ru-patch.js/d;/aw-sw-cleanup.js/d' "$INDEX_HTML"
 sed -i "s#</head>#<script src=\"/js/sw-cleanup.js?v=$sw_hash\"></script></head>#" "$INDEX_HTML"
 sed -i "s#</body>#<script defer=\"defer\" src=\"/js/ru-patch-v5.js?v=$patch_hash\"></script></body>#" "$INDEX_HTML"
+
+# Replace old relative report links if they exist.
+sed -i "s#href=\"/today.csv\"#href=\"$REPORT_BASE/reports/worktime/today?format=csv\"#g" "$INDEX_HTML"
+sed -i "s#href=\"/today.json\"#href=\"$REPORT_BASE/reports/worktime/today\"#g" "$INDEX_HTML"
+
+# Ensure report links block exists and points to worktime API on :5610.
+if ! grep -q 'id="aw-report-links"' "$INDEX_HTML"; then
+  sed -i "s#</body>#<div id=\"aw-report-links\" style=\"position:fixed;right:12px;bottom:12px;z-index:99999;background:#111;color:#fff;padding:8px 10px;border-radius:8px;font:12px/1.4 sans-serif;opacity:.9\">RDP report: <a href=\"$REPORT_BASE/reports/worktime/today?format=csv\" style=\"color:#7dd3fc\" target=\"_blank\">CSV</a> | <a href=\"$REPORT_BASE/reports/worktime/today\" style=\"color:#86efac\" target=\"_blank\">JSON</a></div></body>#g" "$INDEX_HTML"
+fi
+
+# Normalize existing report links block to current REPORT_BASE.
+sed -i "s#<div id=\"aw-report-links\"[^<]*RDP report: <a href=\"[^\"]*\" style=\"color:#7dd3fc\" target=\"_blank\">CSV</a> | <a href=\"[^\"]*\" style=\"color:#86efac\" target=\"_blank\">JSON</a></div>#<div id=\"aw-report-links\" style=\"position:fixed;right:12px;bottom:12px;z-index:99999;background:#111;color:#fff;padding:8px 10px;border-radius:8px;font:12px/1.4 sans-serif;opacity:.9\">RDP report: <a href=\"$REPORT_BASE/reports/worktime/today?format=csv\" style=\"color:#7dd3fc\" target=\"_blank\">CSV</a> | <a href=\"$REPORT_BASE/reports/worktime/today\" style=\"color:#86efac\" target=\"_blank\">JSON</a></div>#g" "$INDEX_HTML"
 cp "$SW_CLEANUP_SRC" "$SERVICE_WORKER"
 
 trends_chunk="$(grep -Rsl "$TRENDS_NEEDLE" "$WEBUI_DIR/js"/*.js 2>/dev/null | head -n 1 || true)"
