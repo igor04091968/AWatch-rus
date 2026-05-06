@@ -40,7 +40,7 @@ function Invoke-AwJsonPost {
     )
 
     $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes -TimeoutSec 15 -DisableKeepAlive | Out-Null
 }
 
 function Ensure-Bucket {
@@ -318,6 +318,44 @@ function Get-StringHash {
     }
     finally {
         $sha.Dispose()
+    }
+}
+
+function Get-ClipboardTextSafe {
+    [OutputType([string])]
+    param()
+
+    try {
+        $v = Get-Clipboard -Raw -ErrorAction Stop
+        if ($null -ne $v) { return [string]$v }
+    }
+    catch {
+        Write-EndpointLog ("clipboard direct read failed: {0}" -f $_.Exception.Message)
+    }
+
+    # Fallback: read clipboard in a dedicated STA thread for RDP/user-session edge cases.
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue | Out-Null
+        $result = [string]::Empty
+        $thread = [System.Threading.Thread]{
+            try {
+                $script:__aw_clip = [System.Windows.Forms.Clipboard]::GetText()
+            }
+            catch {
+                $script:__aw_clip = $null
+            }
+        }
+        $thread.SetApartmentState([System.Threading.ApartmentState]::STA)
+        $thread.Start()
+        $thread.Join(3000) | Out-Null
+        if ($thread.IsAlive) { $thread.Abort() }
+        $result = [string]$script:__aw_clip
+        Remove-Variable -Name __aw_clip -Scope Script -ErrorAction SilentlyContinue
+        return $result
+    }
+    catch {
+        Write-EndpointLog ("clipboard STA read failed: {0}" -f $_.Exception.Message)
+        return $null
     }
 }
 
@@ -772,7 +810,7 @@ while ($true) {
         }
 
         try {
-            $clipboardText = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+            $clipboardText = Get-ClipboardTextSafe
             if ($clipboardText) {
                 $clipboardHash = Get-StringHash -Value $clipboardText
                 if ($clipboardHash -and $clipboardHash -ne $script:LastClipboardHash) {
