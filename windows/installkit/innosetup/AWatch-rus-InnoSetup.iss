@@ -42,6 +42,7 @@ Source: "..\..\migrate-awatch-rus-paths.ps1"; DestDir: "{app}\windows"; Flags: i
 Source: "..\..\worktime-session-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\browser-domains-native-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-endpoint-signals-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\file-operations-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\web-category-rules.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-policy.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 ; Offline payload (optional): place ZIP into windows/installkit/innosetup/payload/ before compiling.

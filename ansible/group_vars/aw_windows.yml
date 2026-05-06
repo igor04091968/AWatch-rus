@@ -42,7 +42,7 @@ aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ans
 aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
 aw_windows_fail_on_validation_error: true
 
-aw_windows_migration_enabled: true
+aw_windows_migration_enabled: false
 aw_windows_legacy_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
 aw_windows_legacy_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
 aw_windows_migration_report_remote_path: "{{ aw_windows_state_root }}\\aw_migration_ansible.json"
@@ -50,4 +50,3 @@ aw_windows_migration_report_remote_path: "{{ aw_windows_state_root }}\\aw_migrat
 aw_windows_api_smoke_check_enabled: true
 aw_windows_api_smoke_check_bucket: ""
 aw_windows_api_smoke_check_limit: 10
-
