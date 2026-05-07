@@ -24,6 +24,7 @@ aw_windows_extra_users: []
 
 aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
 aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
+aw_windows_hostname_override: ""
 
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true

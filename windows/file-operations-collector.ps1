@@ -208,6 +208,7 @@ function Send-FileOperationEvent {
 
 $config = Get-DeploymentConfig -Path $ConfigPath
 if (-not $config) { throw "Configuration file not found: $ConfigPath" }
+$script:Hostname = if ($config.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$config.awHostname)) { [string]$config.awHostname } else { [string]$env:COMPUTERNAME }
 
 $scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { $config.server.scheme } else { 'http' }
 $hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
