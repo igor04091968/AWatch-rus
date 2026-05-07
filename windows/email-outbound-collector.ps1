@@ -53,13 +53,79 @@ function Write-CollectorLog {
     catch { }
 }
 
-function Invoke-AwJsonPost {
+function Add-WalEntry {
     param(
         [Parameter(Mandatory = $true)][string]$Uri,
         [Parameter(Mandatory = $true)][string]$Json
     )
+    if ([string]::IsNullOrWhiteSpace($script:WalPath)) { return }
+    try {
+        $entry = @{ ts = (Get-Date).ToUniversalTime().ToString('o'); uri = $Uri; json = $Json } | ConvertTo-Json -Compress
+        Add-Content -LiteralPath $script:WalPath -Value $entry -Encoding UTF8
+    } catch {}
+}
+
+function Flush-Wal {
+    if ([string]::IsNullOrWhiteSpace($script:WalPath) -or -not (Test-Path -LiteralPath $script:WalPath)) { return }
+    $remaining = New-Object System.Collections.Generic.List[string]
+    try {
+        $script:WalFlushing = $true
+        foreach ($line in (Get-Content -LiteralPath $script:WalPath -ErrorAction SilentlyContinue)) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try {
+                $entry = $line | ConvertFrom-Json
+                if ($null -eq $entry -or -not $entry.uri -or -not $entry.json) { continue }
+                if (-not (Invoke-AwJsonPost -Uri ([string]$entry.uri) -Json ([string]$entry.json))) { $remaining.Add($line) }
+            } catch { $remaining.Add($line) }
+        }
+        if ($remaining.Count -eq 0) {
+            Remove-Item -LiteralPath $script:WalPath -Force -ErrorAction SilentlyContinue
+        } else {
+            Set-Content -LiteralPath $script:WalPath -Value ($remaining -join [Environment]::NewLine) -Encoding UTF8
+        }
+    } finally {
+        $script:WalFlushing = $false
+    }
+}
+
+function Write-CollectorHealth {
+    param([string]$Status = 'running')
+    if ([string]::IsNullOrWhiteSpace($script:HealthPath)) { return }
+    try {
+        $walDepth = 0
+        if ($script:WalPath -and (Test-Path -LiteralPath $script:WalPath)) { $walDepth = @((Get-Content -LiteralPath $script:WalPath)).Count }
+        $health = @{
+            collector = 'email-outbound'; hostname = $script:Hostname; sessionId = $script:SessionId;
+            status = $Status; apiBase = $script:ApiBase; walDepth = $walDepth; ts = (Get-Date).ToUniversalTime().ToString('o')
+        } | ConvertTo-Json -Depth 5
+        Set-Content -LiteralPath $script:HealthPath -Value $health -Encoding UTF8
+    } catch {}
+}
+
+function Invoke-AwJsonPost {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Json,
+        [int]$MaxAttempts = 5,
+        [int]$InitialBackoffMs = 500
+    )
+    $attempt = 1
+    $backoff = [Math]::Max(100, $InitialBackoffMs)
     $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+    while ($attempt -le $MaxAttempts) {
+        try {
+            Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+            return $true
+        } catch {
+            if ($attempt -ge $MaxAttempts) {
+                if (-not $script:WalFlushing) { Add-WalEntry -Uri $Uri -Json $Json }
+                return $false
+            }
+            Start-Sleep -Milliseconds $backoff
+            $backoff = [Math]::Min($backoff * 2, 10000)
+            $attempt++
+        }
+    }
 }
 
 function Ensure-Bucket {
@@ -517,6 +583,10 @@ $script:SeenSmtpConnections = @{}
 $script:PulseSeconds = [Math]::Max($resolvedPollSeconds * 3, 30)
 $script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
 $script:LogPath = $resolvedLogPath
+$stateRoot = if ($deploymentConfig -and $deploymentConfig.paths -and $deploymentConfig.paths.stateRoot) { [string]$deploymentConfig.paths.stateRoot } else { 'C:\ProgramData\AWatch-rus' }
+$script:WalPath = Join-Path $stateRoot 'wal-email-outbound.ndjson'
+$script:HealthPath = Join-Path $stateRoot 'health-email-outbound.json'
+$script:WalFlushing = $false
 $script:OutlookApp = $null
 $script:OutlookNamespace = $null
 $script:SentFolder = $null
@@ -540,43 +610,65 @@ if ($useOutlook) {
 # Main loop
 # ---------------------------------------------------------------------------
 
-while ($true) {
-    try {
-        if (-not $script:Policy.defaults.enabled) {
-            Start-Sleep -Seconds $resolvedPollSeconds
-            continue
-        }
-
-        if ($useOutlook) {
-            if (-not $outlookReady) {
-                $outlookReady = Initialize-OutlookCom
+try {
+    while ($true) {
+        try {
+            Flush-Wal
+            Write-CollectorHealth -Status 'running'
+            if (-not $script:Policy.defaults.enabled) {
+                Start-Sleep -Seconds $resolvedPollSeconds
+                continue
             }
-            if ($outlookReady) {
+
+            if ($useOutlook) {
+                if (-not $outlookReady) {
+                    $outlookReady = Initialize-OutlookCom
+                }
+                if ($outlookReady) {
+                    try {
+                        Poll-OutlookSentItems
+                    }
+                    catch {
+                        Write-CollectorLog ("outlook poll error: {0}" -f $_.Exception.Message)
+                        $outlookReady = $false
+                        $script:OutlookApp = $null
+                        $script:OutlookNamespace = $null
+                        $script:SentFolder = $null
+                    }
+                }
+            }
+
+            if ($useSmtp) {
                 try {
-                    Poll-OutlookSentItems
+                    Poll-SmtpConnections
                 }
                 catch {
-                    Write-CollectorLog ("outlook poll error: {0}" -f $_.Exception.Message)
-                    $outlookReady = $false
-                    $script:OutlookApp = $null
-                    $script:OutlookNamespace = $null
-                    $script:SentFolder = $null
+                    Write-CollectorLog ("smtp poll error: {0}" -f $_.Exception.Message)
                 }
             }
         }
+        catch {
+            Write-CollectorLog ("collector error: {0}" -f $_.Exception.Message)
+        }
 
-        if ($useSmtp) {
-            try {
-                Poll-SmtpConnections
-            }
-            catch {
-                Write-CollectorLog ("smtp poll error: {0}" -f $_.Exception.Message)
-            }
+        Start-Sleep -Seconds $resolvedPollSeconds
+    }
+}
+finally {
+    Write-CollectorHealth -Status 'stopped'
+    try {
+        if ($null -ne $script:SentFolder) {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($script:SentFolder)
+            $script:SentFolder = $null
+        }
+        if ($null -ne $script:OutlookNamespace) {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($script:OutlookNamespace)
+            $script:OutlookNamespace = $null
+        }
+        if ($null -ne $script:OutlookApp) {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($script:OutlookApp)
+            $script:OutlookApp = $null
         }
     }
-    catch {
-        Write-CollectorLog ("collector error: {0}" -f $_.Exception.Message)
-    }
-
-    Start-Sleep -Seconds $resolvedPollSeconds
+    catch {}
 }

@@ -26,6 +26,9 @@ VIEWS_JSON="$BOOTSTRAP_DIR/settings/views-default.json"
 CLASSES_JSON="$BOOTSTRAP_DIR/settings/classes-worktime.json"
 WORKTIME_API_SRC="$BOOTSTRAP_DIR/aw-worktime-api.py"
 WORKTIME_API_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-api.service"
+WORKTIME_UI_BRIDGE_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.py"
+WORKTIME_UI_BRIDGE_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.service"
+WORKTIME_UI_BRIDGE_TIMER_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.timer"
 
 for var_name in "${required_vars[@]}"; do
   if [[ -z "${!var_name:-}" ]]; then
@@ -101,6 +104,24 @@ if [[ -f "$WORKTIME_API_SERVICE_SRC" ]]; then
   systemctl enable aw-worktime-api.service
   systemctl restart aw-worktime-api.service
   systemctl --no-pager --full status aw-worktime-api.service || true
+fi
+
+if [[ -f "$WORKTIME_UI_BRIDGE_SRC" ]]; then
+  install -m 0755 "$WORKTIME_UI_BRIDGE_SRC" /usr/local/bin/aw-worktime-ui-bridge.py
+fi
+
+if [[ -f "$WORKTIME_UI_BRIDGE_SERVICE_SRC" ]]; then
+  install -m 0644 "$WORKTIME_UI_BRIDGE_SERVICE_SRC" /etc/systemd/system/aw-worktime-ui-bridge.service
+fi
+
+if [[ -f "$WORKTIME_UI_BRIDGE_TIMER_SRC" ]]; then
+  install -m 0644 "$WORKTIME_UI_BRIDGE_TIMER_SRC" /etc/systemd/system/aw-worktime-ui-bridge.timer
+  systemctl daemon-reload
+  systemctl disable --now aw-worktime-afk-bridge.timer >/dev/null 2>&1 || true
+  systemctl enable aw-worktime-ui-bridge.timer
+  systemctl restart aw-worktime-ui-bridge.timer
+  systemctl start aw-worktime-ui-bridge.service || true
+  systemctl --no-pager --full status aw-worktime-ui-bridge.timer || true
 fi
 
 for _ in $(seq 1 20); do

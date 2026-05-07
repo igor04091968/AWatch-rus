@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ServerHost,
@@ -24,6 +24,7 @@ param(
     [bool]$IncidentScreenshotEnabled = $true,
     [string]$IncidentArtifactsRoot,
     [bool]$LogonMarkerEnabled = $true,
+    [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
     [string]$ReportPath,
@@ -71,6 +72,7 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
     -IncidentArtifactsRoot $IncidentArtifactsRoot `
     -LogonMarkerEnabled $LogonMarkerEnabled `
+    -AwHostname $AwHostname `
     -CustomRulesPath $CustomRulesPath `
     -CustomPolicyPath $CustomPolicyPath
 
@@ -94,6 +96,7 @@ if (-not $SkipHardening) {
         -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
         -IncidentArtifactsRoot $IncidentArtifactsRoot `
         -LogonMarkerEnabled $LogonMarkerEnabled `
+        -AwHostname $AwHostname `
         -CustomRulesPath $CustomRulesPath `
         -CustomPolicyPath $CustomPolicyPath
 }
@@ -136,6 +139,6 @@ if ($reportDirectory) {
 
 $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $effectiveReportPath -Encoding UTF8
 
-Write-Host 'Комплексное развёртывание ActivityWatch завершено.'
-Write-Host "Пользователи: $($resolvedUsers -join ', ')"
-Write-Host "Отчёт: $effectiveReportPath"
+Write-Output 'Комплексное развёртывание ActivityWatch завершено.'
+Write-Output "Пользователи: $($resolvedUsers -join ', ')"
+Write-Output "Отчёт: $effectiveReportPath"

@@ -1,4 +1,4 @@
-[CmdletBinding(SupportsShouldProcess = $true)]
+﻿[CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$OldInstallRoot = 'C:\Program Files\ActivityWatch-Phase2',
     [string]$OldStateRoot = 'C:\ProgramData\ActivityWatch-Phase2',

@@ -306,6 +306,9 @@ function Copy-ActivityWatchCollectorAssets {
         $resolvedRules = Resolve-Path -LiteralPath $CustomRulesSource -ErrorAction Stop
         Copy-Item -LiteralPath $resolvedRules.Path -Destination $rulesTarget -Force
     }
+    else {
+        Copy-Item -LiteralPath $exampleRulesTarget -Destination $rulesTarget -Force
+    }
 
     if ($CustomPolicySource) {
         $resolvedPolicy = Resolve-Path -LiteralPath $CustomPolicySource -ErrorAction Stop
@@ -534,11 +537,7 @@ function Get-CollectorPowerShellProcessCount {
 function New-LaunchLock {
     param([string]`$StateRoot, [int]`$SessionId)
 
-    if (-not (Test-Path -LiteralPath `$StateRoot)) {
-        New-Item -Path `$StateRoot -ItemType Directory -Force | Out-Null
-    }
-
-    `$lockPath = Join-Path `$StateRoot ("launch-watchers-session-{0}.lock" -f `$SessionId)
+    `$lockPath = Join-Path `$env:TEMP ("launch-watchers-session-{0}.lock" -f `$SessionId)
     if (Test-Path -LiteralPath `$lockPath) {
         try {
             `$lockData = Get-Content -LiteralPath `$lockPath -Raw | ConvertFrom-Json
@@ -731,13 +730,11 @@ function Start-CollectorScriptIfNeeded {
         return
     }
 
-    Start-Process -FilePath `$PowerShellExe -ArgumentList @(
-        '-NoProfile',
-        '-WindowStyle', 'Hidden',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', `$ScriptPath,
-        '-ConfigPath', `$ConfigPath
-    ) -WindowStyle Hidden
+    `$staParam = if (`$ScriptPath -like "*endpoint-signals*") { "-STA" } else { `$null }
+    `$argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass')
+    if (`$staParam) { `$argumentList += `$staParam }
+    `$argumentList += @('-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
+    Start-Process -FilePath `$PowerShellExe -ArgumentList `$argumentList -WindowStyle Hidden
 }
 
 `$config = Get-DeploymentConfig -Path `$ConfigPath

@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ServerHost,
@@ -136,6 +136,6 @@ if ($reportDirectory) {
 
 $report | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $effectiveReportPath -Encoding UTF8
 
-Write-Host 'Комплексное развёртывание ActivityWatch завершено.'
-Write-Host "Пользователи: $($resolvedUsers -join ', ')"
-Write-Host "Отчёт: $effectiveReportPath"
+Write-Output 'Комплексное развёртывание ActivityWatch завершено.'
+Write-Output "Пользователи: $($resolvedUsers -join ', ')"
+Write-Output "Отчёт: $effectiveReportPath"

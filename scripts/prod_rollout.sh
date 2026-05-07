@@ -21,9 +21,11 @@ prompt_secret() {
   if [[ -n "${!var_name:-}" ]]; then
     return 0
   fi
-  read -r -s -p "${prompt}: " "$var_name"
+  local _val
+  read -r -s -p "${prompt}: " _val
   echo
-  export "$var_name"
+  printf -v "$var_name" '%s' "$_val"
+  declare -gx "$var_name"
 }
 
 require_cmd git
@@ -32,6 +34,12 @@ require_cmd ansible
 
 log "Repo: ${ROOT_DIR}"
 log "Branch: $(git branch --show-current)"
+
+if [[ "${AW_MAINTENANCE_ACK:-}" != "YES" ]]; then
+  log "ERROR: maintenance window is required."
+  log "Set AW_MAINTENANCE_ACK=YES to proceed."
+  exit 4
+fi
 
 log "Running local quality gate..."
 ./scripts/quality-gate.sh | tee -a "${LOG_DIR}/quality-gate.log"
@@ -64,6 +72,10 @@ fi
 log "Preflight connectivity..."
 ansible -i ansible/inventory.ini aw_server -m ping | tee -a "${LOG_DIR}/ping_aw_server.log"
 ansible -i ansible/inventory.ini aw_windows -m win_ping | tee -a "${LOG_DIR}/ping_aw_windows.log"
+
+log "Preflight ActivityWatch API/data checks..."
+./check-aw-data.sh | tee -a "${LOG_DIR}/check_aw_data.log"
+./check-aw-full.sh | tee -a "${LOG_DIR}/check_aw_full.log"
 
 log "Dry-run aw_server..."
 ansible-playbook -i ansible/inventory.ini ansible/deploy_aw_server.yml --check --diff | tee -a "${LOG_DIR}/check_aw_server.log"
