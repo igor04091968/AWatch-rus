@@ -98,6 +98,13 @@ function Get-SessionRecords {
     return $records
 }
 
+function Test-SessionIsActive {
+    param([AllowNull()][string]$State)
+    if ([string]::IsNullOrWhiteSpace($State)) { return $false }
+    $s = $State.Trim().ToLowerInvariant()
+    return ($s -eq 'active') -or ($s -like 'актив*')
+}
+
 $cfg = Get-Config -Path $ConfigPath
 $hostValue = if ($Hostname) { $Hostname } else { [string]$env:COMPUTERNAME }
 $apiBase = '{0}://{1}:{2}/api/0' -f [string]$cfg.server.scheme, [string]$cfg.server.host, [string]$cfg.server.port
@@ -137,7 +144,7 @@ while ($true) {
                 sessionId   = [int]$rec.sessionId
                 sessionName = [string]$rec.sessionName
                 state       = [string]$rec.state
-                active      = ($rec.state -match 'Active')
+                active      = (Test-SessionIsActive -State ([string]$rec.state))
                 hostname    = $hostValue
                 source      = 'worktime-session-collector'
             }
