@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
@@ -54,13 +54,32 @@ function Ensure-Bucket {
         return
     }
 
+    try {
+        Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
+        $script:KnownBuckets[$BucketId] = $true
+        return
+    }
+    catch {
+    }
+
     $body = @{
         client   = $ClientName
         type     = $BucketType
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
+    try {
+        Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
+    }
+    catch {
+        try {
+            Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
+        }
+        catch {
+            Write-EndpointLog "Bucket create/check failed for ${BucketId}: $($_.Exception.Message)"
+            throw
+        }
+    }
     $script:KnownBuckets[$BucketId] = $true
 }
 

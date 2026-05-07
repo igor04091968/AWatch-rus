@@ -301,6 +301,9 @@ function Copy-ActivityWatchCollectorAssets {
         $resolvedRules = Resolve-Path -LiteralPath $CustomRulesSource -ErrorAction Stop
         Copy-Item -LiteralPath $resolvedRules.Path -Destination $rulesTarget -Force
     }
+    else {
+        Copy-Item -LiteralPath $exampleRulesTarget -Destination $rulesTarget -Force
+    }
 
     if ($CustomPolicySource) {
         $resolvedPolicy = Resolve-Path -LiteralPath $CustomPolicySource -ErrorAction Stop
@@ -718,7 +721,7 @@ function Start-CollectorScriptIfNeeded {
         return
     }
 
-    `$staParam = if (`$ScriptPath -like "*endpoint-signals*") { "-STA" } else { $null }
+    `$staParam = if (`$ScriptPath -like "*endpoint-signals*") { "-STA" } else { `$null }
     `$argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass')
     if (`$staParam) { `$argumentList += `$staParam }
     `$argumentList += @('-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
