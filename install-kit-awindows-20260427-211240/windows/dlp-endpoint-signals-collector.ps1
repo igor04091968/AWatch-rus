@@ -1,6 +1,6 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [string]$ConfigPath = 'C:\ProgramData\ActivityWatch\deployment-config.json',
+    [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
@@ -516,6 +516,35 @@ function Test-LooksLikeMojibakeQuestionMarks {
     return $Value -match '\?{2,}'
 }
 
+function Test-IsGenericDocumentName {
+    param([AllowNull()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
+    $generic = @(
+        '^\s*Печать документа\s*$',
+        '^\s*Print Document\s*$',
+        '^\s*Document\s*$',
+        '^\s*Документ\s*$',
+        '^\s*Remote Downlevel Document\s*$',
+        '^\s*Local Downlevel Document\s*$',
+        '^\s*Untitled\s*$',
+        '^\s*Без имени\s*$',
+        '^\s*Без названия\s*$'
+    )
+    foreach ($pattern in $generic) {
+        if ($Value -match $pattern) { return $true }
+    }
+    return $false
+}
+
+function Test-NeedsBetterDocumentName {
+    param([AllowNull()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
+    if (Test-LooksLikeMojibakeQuestionMarks -Value $Value) { return $true }
+    if (Test-IsGenericDocumentName -Value $Value) { return $true }
+    if ($Value -match '^[0-9]+$') { return $true }
+    return $false
+}
+
 function Normalize-OwnerForMatch {
     param([AllowNull()][string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
@@ -602,7 +631,7 @@ function Get-PrintServiceDocumentFallback {
     )
 
     $preferred = [string]$EventSummary.DocumentName
-    if (-not (Test-LooksLikeMojibakeQuestionMarks -Value $preferred) -and $preferred -notmatch '^[0-9]+$') {
+    if (-not (Test-NeedsBetterDocumentName -Value $preferred)) {
         return $preferred
     }
 
@@ -615,14 +644,10 @@ function Get-PrintServiceDocumentFallback {
         if ($candidate -eq $preferred) { continue }
         if ($Owner -and $candidate -like "*$Owner*") { continue }
         if ($PrinterName -and $candidate -like "*$PrinterName*") { continue }
-        if (Test-LooksLikeMojibakeQuestionMarks -Value $candidate) { continue }
+        if (Test-NeedsBetterDocumentName -Value $candidate) { continue }
 
         if ($candidate -match '[\\/:]' -and $candidate -match '\.[A-Za-z0-9]{1,8}$') {
             $pathCandidates.Add($candidate)
-            continue
-        }
-
-        if ($candidate -match '^[0-9]+$') {
             continue
         }
 
@@ -733,12 +758,12 @@ $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
 $resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'ServerHost is required.' }
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
-$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\ActivityWatch\dlp-policy.json' }
+$resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\AWatch-rus\dlp-policy.json' }
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
-$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\ActivityWatch\logs' }
+$resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\AWatch-rus\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("endpoint-signals-{0}.log" -f $env:USERNAME) }
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
-$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'ActivityWatch-Phase2\\incident-artifacts' }
+$resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
@@ -823,12 +848,12 @@ while ($true) {
                 if ($script:SeenPrintJob.ContainsKey($jobId)) { continue }
                 $script:SeenPrintJob[$jobId] = (Get-Date).ToUniversalTime()
 
-                $printerName = [string]$job.Name
+                $printerName = Normalize-PrinterForMatch -Value ([string]$job.Name)
                 $documentName = [string]$job.Document
                 $owner = [string]$job.Owner
                 $documentNameOriginal = $documentName
 
-                if (Test-LooksLikeMojibakeQuestionMarks -Value $documentName) {
+                if (Test-NeedsBetterDocumentName -Value $documentName) {
                     $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -Owner $owner -PrinterName $printerName
                     if ($eventDocumentName) {
                         $documentName = $eventDocumentName

@@ -32,6 +32,7 @@ b497400a1ba57cddf28dc8e217115dc85eccb67150cbdbb6a81abd804ed20109  install-kit-aw
 973db51854fc744539a7b75e13c6749e822a08a79f47447485611f07e8f902a8  install-kit-awindows-20260427-211240/windows/deploy-ensemble.ps1
 0d66dcb551889e6b7bc21b29d53b77e46f41d61dd2e4e0d9913dbf0f8bd5eb18  install-kit-awindows-20260427-211240/windows/deploy-single-user.ps1
 8857f3e17f3f3ed6f211ce7f0a0c46c586a2548541078401ee3befaa20924b3d  install-kit-awindows-20260427-211240/windows/dlp-endpoint-signals-collector.ps1
+7362e1aecb56d8863b8b2542f262f28827febf9b25a2a14b382750dc6368664f  install-kit-awindows-20260427-211240/windows/email-outbound-collector.ps1
 aef0032edd9b1e0c54f7b575664ed511dfc6cb53364e7496cbc95e137678e11a  install-kit-awindows-20260427-211240/windows/dlp-policy.example.json
 f03886caf56c6838e8a163d6b48d1f229e83a5682aeeb447c3a65f13d62dbca4  install-kit-awindows-20260427-211240/windows/hardening-recovery.ps1
 71911cd53ad0abd8bf83994f8a79bbbfe2c0eaf4f4c5f6c2d636dd7786191c2f  install-kit-awindows-20260427-211240/windows/migrate-awatch-rus-paths.ps1

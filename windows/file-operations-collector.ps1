@@ -136,7 +136,19 @@ function Ensure-Bucket {
         [string]$ClientName,
         [string]$BucketType
     )
-    if ($script:KnownBuckets.ContainsKey($BucketId)) { return }
+
+    if ($script:KnownBuckets.ContainsKey($BucketId)) {
+        return
+    }
+
+    try {
+        Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
+        $script:KnownBuckets[$BucketId] = $true
+        return
+    }
+    catch {
+    }
+
     $body = @{
         client   = $ClientName
         type     = $BucketType
@@ -243,6 +255,7 @@ foreach ($path in $resolvedPaths) {
     }
     $subscriptions += @($onChanged, $onDeleted, $onRenamed)
     $watchers += $watcher
+    $subscriptions += @($onChanged, $onDeleted, $onRenamed)
 }
 
 Write-FileCollectorLog "Collector started. Waiting for events..."

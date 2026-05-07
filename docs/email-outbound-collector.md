@@ -28,7 +28,7 @@
 
 | Параметр       | По умолчанию                            | Описание                        |
 |----------------|-----------------------------------------|---------------------------------|
-| `-ConfigPath`  | `C:\ProgramData\ActivityWatch\deployment-config.json` | Путь к конфигу            |
+| `-ConfigPath`  | `C:\ProgramData\AWatch-rus\deployment-config.json` | Путь к конфигу            |
 | `-ServerHost`  | из конфига                              | Адрес AW-сервера                |
 | `-ServerPort`  | из конфига / 5600                       | Порт AW-сервера                 |
 | `-PolicyPath`  | из конфига / `dlp-policy.json`          | Путь к DLP-политике             |
@@ -154,7 +154,7 @@
 Добавьте в `launch-watchers.ps1` или Task Scheduler:
 
 ```powershell
-Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -File "C:\ProgramData\ActivityWatch\email-outbound-collector.ps1"' -WindowStyle Hidden
+Start-Process powershell.exe -ArgumentList '-ExecutionPolicy Bypass -File "C:\ProgramData\AWatch-rus\email-outbound-collector.ps1"' -WindowStyle Hidden
 ```
 
 ## Требования

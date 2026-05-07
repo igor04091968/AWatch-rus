@@ -101,6 +101,7 @@ Get-ActivityWatchExecutableMap -InstallRoot $effectiveInstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') `
     -EndpointCollectorScriptSource (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') `
+    -EmailCollectorScriptSource (Join-Path $PSScriptRoot 'email-outbound-collector.ps1') `
     -FileCollectorScriptSource (Join-Path $PSScriptRoot 'file-operations-collector.ps1') `
     -SessionCollectorScriptSource (Join-Path $PSScriptRoot 'worktime-session-collector.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
@@ -122,6 +123,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
     -EndpointCollectorScript $effectiveEndpointCollector `
+    -EmailCollectorScript $assetResult.EmailCollectorScript `
     -FileCollectorScript $effectiveFileCollector `
     -SessionCollectorScript $effectiveSessionCollector `
     -RulesPath $effectiveRules `

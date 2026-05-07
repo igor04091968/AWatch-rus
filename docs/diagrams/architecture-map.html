@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ActivityWatch-Russian - Architecture Map</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .legend {
+            background: rgba(255,255,255,0.95);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .legend h2 {
+            margin-bottom: 15px;
+            color: #333;
+        }
+
+        .legend-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 5px;
+            border: 2px solid #333;
+        }
+
+        .architecture-map {
+            background: rgba(255,255,255,0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            position: relative;
+            min-height: 800px;
+        }
+
+        .layer {
+            margin-bottom: 40px;
+            position: relative;
+        }
+
+        .layer-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+
+        .components-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .component {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            border: 3px solid transparent;
+        }
+
+        .component:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+        }
+
+        .component.selected {
+            border-color: #667eea;
+            background: #f0f4ff;
+        }
+
+        .component.windows-client {
+            border-top: 4px solid #ff6b6b;
+        }
+
+        .component.linux-server {
+            border-top: 4px solid #4ecdc4;
+        }
+
+        .component.integration {
+            border-top: 4px solid #ffe66d;
+        }
+
+        .component.monitoring {
+            border-top: 4px solid #95e1d3;
+        }
+
+        .component.external {
+            border-top: 4px solid #dda0dd;
+        }
+
+        .component h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .component-description {
+            color: #666;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+        }
+
+        .component-tech {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .tech-badge {
+            background: #f0f0f0;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.75em;
+            color: #555;
+        }
+
+        .connections {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .connections.active {
+            display: block;
+        }
+
+        .connections h4 {
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .connection-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            margin-bottom: 5px;
+            background: white;
+            border-radius: 5px;
+            border-left: 3px solid #667eea;
+        }
+
+        .connection-protocol {
+            background: #667eea;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75em;
+        }
+
+        .connection-direction {
+            color: #999;
+            font-size: 1.2em;
+        }
+
+        .info-panel {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            width: 350px;
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+            max-height: 80vh;
+            overflow-y: auto;
+            display: none;
+            z-index: 1000;
+        }
+
+        .info-panel.active {
+            display: block;
+        }
+
+        .info-panel h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .info-panel-close {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2em;
+        }
+
+        .info-section {
+            margin-bottom: 15px;
+        }
+
+        .info-section h4 {
+            color: #333;
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+
+        .info-section p, .info-section ul {
+            color: #666;
+            font-size: 0.85em;
+            line-height: 1.5;
+        }
+
+        .info-section ul {
+            padding-left: 20px;
+        }
+
+        .flow-diagram {
+            background: #f9f9f9;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+        }
+
+        .flow-step {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .flow-arrow {
+            color: #667eea;
+            font-size: 1.5em;
+        }
+
+        .search-box {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .search-box input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .component.hidden {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .components-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .info-panel {
+                width: 90%;
+                right: 5%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ActivityWatch-Russian - Architecture Map</h1>
+
+        <div class="search-box">
+            <input type="text" id="searchInput" placeholder="🔍 Поиск компонентов...">
+        </div>
+
+        <div class="legend">
+            <h2>Легенда</h2>
+            <div class="legend-items">
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ff6b6b;"></div>
+                    <span>Windows Clients</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #4ecdc4;"></div>
+                    <span>Linux Server</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #ffe66d;"></div>
+                    <span>Integration Layer</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #95e1d3;"></div>
+                    <span>Monitoring Stack</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background: #dda0dd;"></div>
+                    <span>External Systems</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="architecture-map">
+            <!-- Windows Clients Layer -->
+            <div class="layer">
+                <div class="layer-title">🖥️ Windows Clients - Сбор данных</div>
+                <div class="components-grid">
+                    <div class="component windows-client" data-id="dlp-endpoint" data-search="dlp endpoint collector clipboard print usb">
+                        <h3>DLP Endpoint Collector</h3>
+                        <p class="component-description">Мониторинг clipboard, печати и USB для обнаружения утечек данных</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">PowerShell</span>
+                            <span class="tech-badge">Windows API</span>
+                        </div>
+                    </div>
+
+                    <div class="component windows-client" data-id="browser-domains" data-search="browser domains collector web monitoring">
+                        <h3>Browser Domains Collector</h3>
+                        <p class="component-description">Отслеживание посещаемых доменов с категоризацией сайтов</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">PowerShell</span>
+                            <span class="tech-badge">Window API</span>
+                        </div>
+                    </div>
+
+                    <div class="component windows-client" data-id="email-outbound" data-search="email outbound collector outlook smtp">
+                        <h3>Email Outbound Collector</h3>
+                        <p class="component-description">Мониторинг исходящей почты через Outlook и SMTP</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">PowerShell</span>
+                            <span class="tech-badge">Outlook API</span>
+                        </div>
+                    </div>
+
+                    <div class="component windows-client" data-id="worktime-session" data-search="worktime session collector time tracking">
+                        <h3>Worktime Session Collector</h3>
+                        <p class="component-description">Отслеживание рабочих сессий и учет времени</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">PowerShell</span>
+                            <span class="tech-badge">Windows API</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Linux Server Layer -->
+            <div class="layer">
+                <div class="layer-title">🐧 Linux Server - Хранение и обработка</div>
+                <div class="components-grid">
+                    <div class="component linux-server" data-id="aw-server" data-search="activitywatch server rust api">
+                        <h3>ActivityWatch Server</h3>
+                        <p class="component-description">Основной сервер для приема, хранения и обработки событий</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">Rust</span>
+                            <span class="tech-badge">HTTP API</span>
+                        </div>
+                    </div>
+
+                    <div class="component linux-server" data-id="postgresql" data-search="postgresql database storage">
+                        <h3>PostgreSQL Database</h3>
+                        <p class="component-description">Основное хранилище событий, метаданных и конфигураций</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">PostgreSQL</span>
+                            <span class="tech-badge">SQL</span>
+                        </div>
+                    </div>
+
+                    <div class="component linux-server" data-id="webui" data-search="webui russian localization patches">
+                        <h3>WebUI with RU Patches</h3>
+                        <p class="component-description">Веб-интерфейс с русской локализацией и DLP компонентами</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">JavaScript</span>
+                            <span class="tech-badge">Vue.js</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Integration Layer -->
+            <div class="layer">
+                <div class="layer-title">🔗 Integration Layer - Интеграции</div>
+                <div class="components-grid">
+                    <div class="component integration" data-id="pfsense-poller" data-search="pfsense poller firewall logs">
+                        <h3>pfSense Poller</h3>
+                        <p class="component-description">Сбор логов с pfSense firewall и отправка в ActivityWatch</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">Python</span>
+                            <span class="tech-badge">HTTP API</span>
+                        </div>
+                    </div>
+
+                    <div class="component integration" data-id="dlp-aggregation" data-search="dlp aggregation scripts postgresql">
+                        <h3>DLP Aggregation Scripts</h3>
+                        <p class="component-description">Агрегация DLP событий из ActivityWatch в PostgreSQL</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">Python</span>
+                            <span class="tech-badge">psycopg2</span>
+                        </div>
+                    </div>
+
+                    <div class="component integration" data-id="prometheus-exporter" data-search="prometheus exporter metrics">
+                        <h3>Prometheus Exporter</h3>
+                        <p class="component-description">Экспорт метрик ActivityWatch в формате Prometheus</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">Python</span>
+                            <span class="tech-badge">Prometheus</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monitoring Stack -->
+            <div class="layer">
+                <div class="layer-title">📊 Monitoring Stack - Мониторинг</div>
+                <div class="components-grid">
+                    <div class="component monitoring" data-id="prometheus" data-search="prometheus metrics monitoring">
+                        <h3>Prometheus</h3>
+                        <p class="component-description">Сбор и хранение метрик для мониторинга системы</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">Prometheus</span>
+                            <span class="tech-badge">TSDB</span>
+                        </div>
+                    </div>
+
+                    <div class="component monitoring" data-id="grafana" data-search="grafana dashboards visualization">
+                        <h3>Grafana</h3>
+                        <p class="component-description">Визуализация метрик и построение дашбордов</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">Grafana</span>
+                            <span class="tech-badge">Dashboards</span>
+                        </div>
+                    </div>
+
+                    <div class="component monitoring" data-id="sql-exporter" data-search="sql exporter postgresql grafana">
+                        <h3>SQL Exporter</h3>
+                        <p class="component-description">Прямые SQL запросы к PostgreSQL для Grafana</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">Python</span>
+                            <span class="tech-badge">SQL</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- External Systems -->
+            <div class="layer">
+                <div class="layer-title">🌐 External Systems - Внешние системы</div>
+                <div class="components-grid">
+                    <div class="component external" data-id="pfsense" data-search="pfsense firewall network">
+                        <h3>pfSense Firewall</h3>
+                        <p class="component-description">Брандмауэр для мониторинга сетевой активности</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">pfSense</span>
+                            <span class="tech-badge">Firewall</span>
+                        </div>
+                    </div>
+
+                    <div class="component external" data-id="domain-controller" data-search="domain controller active directory gpo">
+                        <h3>Domain Controller</h3>
+                        <p class="component-description">Развертывание коллекторов через GPO и управление пользователями</p>
+                        <div class="component-tech">
+                            <span class="tech-badge">AD</span>
+                            <span class="tech-badge">GPO</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="info-panel" id="infoPanel">
+        <button class="info-panel-close" onclick="closeInfoPanel()">×</button>
+        <h3 id="infoPanelTitle">Component Info</h3>
+        <div id="infoPanelContent"></div>
+    </div>
+
+    <script>
+        // Component data with connections
+        const componentsData = {
+            'dlp-endpoint': {
+                title: 'DLP Endpoint Collector',
+                connections: [
+                    { target: 'aw-server', protocol: 'HTTP API', direction: '→', description: 'Отправка DLP событий' }
+                ],
+                flows: [
+                    'Пользователь копирует данные',
+                    'DLP Collector перехватывает событие',
+                    'Проверка по DLP правилам',
+                    'При нарушении → скриншот + инцидент',
+                    'Отправка в ActivityWatch Server'
+                ],
+                ports: ['HTTP:5600'],
+                details: 'Мониторинг clipboard, печати и USB устройств для обнаружения утечек конфиденциальных данных. Поддерживает блокировку нарушений и создание скриншотов.'
+            },
+            'browser-domains': {
+                title: 'Browser Domains Collector',
+                connections: [
+                    { target: 'aw-server', protocol: 'HTTP API', direction: '→', description: 'Отправка браузерных событий' }
+                ],
+                flows: [
+                    'Пользователь открывает сайт',
+                    'Collector определяет домен',
+                    'Категоризация сайта',
+                    'Проверка DLP правил',
+                    'Отправка события в ActivityWatch'
+                ],
+                ports: ['HTTP:5600'],
+                details: 'Отслеживание посещаемых веб-сайтов с автоматической категоризацией и проверкой по DLP правилам для запрещенных доменов.'
+            },
+            'email-outbound': {
+                title: 'Email Outbound Collector',
+                connections: [
+                    { target: 'aw-server', protocol: 'HTTP API', direction: '→', description: 'Отправка email событий' }
+                ],
+                flows: [
+                    'Пользователь отправляет email',
+                    'Collector перехватывает событие',
+                    'Проверка по email правилам',
+                    'При нарушении → блокировка',
+                    'Логирование в ActivityWatch'
+                ],
+                ports: ['HTTP:5600'],
+                details: 'Мониторинг исходящей почты через Outlook и SMTP соединения для предотвращения утечек через email.'
+            },
+            'worktime-session': {
+                title: 'Worktime Session Collector',
+                connections: [
+                    { target: 'aw-server', protocol: 'HTTP API', direction: '→', description: 'Отправка сессий' }
+                ],
+                flows: [
+                    'Определение начала работы',
+                    'Отслеживание активности',
+                    'Определение перерывов',
+                    'Агрегация по дням',
+                    'Отправка в ActivityWatch'
+                ],
+                ports: ['HTTP:5600'],
+                details: 'Учет рабочего времени сотрудников с определением начала/конца сессий и перерывов.'
+            },
+            'aw-server': {
+                title: 'ActivityWatch Server',
+                connections: [
+                    { target: 'postgresql', protocol: 'TCP', direction: '→', description: 'Хранение данных' },
+                    { target: 'webui', protocol: 'HTTP', direction: '→', description: 'Отдача интерфейса' },
+                    { target: 'prometheus-exporter', protocol: 'HTTP API', direction: '←', description: 'Метрики' }
+                ],
+                flows: [
+                    'Прием событий от коллекторов',
+                    'Валидация и нормализация',
+                    'Сохранение в PostgreSQL',
+                    'Предоставление API',
+                    'Отдача WebUI'
+                ],
+                ports: ['HTTP:5600', 'WebSocket:5666'],
+                details: 'Основной сервер ActivityWatch на Rust, принимающий события от коллекторов и предоставляющий API и WebUI.'
+            },
+            'postgresql': {
+                title: 'PostgreSQL Database',
+                connections: [
+                    { target: 'dlp-aggregation', protocol: 'TCP', direction: '↔', description: 'Агрегация событий' },
+                    { target: 'grafana', protocol: 'TCP', direction: '→', description: 'Прямые запросы' },
+                    { target: 'sql-exporter', protocol: 'TCP', direction: '→', description: 'SQL запросы' }
+                ],
+                flows: [
+                    'Хранение событий активности',
+                    'Хранение DLP инцидентов',
+                    'Хранение метаданных',
+                    'Агрегация данных',
+                    'Аналитические запросы'
+                ],
+                ports: ['TCP:5432'],
+                details: 'Основная база данных для хранения всех событий, инцидентов и метаданных системы.'
+            },
+            'webui': {
+                title: 'WebUI with RU Patches',
+                connections: [
+                    { target: 'aw-server', protocol: 'HTTP', direction: '←', description: 'API запросы' }
+                ],
+                flows: [
+                    'Загрузка WebUI',
+                    'Применение RU патчей',
+                    'Инъекция DLP компонентов',
+                    'Перевод интерфейса',
+                    'Отображение данных'
+                ],
+                ports: ['HTTP:5600'],
+                details: 'Веб-интерфейс с русской локализацией, DLP центром и компонентами для анализа активности.'
+            },
+            'pfsense-poller': {
+                title: 'pfSense Poller',
+                connections: [
+                    { target: 'pfsense', protocol: 'HTTPS', direction: '←', description: 'Сбор логов' },
+                    { target: 'aw-server', protocol: 'HTTP API', direction: '→', description: 'Отправка событий' }
+                ],
+                flows: [
+                    'Подключение к pfSense API',
+                    'Сбор логов firewall',
+                    'Нормализация данных',
+                    'Отправка в ActivityWatch',
+                    'Периодический опрос'
+                ],
+                ports: ['HTTPS:443'],
+                details: 'Python скрипт для сбора логов с pfSense firewall и отправки сетевых событий в ActivityWatch.'
+            },
+            'dlp-aggregation': {
+                title: 'DLP Aggregation Scripts',
+                connections: [
+                    { target: 'aw-server', protocol: 'HTTP API', direction: '←', description: 'Чтение событий' },
+                    { target: 'postgresql', protocol: 'TCP', direction: '→', description: 'Запись агрегации' }
+                ],
+                flows: [
+                    'Чтение событий из AW',
+                    'Парсинг и нормализация',
+                    'Агрегация по периодам',
+                    'Запись в PostgreSQL',
+                    'Генерация отчетов'
+                ],
+                ports: ['TCP:5432'],
+                details: 'Python скрипты для агрегации DLP событий из ActivityWatch buckets в PostgreSQL для аналитики.'
+            },
+            'prometheus-exporter': {
+                title: 'Prometheus Exporter',
+                connections: [
+                    { target: 'aw-server', protocol: 'HTTP API', direction: '←', description: 'Сбор метрик' },
+                    { target: 'prometheus', protocol: 'HTTP', direction: '→', description: 'Экспорт метрик' }
+                ],
+                flows: [
+                    'Запрос к AW API',
+                    'Сбор метрик buckets',
+                    'Подсчет событий',
+                    'Форматирование Prometheus',
+                    'Отдача на /metrics'
+                ],
+                ports: ['HTTP:9398'],
+                details: 'HTTP сервер для экспорта метрик ActivityWatch в формате Prometheus для мониторинга.'
+            },
+            'prometheus': {
+                title: 'Prometheus',
+                connections: [
+                    { target: 'prometheus-exporter', protocol: 'HTTP', direction: '←', description: 'Scraping' }
+                ],
+                flows: [
+                    'Периодический scrape',
+                    'Сбор метрик',
+                    'Хранение в TSDB',
+                    'Evaluation правил',
+                    'Alerting'
+                ],
+                ports: ['HTTP:9090'],
+                details: 'Система мониторинга для сбора и хранения метрик с оценкой правил и алертингом.'
+            },
+            'grafana': {
+                title: 'Grafana',
+                connections: [
+                    { target: 'prometheus', protocol: 'HTTP', direction: '←', description: 'Запросы метрик' },
+                    { target: 'postgresql', protocol: 'TCP', direction: '←', description: 'SQL запросы' }
+                ],
+                flows: [
+                    'Запрос к Prometheus',
+                    'Запрос к PostgreSQL',
+                    'Визуализация данных',
+                    'Построение графиков',
+                    'Дашборды'
+                ],
+                ports: ['HTTP:3000'],
+                details: 'Платформа визуализации для построения дашбордов на основе метрик Prometheus и данных PostgreSQL.'
+            },
+            'sql-exporter': {
+                title: 'SQL Exporter',
+                connections: [
+                    { target: 'postgresql', protocol: 'TCP', direction: '←', description: 'SQL запросы' },
+                    { target: 'grafana', protocol: 'HTTP', direction: '→', description: 'Данные для дашбордов' }
+                ],
+                flows: [
+                    'SQL запросы к PostgreSQL',
+                    'Агрегация данных',
+                    'Форматирование',
+                    'Экспорт в Grafana',
+                    'Периодическое обновление'
+                ],
+                ports: ['HTTP:9398'],
+                details: 'Экспорт данных из PostgreSQL через SQL запросы для использования в Grafana дашбордах.'
+            },
+            'pfsense': {
+                title: 'pfSense Firewall',
+                connections: [
+                    { target: 'pfsense-poller', protocol: 'HTTPS', direction: '→', description: 'API доступ' }
+                ],
+                flows: [
+                    'Обработка трафика',
+                    'Логирование соединений',
+                    'Предоставление API',
+                    'Мониторинг безопасности'
+                ],
+                ports: ['HTTPS:443', 'SSH:22'],
+                details: 'Брандмауэр для мониторинга сетевой активности и защиты периметра.'
+            },
+            'domain-controller': {
+                title: 'Domain Controller',
+                connections: [
+                    { target: 'dlp-endpoint', protocol: 'GPO', direction: '→', description: 'Развертывание' },
+                    { target: 'browser-domains', protocol: 'GPO', direction: '→', description: 'Развертывание' },
+                    { target: 'email-outbound', protocol: 'GPO', direction: '→', description: 'Развертывание' }
+                ],
+                flows: [
+                    'Создание GPO',
+                    'Развертывание коллекторов',
+                    'Управление пользователями',
+                    'Мониторинг статуса'
+                ],
+                ports: ['LDAP:389', 'SMB:445'],
+                details: 'Active Directory для автоматического развертывания коллекторов через Group Policy Objects.'
+            }
+        };
+
+        // DOM elements
+        const components = document.querySelectorAll('.component');
+        const infoPanel = document.getElementById('infoPanel');
+        const infoPanelTitle = document.getElementById('infoPanelTitle');
+        const infoPanelContent = document.getElementById('infoPanelContent');
+        const searchInput = document.getElementById('searchInput');
+
+        // Component click handler
+        components.forEach(component => {
+            component.addEventListener('click', () => {
+                const componentId = component.dataset.id;
+                const data = componentsData[componentId];
+
+                // Remove selected class from all components
+                components.forEach(c => c.classList.remove('selected'));
+                
+                // Add selected class to clicked component
+                component.classList.add('selected');
+
+                // Show info panel
+                showInfoPanel(componentId, data);
+
+                // Highlight connected components
+                highlightConnections(componentId, data.connections);
+            });
+        });
+
+        function showInfoPanel(componentId, data) {
+            infoPanelTitle.textContent = data.title;
+
+            let content = `
+                <div class="info-section">
+                    <h4>📝 Описание</h4>
+                    <p>${data.details}</p>
+                </div>
+                <div class="info-section">
+                    <h4>🔗 Связи</h4>
+            `;
+
+            data.connections.forEach(conn => {
+                content += `
+                    <div class="connection-item">
+                        <span class="connection-protocol">${conn.protocol}</span>
+                        <span class="connection-direction">${conn.direction}</span>
+                        <span>${conn.description}</span>
+                    </div>
+                `;
+            });
+
+            content += `</div>`;
+
+            if (data.flows && data.flows.length > 0) {
+                content += `
+                    <div class="info-section">
+                        <h4>⚡ Поток данных</h4>
+                        <div class="flow-diagram">
+                `;
+                data.flows.forEach((flow, index) => {
+                    content += `
+                        <div class="flow-step">
+                            <span>${index + 1}.</span>
+                            <span>${flow}</span>
+                            ${index < data.flows.length - 1 ? '<span class="flow-arrow">↓</span>' : ''}
+                        </div>
+                    `;
+                });
+                content += `</div></div>`;
+            }
+
+            if (data.ports && data.ports.length > 0) {
+                content += `
+                    <div class="info-section">
+                        <h4>🌐 Порты</h4>
+                        <ul>
+                `;
+                data.ports.forEach(port => {
+                    content += `<li>${port}</li>`;
+                });
+                content += `</ul></div>`;
+            }
+
+            infoPanelContent.innerHTML = content;
+            infoPanel.classList.add('active');
+        }
+
+        function closeInfoPanel() {
+            infoPanel.classList.remove('active');
+            components.forEach(c => {
+                c.classList.remove('selected');
+                c.style.opacity = '1';
+            });
+        }
+
+        function highlightConnections(componentId, connections) {
+            // Reset all components
+            components.forEach(c => {
+                c.style.opacity = '0.3';
+            });
+
+            // Highlight current component
+            const currentComponent = document.querySelector(`[data-id="${componentId}"]`);
+            if (currentComponent) {
+                currentComponent.style.opacity = '1';
+            }
+
+            // Highlight connected components
+            connections.forEach(conn => {
+                const targetComponent = document.querySelector(`[data-id="${conn.target}"]`);
+                if (targetComponent) {
+                    targetComponent.style.opacity = '1';
+                }
+            });
+        }
+
+        // Search functionality
+        searchInput.addEventListener('input', (e) => {
+            const searchTerm = e.target.value.toLowerCase();
+
+            components.forEach(component => {
+                const searchData = component.dataset.search.toLowerCase();
+                const title = component.querySelector('h3').textContent.toLowerCase();
+                const description = component.querySelector('.component-description').textContent.toLowerCase();
+
+                if (searchData.includes(searchTerm) || 
+                    title.includes(searchTerm) || 
+                    description.includes(searchTerm)) {
+                    component.classList.remove('hidden');
+                } else {
+                    component.classList.add('hidden');
+                }
+            });
+        });
+
+        // Close info panel on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeInfoPanel();
+            }
+        });
+
+        // Close info panel when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.component') && !e.target.closest('.info-panel')) {
+                closeInfoPanel();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -10,14 +10,17 @@ fi
 source "$ENV_FILE"
 
 WEBUI_DIR="${AW_SERVER_WEBUI_DIR:-${AW_WEBUI_DIR:-/opt/activitywatch/webui-ru}}"
+REPORT_BASE="${AW_WORKTIME_REPORT_BASE:-http://10.10.10.13:5610}"
 PATCH_JS_SRC="/root/bootstrap/aw-ru-patch.js"
 SW_CLEANUP_SRC="/root/bootstrap/aw-sw-cleanup.js"
+WORKTIME_PANEL_SRC="/root/bootstrap/aw-worktime-panel.js"
 HOST_GROUPS_SRC="/root/bootstrap/aw-host-groups.json"
 INDEX_HTML="$WEBUI_DIR/index.html"
 SERVICE_WORKER="$WEBUI_DIR/service-worker.js"
 TS=$(date +%Y%m%d%H%M%S)
 PATCH_TARGET="$WEBUI_DIR/js/ru-patch-v5.js"
 SW_TARGET="$WEBUI_DIR/js/sw-cleanup.js"
+WORKTIME_PANEL_TARGET="$WEBUI_DIR/js/aw-worktime-panel.js"
 HOST_GROUPS_TARGET="$WEBUI_DIR/js/aw-host-groups.json"
 TRENDS_NEEDLE='this.activityStore.query_category_time_by_period(r)'
 TRENDS_REPLACEMENT='this.activityStore.ensure_loaded(r)'
@@ -28,21 +31,76 @@ CATEGORY_HELPER_REPLACEMENT='hostname:t.hostnameChoices.filter((function(t){retu
 
 [[ -f "$PATCH_JS_SRC" ]] || { echo "missing $PATCH_JS_SRC" >&2; exit 1; }
 [[ -f "$SW_CLEANUP_SRC" ]] || { echo "missing $SW_CLEANUP_SRC" >&2; exit 1; }
+[[ -f "$WORKTIME_PANEL_SRC" ]] || { echo "missing $WORKTIME_PANEL_SRC" >&2; exit 1; }
 [[ -f "$HOST_GROUPS_SRC" ]] || { echo "missing $HOST_GROUPS_SRC" >&2; exit 1; }
 [[ -f "$INDEX_HTML" ]] || { echo "missing $INDEX_HTML" >&2; exit 1; }
 
 install -d "$WEBUI_DIR/js"
 install -m 0644 "$PATCH_JS_SRC" "$PATCH_TARGET"
 install -m 0644 "$SW_CLEANUP_SRC" "$SW_TARGET"
+install -m 0644 "$WORKTIME_PANEL_SRC" "$WORKTIME_PANEL_TARGET"
 install -m 0644 "$HOST_GROUPS_SRC" "$HOST_GROUPS_TARGET"
 cp "$INDEX_HTML" "$INDEX_HTML.bak.$TS"
 
 patch_hash="$(sha1sum "$PATCH_TARGET" | awk '{print substr($1,1,12)}')"
 sw_hash="$(sha1sum "$SW_TARGET" | awk '{print substr($1,1,12)}')"
+worktime_panel_hash="$(sha1sum "$WORKTIME_PANEL_TARGET" | awk '{print substr($1,1,12)}')"
 
-sed -i '/ru-patch-v5.js/d;/sw-cleanup.js/d;/aw-ru-patch.js/d;/aw-sw-cleanup.js/d' "$INDEX_HTML"
-sed -i "s#</head>#<script src=\"/js/sw-cleanup.js?v=$sw_hash\"></script></head>#" "$INDEX_HTML"
-sed -i "s#</body>#<script defer=\"defer\" src=\"/js/ru-patch-v5.js?v=$patch_hash\"></script></body>#" "$INDEX_HTML"
+python3 - "$WORKTIME_PANEL_TARGET" "$REPORT_BASE" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+report_base = sys.argv[2]
+text = path.read_text()
+text = text.replace("__AW_WORKTIME_REPORT_BASE__", report_base)
+path.write_text(text)
+PY
+
+python3 - "$INDEX_HTML" "$sw_hash" "$patch_hash" "$worktime_panel_hash" "$REPORT_BASE" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path = Path(sys.argv[1])
+sw_hash = sys.argv[2]
+patch_hash = sys.argv[3]
+panel_hash = sys.argv[4]
+report_base = sys.argv[5]
+content = path.read_text()
+
+content = re.sub(
+    r'<script[^>]+(?:ru-patch-v5\.js|sw-cleanup\.js|aw-ru-patch\.js|aw-sw-cleanup\.js|aw-worktime-panel\.js)[^>]*></script>',
+    '',
+    content,
+)
+content = re.sub(r"; frame-src 'self' [^\";>]*", "", content)
+content = content.replace(
+    "script-src 'self' 'unsafe-eval'",
+    f"script-src 'self' 'unsafe-eval'; frame-src 'self' {report_base}",
+    1,
+)
+content = content.replace(
+    "</head>",
+    f'<script src="/js/sw-cleanup.js?v={sw_hash}"></script></head>',
+    1,
+)
+content = content.replace(
+    "</body>",
+    (
+        f'<script defer="defer" src="/js/ru-patch-v5.js?v={patch_hash}"></script>'
+        f'<script defer="defer" src="/js/aw-worktime-panel.js?v={panel_hash}"></script></body>'
+    ),
+    1,
+)
+if 'id="aw-report-links"' not in content:
+    content = content.replace(
+        "</body>",
+        '<div id="aw-report-links" style="position:fixed;right:12px;bottom:12px;z-index:99999;background:#111;color:#fff;padding:8px 10px;border-radius:8px;font:12px/1.4 sans-serif;opacity:.9">RDP report: loading...</div></body>',
+        1,
+    )
+path.write_text(content)
+PY
 cp "$SW_CLEANUP_SRC" "$SERVICE_WORKER"
 
 trends_chunk="$(grep -Rsl "$TRENDS_NEEDLE" "$WEBUI_DIR/js"/*.js 2>/dev/null | head -n 1 || true)"

@@ -1,0 +1,121 @@
+{
+  "dashboard": {
+    "title": "ActivityWatch Overview",
+    "tags": ["activitywatch", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Total Buckets",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "aw_buckets_total",
+            "refId": "A",
+            "legendFormat": "Total Buckets"
+          }
+        ],
+        "options": {
+          "colorMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "min": 0
+          }
+        }
+      },
+      {
+        "id": 2,
+        "title": "Events per Bucket",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "aw_bucket_events_count",
+            "format": "table",
+            "instant": true,
+            "refId": "B"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "Value": true
+              }
+            }
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Collector Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "aw_collector_status",
+            "format": "table",
+            "instant": true,
+            "refId": "C"
+          }
+        ],
+        "options": {
+          "colorMode": "value"
+        }
+      },
+      {
+        "id": 4,
+        "title": "Events Timeline",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(aw_events_total[5m])",
+            "legendFormat": "{{bucket}} - {{event_type}}",
+            "refId": "D"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "lineWidth": 2,
+              "fillOpacity": 10
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Last Event Timestamp",
+        "type": "gauge",
+        "targets": [
+          {
+            "expr": "aw_events_last_timestamp",
+            "legendFormat": "{{bucket}}",
+            "refId": "E"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s",
+            "custom": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 3600},
+                  {"color": "green", "value": 86400}
+                ]
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+}
