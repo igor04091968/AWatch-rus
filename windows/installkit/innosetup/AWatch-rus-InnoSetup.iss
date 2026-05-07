@@ -34,6 +34,8 @@ Name: "validate"; Description: "Запустить validate-deployment (чере
 [Files]
 Source: "..\..\ActivityWatch.Windows.Common.psd1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\ActivityWatch.Windows.Common.psm1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\install-standalone-service.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\aw-standalone-service.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\deploy-single-user.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\deploy-domain-users.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\deploy-ensemble.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
@@ -43,6 +45,7 @@ Source: "..\..\migrate-awatch-rus-paths.ps1"; DestDir: "{app}\windows"; Flags: i
 Source: "..\..\worktime-session-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\browser-domains-native-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-endpoint-signals-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\file-operations-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\email-outbound-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\web-category-rules.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-policy.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
@@ -51,95 +54,11 @@ Source: "payload\{#AwDefaultZipName}"; DestDir: "{app}\payload"; Flags: ignoreve
 Source: "innosetup-rdp-package-filelist.md"; DestDir: "{app}\windows\installkit\innosetup"; Flags: ignoreversion
 
 [Run]
-Filename: "powershell.exe"; Parameters: "{code:GetDeployEnsembleParams}"; Flags: runhidden; Tasks: deploy
+Filename: "powershell.exe"; Parameters: "{code:GetStandaloneInstallParams}"; Flags: runhidden; Tasks: deploy
 
 [Code]
 var
   ServerHostPage: TInputQueryWizardPage;
-  UsersPage: TInputQueryWizardPage;
-  OptionsPage: TInputOptionWizardPage;
-
-function NormalizeUserCsv(const UserCsv: string): string;
-var
-  i: Integer;
-  s: string;
-  token: string;
-begin
-  Result := '';
-  s := UserCsv;
-  while True do
-  begin
-    i := Pos(',', s);
-    if i = 0 then
-    begin
-      token := Trim(s);
-      s := '';
-    end
-    else
-    begin
-      token := Trim(Copy(s, 1, i - 1));
-      Delete(s, 1, i);
-    end;
-
-    if token <> '' then
-    begin
-      if Result <> '' then
-        Result := Result + ',';
-      Result := Result + token;
-    end;
-
-    if s = '' then
-      Break;
-  end;
-end;
-
-function BuildUsersPowerShellArg(const UserCsv: string): string;
-var
-  i: Integer;
-  s: string;
-  token: string;
-  quoted: string;
-begin
-  Result := '';
-  s := UserCsv;
-  while True do
-  begin
-    i := Pos(',', s);
-    if i = 0 then
-    begin
-      token := Trim(s);
-      s := '';
-    end
-    else
-    begin
-      token := Trim(Copy(s, 1, i - 1));
-      Delete(s, 1, i);
-    end;
-
-    if token <> '' then
-    begin
-      quoted := '"' + token + '"';
-      if Result <> '' then
-        Result := Result + ',';
-      Result := Result + quoted;
-    end;
-
-    if s = '' then
-      Break;
-  end;
-  if Result <> '' then
-    Result := '-Users ' + Result;
-end;
-
-function PayloadZipPath: string;
-begin
-  Result := ExpandConstant('{app}\payload\{#AwDefaultZipName}');
-end;
-
-function HasPayloadZip: Boolean;
-begin
-  Result := FileExists(ExpandConstant('{src}\payload\{#AwDefaultZipName}'));
-end;
 
 procedure InitializeWizard;
 begin
@@ -155,62 +74,24 @@ begin
   ServerHostPage.Add('ServerPort', False);
   ServerHostPage.Values[0] := '{#AwDefaultServerHost}';
   ServerHostPage.Values[1] := '{#AwDefaultServerPort}';
-
-  UsersPage := CreateInputQueryPage(
-    ServerHostPage.ID,
-    'Пользователи (RDP)',
-    'Перечень пользователей, для которых разворачиваем агенты.',
-    'Введите список через запятую. Пример: user1,user2,user3'
-  );
-  UsersPage.Add('Users (CSV)', False);
-  UsersPage.Values[0] := '{#AwDefaultUsers}';
-
-  OptionsPage := CreateInputOptionPage(
-    UsersPage.ID,
-    'Опции деплоя',
-    'Выберите опции для установки/валидации.',
-    '',
-    False,
-    False
-  );
-  OptionsPage.Add('Использовать offline payload (встроенный ZIP)');
-  OptionsPage.Add('Запустить validate-deployment после деплоя');
-  OptionsPage.Values[0] := HasPayloadZip;
-  OptionsPage.Values[1] := True;
 end;
 
-function GetDeployEnsembleParams(Param: string): string;
+function GetStandaloneInstallParams(Param: string): string;
 var
   serverHost: string;
   serverPort: string;
-  usersCsv: string;
-  usersArg: string;
-  zipArg: string;
-  validateArg: string;
 begin
   serverHost := Trim(ServerHostPage.Values[0]);
   serverPort := Trim(ServerHostPage.Values[1]);
-  usersCsv := NormalizeUserCsv(UsersPage.Values[0]);
-
-  usersArg := BuildUsersPowerShellArg(usersCsv);
-  if usersArg = '' then
-    RaiseException('Users list is empty.');
-
-  zipArg := '';
-  if OptionsPage.Values[0] then
-    zipArg := ' -PackageZipPath "' + PayloadZipPath + '"';
-
-  validateArg := '';
-  if OptionsPage.Values[1] and WizardIsTaskSelected('validate') then
-    validateArg := ' -ValidateAfterDeploy';
+  if serverHost = '' then
+    RaiseException('ServerHost is empty.');
+  if serverPort = '' then
+    RaiseException('ServerPort is empty.');
 
   Result :=
-    '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\windows\deploy-ensemble.ps1') + '"' +
+    '-NoProfile -ExecutionPolicy Bypass -File "' + ExpandConstant('{app}\windows\install-standalone-service.ps1') + '"' +
     ' -ServerHost "' + serverHost + '"' +
     ' -ServerPort ' + serverPort +
-    ' ' + usersArg +
-    zipArg +
     ' -InstallRoot "{#AwDefaultInstallRoot}"' +
-    ' -StateRoot "{#AwDefaultStateRoot}"' +
-    validateArg;
+    ' -StateRoot "{#AwDefaultStateRoot}"';
 end;
