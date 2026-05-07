@@ -224,6 +224,10 @@ function Show-EnforcementNotification {
         [Parameter(Mandatory = $true)][string]$Title,
         [Parameter(Mandatory = $true)][string]$Body
     )
+    if ($script:HeadlessMode) {
+        Write-EndpointLog ("headless mode: skip notification title={0}" -f $Title)
+        return $false
+    }
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
         $icon = New-Object System.Windows.Forms.NotifyIcon
@@ -235,9 +239,11 @@ function Show-EnforcementNotification {
         $icon.ShowBalloonTip(5000)
         Start-Sleep -Milliseconds 200
         $icon.Dispose()
+        return $true
     }
     catch {
         Write-EndpointLog ("notification failed: {0}" -f $_.Exception.Message)
+        return $false
     }
 }
 
@@ -457,8 +463,13 @@ function Evaluate-ClipboardRules {
 
         $enforced = $false
         if ($action -eq 'block') {
-            $enforced = Invoke-ClipboardEnforcement
-            Show-EnforcementNotification -Title 'DLP: буфер обмена очищен' -Body $message
+            if ($script:HeadlessMode) {
+                Write-EndpointLog ("headless fallback: clipboard rule={0} requires block, skipped interactive enforcement" -f $ruleId)
+            }
+            else {
+                $enforced = Invoke-ClipboardEnforcement
+                [void](Show-EnforcementNotification -Title 'DLP: буфер обмена очищен' -Body $message)
+            }
         }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'clipboard' -Data @{
@@ -492,8 +503,13 @@ function Evaluate-UsbRules {
 
         $enforced = $false
         if ($action -eq 'block') {
-            $enforced = Invoke-UsbWriteBlockEnforcement -DriveLetter $DriveLetter
-            Show-EnforcementNotification -Title 'DLP: USB заблокирован для записи' -Body $message
+            if ($script:HeadlessMode) {
+                Write-EndpointLog ("headless fallback: usb rule={0} requires block, skipped interactive enforcement drive={1}" -f $ruleId, $DriveLetter)
+            }
+            else {
+                $enforced = Invoke-UsbWriteBlockEnforcement -DriveLetter $DriveLetter
+                [void](Show-EnforcementNotification -Title 'DLP: USB заблокирован для записи' -Body $message)
+            }
         }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'usb_insert' -Data @{
@@ -537,8 +553,13 @@ function Evaluate-PrintRules {
 
         $enforced = $false
         if ($action -eq 'block') {
-            $enforced = Invoke-PrintJobEnforcement -PrinterName $PrinterName -DocumentName $DocumentName -Owner $Owner
-            Show-EnforcementNotification -Title 'DLP: печать заблокирована' -Body $message
+            if ($script:HeadlessMode) {
+                Write-EndpointLog ("headless fallback: print rule={0} requires block, skipped interactive enforcement printer={1}" -f $ruleId, $PrinterName)
+            }
+            else {
+                $enforced = Invoke-PrintJobEnforcement -PrinterName $PrinterName -DocumentName $DocumentName -Owner $Owner
+                [void](Show-EnforcementNotification -Title 'DLP: печать заблокирована' -Body $message)
+            }
         }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'print_job' -Data @{
@@ -802,9 +823,13 @@ $script:LogPath = $resolvedLogPath
 $script:IncidentArtifactsRoot = $resolvedIncidentArtifactsRoot
 $script:IncidentScreenshotEnabled = $resolvedIncidentScreenshotEnabled
 $script:ScreenshotTypesLoaded = $false
+$script:HeadlessMode = ($env:SESSIONNAME -eq 'Service') -or (-not [Environment]::UserInteractive)
 
 Load-DlpPolicy -Path $resolvedPolicyPath
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
+if ($script:HeadlessMode) {
+    Write-EndpointLog "headless mode enabled: enforcement UI is disabled, incident heartbeat and logs only"
+}
 
 while ($true) {
     try {
