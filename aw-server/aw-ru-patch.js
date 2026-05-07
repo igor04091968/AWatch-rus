@@ -370,6 +370,16 @@
     return /^pve[-_]/i.test(String(host || ""));
   }
 
+  function isLikelyClientHost(host) {
+    const value = String(host || "").trim();
+    if (!value) return false;
+    if (/^(?:unknown|undefined|null)$/i.test(value)) return false;
+    if (/^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1)$/i.test(value)) return false;
+    if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(value)) return false;
+    if (value.indexOf(":") !== -1 && /^[0-9a-f:\[\]]+$/i.test(value)) return false;
+    return true;
+  }
+
   function enforceSafeActivityViewForPveHost() {
     const hash = window.location.hash || "";
     const match = hash.match(/^#\/activity\/([^/]+)\/day\/([^/]+)\/view\/([^/?#]+)/i);
@@ -386,9 +396,9 @@
 
   function getDlpHostFromSettings(settings) {
     const routeHost = getCurrentHostFromHash();
-    if (routeHost) return routeHost;
+    if (isLikelyClientHost(routeHost)) return routeHost;
     const bucketHost = getDlpHostFromBucketId(getDlpBucketIdFromHash());
-    if (bucketHost) return bucketHost;
+    if (isLikelyClientHost(bucketHost)) return bucketHost;
     return getTrendsHostFromSettings(settings);
   }
 
@@ -1466,7 +1476,8 @@
     if (!settings || typeof settings !== "object") return "";
     const landingpage = typeof settings.landingpage === "string" ? settings.landingpage : "";
     const match = landingpage.match(/\/activity\/([^/]+)/);
-    return match && match[1] ? match[1] : "";
+    const host = match && match[1] ? decodeURIComponent(match[1]) : "";
+    return isLikelyClientHost(host) ? host : "";
   }
 
   function getTrendsPath(hash) {
@@ -1533,8 +1544,7 @@
       .map(function (bucketId) { return bucketId.replace(/^aw-watcher-window_/i, ""); })
       .filter(Boolean)
       .filter(function (host) { return !/^unknown$/i.test(host); });
-    if (settingsHost && hosts.indexOf(settingsHost) >= 0) return settingsHost;
-    if (settingsHost) return settingsHost;
+    if (isLikelyClientHost(settingsHost) && hosts.indexOf(settingsHost) >= 0) return settingsHost;
     hosts.sort();
     return hosts[0] || "";
   }

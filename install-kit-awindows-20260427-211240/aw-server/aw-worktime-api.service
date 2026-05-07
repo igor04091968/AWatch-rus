@@ -1,0 +1,16 @@
+[Unit]
+Description=AW Worktime Report API
+After=network.target activitywatch-server.service
+Wants=activitywatch-server.service
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/activitywatch/aw-server.env
+ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-api.py
+Restart=always
+RestartSec=2
+User=activitywatch
+Group=activitywatch
+
+[Install]
+WantedBy=multi-user.target

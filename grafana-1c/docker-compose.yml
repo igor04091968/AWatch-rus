@@ -1,4 +1,23 @@
 services:
+  aw-exporter:
+    build:
+      context: ./sql-exporter
+      dockerfile: Dockerfile
+    container_name: awrus-aw-exporter
+    restart: unless-stopped
+    environment:
+      - AW_SERVER_HOST=10.10.10.13
+      - AW_SERVER_PORT=5600
+      - AW_SERVER_SCHEME=http
+      - EXPORTER_PORT=9398
+    volumes:
+      - ./sql-exporter/collectors/aw_activitywatch.py:/app/aw_activitywatch.py:ro
+    ports:
+      - "9398:9398"
+    command:
+      - "python3"
+      - "/app/aw_activitywatch.py"
+
   sql-exporter:
     image: ghcr.io/burningalchemist/sql_exporter:latest
     container_name: awrus-sql-exporter
@@ -30,6 +49,7 @@ services:
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
+      - aw-exporter
       - sql-exporter
 
   grafana:

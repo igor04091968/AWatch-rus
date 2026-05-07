@@ -4,24 +4,24 @@ aw_server_bind_host: "0.0.0.0"
 aw_server_port: 5600
 aw_server_webui_dir: "/opt/activitywatch/webui-ru"
 aw_server_data_dir: "/var/lib/activitywatch"
-aw_server_db_path: "/var/lib/activitywatch/.local/share/activitywatch/aw-server-rust/sqlite.db"
 aw_server_log_dir: "/var/log/activitywatch"
+aw_server_db_path: "/var/lib/activitywatch/aw-server-rust/sqlite.db"
 aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
+aw_worktime_report_base: "http://10.10.10.13:5610"
+aw_worktime_timezone: "Europe/Moscow"
 
-aw_repo_root: "{{ playbook_dir | dirname }}"
-
-# Optional: apply worktime settings via server-side settings API.
-aw_apply_worktime_settings: true
+aw_repo_root: "/mnt/usb_hdd2/Projects/ActivityWatch-Russian"
 
 aw_server_cors_origins:
   - "http://127.0.0.1:5600"
   - "http://localhost:5600"
   - "http://10.10.10.13:5600"
-  - "http://aw-server:5600"
+  - "http://192.168.100.13:5600"
+  - "http://snb-live:5600"
+
+aw_apply_worktime_settings: true
 
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
-aw_server_always_active_pattern: "aw-watcher-window"
-aw_server_landingpage: "/activity/SHARKON2025/view/"

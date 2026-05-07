@@ -1,0 +1,59 @@
+{
+  "version": 1,
+  "defaults": {
+    "enabled": true,
+    "cooldownSeconds": 5,
+    "action": "log",
+    "severity": "low"
+  },
+  "rules": [],
+  "endpoint": {
+    "clipboard": [
+      {
+        "id": "test-block-clipboard",
+        "enabled": true,
+        "cooldownSeconds": 10,
+        "action": "block",
+        "severity": "high",
+        "message": "ТЕСТ: Буфер обмена заблокирован",
+        "minLength": 5,
+        "regexPatterns": [
+          "(?i)секрет",
+          "(?i)пароль"
+        ]
+      }
+    ],
+    "usb": [
+      {
+        "id": "test-block-usb",
+        "enabled": true,
+        "cooldownSeconds": 10,
+        "action": "block",
+        "severity": "high",
+        "message": "ТЕСТ: Запись на USB запрещена (Read-Only)"
+      }
+    ],
+    "print": [
+      {
+        "id": "test-block-print",
+        "enabled": true,
+        "cooldownSeconds": 10,
+        "action": "block",
+        "severity": "high",
+        "message": "ТЕСТ: Печать документа заблокирована",
+        "documentRegex": "(?i)(паспорт|секрет)"
+      }
+    ],
+    "email": [
+      {
+        "id": "test-email-monitor",
+        "enabled": true,
+        "cooldownSeconds": 10,
+        "action": "alert",
+        "severity": "medium",
+        "message": "ТЕСТ: Зафиксирована отправка письма",
+        "externalOnly": false
+      }
+    ]
+  }
+}

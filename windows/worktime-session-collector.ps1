@@ -47,7 +47,12 @@ function Ensure-Bucket {
         hostname = $HostnameValue
     } | ConvertTo-Json -Compress
 
-    Invoke-AwJsonPost -Uri "$ApiBase/buckets/$BucketId" -Json $body
+    try {
+        Invoke-AwJsonPost -Uri "$ApiBase/buckets/$BucketId" -Json $body
+    }
+    catch {
+        Invoke-RestMethod -Method Get -Uri "$ApiBase/buckets/$BucketId" | Out-Null
+    }
 }
 
 function Get-SessionRecords {

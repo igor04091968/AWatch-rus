@@ -4,6 +4,7 @@
 
 #define AwDefaultServerHost "10.10.10.13"
 #define AwDefaultServerPort "5600"
+#define AwDefaultWorktimeReportBase "http://10.10.10.13:5610"
 #define AwDefaultUsers "user1,user2,user3,user4,user5"
 #define AwDefaultInstallRoot "C:\\Program Files\\AWatch-rus\\bin"
 #define AwDefaultStateRoot "C:\\ProgramData\\AWatch-rus"
@@ -148,6 +149,8 @@ begin
     'Укажите сервер ActivityWatch (куда агенты будут отправлять данные).',
     'Если нужно, измените host/port. По умолчанию — наша конфигурация.'
   );
+  { Worktime CSV/JSON reports are served by aw-worktime-api on :5610 (AwDefaultWorktimeReportBase).
+    Standard AW "Сегодня" is backed by server-side aw-worktime-ui-bridge timer on AW host. }
   ServerHostPage.Add('ServerHost', False);
   ServerHostPage.Add('ServerPort', False);
   ServerHostPage.Values[0] := '{#AwDefaultServerHost}';

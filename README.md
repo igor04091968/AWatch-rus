@@ -5,6 +5,7 @@
 ## Что входит
 
 - `docs/preparation.md` — подготовка инфраструктуры и входных параметров.
+- `docs/codebase-onboarding.md` — обзор структуры репозитория и маршрут изучения для новичка.
 - `docs/deployment.md` — пошаговый деплой LXC и ActivityWatch Server.
 - `docs/runbook.md` — быстрый runbook для оператора.
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
@@ -14,6 +15,8 @@
 - `docs/console-ssh-logger.md` — логирование только консольных команд и SSH-сессий в AW.
 - `docs/dlp-gap-analysis.md` — разрыв до enterprise DLP и roadmap.
 - `docs/dlp-aggregator.md` — прототип централизованной агрегации DLP/file-operation событий.
+- `docs/dlp-reliability-roadmap.md` — roadmap повышения надёжности DLP-коллекторов.
+- `docs/powershell-analysis.md` — статический анализ работоспособности DLP PowerShell-скриптов.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
