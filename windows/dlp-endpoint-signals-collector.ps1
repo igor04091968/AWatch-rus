@@ -597,15 +597,33 @@ function Test-LooksLikeMojibakeQuestionMarks {
     return $Value -match '\?{2,}'
 }
 
-function Test-LooksLikeRussianTitleMaskedAsQuestionMarks {
+function Test-IsGenericDocumentName {
     param([AllowNull()][string]$Value)
-    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
+    $generic = @(
+        '^\s*Печать документа\s*$',
+        '^\s*Print Document\s*$',
+        '^\s*Document\s*$',
+        '^\s*Документ\s*$',
+        '^\s*Remote Downlevel Document\s*$',
+        '^\s*Local Downlevel Document\s*$',
+        '^\s*Untitled\s*$',
+        '^\s*Без имени\s*$',
+        '^\s*Без названия\s*$'
+    )
+    foreach ($pattern in $generic) {
+        if ($Value -match $pattern) { return $true }
+    }
+    return $false
+}
 
-    $trimmed = $Value.Trim()
-    if ($trimmed -match '[A-Za-zА-Яа-я0-9]') { return $false }
-
-    # Typical broken Cyrillic print title shape: multiple words of question marks.
-    return $trimmed -match '^\?{3,}(\s+\?{3,})+$'
+function Test-NeedsBetterDocumentName {
+    param([AllowNull()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
+    if (Test-LooksLikeMojibakeQuestionMarks -Value $Value) { return $true }
+    if (Test-IsGenericDocumentName -Value $Value) { return $true }
+    if ($Value -match '^[0-9]+$') { return $true }
+    return $false
 }
 
 function Normalize-OwnerForMatch {
@@ -694,7 +712,7 @@ function Get-PrintServiceDocumentFallback {
     )
 
     $preferred = [string]$EventSummary.DocumentName
-    if (-not (Test-LooksLikeMojibakeQuestionMarks -Value $preferred) -and $preferred -notmatch '^[0-9]+$') {
+    if (-not (Test-NeedsBetterDocumentName -Value $preferred)) {
         return $preferred
     }
 
@@ -707,14 +725,10 @@ function Get-PrintServiceDocumentFallback {
         if ($candidate -eq $preferred) { continue }
         if ($Owner -and $candidate -like "*$Owner*") { continue }
         if ($PrinterName -and $candidate -like "*$PrinterName*") { continue }
-        if (Test-LooksLikeMojibakeQuestionMarks -Value $candidate) { continue }
+        if (Test-NeedsBetterDocumentName -Value $candidate) { continue }
 
         if ($candidate -match '[\\/:]' -and $candidate -match '\.[A-Za-z0-9]{1,8}$') {
             $pathCandidates.Add($candidate)
-            continue
-        }
-
-        if ($candidate -match '^[0-9]+$') {
             continue
         }
 
@@ -927,7 +941,7 @@ while ($true) {
                 $owner = [string]$job.Owner
                 $documentNameOriginal = $documentName
 
-                if (Test-LooksLikeRussianTitleMaskedAsQuestionMarks -Value $documentName) {
+                if (Test-NeedsBetterDocumentName -Value $documentName) {
                     $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -Owner $owner -PrinterName $printerName
                     if ($eventDocumentName) {
                         $documentName = $eventDocumentName

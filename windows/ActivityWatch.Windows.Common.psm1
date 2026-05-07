@@ -269,6 +269,7 @@ function Copy-ActivityWatchCollectorAssets {
         [string]$FileCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScriptSource,
+        [string]$EmailCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
         [Parameter(Mandatory = $true)]
@@ -285,6 +286,7 @@ function Copy-ActivityWatchCollectorAssets {
     $endpointCollectorTarget = Join-Path $StateRoot 'dlp-endpoint-signals-collector.ps1'
     $fileCollectorTarget = Join-Path $StateRoot 'file-operations-collector.ps1'
     $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
+    $emailCollectorTarget = Join-Path $StateRoot 'email-outbound-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
     $examplePolicyTarget = Join-Path $StateRoot 'dlp-policy.example.json'
@@ -294,6 +296,9 @@ function Copy-ActivityWatchCollectorAssets {
     Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
     Copy-Item -LiteralPath $FileCollectorScriptSource -Destination $fileCollectorTarget -Force
     Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
+    if ($EmailCollectorScriptSource -and (Test-Path -LiteralPath $EmailCollectorScriptSource)) {
+        Copy-Item -LiteralPath $EmailCollectorScriptSource -Destination $emailCollectorTarget -Force
+    }
     Copy-Item -LiteralPath $ExampleRulesSource -Destination $exampleRulesTarget -Force
     Copy-Item -LiteralPath $ExamplePolicySource -Destination $examplePolicyTarget -Force
 
@@ -318,6 +323,7 @@ function Copy-ActivityWatchCollectorAssets {
         EndpointCollectorScript = $endpointCollectorTarget
         FileCollectorScript     = $fileCollectorTarget
         SessionCollectorScript  = $sessionCollectorTarget
+        EmailCollectorScript    = $emailCollectorTarget
         ExampleRules            = $exampleRulesTarget
         ActiveRules             = $rulesTarget
         ExamplePolicy           = $examplePolicyTarget
@@ -347,6 +353,7 @@ function New-ActivityWatchDeploymentConfig {
         [string]$FileCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScript,
+        [string]$EmailCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
         [Parameter(Mandatory = $true)]
@@ -390,6 +397,7 @@ function New-ActivityWatchDeploymentConfig {
             logsRoot       = $LogsRoot
             collectorScript = $CollectorScript
             endpointCollectorScript = $EndpointCollectorScript
+            emailCollectorScript = $EmailCollectorScript
             fileCollectorScript = $FileCollectorScript
             sessionCollectorScript = $SessionCollectorScript
             rulesPath      = $RulesPath
@@ -405,6 +413,7 @@ function New-ActivityWatchDeploymentConfig {
             afkEnabled   = $AfkEnabled
             windowEnabled = $WindowEnabled
             fileOpsEnabled = $FileOpsEnabled
+            emailEnabled = ($null -ne $EmailCollectorScript -and $EmailCollectorScript -ne '')
         }
         logging = [pscustomobject]@{
             localAgentLogsEnabled = $LocalAgentLogsEnabled
@@ -746,6 +755,8 @@ function Start-CollectorScriptIfNeeded {
 `$afkEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]`$config.collectors.afkEnabled } else { `$true }
 `$windowEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]`$config.collectors.windowEnabled } else { `$true }
 `$fileOpsEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]`$config.collectors.fileOpsEnabled } else { `$true }
+`$emailEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'emailEnabled') { [bool]`$config.collectors.emailEnabled } else { `$false }
+`$emailCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'emailCollectorScript') { [string]`$config.paths.emailCollectorScript } else { Join-Path `$stateRoot 'email-outbound-collector.ps1' }
 `$launchLockPath = New-LaunchLock -StateRoot `$stateRoot -SessionId `$sessionId
 if (-not `$launchLockPath) {
     return
@@ -779,6 +790,9 @@ try {
         Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     }
     Start-CollectorScriptIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    if (`$emailEnabled -and (Test-Path -LiteralPath `$emailCollectorScript)) {
+        Start-CollectorScriptIfNeeded -ScriptPath `$emailCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    }
 }
 finally {
     if (`$launchLockPath -and (Test-Path -LiteralPath `$launchLockPath)) {

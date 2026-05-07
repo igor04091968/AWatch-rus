@@ -12,6 +12,7 @@
                   "logsRoot":  "C:\\ProgramData\\AWatch-rus\\logs",
                   "collectorScript":  "C:\\ProgramData\\AWatch-rus\\browser-domains-native-collector.ps1",
                   "endpointCollectorScript":  "C:\\ProgramData\\AWatch-rus\\dlp-endpoint-signals-collector.ps1",
+                  "emailCollectorScript":  "C:\\ProgramData\\AWatch-rus\\email-outbound-collector.ps1",
                   "rulesPath":  "C:\\ProgramData\\AWatch-rus\\web-category-rules.json",
                   "policyPath":  "C:\\ProgramData\\AWatch-rus\\dlp-policy.json",
                   "launchScript":  "C:\\ProgramData\\AWatch-rus\\launch-watchers.ps1",
