@@ -24,6 +24,7 @@ param(
     [bool]$IncidentScreenshotEnabled = $true,
     [string]$IncidentArtifactsRoot,
     [bool]$LogonMarkerEnabled = $true,
+    [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath
 )
@@ -100,6 +101,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
     -IncidentArtifactsRoot $IncidentArtifactsRoot `
     -LogonMarkerEnabled $LogonMarkerEnabled `
+    -AwHostname $AwHostname `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `
     -UserTasks $taskDefinitions `

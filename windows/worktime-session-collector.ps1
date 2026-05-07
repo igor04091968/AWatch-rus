@@ -111,7 +111,7 @@ function Test-SessionIsActive {
 }
 
 $cfg = Get-Config -Path $ConfigPath
-$hostValue = if ($Hostname) { $Hostname } else { [string]$env:COMPUTERNAME }
+$hostValue = if ($Hostname) { $Hostname } elseif ($cfg.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$cfg.awHostname)) { [string]$cfg.awHostname } else { [string]$env:COMPUTERNAME }
 $apiBase = '{0}://{1}:{2}/api/0' -f [string]$cfg.server.scheme, [string]$cfg.server.host, [string]$cfg.server.port
 $bucketId = 'aw-worktime-sessions_' + $hostValue
 $pulse = 120

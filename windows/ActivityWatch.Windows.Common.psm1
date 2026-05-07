@@ -376,6 +376,7 @@ function New-ActivityWatchDeploymentConfig {
         [string]$LaunchScriptPath,
         [Parameter(Mandatory = $true)]
         [string]$RecoveryScriptPath,
+        [string]$AwHostname,
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$UserTasks,
         [string]$PackageVersion = 'v0.13.2'
@@ -386,6 +387,7 @@ function New-ActivityWatchDeploymentConfig {
     return [pscustomobject]@{
         version  = 1
         generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        awHostname = if ([string]::IsNullOrWhiteSpace($AwHostname)) { [string]$env:COMPUTERNAME } else { [string]$AwHostname }
         server   = [pscustomobject]@{
             host   = $ServerHost
             port   = $ServerPort
@@ -742,7 +744,7 @@ function Start-CollectorScriptIfNeeded {
 `$installRoot = [string]`$config.paths.installRoot
 `$stateRoot = [string]`$config.paths.stateRoot
 `$script:ApiBase = '{0}://{1}:{2}/api/0' -f [string]`$config.server.scheme, [string]`$config.server.host, [string]`$config.server.port
-`$script:Hostname = `$env:COMPUTERNAME
+`$script:Hostname = if (`$config.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]`$config.awHostname)) { [string]`$config.awHostname } else { `$env:COMPUTERNAME }
 `$script:KnownBuckets = @{}
 `$collectorScript = [string]`$config.paths.collectorScript
 `$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { Join-Path `$stateRoot 'dlp-endpoint-signals-collector.ps1' }
