@@ -8,6 +8,8 @@ The prototype reads:
 
 - `aw-file-operations_*` (`aw.file.operation`) — file create/delete/rename telemetry, including `archiveHint`.
 - `aw-dlp-incidents_*` (`aw.dlp.incident`) — browser/endpoint DLP incidents and screenshot metadata when available.
+- `aw-dlp-endpoint-signals_*` (`aw.dlp.endpoint.signal`) — endpoint signal heartbeats/events.
+- `aw-email-monitor_*` (`aw.email.signal`) — outbound email signal stream.
 
 ## SQLite smoke test
 

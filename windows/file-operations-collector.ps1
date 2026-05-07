@@ -46,24 +46,47 @@ function Write-FileCollectorLog {
 function Invoke-AwJsonPost {
     param(
         [Parameter(Mandatory = $true)][string]$Uri,
-        [Parameter(Mandatory = $true)][string]$Json
+        [Parameter(Mandatory = $true)][string]$Json,
+        [int]$MaxAttempts = 5,
+        [int]$InitialBackoffMs = 500
     )
-    $httpClient = $null
-    try {
-        $httpClient = New-Object System.Net.Http.HttpClient
-        $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, "application/json")
-        $response = $httpClient.PostAsync($Uri, $content).Result
-        if (-not $response.IsSuccessStatusCode) {
+    $attempt = 1
+    $backoff = [Math]::Max(100, $InitialBackoffMs)
+
+    while ($attempt -le $MaxAttempts) {
+        $httpClient = $null
+        try {
+            $httpClient = New-Object System.Net.Http.HttpClient
+            $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, "application/json")
+            $response = $httpClient.PostAsync($Uri, $content).Result
+            if ($response.IsSuccessStatusCode) {
+                return
+            }
+
             $status = [int]$response.StatusCode
             $reason = [string]$response.ReasonPhrase
             $body = $response.Content.ReadAsStringAsync().Result
-            Write-FileCollectorLog ("POST failed: uri={0} status={1} reason={2} body={3}" -f $Uri, $status, $reason, $body)
-        }
-    } catch {
-        Write-FileCollectorLog "POST Error: $($_.Exception.Message)"
-    } finally {
-        if ($null -ne $httpClient) {
-            $httpClient.Dispose()
+            Write-FileCollectorLog ("POST failed: attempt={0}/{1} uri={2} status={3} reason={4} body={5}" -f $attempt, $MaxAttempts, $Uri, $status, $reason, $body)
+            if ($attempt -ge $MaxAttempts) {
+                return
+            }
+            Start-Sleep -Milliseconds $backoff
+            $backoff = [Math]::Min($backoff * 2, 10000)
+            $attempt++
+            continue
+        } catch {
+            Write-FileCollectorLog ("POST error: attempt={0}/{1} uri={2} error={3}" -f $attempt, $MaxAttempts, $Uri, $_.Exception.Message)
+            if ($attempt -ge $MaxAttempts) {
+                return
+            }
+            Start-Sleep -Milliseconds $backoff
+            $backoff = [Math]::Min($backoff * 2, 10000)
+            $attempt++
+            continue
+        } finally {
+            if ($null -ne $httpClient) {
+                $httpClient.Dispose()
+            }
         }
     }
 }

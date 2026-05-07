@@ -18,7 +18,12 @@ JsonScalar: TypeAlias = str | int | float | bool | None
 JsonValue: TypeAlias = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 
-DEFAULT_BUCKET_PREFIXES = ("aw-file-operations_", "aw-dlp-incidents_")
+DEFAULT_BUCKET_PREFIXES = (
+    "aw-file-operations_",
+    "aw-dlp-incidents_",
+    "aw-dlp-endpoint-signals_",
+    "aw-email-monitor_",
+)
 DEFAULT_SQLITE_PATH = "data/dlp-events.sqlite3"
 EVENT_COLUMNS = (
     "bucket_id",
@@ -134,6 +139,10 @@ def bucket_stream_type(bucket: Bucket) -> str | None:
         return "file_operation"
     if bucket.id.startswith("aw-dlp-incidents_") or bucket.type == "aw.dlp.incident":
         return "dlp_incident"
+    if bucket.id.startswith("aw-dlp-endpoint-signals_") or bucket.type == "aw.dlp.endpoint.signal":
+        return "dlp_endpoint_signal"
+    if bucket.id.startswith("aw-email-monitor_") or bucket.type == "aw.email.signal":
+        return "email_monitor"
     return None
 
 
