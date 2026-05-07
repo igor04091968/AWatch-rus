@@ -5,6 +5,7 @@
 ## Что входит
 
 - `docs/preparation.md` — подготовка инфраструктуры и входных параметров.
+- `docs/codebase-onboarding.md` — обзор структуры репозитория и маршрут изучения для новичка.
 - `docs/deployment.md` — пошаговый деплой LXC и ActivityWatch Server.
 - `docs/runbook.md` — быстрый runbook для оператора.
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
