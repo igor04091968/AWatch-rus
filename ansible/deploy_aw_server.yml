@@ -256,6 +256,56 @@
             - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "{{ aw_server_webui_dir }}/js/sw-cleanup.js", mode: "0644" }
             - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "{{ aw_server_webui_dir }}/js/aw-host-groups.json", mode: "0644" }
 
+        - name: Создать каталог /root/bootstrap для apply_webui_ru_patch.sh
+          ansible.builtin.file:
+            path: /root/bootstrap
+            state: directory
+            mode: "0755"
+
+        - name: Скопировать RU patch файлы для apply_webui_ru_patch.sh (хотфиксы compiled JS чанков)
+          ansible.builtin.copy:
+            src: "{{ item.src }}"
+            dest: "{{ item.dest }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "/root/bootstrap/aw-ru-patch.js", mode: "0644" }
+            - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "/root/bootstrap/aw-sw-cleanup.js", mode: "0644" }
+            - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "/root/bootstrap/aw-host-groups.json", mode: "0644" }
+
+        - name: Скопировать apply_webui_ru_patch.sh скрипт
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/apply_webui_ru_patch.sh"
+            dest: /opt/activitywatch/aw-server/apply_webui_ru_patch.sh
+            mode: "0755"
+
+        - name: Записать /etc/activitywatch/aw-server.env перед хотфиксами
+          ansible.builtin.copy:
+            dest: /etc/activitywatch/aw-server.env
+            mode: "0640"
+            owner: root
+            group: root
+            content: |
+              AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
+              AW_SERVER_PORT={{ aw_server_port }}
+              AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
+              AW_SERVER_DB_PATH={{ aw_server_db_path }}
+              AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
+              AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
+              AW_SERVER_USER={{ aw_server_user }}
+              AW_SERVER_GROUP={{ aw_server_group }}
+              XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
+              XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
+
+        - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
+          ansible.builtin.command:
+            cmd: "/opt/activitywatch/aw-server/apply_webui_ru_patch.sh"
+          register: apply_ru_patch_result
+          failed_when: false
+
+        - name: Вывести результат применения хотфиксов
+          ansible.builtin.debug:
+            msg: "apply_webui_ru_patch.sh: {{ apply_ru_patch_result.stdout }}"
+
         - name: Проверить наличие index.html после копирования
           ansible.builtin.stat:
             path: "{{ aw_server_webui_dir }}/index.html"
@@ -284,24 +334,6 @@
             path: "{{ aw_server_webui_dir }}/index.html"
             regexp: '</body>'
             replace: '<script defer="defer" src="/js/ru-patch-v5.js?v={{ aw_ru_patch_cache_bust }}"></script></body>'
-
-        - name: Записать /etc/activitywatch/aw-server.env
-          ansible.builtin.copy:
-            dest: /etc/activitywatch/aw-server.env
-            mode: "0640"
-            owner: root
-            group: root
-            content: |
-              AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
-              AW_SERVER_PORT={{ aw_server_port }}
-              AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
-              AW_SERVER_DB_PATH={{ aw_server_db_path }}
-              AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
-              AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
-              AW_SERVER_USER={{ aw_server_user }}
-              AW_SERVER_GROUP={{ aw_server_group }}
-              XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
-              XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
 
         - name: Скопировать merge script AW DB на сервер
           ansible.builtin.copy:
@@ -451,7 +483,7 @@
       register: aw_classes_current
       when: aw_apply_worktime_settings | default(false) | bool
 
-    - name: Сохранить backup текущих server-side settings/views/classes
+    - name: Создать backup текущих server-side settings/views/classes
       ansible.builtin.copy:
         dest: "{{ aw_server_data_dir }}/backups/{{ item.name }}-{{ ansible_date_time.iso8601_basic_short }}.json"
         owner: "{{ aw_server_user }}"
@@ -466,6 +498,66 @@
         - name: classes
           payload: "{{ aw_classes_current.json | default(none) }}"
       when: aw_apply_worktime_settings | default(false) | bool
+
+    - name: Настроить DLP Aggregator (Phase 2)
+      block:
+        - name: Создать каталог для скриптов
+          ansible.builtin.file:
+            path: "/opt/activitywatch/scripts"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Скопировать агрегатор событий DLP
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/aggregate_dlp_events.py"
+            dest: "/opt/activitywatch/scripts/aggregate_dlp_events.py"
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить systemd unit для агрегатора
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/activitywatch-dlp-aggregator.service
+            content: |
+              [Unit]
+              Description=ActivityWatch DLP Event Aggregator
+              After=activitywatch-server.service
+
+              [Service]
+              Type=oneshot
+              User={{ aw_server_user }}
+              WorkingDirectory={{ aw_server_data_dir }}
+              ExecStart=/usr/bin/python3 /opt/activitywatch/scripts/aggregate_dlp_events.py \
+                --aw-url http://127.0.0.1:{{ aw_server_port }}/api/0 \
+                --sqlite-path {{ aw_server_data_dir }}/dlp_warehouse.sqlite \
+                --state-path {{ aw_server_data_dir }}/dlp-aggregator-state.json
+
+              [Install]
+              WantedBy=multi-user.target
+
+        - name: Установить systemd timer для агрегатора
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/activitywatch-dlp-aggregator.timer
+            content: |
+              [Unit]
+              Description=Run ActivityWatch DLP Aggregator every 5 minutes
+
+              [Timer]
+              OnBootSec=1min
+              OnUnitActiveSec=5min
+              AccuracySec=1s
+
+              [Install]
+              WantedBy=timers.target
+
+        - name: Включить и запустить таймер агрегатора
+          ansible.builtin.systemd:
+            name: activitywatch-dlp-aggregator.timer
+            enabled: true
+            state: started
+            daemon_reload: true
 
     - name: Применить базовые worktime settings (classes)
       ansible.builtin.uri:

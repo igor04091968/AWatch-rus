@@ -196,6 +196,56 @@
         - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "{{ aw_server_webui_dir }}/js/sw-cleanup.js", mode: "0644" }
         - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "{{ aw_server_webui_dir }}/js/aw-host-groups.json", mode: "0644" }
 
+    - name: Создать каталог /root/bootstrap для apply_webui_ru_patch.sh
+      ansible.builtin.file:
+        path: /root/bootstrap
+        state: directory
+        mode: "0755"
+
+    - name: Скопировать RU patch файлы для apply_webui_ru_patch.sh (хотфиксы compiled JS чанков)
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "{{ item.dest }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "/root/bootstrap/aw-ru-patch.js", mode: "0644" }
+        - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "/root/bootstrap/aw-sw-cleanup.js", mode: "0644" }
+        - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "/root/bootstrap/aw-host-groups.json", mode: "0644" }
+
+    - name: Скопировать apply_webui_ru_patch.sh скрипт
+      ansible.builtin.copy:
+        src: "{{ aw_repo_root }}/aw-server/apply_webui_ru_patch.sh"
+        dest: /opt/activitywatch/aw-server/apply_webui_ru_patch.sh
+        mode: "0755"
+
+    - name: Записать /etc/activitywatch/aw-server.env перед хотфиксами
+      ansible.builtin.copy:
+        dest: /etc/activitywatch/aw-server.env
+        mode: "0640"
+        owner: root
+        group: root
+        content: |
+          AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
+          AW_SERVER_PORT={{ aw_server_port }}
+          AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
+          AW_SERVER_DB_PATH={{ aw_server_db_path }}
+          AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
+          AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
+          AW_SERVER_USER={{ aw_server_user }}
+          AW_SERVER_GROUP={{ aw_server_group }}
+          XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
+          XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
+
+    - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
+      ansible.builtin.command:
+        cmd: "/opt/activitywatch/aw-server/apply_webui_ru_patch.sh"
+      register: apply_ru_patch_result
+      failed_when: false
+
+    - name: Вывести результат применения хотфиксов
+      ansible.builtin.debug:
+        msg: "apply_webui_ru_patch.sh: {{ apply_ru_patch_result.stdout }}"
+
     - name: Проверить наличие index.html после копирования
       ansible.builtin.stat:
         path: "{{ aw_server_webui_dir }}/index.html"
@@ -224,21 +274,6 @@
         path: "{{ aw_server_webui_dir }}/index.html"
         regexp: '</body>'
         replace: '<script defer="defer" src="/js/ru-patch-v5.js?v={{ aw_ru_patch_cache_bust }}"></script></body>'
-
-    - name: Записать /etc/activitywatch/aw-server.env
-      ansible.builtin.copy:
-        dest: /etc/activitywatch/aw-server.env
-        mode: "0640"
-        owner: root
-        group: root
-        content: |
-          AW_SERVER_BIND_HOST={{ aw_server_bind_host }}
-          AW_SERVER_PORT={{ aw_server_port }}
-          AW_SERVER_DATA_DIR={{ aw_server_data_dir }}
-          AW_SERVER_LOG_DIR={{ aw_server_log_dir }}
-          AW_SERVER_WEBUI_DIR={{ aw_server_webui_dir }}
-          AW_SERVER_USER={{ aw_server_user }}
-          AW_SERVER_GROUP={{ aw_server_group }}
 
     - name: Включить и запустить сервис
       ansible.builtin.systemd:

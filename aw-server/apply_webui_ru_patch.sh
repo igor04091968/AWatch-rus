@@ -24,7 +24,7 @@ TRENDS_REPLACEMENT='this.activityStore.ensure_loaded(r)'
 TIMESPIRAL_NEEDLE='start:new Date("2022-08-08")'
 TIMESPIRAL_REPLACEMENT='start:new Date(Date.now()-12*36e5)'
 CATEGORY_HELPER_NEEDLE='hostname:t.hostnameChoices[0]'
-CATEGORY_HELPER_REPLACEMENT='hostname:t.hostnameChoices.filter((function(t){return"unknown"!==t}))[0]||t.hostnameChoices[0]'
+CATEGORY_HELPER_REPLACEMENT='hostname:t.hostnameChoices.filter((function(t){return"unknown"!==t&&"undefined"!==t}))[0]||t.hostnameChoices[0]'
 
 [[ -f "$PATCH_JS_SRC" ]] || { echo "missing $PATCH_JS_SRC" >&2; exit 1; }
 [[ -f "$SW_CLEANUP_SRC" ]] || { echo "missing $SW_CLEANUP_SRC" >&2; exit 1; }

@@ -14,7 +14,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Реестр известных бакетов
+# Force TLS 1.2 and load networking types
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+Add-Type -AssemblyName System.Net.Http
+
+# Bucket registry
 $script:KnownBuckets = @{}
 $script:Hostname = $env:COMPUTERNAME
 $script:SessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
@@ -44,8 +48,14 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Uri,
         [Parameter(Mandatory = $true)][string]$Json
     )
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+    try {
+        $httpClient = New-Object System.Net.Http.HttpClient
+        $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, "application/json")
+        $response = $httpClient.PostAsync($Uri, $content).Result
+        $httpClient.Dispose()
+    } catch {
+        Write-FileCollectorLog "POST Error: $($_.Exception.Message)"
+    }
 }
 
 function Ensure-Bucket {
@@ -99,18 +109,18 @@ function Send-FileOperationEvent {
     Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=15" -Json $payload
 }
 
-# --- Инициализация ---
-Write-Host "Debug: Loading config from $ConfigPath"
 $config = Get-DeploymentConfig -Path $ConfigPath
-if (-not $config) { Write-Host "Error: Config not found"; exit 1 }
+if (-not $config) { throw "Configuration file not found: $ConfigPath" }
 
 $scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { $config.server.scheme } else { 'http' }
 $hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
 $port = if ($ServerPort) { $ServerPort } elseif ($config.server.port) { $config.server.port } else { 5600 }
 $script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
-Write-Host "Debug: API Base is $script:ApiBase"
 
-# Разрешение путей для мониторинга
+$bucketId = 'aw-file-operations_' + $script:Hostname
+Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
+
+# Resolve paths for monitoring
 $resolvedPaths = @()
 foreach ($p in $WatchPaths) {
     $fullPath = $p
@@ -121,21 +131,17 @@ foreach ($p in $WatchPaths) {
             elseif ($p -eq 'Downloads') { $fullPath = Join-Path $env:USERPROFILE 'Downloads' }
         } catch {}
     }
-    Write-Host "Debug: Checking path $fullPath"
     if ($fullPath -and (Test-Path -LiteralPath $fullPath)) {
         $resolvedPaths += $fullPath
-        Write-Host "Debug: Path $fullPath is VALID"
-    } else {
-        Write-Host "Debug: Path $fullPath is INVALID or NOT FOUND"
     }
 }
 
 if ($resolvedPaths.Count -eq 0) {
-    Write-FileCollectorLog "Нет доступных путей для мониторинга. Завершение."
+    Write-FileCollectorLog "No valid watch paths found. Exiting."
     exit 0
 }
 
-Write-FileCollectorLog "Запуск мониторинга путей: $($resolvedPaths -join ', ')"
+Write-FileCollectorLog "Starting watch on paths: $($resolvedPaths -join ', ')"
 
 $watchers = @()
 foreach ($path in $resolvedPaths) {
@@ -160,7 +166,7 @@ foreach ($path in $resolvedPaths) {
     $watchers += $watcher
 }
 
-Write-FileCollectorLog "Коллектор запущен. Ожидание событий..."
+Write-FileCollectorLog "Collector started. Waiting for events..."
 
 try {
     while ($true) {
@@ -168,7 +174,7 @@ try {
     }
 }
 finally {
-    Write-FileCollectorLog "Остановка коллектора..."
+    Write-FileCollectorLog "Stopping collector..."
     foreach ($w in $watchers) {
         $w.EnableRaisingEvents = $false
         $w.Dispose()

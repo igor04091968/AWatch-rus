@@ -52,6 +52,7 @@ $examplePolicySource = Join-Path $PSScriptRoot 'dlp-policy.example.json'
 
 New-ActivityWatchDirectory -Path $StateRoot
 New-ActivityWatchDirectory -Path $logsRoot
+Enable-ActivityWatchPrintTelemetry
 
 $archivePath = Get-ActivityWatchArchive -PackageZipPath $PackageZipPath -PackageUrl $PackageUrl -Version $Version -WorkingRoot $workingRoot
 Install-ActivityWatchPackage -ArchivePath $archivePath -InstallRoot $InstallRoot -WorkingRoot $workingRoot -BackupRoot $backupRoot | Out-Null
