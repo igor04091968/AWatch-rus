@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
@@ -22,6 +22,9 @@ Add-Type -AssemblyName System.Net.Http
 $script:KnownBuckets = @{}
 $script:Hostname = $env:COMPUTERNAME
 $script:SessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+$script:WalPath = $null
+$script:HealthPath = $null
+$script:WalFlushing = $false
 
 # Настройка логирования
 $script:LogPath = $LogPath
@@ -43,6 +46,55 @@ function Write-FileCollectorLog {
     } catch {}
 }
 
+function Add-WalEntry {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Json
+    )
+    if ([string]::IsNullOrWhiteSpace($script:WalPath)) { return }
+    try {
+        $entry = @{ ts = (Get-Date).ToUniversalTime().ToString('o'); uri = $Uri; json = $Json } | ConvertTo-Json -Compress
+        Add-Content -LiteralPath $script:WalPath -Value $entry -Encoding UTF8
+    } catch {}
+}
+
+function Flush-Wal {
+    if ([string]::IsNullOrWhiteSpace($script:WalPath) -or -not (Test-Path -LiteralPath $script:WalPath)) { return }
+    $remaining = New-Object System.Collections.Generic.List[string]
+    try {
+        $script:WalFlushing = $true
+        foreach ($line in (Get-Content -LiteralPath $script:WalPath -ErrorAction SilentlyContinue)) {
+            if ([string]::IsNullOrWhiteSpace($line)) { continue }
+            try {
+                $entry = $line | ConvertFrom-Json
+                if ($null -eq $entry -or -not $entry.uri -or -not $entry.json) { continue }
+                if (-not (Invoke-AwJsonPost -Uri ([string]$entry.uri) -Json ([string]$entry.json))) { $remaining.Add($line) }
+            } catch { $remaining.Add($line) }
+        }
+        if ($remaining.Count -eq 0) {
+            Remove-Item -LiteralPath $script:WalPath -Force -ErrorAction SilentlyContinue
+        } else {
+            Set-Content -LiteralPath $script:WalPath -Value ($remaining -join [Environment]::NewLine) -Encoding UTF8
+        }
+    } finally {
+        $script:WalFlushing = $false
+    }
+}
+
+function Write-CollectorHealth {
+    param([string]$Status = 'running')
+    if ([string]::IsNullOrWhiteSpace($script:HealthPath)) { return }
+    try {
+        $walDepth = 0
+        if ($script:WalPath -and (Test-Path -LiteralPath $script:WalPath)) { $walDepth = @((Get-Content -LiteralPath $script:WalPath)).Count }
+        $health = @{
+            collector = 'file-operations'; hostname = $script:Hostname; sessionId = $script:SessionId;
+            status = $Status; apiBase = $script:ApiBase; walDepth = $walDepth; ts = (Get-Date).ToUniversalTime().ToString('o')
+        } | ConvertTo-Json -Depth 5
+        Set-Content -LiteralPath $script:HealthPath -Value $health -Encoding UTF8
+    } catch {}
+}
+
 function Invoke-AwJsonPost {
     param(
         [Parameter(Mandatory = $true)][string]$Uri,
@@ -52,42 +104,30 @@ function Invoke-AwJsonPost {
     )
     $attempt = 1
     $backoff = [Math]::Max(100, $InitialBackoffMs)
-
     while ($attempt -le $MaxAttempts) {
         $httpClient = $null
         try {
             $httpClient = New-Object System.Net.Http.HttpClient
             $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, "application/json")
             $response = $httpClient.PostAsync($Uri, $content).Result
-            if ($response.IsSuccessStatusCode) {
-                return
-            }
-
-            $status = [int]$response.StatusCode
-            $reason = [string]$response.ReasonPhrase
-            $body = $response.Content.ReadAsStringAsync().Result
-            Write-FileCollectorLog ("POST failed: attempt={0}/{1} uri={2} status={3} reason={4} body={5}" -f $attempt, $MaxAttempts, $Uri, $status, $reason, $body)
+            if ($response.IsSuccessStatusCode) { return $true }
             if ($attempt -ge $MaxAttempts) {
-                return
+                if (-not $script:WalFlushing) { Add-WalEntry -Uri $Uri -Json $Json }
+                return $false
             }
-            Start-Sleep -Milliseconds $backoff
-            $backoff = [Math]::Min($backoff * 2, 10000)
-            $attempt++
-            continue
         } catch {
-            Write-FileCollectorLog ("POST error: attempt={0}/{1} uri={2} error={3}" -f $attempt, $MaxAttempts, $Uri, $_.Exception.Message)
             if ($attempt -ge $MaxAttempts) {
-                return
+                if (-not $script:WalFlushing) { Add-WalEntry -Uri $Uri -Json $Json }
+                return $false
             }
-            Start-Sleep -Milliseconds $backoff
-            $backoff = [Math]::Min($backoff * 2, 10000)
-            $attempt++
-            continue
         } finally {
             if ($null -ne $httpClient) {
                 $httpClient.Dispose()
             }
         }
+        Start-Sleep -Milliseconds $backoff
+        $backoff = [Math]::Min($backoff * 2, 10000)
+        $attempt++
     }
 }
 
@@ -173,6 +213,9 @@ $scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { 
 $hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
 $port = if ($ServerPort) { $ServerPort } elseif ($config.server.port) { $config.server.port } else { 5600 }
 $script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
+$stateRoot = if ($config.paths -and $config.paths.stateRoot) { [string]$config.paths.stateRoot } else { 'C:\ProgramData\AWatch-rus' }
+$script:WalPath = Join-Path $stateRoot 'wal-file-operations.ndjson'
+$script:HealthPath = Join-Path $stateRoot 'health-file-operations.json'
 
 $bucketId = 'aw-file-operations_' + $script:Hostname
 Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
@@ -229,11 +272,14 @@ Write-FileCollectorLog "Collector started. Waiting for events..."
 
 try {
     while ($true) {
+        Flush-Wal
+        Write-CollectorHealth -Status 'running'
         Start-Sleep -Seconds $PollSeconds
     }
 }
 finally {
     Write-FileCollectorLog "Stopping collector..."
+    Write-CollectorHealth -Status 'stopped'
     foreach ($sub in @($subscriptions)) {
         try {
             if ($sub -and $sub.Id) {
