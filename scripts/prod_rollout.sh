@@ -21,9 +21,11 @@ prompt_secret() {
   if [[ -n "${!var_name:-}" ]]; then
     return 0
   fi
-  read -r -s -p "${prompt}: " "$var_name"
+  local _val
+  read -r -s -p "${prompt}: " _val
   echo
-  export "$var_name"
+  printf -v "$var_name" '%s' "$_val"
+  declare -gx "$var_name"
 }
 
 require_cmd git

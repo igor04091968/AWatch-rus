@@ -22,7 +22,7 @@ echo ""
 echo -e "${CYAN}--- 1. AW Server ($SERVER) ---${NC}"
 echo -n "  Connectivity... "
 RESP=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/info" 2>&1)
-if [ $? -eq 0 ] && echo "$RESP" | jq -e '.version' > /dev/null 2>&1; then
+if echo "$RESP" | jq -e '.version' > /dev/null 2>&1; then
     VERSION=$(echo "$RESP" | jq -r '.version')
     echo -e "  ${GREEN}OK${NC} (aw-server $VERSION)"
 else
