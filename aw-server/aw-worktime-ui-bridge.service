@@ -1,0 +1,15 @@
+[Unit]
+Description=AW Worktime UI bridge (sessions -> afk/window)
+After=network-online.target activitywatch-server.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=AW_SERVER_URL=http://127.0.0.1:5600
+Environment=AW_WORKTIME_HOST=SHARKON2025
+ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-ui-bridge.py
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

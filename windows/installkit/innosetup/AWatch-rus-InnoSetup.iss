@@ -4,6 +4,7 @@
 
 #define AwDefaultServerHost "10.10.10.13"
 #define AwDefaultServerPort "5600"
+#define AwDefaultWorktimeReportBase "http://10.10.10.13:5610"
 #define AwDefaultUsers "user1,user2,user3,user4,user5"
 #define AwDefaultInstallRoot "C:\\Program Files\\AWatch-rus\\bin"
 #define AwDefaultStateRoot "C:\\ProgramData\\AWatch-rus"
@@ -42,6 +43,7 @@ Source: "..\..\migrate-awatch-rus-paths.ps1"; DestDir: "{app}\windows"; Flags: i
 Source: "..\..\worktime-session-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\browser-domains-native-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-endpoint-signals-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\file-operations-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\web-category-rules.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-policy.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 ; Offline payload (optional): place ZIP into windows/installkit/innosetup/payload/ before compiling.
@@ -147,6 +149,8 @@ begin
     'Укажите сервер ActivityWatch (куда агенты будут отправлять данные).',
     'Если нужно, измените host/port. По умолчанию — наша конфигурация.'
   );
+  { Worktime CSV/JSON reports are served by aw-worktime-api on :5610 (AwDefaultWorktimeReportBase).
+    Standard AW "Сегодня" is backed by server-side aw-worktime-ui-bridge timer on AW host. }
   ServerHostPage.Add('ServerHost', False);
   ServerHostPage.Add('ServerPort', False);
   ServerHostPage.Values[0] := '{#AwDefaultServerHost}';

@@ -516,6 +516,17 @@ function Test-LooksLikeMojibakeQuestionMarks {
     return $Value -match '\?{2,}'
 }
 
+function Test-LooksLikeRussianTitleMaskedAsQuestionMarks {
+    param([AllowNull()][string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) { return $false }
+
+    $trimmed = $Value.Trim()
+    if ($trimmed -match '[A-Za-zА-Яа-я0-9]') { return $false }
+
+    # Typical broken Cyrillic print title shape: multiple words of question marks.
+    return $trimmed -match '^\?{3,}(\s+\?{3,})+$'
+}
+
 function Normalize-OwnerForMatch {
     param([AllowNull()][string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
@@ -823,12 +834,12 @@ while ($true) {
                 if ($script:SeenPrintJob.ContainsKey($jobId)) { continue }
                 $script:SeenPrintJob[$jobId] = (Get-Date).ToUniversalTime()
 
-                $printerName = [string]$job.Name
+                $printerName = Normalize-PrinterForMatch -Value ([string]$job.Name)
                 $documentName = [string]$job.Document
                 $owner = [string]$job.Owner
                 $documentNameOriginal = $documentName
 
-                if (Test-LooksLikeMojibakeQuestionMarks -Value $documentName) {
+                if (Test-LooksLikeRussianTitleMaskedAsQuestionMarks -Value $documentName) {
                     $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -Owner $owner -PrinterName $printerName
                     if ($eventDocumentName) {
                         $documentName = $eventDocumentName

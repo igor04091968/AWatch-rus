@@ -48,13 +48,23 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Uri,
         [Parameter(Mandatory = $true)][string]$Json
     )
+    $httpClient = $null
     try {
         $httpClient = New-Object System.Net.Http.HttpClient
         $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, "application/json")
         $response = $httpClient.PostAsync($Uri, $content).Result
-        $httpClient.Dispose()
+        if (-not $response.IsSuccessStatusCode) {
+            $status = [int]$response.StatusCode
+            $reason = [string]$response.ReasonPhrase
+            $body = $response.Content.ReadAsStringAsync().Result
+            Write-FileCollectorLog ("POST failed: uri={0} status={1} reason={2} body={3}" -f $Uri, $status, $reason, $body)
+        }
     } catch {
         Write-FileCollectorLog "POST Error: $($_.Exception.Message)"
+    } finally {
+        if ($null -ne $httpClient) {
+            $httpClient.Dispose()
+        }
     }
 }
 
@@ -168,6 +178,7 @@ if ($resolvedPaths.Count -eq 0) {
 Write-FileCollectorLog "Starting watch on paths: $($resolvedPaths -join ', ')"
 
 $watchers = @()
+$subscriptions = @()
 foreach ($path in $resolvedPaths) {
     $watcher = New-Object System.IO.FileSystemWatcher
     $watcher.Path = $path
@@ -188,6 +199,7 @@ foreach ($path in $resolvedPaths) {
     }
     
     $watchers += $watcher
+    $subscriptions += @($onChanged, $onDeleted, $onRenamed)
 }
 
 Write-FileCollectorLog "Collector started. Waiting for events..."
@@ -199,6 +211,14 @@ try {
 }
 finally {
     Write-FileCollectorLog "Stopping collector..."
+    foreach ($sub in @($subscriptions)) {
+        try {
+            if ($sub -and $sub.Id) {
+                Unregister-Event -SubscriptionId $sub.Id -ErrorAction SilentlyContinue
+                Remove-Job -Id $sub.Id -Force -ErrorAction SilentlyContinue
+            }
+        } catch {}
+    }
     foreach ($w in $watchers) {
         $w.EnableRaisingEvents = $false
         $w.Dispose()

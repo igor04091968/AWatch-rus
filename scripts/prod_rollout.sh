@@ -77,4 +77,7 @@ ansible-playbook -i ansible/inventory.ini ansible/deploy_aw_windows.yml --check 
 log "Deploy aw_windows..."
 ansible-playbook -i ansible/inventory.ini ansible/deploy_aw_windows.yml | tee -a "${LOG_DIR}/deploy_aw_windows.log"
 
+log "Post-validate aw_windows..."
+ansible-playbook -i ansible/inventory.ini ansible/post_validate_aw_windows.yml | tee -a "${LOG_DIR}/post_validate_aw_windows.log"
+
 log "DONE. Logs: ${LOG_DIR}"

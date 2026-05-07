@@ -201,7 +201,12 @@
         - aw_windows_afk_enabled | bool
         - aw_windows_hostname_result.stdout is defined
       ansible.builtin.set_fact:
-        aw_windows_api_smoke_check_bucket_effective: "aw-watcher-afk_{{ aw_windows_hostname_result.stdout | trim }}"
+        aw_windows_api_smoke_check_bucket_effective: >-
+          {{
+            aw_windows_api_smoke_check_bucket
+            if (aw_windows_api_smoke_check_bucket | default('') | string | length) > 0
+            else 'aw-watcher-afk_' ~ (aw_windows_hostname_result.stdout | trim)
+          }}
 
     - name: Выполнить AW API smoke-check (проверка наличия свежих событий в AFK бакете)
       when:

@@ -541,7 +541,7 @@ function Send-DlpIncidentHeartbeat {
         } + $captureData
     } | ConvertTo-Json -Depth 5 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
 }
 
 function Get-FileSha256Hex {
@@ -746,7 +746,7 @@ function Send-Heartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
 }
 
 function Send-CategoryHeartbeat {
@@ -783,7 +783,7 @@ function Send-CategoryHeartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
 }
 
 Load-CustomCategoryRules -Path $resolvedRulesPath
