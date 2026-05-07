@@ -11,9 +11,6 @@
       - activitywatch-server.service
       - aw-worktime-api.py
       - aw-worktime-api.service
-      - aw-worktime-ui-bridge.py
-      - aw-worktime-ui-bridge.service
-      - aw-worktime-ui-bridge.timer
       - aw-worktime-panel.js
       - aw-server.env.example
       - aw-ru-patch.js

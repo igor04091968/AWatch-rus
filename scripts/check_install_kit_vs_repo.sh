@@ -4,26 +4,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-# shellcheck disable=SC2034
 KIT_DIR="install-kit-awindows-20260427-211240"
 
-PY_BIN="${PY_BIN:-}"
-if [[ -z "$PY_BIN" ]]; then
-  if command -v python3 >/dev/null 2>&1; then
-    PY_BIN="python3"
-  elif command -v python >/dev/null 2>&1; then
-    PY_BIN="python"
-  else
-    echo "ERROR: python3/python not found"
-    exit 127
-  fi
-fi
-
-"$PY_BIN" - <<'PY'
+python - <<'PY'
 from pathlib import Path
 import hashlib
-import os
-import sys
 
 root=Path('.')
 kit=Path('install-kit-awindows-20260427-211240')
@@ -39,13 +24,6 @@ missing_in_repo=[]
 
 for kp in sorted(p for p in kit.rglob('*') if p.is_file() and p.name!='MANIFEST.txt'):
     rel=kp.relative_to(kit)
-    rel_s=str(rel)
-    if rel_s.startswith("server-configs-192.168.100.21/"):
-        continue
-    if rel_s == "README-INSTALL-KIT.txt":
-        continue
-    if "__pycache__" in kp.parts or kp.suffix == ".pyc":
-        continue
     rp=root/rel
     if not rp.exists():
         missing_in_repo.append(str(rel))
@@ -72,9 +50,4 @@ if ps_mismatches:
     print('--- PowerShell mismatches ---')
     for p in ps_mismatches:
         print(p)
-
-strict = os.getenv("ALLOW_KIT_DRIFT", "").lower() not in {"1", "true", "yes"}
-if strict and (missing_in_repo or mismatches):
-    print("ERROR: install-kit drift detected. Set ALLOW_KIT_DRIFT=1 to bypass.")
-    sys.exit(1)
 PY

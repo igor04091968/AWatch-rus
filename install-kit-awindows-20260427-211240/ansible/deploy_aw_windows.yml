@@ -25,7 +25,6 @@
     aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
     aw_windows_afk_enabled: true
     aw_windows_window_enabled: true
-    aw_windows_file_ops_enabled: true
     aw_windows_local_agent_logs_enabled: false
     aw_windows_incident_capture_enabled: true
     aw_windows_incident_screenshot_enabled: true
@@ -79,7 +78,6 @@
         - browser-domains-native-collector.ps1
         - dlp-endpoint-signals-collector.ps1
         - email-outbound-collector.ps1
-        - file-operations-collector.ps1
         - worktime-session-collector.ps1
         - migrate-awatch-rus-paths.ps1
         - deploy-domain-users.ps1
@@ -88,18 +86,6 @@
         - validate-deployment.ps1
         - web-category-rules.example.json
         - dlp-policy.example.json
-
-    - name: Нормализовать кодировку PowerShell файлов (UTF-8 BOM для Windows PowerShell)
-      ansible.windows.win_powershell:
-        script: |
-          $ErrorActionPreference = 'Stop'
-          $toolkitDir = "{{ aw_windows_deploy_root }}\windows"
-          $encIn = New-Object System.Text.UTF8Encoding($false)
-          $encOut = New-Object System.Text.UTF8Encoding($true)
-          Get-ChildItem -LiteralPath $toolkitDir -File -Include *.ps1,*.psm1,*.psd1 | ForEach-Object {
-            $text = [System.IO.File]::ReadAllText($_.FullName, $encIn)
-            [System.IO.File]::WriteAllText($_.FullName, $text, $encOut)
-          }
 
     - name: Загрузить список пользователей для доменного развёртывания
       ansible.windows.win_copy:
@@ -145,7 +131,6 @@
             StateRoot = "{{ aw_windows_state_root }}"
             AfkEnabled = {{ '$true' if (aw_windows_afk_enabled | bool) else '$false' }}
             WindowEnabled = {{ '$true' if (aw_windows_window_enabled | bool) else '$false' }}
-            FileOpsEnabled = {{ '$true' if (aw_windows_file_ops_enabled | bool) else '$false' }}
             LocalAgentLogsEnabled = {{ '$true' if (aw_windows_local_agent_logs_enabled | bool) else '$false' }}
             IncidentCaptureEnabled = {{ '$true' if (aw_windows_incident_capture_enabled | bool) else '$false' }}
             IncidentScreenshotEnabled = {{ '$true' if (aw_windows_incident_screenshot_enabled | bool) else '$false' }}
@@ -164,19 +149,6 @@
           $params.SkipHardening = $true
           {% endif %}
           & "{{ aw_windows_deploy_root }}\windows\deploy-ensemble.ps1" @params
-
-    - name: Удалить лишние ActivityWatch Launch tasks вне текущего deployment-config
-      ansible.windows.win_powershell:
-        script: |
-          $ErrorActionPreference = 'Stop'
-          $config = Get-Content -Raw -LiteralPath "{{ aw_windows_state_root }}\deployment-config.json" | ConvertFrom-Json
-          $desired = @($config.userTasks | ForEach-Object { [string]$_.LaunchTaskName })
-          foreach ($task in @(Get-ScheduledTask | Where-Object { $_.TaskName -like 'ActivityWatch Launch *' })) {
-            if ($desired -notcontains [string]$task.TaskName) {
-              Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false -ErrorAction SilentlyContinue
-              & cmd.exe /c "schtasks /Delete /TN `"$($task.TaskName)`" /F >nul 2>&1" | Out-Null
-            }
-          }
 
     - name: Принудительно запустить ActivityWatch recovery и launch tasks
       when: aw_windows_force_task_restart | bool
@@ -200,7 +172,6 @@
       when:
         - aw_windows_api_smoke_check_enabled | bool
         - aw_windows_afk_enabled | bool
-        - aw_windows_hostname_result.stdout is defined
       ansible.builtin.set_fact:
         aw_windows_api_smoke_check_bucket_effective: >-
           {{
@@ -209,51 +180,54 @@
             else 'aw-watcher-afk_' ~ (aw_windows_hostname_result.stdout | trim)
           }}
 
-    - name: Выполнить AW API smoke-check (проверка наличия свежих событий в AFK бакете)
+    - name: Дождаться свежих AFK событий на AW server
       when:
         - aw_windows_api_smoke_check_enabled | bool
         - aw_windows_afk_enabled | bool
+      delegate_to: localhost
       ansible.builtin.uri:
         url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
-        status_code: 200
-      register: aw_windows_api_smoke_result
-      until: aw_windows_api_smoke_result.json | length > 0
-      retries: 5
-      delay: 5
-      ignore_errors: true
+        return_content: true
+      register: aw_windows_api_smoke
+      until: >
+        aw_windows_api_smoke.status == 200 and
+        (aw_windows_api_smoke.json | length) > 0 and
+        (
+          aw_windows_api_smoke.json
+          | selectattr('data.status', 'equalto', 'not-afk')
+          | list
+          | length
+        ) > 0
+      retries: 10
+      delay: 6
 
-    - name: Валидировать развёртывание на эндпоинте
+    - name: Выполнить валидацию и сохранить отчёт на целевом Windows host
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
-          $result = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
+          $report = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
             -ConfigPath "{{ aw_windows_state_root }}\deployment-config.json"
-          $result | ConvertTo-Json -Depth 8 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
-          return $result
+          $report | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
+          if ({{ '$true' if (aw_windows_fail_on_validation_error | bool) else '$false' }} -and -not [bool]$report.overallOk) {
+            throw "Проверка развёртывания ActivityWatch завершилась ошибкой. Отчёт: {{ aw_windows_validation_remote_path }}"
+          }
 
-    - name: Создать локальную директорию для отчётов валидации
+    - name: Создать локальный каталог для validation reports
       ansible.builtin.file:
         path: "{{ aw_windows_validation_local_dir }}"
         state: directory
         mode: "0755"
       delegate_to: localhost
 
-    - name: Стянуть отчёт валидации с эндпоинта
+    - name: Забрать validation report
       ansible.builtin.fetch:
         src: "{{ aw_windows_validation_remote_path }}"
         dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
         flat: true
 
-    - name: Проверить статус валидации
-      ansible.builtin.shell: |
-        python3 - <<'PY'
-        import json, sys
-        with open('{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json', 'r') as f:
-            data = json.load(f)
-        if not data.get('overallOk', False):
-            print(f"Validation failed for {{ inventory_hostname }}: {data.get('summary', 'Unknown error')}")
-            sys.exit(1)
-        PY
-      delegate_to: localhost
-      when: aw_windows_fail_on_validation_error | bool
+    - name: Показать путь к отчёту
+      ansible.builtin.debug:
+        msg:
+          - "Windows/RDP развёртывание завершено на {{ inventory_hostname }}."
+          - "Отчёт проверки: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"

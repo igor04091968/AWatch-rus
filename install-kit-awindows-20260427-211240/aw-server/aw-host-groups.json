@@ -30,21 +30,6 @@
       ]
     },
     {
-      "id": "linux-remote",
-      "name": "Linux remote workers",
-      "description": "Linux-хосты удалённых сотрудников: GUI активность, SSH/console и browser admin UI.",
-      "patterns": [
-        "^(LINUX-WS|LINUX-DESKTOP|LX-|DESKTOP-|ADMIN-|WORKSTATION-|DEVBOX-)"
-      ],
-      "links": [
-        { "label": "Активность", "type": "activity" },
-        { "label": "SSH сессии", "type": "bucket", "bucket_prefix": "aw-ssh-sessions_" },
-        { "label": "Команды shell", "type": "bucket", "bucket_prefix": "aw-console-commands_" },
-        { "label": "Web категории", "type": "bucket", "bucket_prefix": "aw-detmir-web-category_" },
-        { "label": "Все бакеты", "type": "buckets" }
-      ]
-    },
-    {
       "id": "virtual-infra",
       "name": "Virtual servers + Proxmox",
       "description": "Инфраструктурные VM и сетевые узлы. Здесь должны лежать Proxmox, pfSense, Debian и Ubuntu серверы.",

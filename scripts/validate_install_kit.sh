@@ -6,10 +6,7 @@ cd "$ROOT_DIR"
 
 KIT_DIR="install-kit-awindows-20260427-211240"
 MANIFEST="$KIT_DIR/MANIFEST.txt"
-# ZIP/TAR variables are declared for archive checks in this script; keep them for clarity
-# shellcheck disable=SC2034
 ZIP_ARCHIVE="install-kit-awindows-20260427-211240.zip"
-# shellcheck disable=SC2034
 TAR_ARCHIVE="install-kit-awindows-20260427-211240.tar.gz"
 
 required_files=(

@@ -8,29 +8,6 @@ secrets/runtime.env
 *.bak
 windows/*.report.json
 .rollout-logs/
-reports/
-tmp/
-graphify-out/cache/
-graphify-out/powershell-parse-results*.json
-graphify-out/powershell-pssa-warn-results.json
-graphify-out/shellcheck-*.txt
-graphify-out/validate_dryrun_out*.txt
-graphify-out/pssa_diffs.txt
-.graphify_analysis.json
-.graphify_ast.json
-.graphify_cached.json
-.graphify_chunk_list_*.txt
-.graphify_detect.json
-.graphify_extract.json
-.graphify_labels.json
-.graphify_python
-.graphify_semantic.json
-.graphify_uncached.txt
-graphify-out/GRAPH_REPORT.md
-graphify-out/graph.html
-graphify-out/graph.json
-.pssa_run.ps1
-data/
 
 # IDE
 .idea/

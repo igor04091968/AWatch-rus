@@ -21,7 +21,6 @@ aw_windows_extra_users: []
 # Единые Windows/RDP пути: те же, что использует InnoSetup.
 aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
 aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
-aw_windows_hostname_override: ""  # Например: SHARKON2025
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
 aw_windows_file_ops_enabled: true

@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
@@ -59,18 +59,16 @@ $resolvedPulseSeconds = if ($PSBoundParameters.ContainsKey('PulseSeconds')) { $P
 $resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\AWatch-rus\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("browser-domains-{0}.log" -f $env:USERNAME) }
 $resolvedIncidentLogPath = if ($IncidentLogPath) { $IncidentLogPath } else { Join-Path $resolvedLogsRoot ("dlp-incidents-{0}.log" -f $env:USERNAME) }
-$resolvedHealthPath = Join-Path $resolvedLogsRoot ("health-browser-domains-{0}.json" -f $env:USERNAME)
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
 $resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
-$resolvedHostname = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$deploymentConfig.awHostname)) { [string]$deploymentConfig.awHostname } else { [string]$env:COMPUTERNAME }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
 }
 
 $script:ApiBase = '{0}://{1}:{2}/api/0' -f $resolvedServerScheme, $resolvedServerHost, $resolvedServerPort
-$script:Hostname = $resolvedHostname
+$script:Hostname = $env:COMPUTERNAME
 $script:SessionId = (Get-Process -Id $PID).SessionId
 $script:KnownBuckets = @{}
 $script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
@@ -87,7 +85,6 @@ $script:DlpDefaults = [ordered]@{
     action = 'log'
     severity = 'low'
 }
-$script:HealthPath = $resolvedHealthPath
 $script:BrowserMap = @{
     msedge  = 'edge'
     chrome  = 'chrome'
@@ -132,23 +129,6 @@ function Write-DlpIncidentLog {
 
     try {
         Add-Content -LiteralPath $script:IncidentLogPath -Value ('{0} {1}' -f (Get-Date -Format s), $Message)
-    }
-    catch {
-    }
-}
-
-function Write-CollectorHealth {
-    param([string]$Status = 'running')
-    try {
-        $health = @{
-            collector = 'browser-domains-native'
-            hostname = $script:Hostname
-            sessionId = $script:SessionId
-            status = $Status
-            apiBase = $script:ApiBase
-            ts = (Get-Date).ToUniversalTime().ToString('o')
-        } | ConvertTo-Json -Depth 4
-        Set-Content -LiteralPath $script:HealthPath -Value $health -Encoding UTF8
     }
     catch {
     }
@@ -810,52 +790,46 @@ Load-CustomCategoryRules -Path $resolvedRulesPath
 Load-DlpPolicy -Path $resolvedPolicyPath
 Write-CollectorLog ("коллектор запущен для {0}" -f $script:ApiBase)
 
-try {
-    while ($true) {
-        try {
-            Write-CollectorHealth -Status 'running'
-            $context = Get-ForegroundWindowContext
-            if ($context -and $script:BrowserMap.ContainsKey($context.ProcessName)) {
-                $url = Get-BrowserUrlFromWindow -Handle $context.Handle
-                if ($url) {
-                    $browserKey = $script:BrowserMap[$context.ProcessName]
-                    $domain = Get-HostFromUrl -Url $url
-                    if (-not $domain) {
-                        $domain = 'unknown'
-                    }
+while ($true) {
+    try {
+        $context = Get-ForegroundWindowContext
+        if ($context -and $script:BrowserMap.ContainsKey($context.ProcessName)) {
+            $url = Get-BrowserUrlFromWindow -Handle $context.Handle
+            if ($url) {
+                $browserKey = $script:BrowserMap[$context.ProcessName]
+                $domain = Get-HostFromUrl -Url $url
+                if (-not $domain) {
+                    $domain = 'unknown'
+                }
 
-                    $rootDomain = Get-RootDomain -DomainHost $domain
-                    if (-not $rootDomain) {
-                        $rootDomain = $domain
-                    }
+                $rootDomain = Get-RootDomain -DomainHost $domain
+                if (-not $rootDomain) {
+                    $rootDomain = $domain
+                }
 
-                    $category = Get-WebCategory -DomainHost $domain
-                    $bucketId = 'aw-watcher-web-{0}_{1}' -f $browserKey, $script:Hostname
-                    Ensure-Bucket -BucketId $bucketId -ClientName ('aw-watcher-web-' + $browserKey)
-                    Send-Heartbeat -BucketId $bucketId -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName
-                    Send-CategoryHeartbeat -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName -Domain $domain -RootDomain $rootDomain -Category $category.Name -CategoryGroup $category.Group -CategoryRule $category.Rule
+                $category = Get-WebCategory -DomainHost $domain
+                $bucketId = 'aw-watcher-web-{0}_{1}' -f $browserKey, $script:Hostname
+                Ensure-Bucket -BucketId $bucketId -ClientName ('aw-watcher-web-' + $browserKey)
+                Send-Heartbeat -BucketId $bucketId -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName
+                Send-CategoryHeartbeat -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName -Domain $domain -RootDomain $rootDomain -Category $category.Name -CategoryGroup $category.Group -CategoryRule $category.Rule
 
-                    $decision = Get-DlpDecision -Domain $domain -RootDomain $rootDomain -Url $url -Title $context.Title -BrowserKey $browserKey -Category $category.Name -CategoryGroup $category.Group
-                    if ($decision) {
-                        $fingerprint = '{0}|{1}|{2}|{3}' -f $decision.id, $browserKey, $rootDomain, $env:USERNAME
-                        $cooldown = [Math]::Max([int]$decision.cooldownSeconds, 30)
-                        if (Should-EmitIncident -Fingerprint $fingerprint -CooldownSeconds $cooldown) {
-                            Write-DlpIncidentLog ("{0} {1} {2} {3}" -f $decision.severity, $decision.action, $decision.id, $url)
-                            if (@('alert', 'block', 'quarantine') -contains ([string]$decision.action).ToLowerInvariant()) {
-                                Send-DlpIncidentHeartbeat -Decision $decision -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName -Domain $domain -RootDomain $rootDomain -Category $category.Name -CategoryGroup $category.Group
-                            }
+                $decision = Get-DlpDecision -Domain $domain -RootDomain $rootDomain -Url $url -Title $context.Title -BrowserKey $browserKey -Category $category.Name -CategoryGroup $category.Group
+                if ($decision) {
+                    $fingerprint = '{0}|{1}|{2}|{3}' -f $decision.id, $browserKey, $rootDomain, $env:USERNAME
+                    $cooldown = [Math]::Max([int]$decision.cooldownSeconds, 30)
+                    if (Should-EmitIncident -Fingerprint $fingerprint -CooldownSeconds $cooldown) {
+                        Write-DlpIncidentLog ("{0} {1} {2} {3}" -f $decision.severity, $decision.action, $decision.id, $url)
+                        if (@('alert', 'block', 'quarantine') -contains ([string]$decision.action).ToLowerInvariant()) {
+                            Send-DlpIncidentHeartbeat -Decision $decision -Url $url -Title $context.Title -BrowserKey $browserKey -ProcessName $context.ProcessName -Domain $domain -RootDomain $rootDomain -Category $category.Name -CategoryGroup $category.Group
                         }
                     }
                 }
             }
         }
-        catch {
-            Write-CollectorLog ("ошибка коллектора: {0}" -f $_.Exception.Message)
-        }
-
-        Start-Sleep -Seconds $resolvedPollSeconds
     }
-}
-finally {
-    Write-CollectorHealth -Status 'stopped'
+    catch {
+        Write-CollectorLog ("ошибка коллектора: {0}" -f $_.Exception.Message)
+    }
+
+    Start-Sleep -Seconds $resolvedPollSeconds
 }

@@ -370,16 +370,6 @@
     return /^pve[-_]/i.test(String(host || ""));
   }
 
-  function isLikelyClientHost(host) {
-    const value = String(host || "").trim();
-    if (!value) return false;
-    if (/^(?:unknown|undefined|null)$/i.test(value)) return false;
-    if (/^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1)$/i.test(value)) return false;
-    if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(value)) return false;
-    if (value.indexOf(":") !== -1 && /^[0-9a-f:\[\]]+$/i.test(value)) return false;
-    return true;
-  }
-
   function enforceSafeActivityViewForPveHost() {
     const hash = window.location.hash || "";
     const match = hash.match(/^#\/activity\/([^/]+)\/day\/([^/]+)\/view\/([^/?#]+)/i);
@@ -396,9 +386,9 @@
 
   function getDlpHostFromSettings(settings) {
     const routeHost = getCurrentHostFromHash();
-    if (isLikelyClientHost(routeHost)) return routeHost;
+    if (routeHost) return routeHost;
     const bucketHost = getDlpHostFromBucketId(getDlpBucketIdFromHash());
-    if (isLikelyClientHost(bucketHost)) return bucketHost;
+    if (bucketHost) return bucketHost;
     return getTrendsHostFromSettings(settings);
   }
 
@@ -691,19 +681,6 @@
           ]
         },
         {
-          id: "linux-remote",
-          name: "Linux remote workers",
-          description: "Linux-хосты удалённых сотрудников: GUI активность, SSH/console и browser admin UI.",
-          patterns: ["^(LINUX-WS|LINUX-DESKTOP|LX-|DESKTOP-|ADMIN-|WORKSTATION-|DEVBOX-)"],
-          links: [
-            { label: "Активность", type: "activity" },
-            { label: "SSH сессии", type: "bucket", bucket_prefix: "aw-ssh-sessions_" },
-            { label: "Команды shell", type: "bucket", bucket_prefix: "aw-console-commands_" },
-            { label: "Web категории", type: "bucket", bucket_prefix: "aw-detmir-web-category_" },
-            { label: "Все бакеты", type: "buckets" }
-          ]
-        },
-        {
           id: "virtual-infra",
           name: "Virtual servers + Proxmox",
           description: "Инфраструктурные VM, Proxmox и сетевые узлы.",
@@ -763,15 +740,7 @@
     const prefixes = [
       "aw-watcher-window_",
       "aw-watcher-afk_",
-      "aw-console-commands_",
-      "aw-ssh-sessions_",
-      "aw-linux-web-context_",
-      "aw-detmir-web-category_",
       "aw-dlp-endpoint-signals_",
-      "aw-session-events_",
-      "aw-worktime-sessions_",
-      "aw-pve-webadmin-events_",
-      "aw-pve-task-events_",
       "aw-dlp-incidents_",
       "aw-pfsense-health_",
       "aw-pfsense-gateways_",
@@ -801,27 +770,7 @@
     return result;
   }
 
-  function hostHasBucketPrefix(hostBuckets, prefix) {
-    return (hostBuckets || []).some(function (bucketId) {
-      return String(bucketId || "").indexOf(prefix) === 0;
-    });
-  }
-
-  function matchHostGroup(host, groups, hostBuckets) {
-    const bucketList = hostBuckets || [];
-    if (hostHasBucketPrefix(bucketList, "aw-dlp-endpoint-signals_") || hostHasBucketPrefix(bucketList, "aw-session-events_")) {
-      return "windows-rdp";
-    }
-    if (
-      hostHasBucketPrefix(bucketList, "aw-console-commands_") ||
-      hostHasBucketPrefix(bucketList, "aw-ssh-sessions_") ||
-      hostHasBucketPrefix(bucketList, "aw-linux-web-context_") ||
-      hostHasBucketPrefix(bucketList, "aw-detmir-web-category_")
-    ) {
-      if (!hostHasBucketPrefix(bucketList, "aw-pve-webadmin-events_") && !hostHasBucketPrefix(bucketList, "aw-pve-task-events_")) {
-        return "linux-remote";
-      }
-    }
+  function matchHostGroup(host, groups) {
     for (const group of groups) {
       const patterns = Array.isArray(group.patterns) ? group.patterns : [];
       for (const pattern of patterns) {
@@ -864,7 +813,7 @@
     grouped.set("__ungrouped__", []);
 
     Array.from(hostBuckets.keys()).sort().forEach(function (host) {
-      const groupId = matchHostGroup(host, groups, hostBuckets.get(host) || []) || "__ungrouped__";
+      const groupId = matchHostGroup(host, groups) || "__ungrouped__";
       grouped.get(groupId).push(host);
     });
 
@@ -920,7 +869,7 @@
       center.setAttribute("data-aw-ru-host-groups", "1");
       center.innerHTML =
         '<h4>Разделы хостов</h4>' +
-        '<p>Здесь хосты разделены на Windows RDP, Linux remote workers и инфраструктурные узлы.</p>' +
+        '<p>Здесь хосты разделены на пользовательские Windows RDP и инфраструктурные виртуальные серверы/Proxmox.</p>' +
         '<div class="aw-ru-host-groups-grid" data-aw-ru-host-groups-grid><section class="aw-ru-host-group-card"><p>Загрузка...</p></section></div>';
       heading.parentElement.insertBefore(center, heading.nextSibling);
     }
@@ -1476,8 +1425,7 @@
     if (!settings || typeof settings !== "object") return "";
     const landingpage = typeof settings.landingpage === "string" ? settings.landingpage : "";
     const match = landingpage.match(/\/activity\/([^/]+)/);
-    const host = match && match[1] ? decodeURIComponent(match[1]) : "";
-    return isLikelyClientHost(host) ? host : "";
+    return match && match[1] ? match[1] : "";
   }
 
   function getTrendsPath(hash) {
@@ -1544,7 +1492,8 @@
       .map(function (bucketId) { return bucketId.replace(/^aw-watcher-window_/i, ""); })
       .filter(Boolean)
       .filter(function (host) { return !/^unknown$/i.test(host); });
-    if (isLikelyClientHost(settingsHost) && hosts.indexOf(settingsHost) >= 0) return settingsHost;
+    if (settingsHost && hosts.indexOf(settingsHost) >= 0) return settingsHost;
+    if (settingsHost) return settingsHost;
     hosts.sort();
     return hosts[0] || "";
   }
@@ -1584,8 +1533,7 @@
       window.fetch = function (input, init) {
         try {
           const url = typeof input === "string" ? input : String(input && input.url || "");
-          const isCategoryBuilderRoute = /^#\/settings\/category-builder(?:[/?#]|$)/i.test(window.location.hash || "");
-          if (isCategoryBuilderRoute && /\/api\/0\/query\/?$/i.test(url) && init && typeof init.body === "string") {
+          if (/\/api\/0\/query\/?$/i.test(url) && init && typeof init.body === "string") {
             init = Object.assign({}, init, {
               body: rewriteUnknownCategoryBuilderQueryBody(init.body)
             });
@@ -1609,8 +1557,7 @@
         proto.send = function (body) {
           try {
             const url = String(this.__awRuUrl || "");
-            const isCategoryBuilderRoute = /^#\/settings\/category-builder(?:[/?#]|$)/i.test(window.location.hash || "");
-            if (isCategoryBuilderRoute && /\/api\/0\/query\/?$/i.test(url) && typeof body === "string") {
+            if (/\/api\/0\/query\/?$/i.test(url) && typeof body === "string") {
               body = rewriteUnknownCategoryBuilderQueryBody(body);
             }
           } catch (error) {

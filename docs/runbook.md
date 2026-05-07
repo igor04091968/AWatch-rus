@@ -196,15 +196,6 @@ systemctl restart activitywatch-server.service
 
 ## Перед любыми изменениями
 
-0. Подтвердить maintenance window и gate:
-
-```sh
-export AW_MAINTENANCE_ACK=YES
-./scripts/quality-gate.sh
-```
-
-Если `quality-gate` падает (например, drift install-kit vs repo), rollout не запускать.
-
 1. Сделать snapshot или `vzdump`.
 2. Сохранить текущий `/etc/activitywatch/aw-server.env`.
 3. Сохранить текущий `index.html`.

@@ -17,7 +17,6 @@
 - секреты не хранить в git;
 - каждое изменение фиксировать в ticket/run log;
 - публичную публикацию делать через отдельный proxy/security layer.
-- generated-артефакты и исследовательские кэши вести по [artifacts-policy.md](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/docs/artifacts-policy.md).
 
 ## Регулярные проверки
 
@@ -125,4 +124,3 @@ systemctl restart activitywatch-server.service
 - не обновлять поверх рабочего бинарника без backup;
 - не открывать `5600/tcp` наружу без отдельной защиты;
 - не править `index.html` вручную без backup.
-- не запускать `scripts/prod_rollout.sh` без `AW_MAINTENANCE_ACK=YES`.

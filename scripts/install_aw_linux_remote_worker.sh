@@ -49,7 +49,6 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-# shellcheck disable=SC1007
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 sh "${SCRIPT_DIR}/install_aw_linux_client.sh" \

@@ -160,9 +160,6 @@
           {% if (aw_windows_package_zip_path | default('') | string | length) > 0 %}
           $params.PackageZipPath = "{{ aw_windows_package_zip_path }}"
           {% endif %}
-          {% if (aw_windows_hostname_override | default('') | string | length) > 0 %}
-          $params.AwHostname = "{{ aw_windows_hostname_override }}"
-          {% endif %}
           {% if aw_windows_skip_hardening | bool %}
           $params.SkipHardening = $true
           {% endif %}
@@ -186,44 +183,6 @@
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
-
-          function Get-CollectorKey {
-            param([string]$CommandLine)
-            if (-not $CommandLine) { return $null }
-            $cl = $CommandLine.ToLowerInvariant()
-            if ($cl -like '*browser-domains-native-collector.ps1*') { return 'browser' }
-            if ($cl -like '*file-operations-collector.ps1*') { return 'fileops' }
-            if ($cl -like '*dlp-endpoint-signals-collector.ps1*') { return 'endpoint' }
-            if ($cl -like '*email-outbound-collector.ps1*') { return 'email' }
-            if ($cl -like '*worktime-session-collector.ps1*') { return 'worktime' }
-            return $null
-          }
-
-          $collectorProcs = Get-CimInstance Win32_Process |
-            Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine } |
-            ForEach-Object {
-              $key = Get-CollectorKey -CommandLine $_.CommandLine
-              if ($key) {
-                [pscustomobject]@{
-                  ProcessId    = [int]$_.ProcessId
-                  SessionId    = [int]$_.SessionId
-                  CreationDate = $_.CreationDate
-                  CollectorKey = $key
-                }
-              }
-            } |
-            Where-Object { $_ -ne $null }
-
-          # Keep only one process per (collector, session): newest survives, older duplicates are stopped.
-          foreach ($group in ($collectorProcs | Group-Object CollectorKey, SessionId)) {
-            $ordered = @($group.Group | Sort-Object CreationDate -Descending)
-            if ($ordered.Count -le 1) { continue }
-            foreach ($dup in $ordered | Select-Object -Skip 1) {
-              Stop-Process -Id $dup.ProcessId -Force -ErrorAction SilentlyContinue
-            }
-          }
-
-          Start-Sleep -Seconds 2
           Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
           Get-ScheduledTask |
             Where-Object TaskName -like "{{ aw_windows_launch_task_pattern }}" |

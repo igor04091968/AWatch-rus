@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
@@ -151,6 +151,6 @@ Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptP
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
-Write-Output 'Укрепление и восстановление ActivityWatch завершены.'
-Write-Output "Конфигурация: $effectiveConfigPath"
-Write-Output "Пользователи восстановлены: $($effectiveUsers -join ', ')"
+Write-Host 'Укрепление и восстановление ActivityWatch завершены.'
+Write-Host "Конфигурация: $effectiveConfigPath"
+Write-Host "Пользователи восстановлены: $($effectiveUsers -join ', ')"

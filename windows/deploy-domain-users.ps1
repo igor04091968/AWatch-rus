@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$ServerHost,
@@ -24,7 +24,6 @@ param(
     [bool]$IncidentScreenshotEnabled = $true,
     [string]$IncidentArtifactsRoot,
     [bool]$LogonMarkerEnabled = $true,
-    [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath
 )
@@ -101,7 +100,6 @@ $config = New-ActivityWatchDeploymentConfig `
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
     -IncidentArtifactsRoot $IncidentArtifactsRoot `
     -LogonMarkerEnabled $LogonMarkerEnabled `
-    -AwHostname $AwHostname `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `
     -UserTasks $taskDefinitions `
@@ -114,8 +112,8 @@ Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptP
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $recoveryScriptPath -ConfigPath $configPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
-Write-Output 'ActivityWatch развёрнут для пользователей:'
-$targetUsers | ForEach-Object { Write-Output " - $_" }
-Write-Output "Сервер: ${ServerScheme}://$ServerHost`:$ServerPort"
-Write-Output "Каталог данных: $StateRoot"
-Write-Output "Файл DLP-политики: $($assetResult.ActivePolicy)"
+Write-Host 'ActivityWatch развёрнут для пользователей:'
+$targetUsers | ForEach-Object { Write-Host " - $_" }
+Write-Host "Сервер: ${ServerScheme}://$ServerHost`:$ServerPort"
+Write-Host "Каталог данных: $StateRoot"
+Write-Host "Файл DLP-политики: $($assetResult.ActivePolicy)"

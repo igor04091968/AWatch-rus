@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
@@ -21,7 +21,6 @@ param(
     [bool]$IncidentScreenshotEnabled,
     [string]$IncidentArtifactsRoot,
     [bool]$LogonMarkerEnabled,
-    [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
     [switch]$RepairPackage,
@@ -74,7 +73,6 @@ $effectiveIncidentCaptureEnabled = if ($PSBoundParameters.ContainsKey('IncidentC
 $effectiveIncidentScreenshotEnabled = if ($PSBoundParameters.ContainsKey('IncidentScreenshotEnabled')) { [bool]$IncidentScreenshotEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$existingConfig.incidentCapture.screenshotEnabled } else { $true }
 $effectiveIncidentArtifactsRoot = if ($PSBoundParameters.ContainsKey('IncidentArtifactsRoot') -and $IncidentArtifactsRoot) { $IncidentArtifactsRoot } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$existingConfig.incidentCapture.artifactsRoot } else { Join-Path $effectiveStateRoot 'incident-artifacts' }
 $effectiveLogonMarkerEnabled = if ($PSBoundParameters.ContainsKey('LogonMarkerEnabled')) { [bool]$LogonMarkerEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$existingConfig.sessionEvents.logonEnabled } else { $true }
-$effectiveAwHostname = if ($PSBoundParameters.ContainsKey('AwHostname') -and -not [string]::IsNullOrWhiteSpace($AwHostname)) { [string]$AwHostname } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.awHostname)) { [string]$existingConfig.awHostname } else { [string]$env:COMPUTERNAME }
 $effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
 
 $effectiveUsers = if ($Users -or $UserListPath) {
@@ -141,7 +139,6 @@ $config = New-ActivityWatchDeploymentConfig `
     -IncidentScreenshotEnabled $effectiveIncidentScreenshotEnabled `
     -IncidentArtifactsRoot $effectiveIncidentArtifactsRoot `
     -LogonMarkerEnabled $effectiveLogonMarkerEnabled `
-    -AwHostname $effectiveAwHostname `
     -LaunchScriptPath $effectiveLaunchScript `
     -RecoveryScriptPath $effectiveRecoveryScript `
     -UserTasks $taskDefinitions `
@@ -154,6 +151,6 @@ Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptP
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
-Write-Output 'Укрепление и восстановление ActivityWatch завершены.'
-Write-Output "Конфигурация: $effectiveConfigPath"
-Write-Output "Пользователи восстановлены: $($effectiveUsers -join ', ')"
+Write-Host 'Укрепление и восстановление ActivityWatch завершены.'
+Write-Host "Конфигурация: $effectiveConfigPath"
+Write-Host "Пользователи восстановлены: $($effectiveUsers -join ', ')"

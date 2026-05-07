@@ -9,7 +9,6 @@
 - `docs/deployment.md` — пошаговый деплой LXC и ActivityWatch Server.
 - `docs/runbook.md` — быстрый runbook для оператора.
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
-- `docs/artifacts-policy.md` — политика generated-артефактов и rollout-gates.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
 - `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.

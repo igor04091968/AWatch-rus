@@ -1,5 +1,4 @@
 #!/bin/sh
-# shellcheck disable=SC1007
 set -eu
 
 REPO_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
