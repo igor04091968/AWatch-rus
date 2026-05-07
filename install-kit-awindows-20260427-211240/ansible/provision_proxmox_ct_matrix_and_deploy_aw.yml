@@ -9,6 +9,8 @@
       - install_aw_server.sh
       - apply_webui_ru_patch.sh
       - activitywatch-server.service
+      - aw-worktime-api.py
+      - aw-worktime-api.service
       - aw-server.env.example
       - aw-ru-patch.js
       - aw-sw-cleanup.js

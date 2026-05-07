@@ -9,6 +9,7 @@ aw_server_db_path: "/var/lib/activitywatch/aw-server-rust/sqlite.db"
 aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
 aw_worktime_report_base: "http://10.10.10.13:5610"
+aw_worktime_timezone: "Europe/Moscow"
 
 aw_repo_root: "/mnt/usb_hdd2/Projects/ActivityWatch-Russian"
 

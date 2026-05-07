@@ -294,8 +294,35 @@
               AW_SERVER_USER={{ aw_server_user }}
               AW_SERVER_GROUP={{ aw_server_group }}
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
+              AW_WORKTIME_TZ={{ aw_worktime_timezone }}
               XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
               XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
+
+        - name: Установить скрипт AW worktime API
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-api.py"
+            dest: /usr/local/bin/aw-worktime-api.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить systemd unit AW worktime API
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-api.service"
+            dest: /etc/systemd/system/aw-worktime-api.service
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Перезагрузить systemd после установки AW worktime API
+          ansible.builtin.systemd:
+            daemon_reload: true
+
+        - name: Включить и перезапустить AW worktime API
+          ansible.builtin.systemd:
+            name: aw-worktime-api.service
+            enabled: true
+            state: restarted
 
         - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
           ansible.builtin.command:

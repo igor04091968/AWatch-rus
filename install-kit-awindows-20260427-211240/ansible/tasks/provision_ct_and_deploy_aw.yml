@@ -160,6 +160,7 @@
       AW_SERVER_USER={{ aw_server_user }}
       AW_SERVER_GROUP={{ aw_server_group }}
       AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
+      AW_WORKTIME_TZ={{ aw_worktime_timezone }}
   no_log: true
 
 - name: Передать AW server env внутрь CT
