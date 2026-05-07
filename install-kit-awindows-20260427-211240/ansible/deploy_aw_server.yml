@@ -194,6 +194,7 @@
       loop:
         - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "{{ aw_server_webui_dir }}/js/ru-patch-v5.js", mode: "0644" }
         - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "{{ aw_server_webui_dir }}/js/sw-cleanup.js", mode: "0644" }
+        - { src: "{{ aw_repo_root }}/aw-server/aw-worktime-panel.js", dest: "{{ aw_server_webui_dir }}/js/aw-worktime-panel.js", mode: "0644" }
         - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "{{ aw_server_webui_dir }}/js/aw-host-groups.json", mode: "0644" }
 
     - name: Создать каталог /root/bootstrap для apply_webui_ru_patch.sh
@@ -210,6 +211,7 @@
       loop:
         - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "/root/bootstrap/aw-ru-patch.js", mode: "0644" }
         - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "/root/bootstrap/aw-sw-cleanup.js", mode: "0644" }
+        - { src: "{{ aw_repo_root }}/aw-server/aw-worktime-panel.js", dest: "/root/bootstrap/aw-worktime-panel.js", mode: "0644" }
         - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "/root/bootstrap/aw-host-groups.json", mode: "0644" }
 
     - name: Скопировать apply_webui_ru_patch.sh скрипт
