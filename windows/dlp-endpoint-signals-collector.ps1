@@ -424,6 +424,9 @@ function Evaluate-ClipboardRules {
         [string]$ClipboardText,
         [string]$ClipboardHash
     )
+    if ([string]::IsNullOrEmpty($ClipboardText) -or [string]::IsNullOrEmpty($ClipboardHash)) {
+        return
+    }
 
     foreach ($rule in @($script:Policy.endpoint.clipboard)) {
         if (-not $rule) { continue }
@@ -762,6 +765,7 @@ function Get-BetterDocumentNameFromPrintServiceEvents {
         }
     }
     catch {
+        Write-EndpointLog ("printservice fallback failed: {0}" -f $_.Exception.Message)
     }
 
     return $null
@@ -824,6 +828,7 @@ while ($true) {
             }
         }
         catch {
+            Write-EndpointLog ("clipboard poll failed: {0}" -f $_.Exception.Message)
         }
 
         try {
@@ -851,6 +856,7 @@ while ($true) {
             }
         }
         catch {
+            Write-EndpointLog ("usb poll failed: {0}" -f $_.Exception.Message)
         }
 
         try {
@@ -872,12 +878,22 @@ while ($true) {
                         $documentName = $eventDocumentName
                     }
                 }
+                $printDocumentNorm = if ($documentName) { [string]$documentName } else { '' }
+                $printSignalKey = ('{0}|{1}|{2}|{3}' -f
+                    (Normalize-PrinterForMatch -Value $printerName),
+                    (Normalize-OwnerForMatch -Value $owner),
+                    $printDocumentNorm.ToLowerInvariant(),
+                    'print_job')
+                if (-not (Should-EmitByCooldown -Fingerprint $printSignalKey -CooldownSeconds 90)) {
+                    continue
+                }
 
                 Send-EndpointSignalHeartbeat -SignalType 'print_job' -Data @{
                     printerName  = $printerName
                     documentName = $documentName
                     documentNameOriginal = $documentNameOriginal
                     owner        = $owner
+                    eventSource  = 'win32_printjob'
                 }
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName $documentName -Owner $owner
             }
@@ -891,6 +907,7 @@ while ($true) {
             }
         }
         catch {
+            Write-EndpointLog ("printjob poll failed: {0}" -f $_.Exception.Message)
         }
 
         try {
@@ -918,6 +935,17 @@ while ($true) {
                     continue
                 }
 
+                $effectiveDocument = if ($resolvedDocument) { [string]$resolvedDocument } else { [string]$documentName }
+                $printSignalKey = ('{0}|{1}|{2}|{3}' -f
+                    (Normalize-PrinterForMatch -Value $printerName),
+                    (Normalize-OwnerForMatch -Value $owner),
+                    $effectiveDocument.ToLowerInvariant(),
+                    'print_job')
+                if (-not (Should-EmitByCooldown -Fingerprint $printSignalKey -CooldownSeconds 90)) {
+                    Write-PrintServiceEventTrace -EventSummary $summary -Phase 'skip' -MatchReason 'dedupe-recent-printjob' -ResolvedDocument $resolvedDocument
+                    continue
+                }
+
                 Send-EndpointSignalHeartbeat -SignalType 'print_job' -Data @{
                     printerName  = $printerName
                     documentName = if ($resolvedDocument) { $resolvedDocument } else { $documentName }
@@ -938,6 +966,7 @@ while ($true) {
             }
         }
         catch {
+            Write-EndpointLog ("printservice poll failed: {0}" -f $_.Exception.Message)
         }
     }
     catch {
