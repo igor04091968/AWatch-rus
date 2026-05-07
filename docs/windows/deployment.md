@@ -9,6 +9,10 @@
 - `windows/validate-deployment.ps1` — машинная проверка состояния и JSON-отчёт.
 - `windows/browser-domains-native-collector.ps1` — native collector доменов браузера с категоризацией.
 - `windows/dlp-endpoint-signals-collector.ps1` — Windows/RDP collector (clipboard/USB/print signals).
+- `windows/file-operations-collector.ps1` — collector файловых операций (create/delete/rename/archive hints).
+- `windows/worktime-session-collector.ps1` — collector RDP-сессий и активности.
+- `windows/install-standalone-service.ps1` — standalone установка агента как Windows Service (без Task Scheduler).
+- `windows/aw-standalone-service.ps1` — service wrapper для поддержания collector-процессов.
 - `windows/web-category-rules.example.json` — пример кастомных правил категоризации.
 - `windows/dlp-policy.example.json` — пример DLP-политики (phase-1: alerting incidents).
 
@@ -26,6 +30,14 @@
 - Не содержит хардкодов инфраструктуры: сервер, домен, список пользователей и правила передаются параметрами.
 - Корректно регистрирует задачи через `-LogonType Interactive` (совместимо с Windows Server, где `InteractiveToken` не поддерживается).
 - Поддерживает отключение шумных watcher'ов через `-AfkEnabled:$false` и `-WindowEnabled:$false`.
+
+### Standalone InnoSetup (без Ansible, без Task Scheduler)
+
+- InnoSetup запускает `install-standalone-service.ps1`.
+- Мастер спрашивает только `ServerHost` и `ServerPort`.
+- Создаётся сервис `AWatchRusStandaloneAgent` (auto-start, restart-on-failure).
+- Сервис управляет collector-скриптами и держит по одной рабочей копии каждого коллектора.
+- `deployment-config.json` формируется в `C:\ProgramData\AWatch-rus\deployment-config.json`.
 
 Важно:
 

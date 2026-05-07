@@ -25,11 +25,21 @@ The resulting installer `AWatch-rus-InstallKit.exe` is written to the same direc
 ./build_with_wine.sh
 ```
 
-## Install-time parameters
+## Install-time parameters (Standalone agent mode)
 
-The installer wizard asks for:
+The installer wizard asks only for:
 
-- `ServerHost` / `ServerPort` (defaults to our AW server `10.10.10.13:5600`)
-- `Users` (CSV)
-- Whether to use offline payload (auto-enabled when the ZIP exists at compile time)
-- Whether to validate after deploy (`-ValidateAfterDeploy`, report written to `C:\ProgramData\AWatch-rus\ensemble-report-*.json`)
+- `ServerHost` / `ServerPort` (defaults to `10.10.10.13:5600`)
+
+All other values are taken from defaults embedded in installer scripts.
+
+## Runtime mode
+
+- Installer runs `windows\install-standalone-service.ps1`.
+- A Windows service `AWatchRusStandaloneAgent` is created with auto-start and restart-on-failure.
+- Service wrapper (`windows\aw-standalone-service.ps1`) keeps DLP collectors running:
+  - `browser-domains-native-collector.ps1`
+  - `dlp-endpoint-signals-collector.ps1`
+  - `file-operations-collector.ps1`
+  - `email-outbound-collector.ps1` (if present)
+  - `worktime-session-collector.ps1` (if present)

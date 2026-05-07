@@ -88,6 +88,35 @@ Start-ScheduledTask -TaskName 'ActivityWatch Launch [CONTOSO_user01]'
 
 ## Диагностика
 
+### Standalone service не работает
+
+Проверить сервис:
+
+```powershell
+Get-Service AWatchRusStandaloneAgent
+sc.exe query AWatchRusStandaloneAgent
+```
+
+Перезапуск:
+
+```powershell
+Restart-Service AWatchRusStandaloneAgent
+```
+
+Лог service wrapper:
+
+```powershell
+Get-Content C:\ProgramData\AWatch-rus\logs\standalone-agent-service.log -Tail 200
+```
+
+Проверить дочерние collector-процессы:
+
+```powershell
+Get-CimInstance Win32_Process |
+  Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine -like '*AWatch-rus*collector*.ps1*' } |
+  Select-Object ProcessId, SessionId, CommandLine
+```
+
 Проверить задачи:
 
 ```powershell
