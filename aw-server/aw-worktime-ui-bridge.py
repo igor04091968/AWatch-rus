@@ -3,7 +3,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 AW_URL = os.environ.get("AW_SERVER_URL", "http://127.0.0.1:5600")
@@ -70,10 +70,23 @@ def to_iso_utc(ts):
     return ts.replace("+00:00", "Z")
 
 
+def parse_iso_utc(ts: str):
+    if ts.endswith("Z"):
+        ts = ts[:-1] + "+00:00"
+    return datetime.fromisoformat(ts).astimezone(timezone.utc)
+
+
 def build_window_title(users, active_count):
     if not users:
         return "RDP idle"
     return f"RDP active ({active_count}): " + ", ".join(users)
+
+
+def _is_session_active(row_data):
+    if isinstance(row_data.get("active"), bool):
+        return row_data.get("active")
+    state = str(row_data.get("state", "")).strip().lower()
+    return state in {"active", "активно"}
 
 
 def transform(events):
@@ -81,14 +94,24 @@ def transform(events):
     out_win = []
     last_ts = None
 
+    grouped = {}
     for e in events:
         ts = e.get("timestamp")
         if not ts:
             continue
-        duration = float(e.get("duration", 0.0))
-        data = e.get("data") or {}
-        active_users = data.get("activeUsers") or []
-        active_count = int(data.get("activeCount", len(active_users)))
+        grouped.setdefault(ts, []).append(e)
+
+    for ts in sorted(grouped.keys()):
+        rows = grouped[ts]
+        duration = max(float(r.get("duration", 0.0)) for r in rows)
+        active_users = []
+        for r in rows:
+            data = r.get("data") or {}
+            user = str(data.get("username", "")).strip()
+            if user and _is_session_active(data):
+                active_users.append(user)
+        active_users = sorted(set(active_users))
+        active_count = len(active_users)
         is_active = active_count > 0
 
         afk_data = {"status": "not-afk" if is_active else "afk", "source": "aw-worktime-ui-bridge"}
@@ -112,18 +135,29 @@ def main():
     ensure_bucket(AFK_BUCKET, "afkstatus", "aw-worktime-ui-bridge")
     ensure_bucket(WINDOW_BUCKET, "currentwindow", "aw-worktime-ui-bridge")
 
-    query = {
-        "query": [
-            "events = query_bucket(find_bucket($bid));",
-            "RETURN = sort_by_timestamp(events);",
-        ],
-        "timeperiods": [[last_ts, to_iso_utc(datetime.now(timezone.utc).isoformat())]],
-    }
-    rows = _req("POST", f"/api/0/query/?bid={SESSIONS_BUCKET}", query) or []
-    if not rows or not rows[0]:
+    now_utc = datetime.now(timezone.utc)
+    recent = _req("GET", f"/api/0/buckets/{SESSIONS_BUCKET}/events?limit=5000") or []
+    if not recent:
         return
 
-    events = rows[0]
+    try:
+        last_dt = parse_iso_utc(last_ts)
+    except Exception:
+        last_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    events = []
+    for e in recent:
+        ts = e.get("timestamp")
+        if not ts:
+            continue
+        try:
+            if parse_iso_utc(ts) > last_dt:
+                events.append(e)
+        except Exception:
+            continue
+    if not events:
+        return
+
     afk_events, win_events, new_last_ts = transform(events)
     if not afk_events or not win_events or not new_last_ts:
         return

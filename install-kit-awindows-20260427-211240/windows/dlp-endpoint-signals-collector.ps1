@@ -1,4 +1,4 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
@@ -516,35 +516,6 @@ function Test-LooksLikeMojibakeQuestionMarks {
     return $Value -match '\?{2,}'
 }
 
-function Test-IsGenericDocumentName {
-    param([AllowNull()][string]$Value)
-    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
-    $generic = @(
-        '^\s*Печать документа\s*$',
-        '^\s*Print Document\s*$',
-        '^\s*Document\s*$',
-        '^\s*Документ\s*$',
-        '^\s*Remote Downlevel Document\s*$',
-        '^\s*Local Downlevel Document\s*$',
-        '^\s*Untitled\s*$',
-        '^\s*Без имени\s*$',
-        '^\s*Без названия\s*$'
-    )
-    foreach ($pattern in $generic) {
-        if ($Value -match $pattern) { return $true }
-    }
-    return $false
-}
-
-function Test-NeedsBetterDocumentName {
-    param([AllowNull()][string]$Value)
-    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
-    if (Test-LooksLikeMojibakeQuestionMarks -Value $Value) { return $true }
-    if (Test-IsGenericDocumentName -Value $Value) { return $true }
-    if ($Value -match '^[0-9]+$') { return $true }
-    return $false
-}
-
 function Normalize-OwnerForMatch {
     param([AllowNull()][string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return '' }
@@ -631,7 +602,7 @@ function Get-PrintServiceDocumentFallback {
     )
 
     $preferred = [string]$EventSummary.DocumentName
-    if (-not (Test-NeedsBetterDocumentName -Value $preferred)) {
+    if (-not (Test-LooksLikeMojibakeQuestionMarks -Value $preferred) -and $preferred -notmatch '^[0-9]+$') {
         return $preferred
     }
 
@@ -644,10 +615,14 @@ function Get-PrintServiceDocumentFallback {
         if ($candidate -eq $preferred) { continue }
         if ($Owner -and $candidate -like "*$Owner*") { continue }
         if ($PrinterName -and $candidate -like "*$PrinterName*") { continue }
-        if (Test-NeedsBetterDocumentName -Value $candidate) { continue }
+        if (Test-LooksLikeMojibakeQuestionMarks -Value $candidate) { continue }
 
         if ($candidate -match '[\\/:]' -and $candidate -match '\.[A-Za-z0-9]{1,8}$') {
             $pathCandidates.Add($candidate)
+            continue
+        }
+
+        if ($candidate -match '^[0-9]+$') {
             continue
         }
 
@@ -780,6 +755,8 @@ $script:SeenPrintJob = @{}
 $script:SeenPrintEvent = @{}
 $script:LastClipboardHash = $null
 $script:PulseSeconds = [Math]::Max($resolvedPollSeconds * 3, 30)
+$script:SelfTestIntervalSeconds = [Math]::Max($resolvedPollSeconds * 10, 60)
+$script:LastSelfTestAt = [datetime]::MinValue
 $script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
 $script:LogPath = $resolvedLogPath
 $script:IncidentArtifactsRoot = $resolvedIncidentArtifactsRoot
@@ -791,6 +768,15 @@ Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
 
 while ($true) {
     try {
+        $nowUtc = (Get-Date).ToUniversalTime()
+        if (($nowUtc - $script:LastSelfTestAt).TotalSeconds -ge $script:SelfTestIntervalSeconds) {
+            Send-EndpointSignalHeartbeat -SignalType 'self_test' -Data @{
+                collector = 'dlp-endpoint-signals'
+                policyEnabled = [bool]$script:Policy.defaults.enabled
+            }
+            $script:LastSelfTestAt = $nowUtc
+        }
+
         if (-not $script:Policy.defaults.enabled) {
             Start-Sleep -Seconds $resolvedPollSeconds
             continue
@@ -848,12 +834,12 @@ while ($true) {
                 if ($script:SeenPrintJob.ContainsKey($jobId)) { continue }
                 $script:SeenPrintJob[$jobId] = (Get-Date).ToUniversalTime()
 
-                $printerName = Normalize-PrinterForMatch -Value ([string]$job.Name)
+                $printerName = [string]$job.Name
                 $documentName = [string]$job.Document
                 $owner = [string]$job.Owner
                 $documentNameOriginal = $documentName
 
-                if (Test-NeedsBetterDocumentName -Value $documentName) {
+                if (Test-LooksLikeMojibakeQuestionMarks -Value $documentName) {
                     $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -Owner $owner -PrinterName $printerName
                     if ($eventDocumentName) {
                         $documentName = $eventDocumentName

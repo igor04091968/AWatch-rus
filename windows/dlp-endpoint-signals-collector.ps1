@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
@@ -54,32 +54,13 @@ function Ensure-Bucket {
         return
     }
 
-    try {
-        Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
-        $script:KnownBuckets[$BucketId] = $true
-        return
-    }
-    catch {
-    }
-
     $body = @{
         client   = $ClientName
         type     = $BucketType
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    try {
-        Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
-    }
-    catch {
-        try {
-            Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
-        }
-        catch {
-            Write-EndpointLog "Bucket create/check failed for ${BucketId}: $($_.Exception.Message)"
-            throw
-        }
-    }
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
     $script:KnownBuckets[$BucketId] = $true
 }
 
@@ -243,10 +224,6 @@ function Show-EnforcementNotification {
         [Parameter(Mandatory = $true)][string]$Title,
         [Parameter(Mandatory = $true)][string]$Body
     )
-    if ($script:HeadlessMode) {
-        Write-EndpointLog ("headless mode: skip notification title={0}" -f $Title)
-        return $false
-    }
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
         $icon = New-Object System.Windows.Forms.NotifyIcon
@@ -258,11 +235,9 @@ function Show-EnforcementNotification {
         $icon.ShowBalloonTip(5000)
         Start-Sleep -Milliseconds 200
         $icon.Dispose()
-        return $true
     }
     catch {
         Write-EndpointLog ("notification failed: {0}" -f $_.Exception.Message)
-        return $false
     }
 }
 
@@ -449,9 +424,6 @@ function Evaluate-ClipboardRules {
         [string]$ClipboardText,
         [string]$ClipboardHash
     )
-    if ([string]::IsNullOrEmpty($ClipboardText) -or [string]::IsNullOrEmpty($ClipboardHash)) {
-        return
-    }
 
     foreach ($rule in @($script:Policy.endpoint.clipboard)) {
         if (-not $rule) { continue }
@@ -482,13 +454,8 @@ function Evaluate-ClipboardRules {
 
         $enforced = $false
         if ($action -eq 'block') {
-            if ($script:HeadlessMode) {
-                Write-EndpointLog ("headless fallback: clipboard rule={0} requires block, skipped interactive enforcement" -f $ruleId)
-            }
-            else {
-                $enforced = Invoke-ClipboardEnforcement
-                [void](Show-EnforcementNotification -Title 'DLP: буфер обмена очищен' -Body $message)
-            }
+            $enforced = Invoke-ClipboardEnforcement
+            Show-EnforcementNotification -Title 'DLP: буфер обмена очищен' -Body $message
         }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'clipboard' -Data @{
@@ -522,13 +489,8 @@ function Evaluate-UsbRules {
 
         $enforced = $false
         if ($action -eq 'block') {
-            if ($script:HeadlessMode) {
-                Write-EndpointLog ("headless fallback: usb rule={0} requires block, skipped interactive enforcement drive={1}" -f $ruleId, $DriveLetter)
-            }
-            else {
-                $enforced = Invoke-UsbWriteBlockEnforcement -DriveLetter $DriveLetter
-                [void](Show-EnforcementNotification -Title 'DLP: USB заблокирован для записи' -Body $message)
-            }
+            $enforced = Invoke-UsbWriteBlockEnforcement -DriveLetter $DriveLetter
+            Show-EnforcementNotification -Title 'DLP: USB заблокирован для записи' -Body $message
         }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'usb_insert' -Data @{
@@ -572,13 +534,8 @@ function Evaluate-PrintRules {
 
         $enforced = $false
         if ($action -eq 'block') {
-            if ($script:HeadlessMode) {
-                Write-EndpointLog ("headless fallback: print rule={0} requires block, skipped interactive enforcement printer={1}" -f $ruleId, $PrinterName)
-            }
-            else {
-                $enforced = Invoke-PrintJobEnforcement -PrinterName $PrinterName -DocumentName $DocumentName -Owner $Owner
-                [void](Show-EnforcementNotification -Title 'DLP: печать заблокирована' -Body $message)
-            }
+            $enforced = Invoke-PrintJobEnforcement -PrinterName $PrinterName -DocumentName $DocumentName -Owner $Owner
+            Show-EnforcementNotification -Title 'DLP: печать заблокирована' -Body $message
         }
 
         Send-DlpIncidentHeartbeat -RuleId $ruleId -Action $action -Severity $severity -Message $message -SignalType 'print_job' -Data @{
@@ -595,35 +552,6 @@ function Test-LooksLikeMojibakeQuestionMarks {
     param([AllowNull()][string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
     return $Value -match '\?{2,}'
-}
-
-function Test-IsGenericDocumentName {
-    param([AllowNull()][string]$Value)
-    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
-    $generic = @(
-        '^\s*Печать документа\s*$',
-        '^\s*Print Document\s*$',
-        '^\s*Document\s*$',
-        '^\s*Документ\s*$',
-        '^\s*Remote Downlevel Document\s*$',
-        '^\s*Local Downlevel Document\s*$',
-        '^\s*Untitled\s*$',
-        '^\s*Без имени\s*$',
-        '^\s*Без названия\s*$'
-    )
-    foreach ($pattern in $generic) {
-        if ($Value -match $pattern) { return $true }
-    }
-    return $false
-}
-
-function Test-NeedsBetterDocumentName {
-    param([AllowNull()][string]$Value)
-    if ([string]::IsNullOrWhiteSpace($Value)) { return $true }
-    if (Test-LooksLikeMojibakeQuestionMarks -Value $Value) { return $true }
-    if (Test-IsGenericDocumentName -Value $Value) { return $true }
-    if ($Value -match '^[0-9]+$') { return $true }
-    return $false
 }
 
 function Normalize-OwnerForMatch {
@@ -712,7 +640,7 @@ function Get-PrintServiceDocumentFallback {
     )
 
     $preferred = [string]$EventSummary.DocumentName
-    if (-not (Test-NeedsBetterDocumentName -Value $preferred)) {
+    if (-not (Test-LooksLikeMojibakeQuestionMarks -Value $preferred) -and $preferred -notmatch '^[0-9]+$') {
         return $preferred
     }
 
@@ -725,10 +653,14 @@ function Get-PrintServiceDocumentFallback {
         if ($candidate -eq $preferred) { continue }
         if ($Owner -and $candidate -like "*$Owner*") { continue }
         if ($PrinterName -and $candidate -like "*$PrinterName*") { continue }
-        if (Test-NeedsBetterDocumentName -Value $candidate) { continue }
+        if (Test-LooksLikeMojibakeQuestionMarks -Value $candidate) { continue }
 
         if ($candidate -match '[\\/:]' -and $candidate -match '\.[A-Za-z0-9]{1,8}$') {
             $pathCandidates.Add($candidate)
+            continue
+        }
+
+        if ($candidate -match '^[0-9]+$') {
             continue
         }
 
@@ -830,7 +762,6 @@ function Get-BetterDocumentNameFromPrintServiceEvents {
         }
     }
     catch {
-        Write-EndpointLog ("printservice fallback failed: {0}" -f $_.Exception.Message)
     }
 
     return $null
@@ -862,21 +793,28 @@ $script:SeenPrintJob = @{}
 $script:SeenPrintEvent = @{}
 $script:LastClipboardHash = $null
 $script:PulseSeconds = [Math]::Max($resolvedPollSeconds * 3, 30)
+$script:SelfTestIntervalSeconds = [Math]::Max($resolvedPollSeconds * 10, 60)
+$script:LastSelfTestAt = [datetime]::MinValue
 $script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
 $script:LogPath = $resolvedLogPath
 $script:IncidentArtifactsRoot = $resolvedIncidentArtifactsRoot
 $script:IncidentScreenshotEnabled = $resolvedIncidentScreenshotEnabled
 $script:ScreenshotTypesLoaded = $false
-$script:HeadlessMode = ($env:SESSIONNAME -eq 'Service') -or (-not [Environment]::UserInteractive)
 
 Load-DlpPolicy -Path $resolvedPolicyPath
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
-if ($script:HeadlessMode) {
-    Write-EndpointLog "headless mode enabled: enforcement UI is disabled, incident heartbeat and logs only"
-}
 
 while ($true) {
     try {
+        $nowUtc = (Get-Date).ToUniversalTime()
+        if (($nowUtc - $script:LastSelfTestAt).TotalSeconds -ge $script:SelfTestIntervalSeconds) {
+            Send-EndpointSignalHeartbeat -SignalType 'self_test' -Data @{
+                collector = 'dlp-endpoint-signals'
+                policyEnabled = [bool]$script:Policy.defaults.enabled
+            }
+            $script:LastSelfTestAt = $nowUtc
+        }
+
         if (-not $script:Policy.defaults.enabled) {
             Start-Sleep -Seconds $resolvedPollSeconds
             continue
@@ -897,7 +835,6 @@ while ($true) {
             }
         }
         catch {
-            Write-EndpointLog ("clipboard poll failed: {0}" -f $_.Exception.Message)
         }
 
         try {
@@ -925,7 +862,6 @@ while ($true) {
             }
         }
         catch {
-            Write-EndpointLog ("usb poll failed: {0}" -f $_.Exception.Message)
         }
 
         try {
@@ -936,25 +872,16 @@ while ($true) {
                 if ($script:SeenPrintJob.ContainsKey($jobId)) { continue }
                 $script:SeenPrintJob[$jobId] = (Get-Date).ToUniversalTime()
 
-                $printerName = Normalize-PrinterForMatch -Value ([string]$job.Name)
+                $printerName = [string]$job.Name
                 $documentName = [string]$job.Document
                 $owner = [string]$job.Owner
                 $documentNameOriginal = $documentName
 
-                if (Test-NeedsBetterDocumentName -Value $documentName) {
+                if (Test-LooksLikeMojibakeQuestionMarks -Value $documentName) {
                     $eventDocumentName = Get-BetterDocumentNameFromPrintServiceEvents -Owner $owner -PrinterName $printerName
                     if ($eventDocumentName) {
                         $documentName = $eventDocumentName
                     }
-                }
-                $printDocumentNorm = if ($documentName) { [string]$documentName } else { '' }
-                $printSignalKey = ('{0}|{1}|{2}|{3}' -f
-                    (Normalize-PrinterForMatch -Value $printerName),
-                    (Normalize-OwnerForMatch -Value $owner),
-                    $printDocumentNorm.ToLowerInvariant(),
-                    'print_job')
-                if (-not (Should-EmitByCooldown -Fingerprint $printSignalKey -CooldownSeconds 90)) {
-                    continue
                 }
 
                 Send-EndpointSignalHeartbeat -SignalType 'print_job' -Data @{
@@ -962,7 +889,6 @@ while ($true) {
                     documentName = $documentName
                     documentNameOriginal = $documentNameOriginal
                     owner        = $owner
-                    eventSource  = 'win32_printjob'
                 }
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName $documentName -Owner $owner
             }
@@ -976,7 +902,6 @@ while ($true) {
             }
         }
         catch {
-            Write-EndpointLog ("printjob poll failed: {0}" -f $_.Exception.Message)
         }
 
         try {
@@ -1004,17 +929,6 @@ while ($true) {
                     continue
                 }
 
-                $effectiveDocument = if ($resolvedDocument) { [string]$resolvedDocument } else { [string]$documentName }
-                $printSignalKey = ('{0}|{1}|{2}|{3}' -f
-                    (Normalize-PrinterForMatch -Value $printerName),
-                    (Normalize-OwnerForMatch -Value $owner),
-                    $effectiveDocument.ToLowerInvariant(),
-                    'print_job')
-                if (-not (Should-EmitByCooldown -Fingerprint $printSignalKey -CooldownSeconds 90)) {
-                    Write-PrintServiceEventTrace -EventSummary $summary -Phase 'skip' -MatchReason 'dedupe-recent-printjob' -ResolvedDocument $resolvedDocument
-                    continue
-                }
-
                 Send-EndpointSignalHeartbeat -SignalType 'print_job' -Data @{
                     printerName  = $printerName
                     documentName = if ($resolvedDocument) { $resolvedDocument } else { $documentName }
@@ -1035,7 +949,6 @@ while ($true) {
             }
         }
         catch {
-            Write-EndpointLog ("printservice poll failed: {0}" -f $_.Exception.Message)
         }
     }
     catch {
