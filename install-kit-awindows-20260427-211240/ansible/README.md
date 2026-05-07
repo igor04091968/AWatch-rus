@@ -31,6 +31,15 @@ cd ansible
 ansible-playbook -i inventory.ini deploy_aw_server.yml
 ```
 
+## Секреты (пароли) безопасно
+
+Рекомендуемый способ не хранить пароли в репозитории — перед запуском экспортировать их в переменные окружения:
+
+- Linux `aw_server` (SSH пароль root): `AW_SSH_PASSWORD`
+- Windows `aw_windows` (WinRM пароль): `AW_WINRM_PASSWORD`
+
+В `group_vars/aw_server.yml` и `group_vars/windows.yml` они читаются через `lookup('env', ...)`.
+
 ## Полный установочный playbook (всё за один запуск)
 
 Если нужно прогнать полный цикл одной командой:
@@ -149,3 +158,13 @@ Playbook:
 - Для полного сценария CT создаётся автоматически через `pct create`.
 - На Windows/RDP host развёрнуты AFK/window watchers, browser domain collector, DLP endpoint collector и worktime session collector.
 - Проверочный JSON-отчёт Windows playbook должен иметь `overallOk=true`.
+
+## Prod rollout одной командой
+
+Для ручного запуска с dry-run и логированием используйте:
+
+```bash
+bash scripts/prod_rollout.sh
+```
+
+Скрипт попросит `AW_SSH_PASSWORD` и `AW_WINRM_PASSWORD` интерактивно (ввод скрыт) и сложит логи в `.rollout-logs/`.

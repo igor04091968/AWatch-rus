@@ -4,6 +4,7 @@ aw_server_bind_host: "0.0.0.0"
 aw_server_port: 5600
 aw_server_webui_dir: "/opt/activitywatch/webui-ru"
 aw_server_data_dir: "/var/lib/activitywatch"
+aw_server_db_path: "/var/lib/activitywatch/.local/share/activitywatch/aw-server-rust/sqlite.db"
 aw_server_log_dir: "/var/log/activitywatch"
 aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
@@ -12,9 +13,17 @@ aw_worktime_timezone: "Europe/Moscow"
 
 aw_repo_root: "{{ playbook_dir | dirname }}"
 
-# Опционально: применить базовые категории и views для рабочего времени через AW settings API.
-# Внимание: это перезаписывает существующие server-side settings/classes/views.
-aw_apply_worktime_settings: false
+# Применить базовые категории и views для рабочего времени через AW settings API.
+# При прод-обновлениях это нужно оставлять включённым, иначе UI остаётся без views/classes.
+aw_apply_worktime_settings: true
+
+# Дополнительные origin для aw-server-rust CORS.
+# Обязательно включите тот origin, с которого реально открывается Web UI.
+aw_server_cors_origins:
+  - "http://127.0.0.1:5600"
+  - "http://localhost:5600"
+  - "http://10.10.10.13:5600"
+  - "http://aw-server:5600"
 
 # Опциональные значения периода рабочего времени в Web UI.
 # startOfDay задаёт границу дня и стартовое время окна отчёта.
@@ -24,3 +33,5 @@ aw_apply_worktime_settings: false
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
+aw_server_always_active_pattern: "aw-watcher-window"
+aw_server_landingpage: "/activity/SHARKON2025/view/"
