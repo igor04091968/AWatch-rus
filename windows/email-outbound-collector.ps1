@@ -610,45 +610,65 @@ if ($useOutlook) {
 # Main loop
 # ---------------------------------------------------------------------------
 
-while ($true) {
-    try {
-        Flush-Wal
-        Write-CollectorHealth -Status 'running'
-        if (-not $script:Policy.defaults.enabled) {
-            Start-Sleep -Seconds $resolvedPollSeconds
-            continue
-        }
-
-        if ($useOutlook) {
-            if (-not $outlookReady) {
-                $outlookReady = Initialize-OutlookCom
+try {
+    while ($true) {
+        try {
+            Flush-Wal
+            Write-CollectorHealth -Status 'running'
+            if (-not $script:Policy.defaults.enabled) {
+                Start-Sleep -Seconds $resolvedPollSeconds
+                continue
             }
-            if ($outlookReady) {
+
+            if ($useOutlook) {
+                if (-not $outlookReady) {
+                    $outlookReady = Initialize-OutlookCom
+                }
+                if ($outlookReady) {
+                    try {
+                        Poll-OutlookSentItems
+                    }
+                    catch {
+                        Write-CollectorLog ("outlook poll error: {0}" -f $_.Exception.Message)
+                        $outlookReady = $false
+                        $script:OutlookApp = $null
+                        $script:OutlookNamespace = $null
+                        $script:SentFolder = $null
+                    }
+                }
+            }
+
+            if ($useSmtp) {
                 try {
-                    Poll-OutlookSentItems
+                    Poll-SmtpConnections
                 }
                 catch {
-                    Write-CollectorLog ("outlook poll error: {0}" -f $_.Exception.Message)
-                    $outlookReady = $false
-                    $script:OutlookApp = $null
-                    $script:OutlookNamespace = $null
-                    $script:SentFolder = $null
+                    Write-CollectorLog ("smtp poll error: {0}" -f $_.Exception.Message)
                 }
             }
         }
+        catch {
+            Write-CollectorLog ("collector error: {0}" -f $_.Exception.Message)
+        }
 
-        if ($useSmtp) {
-            try {
-                Poll-SmtpConnections
-            }
-            catch {
-                Write-CollectorLog ("smtp poll error: {0}" -f $_.Exception.Message)
-            }
+        Start-Sleep -Seconds $resolvedPollSeconds
+    }
+}
+finally {
+    Write-CollectorHealth -Status 'stopped'
+    try {
+        if ($null -ne $script:SentFolder) {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($script:SentFolder)
+            $script:SentFolder = $null
+        }
+        if ($null -ne $script:OutlookNamespace) {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($script:OutlookNamespace)
+            $script:OutlookNamespace = $null
+        }
+        if ($null -ne $script:OutlookApp) {
+            [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($script:OutlookApp)
+            $script:OutlookApp = $null
         }
     }
-    catch {
-        Write-CollectorLog ("collector error: {0}" -f $_.Exception.Message)
-    }
-
-    Start-Sleep -Seconds $resolvedPollSeconds
+    catch {}
 }
