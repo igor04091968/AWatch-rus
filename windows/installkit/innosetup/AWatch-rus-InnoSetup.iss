@@ -149,7 +149,8 @@ begin
     'Укажите сервер ActivityWatch (куда агенты будут отправлять данные).',
     'Если нужно, измените host/port. По умолчанию — наша конфигурация.'
   );
-  { Worktime CSV/JSON reports are served by aw-worktime-api on :5610 (AwDefaultWorktimeReportBase). }
+  { Worktime CSV/JSON reports are served by aw-worktime-api on :5610 (AwDefaultWorktimeReportBase).
+    Standard AW "Сегодня" is backed by server-side aw-worktime-ui-bridge timer on AW host. }
   ServerHostPage.Add('ServerHost', False);
   ServerHostPage.Add('ServerPort', False);
   ServerHostPage.Values[0] := '{#AwDefaultServerHost}';

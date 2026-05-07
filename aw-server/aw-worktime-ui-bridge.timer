@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW Worktime UI bridge every 30 seconds
+
+[Timer]
+OnBootSec=20s
+OnUnitActiveSec=30s
+Unit=aw-worktime-ui-bridge.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

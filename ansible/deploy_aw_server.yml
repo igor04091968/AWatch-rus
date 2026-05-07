@@ -316,6 +316,30 @@
             group: root
             mode: "0644"
 
+        - name: Установить скрипт AW worktime UI bridge
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-ui-bridge.py"
+            dest: /usr/local/bin/aw-worktime-ui-bridge.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить systemd unit AW worktime UI bridge
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-ui-bridge.service"
+            dest: /etc/systemd/system/aw-worktime-ui-bridge.service
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить systemd timer AW worktime UI bridge
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-ui-bridge.timer"
+            dest: /etc/systemd/system/aw-worktime-ui-bridge.timer
+            owner: root
+            group: root
+            mode: "0644"
+
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
             daemon_reload: true
@@ -325,6 +349,25 @@
             name: aw-worktime-api.service
             enabled: true
             state: restarted
+
+        - name: Отключить legacy timer aw-worktime-afk-bridge (если есть)
+          ansible.builtin.systemd:
+            name: aw-worktime-afk-bridge.timer
+            enabled: false
+            state: stopped
+          failed_when: false
+
+        - name: Включить и перезапустить AW worktime UI bridge timer
+          ansible.builtin.systemd:
+            name: aw-worktime-ui-bridge.timer
+            enabled: true
+            state: restarted
+
+        - name: Выполнить разовый прогон AW worktime UI bridge
+          ansible.builtin.systemd:
+            name: aw-worktime-ui-bridge.service
+            state: started
+          failed_when: false
 
         - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
           ansible.builtin.command:
