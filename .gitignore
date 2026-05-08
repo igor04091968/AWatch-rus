@@ -14,3 +14,12 @@ windows/*.report.json
 .vscode/
 
 __pycache__/
+
+# Graphify analysis artifacts
+.graphify_*.json
+.graphify_*.txt
+.graphify_python/
+graphify-out/cache/
+.planning/
+.pssa_run.ps1
+data/
