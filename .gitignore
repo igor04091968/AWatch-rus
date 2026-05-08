@@ -1,51 +1,67 @@
-```
-# Dependencies
-node_modules/
-package-lock.json
-
-# Logs and temp files
-*.log
+# PowerShell/Windows specific
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+System Volume Information/
 *.tmp
+*.log
 
-# Environment
+# Environment variables
 .env
 .env.local
 *.env.*
 
-# Editors
+# IDE/Editor files
 .vscode/
 .idea/
+*.swp
+*.swo
 
-# Python
+# Dependencies and build artifacts
+node_modules/
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Build directories
+*.class
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
 dist/
 build/
-*.egg-info/
-
-# Coverage
+target/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
 .coverage
 coverage/
 htmlcov/
-.nyc_output/
+.gradle/
 
-# Testing
-.pytest_cache/
-.mypy_cache/
-.tox/
-.hypothesis/
-
-# OS generated files
+# System files
 .DS_Store
-Thumbs.db
-```
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
