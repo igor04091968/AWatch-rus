@@ -48,6 +48,16 @@ function Get-DeploymentConfig {
     return $null
 }
 
+function Invoke-AwJsonPost {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Json
+    )
+
+    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
+    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+}
+
 $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
 $resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig) { [string]$deploymentConfig.server.host } else { throw 'ServerHost is required.' }
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
@@ -541,7 +551,7 @@ function Send-DlpIncidentHeartbeat {
         } + $captureData
     } | ConvertTo-Json -Depth 5 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
 }
 
 function Get-FileSha256Hex {
@@ -707,7 +717,7 @@ function Ensure-Bucket {
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId" -ContentType 'application/json' -Body $body | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
     $script:KnownBuckets[$BucketId] = $true
 }
 
@@ -733,7 +743,7 @@ function Send-Heartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
 }
 
 function Send-CategoryHeartbeat {
@@ -770,7 +780,7 @@ function Send-CategoryHeartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
 }
 
 Load-CustomCategoryRules -Path $resolvedRulesPath
