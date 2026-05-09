@@ -21,6 +21,31 @@ def pts(s):
     return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
+def _is_machine_user(user: str) -> bool:
+    u = (user or "").strip().lower()
+    return u.endswith("$") or u in {"system", "localservice", "networkservice"}
+
+
+def _is_active_sample(data: dict) -> bool:
+    state = str(data.get("state") or "").strip().lower()
+    if isinstance(data.get("active"), bool):
+        if data.get("active"):
+            return True
+    if ("актив" in state) or (state == "active"):
+        return True
+    # query user can intermittently return "Unknown" on RDP hosts; if session id is valid
+    # and user is not a machine/service account, treat it as activity sample.
+    if state == "unknown":
+        try:
+            sid = int(data.get("sessionId"))
+        except Exception:
+            sid = -1
+        user = str(data.get("username") or "").strip()
+        if sid > 0 and user and (not _is_machine_user(user)):
+            return True
+    return False
+
+
 def report_today():
     now_local = datetime.now(REPORT_TZ)
     start_local = datetime(now_local.year, now_local.month, now_local.day, tzinfo=REPORT_TZ)
@@ -41,8 +66,7 @@ def report_today():
         user = (d.get("username") or "").strip()
         if not user:
             continue
-        state = (d.get("state") or "").lower()
-        active = ("актив" in state) or (state == "active")
+        active = _is_active_sample(d)
         row = by.setdefault(user, {"active": set(), "first": None, "last": None, "rows": 0})
         row["rows"] += 1
         if active:
