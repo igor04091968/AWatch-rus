@@ -105,7 +105,9 @@ Playbook:
 - если найден legacy config `C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`, выполняет безопасную миграцию через `migrate-awatch-rus-paths.ps1`: backup, остановка задач, перенос данных, переписывание путей, пересоздание scheduled tasks и validation;
 - выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с policy/rules из AWatch-rus toolkit;
 - после deploy принудительно запускает `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи;
-- выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие `not-afk` события;
+- включает (`Enable-ScheduledTask`) `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи перед запуском (иначе WebUI может показывать `Active time: 0s`);
+- выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие события;
+- выполняет API smoke-check bucket `aw-watcher-window_<COMPUTERNAME>` и ожидает свежие события (по умолчанию включено);
 - запускает `validate-deployment.ps1`;
 - забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation` по умолчанию).
 
@@ -125,6 +127,9 @@ Playbook:
 - `aw_windows_migration_report_remote_path` — JSON-отчёт о миграции на Windows-хосте;
 - `aw_windows_package_version`, `aw_windows_package_url`, `aw_windows_package_zip_path` — версия и источник Windows-пакета ActivityWatch;
 - `aw_windows_api_smoke_check_bucket: ""` — автоматически использовать `aw-watcher-afk_<COMPUTERNAME>`;
+- `aw_windows_api_smoke_check_window_enabled: true` — включить дополнительный smoke-check `aw-watcher-window_<COMPUTERNAME>`;
+- `aw_windows_api_smoke_check_window_bucket: ""` — переопределить bucket для window smoke-check;
+- `aw_windows_api_smoke_check_min_events: 1` — минимум событий, ожидаемых в smoke-check;
 - `aw_windows_fail_on_validation_error: true` — завершать playbook ошибкой, если `validate-deployment.ps1` возвращает `overallOk=false`;
 - `aw_windows_skip_hardening: true` — пропустить `hardening-recovery.ps1` внутри ensemble-скрипта.
 
