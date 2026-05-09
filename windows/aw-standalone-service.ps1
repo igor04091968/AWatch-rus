@@ -69,15 +69,40 @@ while ($true) {
     try {
         $cfg = Get-Config -Path $ConfigPath
         $paths = $cfg.paths
+        $collectors = $cfg.collectors
+        $isSession0 = ([System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0)
 
-        Start-CollectorIfNeeded -ScriptPath ([string]$paths.collectorScript) -ConfigPath $ConfigPath
+        # In Session 0 (SYSTEM) many collectors that rely on interactive user context (browsers, Outlook)
+        # will crash/exit immediately. Default to starting only collectors that can run headless.
+        $startBrowser = $true
+        $startFileOps = $true
+        $startEmail   = $true
+        $startWorktime = $true
+        if ($collectors) {
+            if ($collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { $startFileOps = [bool]$collectors.fileOpsEnabled }
+            if ($collectors.PSObject.Properties.Name -contains 'emailEnabled')   { $startEmail   = [bool]$collectors.emailEnabled }
+        }
+        if ($isSession0) {
+            $startBrowser = $false
+            $startEmail = $false
+        }
+
+        if ($startBrowser) {
+            Start-CollectorIfNeeded -ScriptPath ([string]$paths.collectorScript) -ConfigPath $ConfigPath
+        }
         Start-CollectorIfNeeded -ScriptPath ([string]$paths.endpointCollectorScript) -ConfigPath $ConfigPath
-        Start-CollectorIfNeeded -ScriptPath ([string]$paths.fileCollectorScript) -ConfigPath $ConfigPath
+        if ($startFileOps) {
+            Start-CollectorIfNeeded -ScriptPath ([string]$paths.fileCollectorScript) -ConfigPath $ConfigPath
+        }
         if ($paths.PSObject.Properties.Name -contains 'emailCollectorScript') {
-            Start-CollectorIfNeeded -ScriptPath ([string]$paths.emailCollectorScript) -ConfigPath $ConfigPath
+            if ($startEmail) {
+                Start-CollectorIfNeeded -ScriptPath ([string]$paths.emailCollectorScript) -ConfigPath $ConfigPath
+            }
         }
         if ($paths.PSObject.Properties.Name -contains 'sessionCollectorScript') {
-            Start-CollectorIfNeeded -ScriptPath ([string]$paths.sessionCollectorScript) -ConfigPath $ConfigPath
+            if ($startWorktime) {
+                Start-CollectorIfNeeded -ScriptPath ([string]$paths.sessionCollectorScript) -ConfigPath $ConfigPath
+            }
         }
     }
     catch {
@@ -85,4 +110,3 @@ while ($true) {
     }
     Start-Sleep -Seconds ([Math]::Max($LoopSeconds, 5))
 }
-

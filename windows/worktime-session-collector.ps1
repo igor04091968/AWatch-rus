@@ -58,7 +58,15 @@ function Get-Config {
     }
     try {
         $bytes = [System.IO.File]::ReadAllBytes($Path)
-        $text = Decode-Bytes-Auto -Bytes $bytes
+        # Config is JSON. Prefer deterministic BOM-based decoding over heuristics.
+        if ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+            $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+        } elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+            $text = [System.Text.Encoding]::Unicode.GetString($bytes)
+        } else {
+            $text = [System.Text.Encoding]::UTF8.GetString($bytes)
+        }
+        $text = $text -replace '^\uFEFF', ''
         return $text | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
@@ -137,7 +145,9 @@ function Parse-SessionLines {
     if (-not $Lines) { return $records }
 
     $startIndex = 0
-    if ($Lines.Count -gt 0 -and $Lines[0] -match '\b(USERNAME|Имя|Имя пользователя|Имя_пользователя)\b') { $startIndex = 1 }
+    # NOTE: Keep this script ASCII-only to stay compatible with Windows PowerShell 5
+    # when the file is UTF-8 without BOM. Avoid Cyrillic literals in regex patterns.
+    if ($Lines.Count -gt 0 -and $Lines[0] -match '\b(USERNAME|UserName|USER)\b') { $startIndex = 1 }
 
     for ($i = $startIndex; $i -lt $Lines.Count; $i++) {
         $line = $Lines[$i].Trim()
@@ -163,7 +173,9 @@ function Test-SessionIsActive {
     param([string]$State)
     if (-not $State) { return $false }
     $s = $State.Trim().ToLowerInvariant()
-    return ($s -match 'active') -or ($s -match 'актив')
+    # Match English "active" and Russian "актив*" without embedding Cyrillic.
+    # "актив" = \u0430\u043A\u0442\u0438\u0432
+    return ($s -match 'active') -or ($s -match '\u0430\u043a\u0442\u0438\u0432')
 }
 
 # Main

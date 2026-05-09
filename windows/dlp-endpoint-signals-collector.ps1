@@ -13,6 +13,13 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Ensure HttpClient is available (Windows PowerShell 5 may not auto-load it)
+try {
+    Add-Type -AssemblyName System.Net.Http
+}
+catch {
+}
+
 function Get-DeploymentConfig {
     param([string]$Path)
     if ($Path -and (Test-Path -LiteralPath $Path)) {
@@ -39,8 +46,54 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Json
     )
 
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes -TimeoutSec 15 -DisableKeepAlive | Out-Null
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)
+        $req = [System.Net.HttpWebRequest]::Create($Uri)
+        $req.Method = 'POST'
+        $req.ContentType = 'application/json'
+        $req.Accept = 'application/json'
+        $req.KeepAlive = $false
+        $req.Timeout = 15000
+        $req.ReadWriteTimeout = 15000
+        $req.ContentLength = $bytes.Length
+
+        $stream = $req.GetRequestStream()
+        try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Close() }
+
+        $resp = $req.GetResponse()
+        try {
+            # read body for debugging, but discard on success
+            $rs = $resp.GetResponseStream()
+            if ($rs) { $sr = New-Object System.IO.StreamReader($rs); $null = $sr.ReadToEnd(); $sr.Close() }
+        } finally {
+            $resp.Close()
+        }
+        return
+    }
+    catch [System.Net.WebException] {
+        $status = $null
+        $body = ''
+        try {
+            if ($_.Exception.Response) {
+                try { $status = [int]$_.Exception.Response.StatusCode } catch {}
+                $rs = $_.Exception.Response.GetResponseStream()
+                if ($rs) { $sr = New-Object System.IO.StreamReader($rs); $body = $sr.ReadToEnd(); $sr.Close() }
+            }
+        } catch {}
+
+        # aw-server-rust may return 304 for idempotent bucket create. Treat it as OK.
+        if ($status -eq 304) {
+            Write-EndpointLog ("POST bucket exists (304): uri={0}" -f $Uri)
+            return
+        }
+
+        Write-EndpointLog ("POST failed: uri={0} status={1} err={2} body={3}" -f $Uri, $status, $_.Exception.Message, $body)
+        throw
+    }
+    catch {
+        Write-EndpointLog ("POST error: uri={0} err={1}" -f $Uri, $_.Exception.Message)
+        throw
+    }
 }
 
 function Ensure-Bucket {
@@ -54,13 +107,39 @@ function Ensure-Bucket {
         return
     }
 
+    if ($script:KnownBuckets.ContainsKey($BucketId)) {
+        return
+    }
+
+    # Fast-path: if bucket already exists, don't POST.
+    try {
+        Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" -TimeoutSec 10 -DisableKeepAlive -ErrorAction Stop | Out-Null
+        Write-EndpointLog ("bucket ok (GET): {0}" -f $BucketId)
+        $script:KnownBuckets[$BucketId] = $true
+        return
+    }
+    catch {
+        Write-EndpointLog ("bucket GET failed: {0} err={1}" -f $BucketId, $_.Exception.Message)
+    }
+
     $body = @{
         client   = $ClientName
         type     = $BucketType
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
+    try {
+        Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
+    }
+    catch {
+        # If create failed (race), verify it exists now.
+        try {
+            Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" -TimeoutSec 10 -DisableKeepAlive | Out-Null
+        }
+        catch {
+            throw
+        }
+    }
     $script:KnownBuckets[$BucketId] = $true
 }
 
@@ -333,11 +412,17 @@ function Get-ClipboardTextSafe {
         Write-EndpointLog ("clipboard direct read failed: {0}" -f $_.Exception.Message)
     }
 
+    # Clipboard is not reliably accessible from Session 0 (SYSTEM). Avoid noisy thread hacks there.
+    if ($script:SessionId -eq 0) {
+        return $null
+    }
+
     # Fallback: read clipboard in a dedicated STA thread for RDP/user-session edge cases.
     try {
         Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue | Out-Null
         $result = [string]::Empty
-        $thread = [System.Threading.Thread]{
+        $script:__aw_clip = $null
+        $threadStart = [System.Threading.ThreadStart]{
             try {
                 $script:__aw_clip = [System.Windows.Forms.Clipboard]::GetText()
             }
@@ -345,10 +430,13 @@ function Get-ClipboardTextSafe {
                 $script:__aw_clip = $null
             }
         }
+        $thread = New-Object System.Threading.Thread($threadStart)
         $thread.SetApartmentState([System.Threading.ApartmentState]::STA)
         $thread.Start()
         $thread.Join(3000) | Out-Null
-        if ($thread.IsAlive) { $thread.Abort() }
+        if ($thread.IsAlive) {
+            try { $thread.Abort() } catch {}
+        }
         $result = [string]$script:__aw_clip
         Remove-Variable -Name __aw_clip -Scope Script -ErrorAction SilentlyContinue
         return $result
@@ -391,9 +479,11 @@ function Load-DlpPolicy {
         }
 
         if ($raw.endpoint) {
-            if ($raw.endpoint.clipboard) { $script:Policy.endpoint.clipboard = @($raw.endpoint.clipboard) }
-            if ($raw.endpoint.usb) { $script:Policy.endpoint.usb = @($raw.endpoint.usb) }
-            if ($raw.endpoint.print) { $script:Policy.endpoint.print = @($raw.endpoint.print) }
+            $props = @()
+            try { $props = @($raw.endpoint.PSObject.Properties.Name) } catch { $props = @() }
+            if ($props -contains 'clipboard' -and $raw.endpoint.clipboard) { $script:Policy.endpoint.clipboard = @($raw.endpoint.clipboard) }
+            if ($props -contains 'usb' -and $raw.endpoint.usb) { $script:Policy.endpoint.usb = @($raw.endpoint.usb) }
+            if ($props -contains 'print' -and $raw.endpoint.print) { $script:Policy.endpoint.print = @($raw.endpoint.print) }
         }
     }
     catch {
