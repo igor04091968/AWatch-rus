@@ -285,11 +285,17 @@
         url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
         status_code: 200
+        return_content: true
       register: aw_windows_api_smoke_result
-      until: (aw_windows_api_smoke_result.json | length) >= aw_windows_api_smoke_check_min_events
+      failed_when: false
+      until: >-
+        (aw_windows_api_smoke_result.status | default(0)) == 200
+        and ((aw_windows_api_smoke_result.json | default([])) | length) >= aw_windows_api_smoke_check_min_events
       retries: 12
       delay: 5
       ignore_errors: "{{ (not aw_windows_fail_on_validation_error | bool) }}"
+      delegate_to: localhost
+      changed_when: false
 
     - name: Выполнить AW API smoke-check (Window bucket должен получать события)
       when:
@@ -300,11 +306,17 @@
         url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_window_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
         status_code: 200
+        return_content: true
       register: aw_windows_api_smoke_window_result
-      until: (aw_windows_api_smoke_window_result.json | length) >= aw_windows_api_smoke_check_min_events
+      failed_when: false
+      until: >-
+        (aw_windows_api_smoke_window_result.status | default(0)) == 200
+        and ((aw_windows_api_smoke_window_result.json | default([])) | length) >= aw_windows_api_smoke_check_min_events
       retries: 12
       delay: 5
       ignore_errors: "{{ (not aw_windows_fail_on_validation_error | bool) }}"
+      delegate_to: localhost
+      changed_when: false
 
     - name: Валидировать развёртывание на эндпоинте
       ansible.windows.win_powershell:

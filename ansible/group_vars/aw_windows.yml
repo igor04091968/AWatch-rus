@@ -42,7 +42,7 @@ aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rule
 aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
 
 aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
-aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
 aw_windows_fail_on_validation_error: true
 
 aw_windows_migration_enabled: false
