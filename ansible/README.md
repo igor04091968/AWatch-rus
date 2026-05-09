@@ -99,6 +99,15 @@ cd ansible
 AW_WINRM_PASSWORD='...' bash ./run_deploy_aw_windows.sh
 ```
 
+`run_deploy_aw_windows.sh` автоматически:
+- очищает proxy env (`http_proxy/https_proxy/...`), чтобы WinRM не уходил в локальный прокси;
+- включает OpenSSL legacy provider, если на хосте отключён `MD4` (нужно для NTLM в pywinrm).
+- перезапускает `ansible-playbook` при временных WinRM/NTLM сбоях (по умолчанию 5 попыток, пауза 30 сек).
+
+Параметры retry:
+- `AW_DEPLOY_RETRIES` (по умолчанию `5`);
+- `AW_DEPLOY_RETRY_DELAY_SEC` (по умолчанию `30`).
+
 Playbook:
 
 - выгружает полный `windows/*` toolkit на целевой хост в InnoSetup-compatible каталог `C:\Program Files\AWatch-rus\windows`, включая DLP и `worktime-session-collector.ps1`;

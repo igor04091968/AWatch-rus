@@ -4,6 +4,8 @@
   gather_facts: false
 
   vars:
+    ansible_winrm_operation_timeout_sec: 120
+    ansible_winrm_read_timeout_sec: 180
     aw_windows_repo_root: "{{ playbook_dir | dirname }}"
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
     aw_windows_server_scheme: "http"
