@@ -84,7 +84,8 @@ def build_window_title(users, active_count):
 
 def _is_session_active(row_data):
     if isinstance(row_data.get("active"), bool):
-        return row_data.get("active")
+        if row_data.get("active"):
+            return True
     state = str(row_data.get("state", "")).strip().lower()
     if state in {"active", "активно"}:
         return True
