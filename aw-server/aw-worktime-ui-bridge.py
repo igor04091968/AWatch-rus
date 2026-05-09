@@ -86,7 +86,18 @@ def _is_session_active(row_data):
     if isinstance(row_data.get("active"), bool):
         return row_data.get("active")
     state = str(row_data.get("state", "")).strip().lower()
-    return state in {"active", "активно"}
+    if state in {"active", "активно"}:
+        return True
+    # query user can intermittently return Unknown on RDP hosts.
+    if state == "unknown":
+        try:
+            sid = int(row_data.get("sessionId"))
+        except Exception:
+            sid = -1
+        user = str(row_data.get("username", "")).strip().lower()
+        if sid > 0 and user and (not user.endswith("$")):
+            return True
+    return False
 
 
 def transform(events):
