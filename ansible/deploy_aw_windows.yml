@@ -37,7 +37,7 @@
     aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
     aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
     aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
-    aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+    aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
     aw_windows_launch_task_pattern: "ActivityWatch Launch *"
     aw_windows_recovery_task_name: "ActivityWatch Recovery"
     aw_windows_force_task_restart: true

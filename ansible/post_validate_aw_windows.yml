@@ -7,7 +7,7 @@
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
     aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
     aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
-    aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+    aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
     aw_windows_server_scheme: "http"
     aw_windows_server_host: "10.10.10.13"
     aw_windows_server_port: 5600

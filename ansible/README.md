@@ -118,7 +118,7 @@ Playbook:
 - выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие события;
 - выполняет API smoke-check bucket `aw-watcher-window_<COMPUTERNAME>` и ожидает свежие события (по умолчанию включено);
 - запускает `validate-deployment.ps1`;
-- забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation` по умолчанию).
+- забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation-<USER>` по умолчанию).
 
 Дополнительные флаги:
 
