@@ -110,7 +110,12 @@ function Ensure-Bucket {
 }
 
 function Run-QueryUser {
-    $tries = @(@{File='quser';Args=''},@{File='query';Args='user'})
+    $tries = @(
+        @{File='cmd.exe';Args='/c query user'},
+        @{File='cmd.exe';Args='/c quser'},
+        @{File='query.exe';Args='user'},
+        @{File='quser.exe';Args=''}
+    )
     foreach ($t in $tries) {
         try {
             $psi = New-Object System.Diagnostics.ProcessStartInfo
@@ -126,7 +131,10 @@ function Run-QueryUser {
             $ms = New-Object System.IO.MemoryStream
             $buffer = New-Object byte[] 4096
             while (($read = $stream.Read($buffer,0,$buffer.Length)) -gt 0) { $ms.Write($buffer,0,$read) }
-            $proc.WaitForExit()
+            if (-not $proc.WaitForExit(8000)) {
+                try { $proc.Kill() } catch {}
+                continue
+            }
             $bytes = $ms.ToArray()
 
             $text = Decode-Bytes-Auto -Bytes $bytes
@@ -201,7 +209,8 @@ while ($true) {
     }
 
     if (-not $records -or $records.Count -eq 0) {
-        $records = @([pscustomobject]@{ username=$env:USERNAME; sessionName=''; sessionId=(Get-Process -Id $PID).SessionId; state='Unknown' })
+        Start-Sleep -Seconds $sleepSec
+        continue
     }
 
     foreach ($rec in $records) {
