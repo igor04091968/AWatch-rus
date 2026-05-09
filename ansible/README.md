@@ -96,7 +96,7 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 
 ```bash
 cd ansible
-ansible-playbook -i inventory.ini deploy_aw_windows.yml
+AW_WINRM_PASSWORD='...' bash ./run_deploy_aw_windows.sh
 ```
 
 Playbook:
