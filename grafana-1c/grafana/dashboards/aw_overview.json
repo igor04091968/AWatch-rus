@@ -1,121 +1,209 @@
 {
-  "dashboard": {
-    "title": "ActivityWatch Overview",
-    "tags": ["activitywatch", "monitoring"],
-    "timezone": "browser",
-    "panels": [
-      {
-        "id": 1,
-        "title": "Total Buckets",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "aw_buckets_total",
-            "refId": "A",
-            "legendFormat": "Total Buckets"
-          }
-        ],
-        "options": {
-          "colorMode": "value",
-          "graphMode": "area"
-        },
-        "fieldConfig": {
-          "defaults": {
-            "unit": "short",
-            "min": 0
+  "title": "ActivityWatch Overview",
+  "tags": [
+    "activitywatch",
+    "monitoring"
+  ],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Buckets",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "aw_buckets_total",
+          "refId": "A",
+          "legendFormat": "Total Buckets",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
           }
         }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area"
       },
-      {
-        "id": 2,
-        "title": "Events per Bucket",
-        "type": "table",
-        "targets": [
-          {
-            "expr": "aw_bucket_events_count",
-            "format": "table",
-            "instant": true,
-            "refId": "B"
-          }
-        ],
-        "transformations": [
-          {
-            "id": "organize",
-            "options": {
-              "excludeByName": {
-                "Time": true,
-                "Value": true
-              }
-            }
-          }
-        ]
-      },
-      {
-        "id": 3,
-        "title": "Collector Status",
-        "type": "stat",
-        "targets": [
-          {
-            "expr": "aw_collector_status",
-            "format": "table",
-            "instant": true,
-            "refId": "C"
-          }
-        ],
-        "options": {
-          "colorMode": "value"
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0
         }
       },
-      {
-        "id": 4,
-        "title": "Events Timeline",
-        "type": "graph",
-        "targets": [
-          {
-            "expr": "rate(aw_events_total[5m])",
-            "legendFormat": "{{bucket}} - {{event_type}}",
-            "refId": "D"
-          }
-        ],
-        "fieldConfig": {
-          "defaults": {
-            "custom": {
-              "lineWidth": 2,
-              "fillOpacity": 10
-            }
-          }
-        }
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
       },
-      {
-        "id": 5,
-        "title": "Last Event Timestamp",
-        "type": "gauge",
-        "targets": [
-          {
-            "expr": "aw_events_last_timestamp",
-            "legendFormat": "{{bucket}}",
-            "refId": "E"
-          }
-        ],
-        "options": {
-          "orientation": "horizontal"
-        },
-        "fieldConfig": {
-          "defaults": {
-            "unit": "s",
-            "custom": {
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {"color": "red", "value": 0},
-                  {"color": "yellow", "value": 3600},
-                  {"color": "green", "value": 86400}
-                ]
-              }
-            }
-          }
-        }
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 0,
+        "y": 0
       }
-    ]
+    },
+    {
+      "id": 2,
+      "title": "Events per Bucket",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "aw_bucket_events_count",
+          "format": "table",
+          "instant": true,
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true
+            }
+          }
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 6,
+        "y": 0
+      }
+    },
+    {
+      "id": 3,
+      "title": "Collector Status",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "aw_collector_status",
+          "format": "table",
+          "instant": true,
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "colorMode": "value"
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      }
+    },
+    {
+      "id": 4,
+      "title": "Events Timeline",
+      "type": "graph",
+      "targets": [
+        {
+          "expr": "rate(aw_events_total[5m])",
+          "legendFormat": "{{bucket}} - {{event_type}}",
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      }
+    },
+    {
+      "id": 5,
+      "title": "Last Event Timestamp",
+      "type": "gauge",
+      "targets": [
+        {
+          "expr": "aw_events_last_timestamp",
+          "legendFormat": "{{bucket}}",
+          "refId": "E",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          }
+        }
+      ],
+      "options": {
+        "orientation": "horizontal"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "red",
+                  "value": 0
+                },
+                {
+                  "color": "yellow",
+                  "value": 3600
+                },
+                {
+                  "color": "green",
+                  "value": 86400
+                }
+              ]
+            }
+          }
+        }
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      }
+    }
+  ],
+  "uid": "activitywatch-overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
   }
 }

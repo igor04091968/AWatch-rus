@@ -1,20 +1,11 @@
 apiVersion: 1
 
 providers:
-  - name: 1C-Buhgalteria
+  - name: awatch-rus
     orgId: 1
-    folder: "1C"
+    folder: "AWatch-rus"
     type: file
     disableDeletion: true
     editable: false
-    options:
-      path: /var/lib/grafana/dashboards
-
-  - name: ActivityWatch
-    orgId: 2
-    folder: "ActivityWatch"
-    type: file
-    disableDeletion: false
-    editable: true
     options:
       path: /var/lib/grafana/dashboards

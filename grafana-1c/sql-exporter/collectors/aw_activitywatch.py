@@ -4,139 +4,138 @@ ActivityWatch Prometheus Exporter
 Собирает метрики из ActivityWatch API и экспонирует их в формате Prometheus.
 """
 
-import time
 import logging
+import os
+import time
+from datetime import datetime
+
 import requests
-from prometheus_client import start_http_server, Gauge, Counter, Histogram, Info
-from datetime import datetime, timedelta
+from prometheus_client import Counter, Gauge, Info, start_http_server
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
-AW_SERVER_HOST = "10.10.10.13"
-AW_SERVER_PORT = 5600
-AW_SERVER_SCHEME = "http"
-AW_API_BASE = f"{AW_SERVER_SCHEME}://{AW_SERVER_HOST}:{AW_SERVER_PORT}/api/0"
-EXPORTER_PORT = 9398
+AW_SERVER_HOST = os.getenv("AW_SERVER_HOST", "10.10.10.13")
+AW_SERVER_PORT = int(os.getenv("AW_SERVER_PORT", "5600"))
+AW_SERVER_SCHEME = os.getenv("AW_SERVER_SCHEME", "http")
+AW_API_BASE = os.getenv(
+    "AW_API_BASE",
+    f"{AW_SERVER_SCHEME}://{AW_SERVER_HOST}:{AW_SERVER_PORT}/api/0",
+)
+EXPORTER_PORT = int(os.getenv("EXPORTER_PORT", "9398"))
+SCRAPE_INTERVAL_SECONDS = int(os.getenv("SCRAPE_INTERVAL_SECONDS", "30"))
 
 # Metrics
-aw_buckets_total = Gauge('aw_buckets_total', 'Total number of ActivityWatch buckets')
-aw_events_total = Counter('aw_events_total', 'Total number of ActivityWatch events', ['bucket', 'event_type'])
-aw_events_last_timestamp = Gauge('aw_events_last_timestamp', 'Timestamp of last event in bucket', ['bucket'])
-aw_bucket_events_count = Gauge('aw_bucket_events_count', 'Number of events in bucket', ['bucket'])
-aw_collector_status = Info('aw_collector_status', 'Status of ActivityWatch collectors')
-aw_server_info = Info('aw_server_info', 'ActivityWatch server information')
+aw_up = Gauge("aw_up", "ActivityWatch API availability: 1 if the last scrape succeeded, 0 otherwise")
+aw_buckets_total = Gauge("aw_buckets_total", "Total number of ActivityWatch buckets")
+aw_events_total = Counter("aw_events_total", "Total number of ActivityWatch events observed", ["bucket", "event_type"])
+aw_events_last_timestamp = Gauge("aw_events_last_timestamp", "Timestamp of last event in bucket", ["bucket"])
+aw_bucket_events_count = Gauge("aw_bucket_events_count", "Number of events sampled from bucket", ["bucket"])
+aw_collector_status = Gauge(
+    "aw_collector_status",
+    "ActivityWatch bucket collector status: 1 if bucket was observed during the last scrape",
+    ["bucket", "client", "hostname", "type"],
+)
+aw_server_info = Info("aw_server", "ActivityWatch server information")
+
 
 class ActivityWatchExporter:
     def __init__(self, api_base):
-        self.api_base = api_base
+        self.api_base = api_base.rstrip("/")
         self.session = requests.Session()
-        self.session.headers.update({'Accept': 'application/json'})
-        self.bucket_cache = {}
-        
+        self.session.headers.update({"Accept": "application/json"})
+        self.bucket_event_counts = {}
+
     def get_buckets(self):
         """Get all buckets from ActivityWatch API."""
-        try:
-            response = self.session.get(f"{self.api_base}/buckets", timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Failed to get buckets: {e}")
-            return {}
-    
-    def get_bucket_events(self, bucket_id, limit=1):
+        response = self.session.get(f"{self.api_base}/buckets", timeout=10)
+        response.raise_for_status()
+        return response.json()
+
+    def get_bucket_events(self, bucket_id, limit=1000):
         """Get events from a specific bucket."""
-        try:
-            response = self.session.get(
-                f"{self.api_base}/buckets/{bucket_id}/events",
-                params={'limit': limit},
-                timeout=10
-            )
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Failed to get events for {bucket_id}: {e}")
-            return []
-    
-    def get_bucket_info(self, bucket_id):
-        """Get detailed info about a bucket."""
-        try:
-            response = self.session.get(f"{self.api_base}/buckets/{bucket_id}", timeout=10)
-            response.raise_for_status()
-            return response.json()
-        except Exception as e:
-            logger.error(f"Failed to get info for {bucket_id}: {e}")
-            return {}
-    
+        response = self.session.get(
+            f"{self.api_base}/buckets/{bucket_id}/events",
+            params={"limit": limit},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    @staticmethod
+    def event_type(event):
+        data = event.get("data") or {}
+        return str(data.get("app") or data.get("title") or event.get("$schema") or "unknown")
+
+    @staticmethod
+    def event_timestamp(event):
+        timestamp = event.get("timestamp", 0)
+        if isinstance(timestamp, str):
+            return datetime.fromisoformat(timestamp.replace("Z", "+00:00")).timestamp()
+        return float(timestamp or 0)
+
     def collect_metrics(self):
         """Collect metrics from ActivityWatch."""
-        buckets = self.get_buckets()
-        
-        # Update bucket count
+        try:
+            buckets = self.get_buckets()
+            aw_up.set(1)
+        except Exception as exc:
+            logger.error("Failed to get buckets: %s", exc)
+            aw_up.set(0)
+            return
+
         aw_buckets_total.set(len(buckets))
-        
-        # Server info
-        aw_server_info.info({
-            'host': AW_SERVER_HOST,
-            'port': AW_SERVER_PORT,
-            'scheme': AW_SERVER_SCHEME,
-            'api_base': self.api_base
-        })
-        
-        # Collector status
-        collectors = {}
+        aw_server_info.info(
+            {
+                "host": AW_SERVER_HOST,
+                "port": str(AW_SERVER_PORT),
+                "scheme": AW_SERVER_SCHEME,
+                "api_base": self.api_base,
+            }
+        )
+
+        aw_collector_status.clear()
         for bucket_id, bucket_data in buckets.items():
-            client = bucket_data.get('client', 'unknown')
-            hostname = bucket_data.get('hostname', 'unknown')
-            bucket_type = bucket_data.get('type', 'unknown')
-            
-            # Count events
-            events = self.get_bucket_events(bucket_id, limit=1000)
+            client = str(bucket_data.get("client", "unknown"))
+            hostname = str(bucket_data.get("hostname", "unknown"))
+            bucket_type = str(bucket_data.get("type", "unknown"))
+
+            try:
+                events = self.get_bucket_events(bucket_id)
+            except Exception as exc:
+                logger.error("Failed to get events for %s: %s", bucket_id, exc)
+                events = []
+
             event_count = len(events)
             aw_bucket_events_count.labels(bucket=bucket_id).set(event_count)
-            
-            # Last event timestamp
+            aw_collector_status.labels(bucket=bucket_id, client=client, hostname=hostname, type=bucket_type).set(1)
+
+            previous_count = self.bucket_event_counts.get(bucket_id)
+            if previous_count is not None and event_count > previous_count:
+                for event in events[: event_count - previous_count]:
+                    aw_events_total.labels(bucket=bucket_id, event_type=self.event_type(event)).inc()
+            self.bucket_event_counts[bucket_id] = event_count
+
             if events:
-                last_event = events[0]
-                timestamp = last_event.get('timestamp', 0)
                 try:
-                    # Convert to Unix timestamp if needed
-                    if isinstance(timestamp, str):
-                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
-                        unix_ts = dt.timestamp()
-                    else:
-                        unix_ts = timestamp
-                    aw_events_last_timestamp.labels(bucket=bucket_id).set(unix_ts)
-                except:
-                    pass
-            
-            # Collector status
-            collector_key = f"{hostname}_{client}"
-            collectors[collector_key] = {
-                'status': 'active',
-                'bucket': bucket_id,
-                'type': bucket_type,
-                'events': event_count
-            }
-        
-        aw_collector_status.info(collectors)
+                    aw_events_last_timestamp.labels(bucket=bucket_id).set(self.event_timestamp(events[0]))
+                except Exception as exc:
+                    logger.warning("Failed to parse last event timestamp for %s: %s", bucket_id, exc)
+
 
 def main():
     exporter = ActivityWatchExporter(AW_API_BASE)
-    
-    # Initial collection
     exporter.collect_metrics()
-    
-    # Start HTTP server
+
     start_http_server(EXPORTER_PORT)
-    logger.info(f"ActivityWatch exporter started on port {EXPORTER_PORT}")
-    logger.info(f"Scraping ActivityWatch API at {AW_API_BASE}")
-    
-    # Collect metrics every 30 seconds
+    logger.info("ActivityWatch exporter started on port %s", EXPORTER_PORT)
+    logger.info("Scraping ActivityWatch API at %s", AW_API_BASE)
+
     while True:
-        time.sleep(30)
+        time.sleep(SCRAPE_INTERVAL_SECONDS)
         exporter.collect_metrics()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
