@@ -22,6 +22,12 @@ aw_server_cors_origins:
 
 aw_apply_worktime_settings: true
 
+aw_dlp_ioc_enabled: true
+aw_dlp_ioc_workdir: "/opt/activitywatch/dlp-ioc"
+aw_dlp_ioc_rules_zip_url: "https://github.com/Yamato-Security/hayabusa-rules/archive/refs/heads/main.zip"
+aw_dlp_ioc_refresh_on_boot_sec: "5min"
+aw_dlp_ioc_refresh_interval: "6h"
+
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"

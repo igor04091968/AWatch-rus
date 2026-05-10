@@ -297,6 +297,7 @@
               AW_SERVER_GROUP={{ aw_server_group }}
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
               AW_WORKTIME_TZ={{ aw_worktime_timezone }}
+              AW_DLP_IOC_DIR={{ aw_dlp_ioc_workdir }}/output
               XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
               XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
 
@@ -632,6 +633,133 @@
             state: started
             daemon_reload: true
 
+    - name: Настроить IOC enrichment из Hayabusa Sigma
+      when: aw_dlp_ioc_enabled | default(false) | bool
+      block:
+        - name: Установить зависимости IOC refresh
+          ansible.builtin.apt:
+            name:
+              - python3-yaml
+            state: present
+            update_cache: true
+
+        - name: Создать каталог IOC enrichment
+          ansible.builtin.file:
+            path: "{{ aw_dlp_ioc_workdir }}/{{ item }}"
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          loop:
+            - ""
+            - output
+            - tmp
+
+        - name: Установить экстрактор IOC из Sigma
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/extract_ioc_from_sigma.py"
+            dest: /usr/local/bin/aw-extract-ioc-from-sigma.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить wrapper refresh IOC
+          ansible.builtin.copy:
+            dest: /usr/local/bin/aw-dlp-ioc-refresh.sh
+            owner: root
+            group: root
+            mode: "0755"
+            content: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              WORKDIR="{{ aw_dlp_ioc_workdir }}"
+              OUTDIR="${WORKDIR}/output"
+              TMPDIR="${WORKDIR}/tmp"
+              RULES_DIR="${TMPDIR}/hayabusa-rules"
+              ZIP_PATH="${TMPDIR}/hayabusa-rules.zip"
+
+              mkdir -p "${OUTDIR}" "${TMPDIR}"
+              rm -rf "${RULES_DIR}"
+              curl -fsSL -o "${ZIP_PATH}" "{{ aw_dlp_ioc_rules_zip_url }}"
+              unzip -q -o "${ZIP_PATH}" -d "${TMPDIR}"
+
+              EXTRACTED_DIR=$(find "${TMPDIR}" -maxdepth 1 -type d -name 'hayabusa-rules-*' | head -n1)
+              if [ -z "${EXTRACTED_DIR}" ]; then
+                echo "ERROR: hayabusa-rules archive extraction failed" >&2
+                exit 1
+              fi
+              mv "${EXTRACTED_DIR}" "${RULES_DIR}"
+
+              /usr/bin/python3 /usr/local/bin/aw-extract-ioc-from-sigma.py \
+                --rules-root "${RULES_DIR}" \
+                --out-dir "${OUTDIR}"
+
+              ln -sfn "${OUTDIR}" "${WORKDIR}/latest"
+
+        - name: Установить systemd unit IOC refresh
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-ioc-refresh.service
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Refresh DLP IOC blacklist from Hayabusa Sigma rules
+              After=network-online.target
+              Wants=network-online.target
+
+              [Service]
+              Type=oneshot
+              ExecStart=/usr/local/bin/aw-dlp-ioc-refresh.sh
+
+        - name: Установить systemd timer IOC refresh
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-ioc-refresh.timer
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Run DLP IOC refresh from Hayabusa rules
+
+              [Timer]
+              OnBootSec={{ aw_dlp_ioc_refresh_on_boot_sec }}
+              OnUnitActiveSec={{ aw_dlp_ioc_refresh_interval }}
+              Persistent=true
+              Unit=aw-dlp-ioc-refresh.service
+
+              [Install]
+              WantedBy=timers.target
+
+        - name: Включить и запустить IOC refresh timer
+          ansible.builtin.systemd:
+            name: aw-dlp-ioc-refresh.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+
+        - name: Выполнить принудительный refresh IOC
+          ansible.builtin.systemd:
+            name: aw-dlp-ioc-refresh.service
+            state: started
+
+        - name: Проверить наличие IOC артефактов после refresh
+          ansible.builtin.stat:
+            path: "{{ aw_dlp_ioc_workdir }}/output/{{ item }}"
+          register: aw_dlp_ioc_artifacts
+          loop:
+            - ioc_blacklist.json
+            - ioc_blacklist.csv
+            - ioc_blacklist.sql
+
+        - name: Assert по IOC артефактам
+          ansible.builtin.assert:
+            that:
+              - item.stat.exists
+              - (item.stat.size | int) > 100
+            fail_msg: "Не сгенерирован IOC артефакт: {{ item.stat.path | default('unknown') }}"
+          loop: "{{ aw_dlp_ioc_artifacts.results }}"
+
     - name: Применить базовые worktime settings (classes)
       ansible.builtin.uri:
         url: "http://127.0.0.1:{{ aw_server_port }}/api/0/settings/classes"
@@ -724,6 +852,37 @@
       when:
         - aw_apply_worktime_settings | default(false) | bool
         - (aw_server_landingpage | default('') | string | length) > 0
+
+    - name: Обновить IOC blacklist из hayabusa (если включено)
+      when:
+        - aw_hayabusa_ioc_refresh_enabled | default(false) | bool
+        - aw_hayabusa_rules_root is defined
+        - aw_hayabusa_ioc_output_dir is defined
+      block:
+        - name: Создать выходную директорию для IOC
+          ansible.builtin.file:
+            path: "{{ aw_hayabusa_ioc_output_dir }}"
+            state: directory
+            mode: "0755"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+
+        - name: Обновить IOC blacklist из hayabusa правил
+          ansible.builtin.shell:
+            cmd: |
+              set -euo pipefail
+              {{ aw_repo_root }}/scripts/build_dlp_ioc_from_hayabusa.sh \
+                "{{ aw_hayabusa_rules_root }}" \
+                "{{ aw_hayabusa_ioc_output_dir }}"
+          args:
+            chdir: "{{ aw_repo_root }}"
+          register: aw_hayabusa_ioc_refresh_result
+          changed_when: "'IOC artifacts generated' in aw_hayabusa_ioc_refresh_result.stdout"
+
+        - name: Показать результат обновления IOC
+          ansible.builtin.debug:
+            msg: "{{ aw_hayabusa_ioc_refresh_result.stdout }}"
+          when: aw_hayabusa_ioc_refresh_result.stdout is defined
 
   handlers:
     - name: Перезагрузить systemd

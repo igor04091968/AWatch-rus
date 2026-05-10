@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 AW = "http://127.0.0.1:5600/api/0"
 REPORT_TZ = ZoneInfo(os.environ.get("AW_WORKTIME_TZ", "Europe/Moscow"))
+IOC_DIR = os.environ.get("AW_DLP_IOC_DIR", "/opt/activitywatch/dlp-ioc/output")
 
 
 def get(u):
@@ -213,6 +214,32 @@ def render_html(rows):
 
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path.startswith("/dlp-ioc/"):
+            name = self.path.split("?", 1)[0].rsplit("/", 1)[-1]
+            if name not in {"ioc_blacklist.json", "ioc_blacklist.csv", "ioc_blacklist.sql"}:
+                self.send_response(404)
+                self.end_headers()
+                return
+            path = os.path.join(IOC_DIR, name)
+            if not os.path.isfile(path):
+                self.send_response(404)
+                self.end_headers()
+                return
+            with open(path, "rb") as f:
+                data = f.read()
+            if name.endswith(".json"):
+                ctype = "application/json; charset=utf-8"
+            elif name.endswith(".csv"):
+                ctype = "text/csv; charset=utf-8"
+            else:
+                ctype = "text/plain; charset=utf-8"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
         if not self.path.startswith("/reports/worktime/today"):
             self.send_response(404)
             self.end_headers()

@@ -18,6 +18,26 @@ This adds a safe offline pipeline to preload DLP blacklists from static Sigma in
 - `scripts/extract_ioc_from_sigma.py` (core extractor)
 - `scripts/build_dlp_ioc_from_hayabusa.sh` (wrapper)
 
+## Production (AW server 10.10.10.13)
+
+IOC enrichment is deployed by `ansible/deploy_aw_server.yml` when `aw_dlp_ioc_enabled=true`.
+
+- systemd service: `aw-dlp-ioc-refresh.service`
+- systemd timer: `aw-dlp-ioc-refresh.timer`
+- refresh interval: `aw_dlp_ioc_refresh_interval` (default `6h`)
+- output dir: `/opt/activitywatch/dlp-ioc/output`
+- HTTP export via existing AW worktime API (`:5610`):
+  - `http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.json`
+  - `http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.csv`
+  - `http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.sql`
+
+Mandatory post-deploy checks in Ansible:
+- `ioc_blacklist.json`
+- `ioc_blacklist.csv`
+- `ioc_blacklist.sql`
+
+Each file must exist and be non-empty, otherwise deploy fails.
+
 ## Run
 
 ```bash
@@ -50,4 +70,3 @@ bash scripts/build_dlp_ioc_from_hayabusa.sh \
 
 - This pipeline only creates export artifacts and does not modify running DLP agents.
 - Review and tune false positives before enforcing blocking in production.
-
