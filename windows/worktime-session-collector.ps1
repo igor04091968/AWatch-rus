@@ -209,8 +209,16 @@ while ($true) {
     }
 
     if (-not $records -or $records.Count -eq 0) {
-        Start-Sleep -Seconds $sleepSec
-        continue
+        # Fallback sample: keep bucket alive even when query user output is unavailable
+        # in non-interactive/session-0 contexts.
+        $records = @(
+            [pscustomobject]@{
+                username    = [string]$env:USERNAME
+                sessionName = ''
+                sessionId   = [int](Get-Process -Id $PID).SessionId
+                state       = 'Unknown'
+            }
+        )
     }
 
     foreach ($rec in $records) {
