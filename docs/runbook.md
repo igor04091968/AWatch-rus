@@ -35,6 +35,23 @@ curl -fsS http://127.0.0.1:5600/api/0/info
 ss -ltnp | grep 5600
 ```
 
+### Расширенный DLP transport health-check
+
+На AW-server:
+
+```sh
+/usr/local/bin/aw-health-check
+```
+
+Что проверяет дополнительно:
+- свежесть DLP bucket-ов (`aw-dlp-endpoint-signals_*`, `aw-file-operations_*`);
+- наличие transport/self-test telemetry (`queueDepth`, `eventsEnqueued`, `eventsFlushed`, `sendFailures`) в endpoint self-test;
+- API-доступность базовых сервисов.
+
+Интерпретация:
+- `FAIL` — есть критичная проблема (service/API/stale transport);
+- `WARN` — сигнал для оператора (например, bucket еще не активирован на хосте), но без hard-fail.
+
 ## Проверка RU patch
 
 ```sh
