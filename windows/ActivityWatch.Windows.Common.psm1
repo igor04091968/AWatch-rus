@@ -83,6 +83,41 @@ function Get-ActivityWatchPackageRoot {
     return (Split-Path -Path (Split-Path -Path $afkBinary.FullName -Parent) -Parent)
 }
 
+function Expand-ActivityWatchArchiveSafe {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArchivePath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath,
+        [int]$Attempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            if (Test-Path -LiteralPath $DestinationPath) {
+                Remove-Item -LiteralPath $DestinationPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            New-ActivityWatchDirectory -Path $DestinationPath
+            Expand-Archive -Path $ArchivePath -DestinationPath $DestinationPath -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -lt $Attempts) {
+                Start-Sleep -Milliseconds (500 * $attempt)
+                continue
+            }
+        }
+    }
+
+    # Fallback for intermittent Expand-Archive issues in Windows PowerShell.
+    if (Test-Path -LiteralPath $DestinationPath) {
+        Remove-Item -LiteralPath $DestinationPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    New-ActivityWatchDirectory -Path $DestinationPath
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
+}
+
 function Install-ActivityWatchPackage {
     param(
         [Parameter(Mandatory = $true)]
@@ -97,6 +132,13 @@ function Install-ActivityWatchPackage {
 
     New-ActivityWatchDirectory -Path $WorkingRoot
     New-ActivityWatchDirectory -Path $BackupRoot
+
+    # Cleanup stale extraction directories from previous failed deployments.
+    Get-ChildItem -LiteralPath $WorkingRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'extract-*' } |
+        ForEach-Object {
+            try { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+        }
 
     # Ensure nothing is holding locks inside InstallRoot during upgrade.
     foreach ($procName in @('aw-watcher-afk', 'aw-watcher-window', 'aw-server', 'aw-qt')) {
@@ -114,7 +156,17 @@ function Install-ActivityWatchPackage {
     }
     New-ActivityWatchDirectory -Path $extractRoot
 
-    Expand-Archive -Path $ArchivePath -DestinationPath $extractRoot -Force
+    $archiveSize = (Get-Item -LiteralPath $ArchivePath -ErrorAction Stop).Length
+    $workDrive = (Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($WorkingRoot).TrimEnd('\').TrimEnd(':')) -ErrorAction SilentlyContinue)
+    if ($workDrive) {
+        # Require at least ~2.5x archive size to handle extraction + copy safely.
+        $required = [int64]([Math]::Ceiling($archiveSize * 2.5))
+        if ([int64]$workDrive.Free -lt $required) {
+            throw ("Недостаточно свободного места на {0}: free={1} bytes, required>={2} bytes" -f $workDrive.Name, $workDrive.Free, $required)
+        }
+    }
+
+    Expand-ActivityWatchArchiveSafe -ArchivePath $ArchivePath -DestinationPath $extractRoot
     $packageRoot = Get-ActivityWatchPackageRoot -ExpandedRoot $extractRoot
 
     if (Test-Path -LiteralPath $InstallRoot) {

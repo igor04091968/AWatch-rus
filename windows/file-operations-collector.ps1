@@ -22,6 +22,14 @@ Add-Type -AssemblyName System.Net.Http
 $script:KnownBuckets = @{}
 $script:Hostname = $env:COMPUTERNAME
 $script:SessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+$script:TransportQueuePath = $null
+$script:TransportQueueLockPath = $null
+$script:TransportMetrics = @{
+    eventsEnqueued = 0
+    eventsFlushed  = 0
+    sendFailures   = 0
+    queueDepth     = 0
+}
 
 # Настройка логирования
 $script:LogPath = $LogPath
@@ -58,13 +66,114 @@ function Invoke-AwJsonPost {
             $reason = [string]$response.ReasonPhrase
             $body = $response.Content.ReadAsStringAsync().Result
             Write-FileCollectorLog ("POST failed: uri={0} status={1} reason={2} body={3}" -f $Uri, $status, $reason, $body)
+            throw "HTTP POST failed status=$status"
         }
     } catch {
         Write-FileCollectorLog "POST Error: $($_.Exception.Message)"
+        throw
     } finally {
         if ($null -ne $httpClient) {
             $httpClient.Dispose()
         }
+    }
+}
+
+function Initialize-TransportQueue {
+    param(
+        [Parameter(Mandatory = $true)][string]$StateRoot
+    )
+    $script:TransportQueuePath = Join-Path $StateRoot 'file-operations-queue.jsonl'
+    $script:TransportQueueLockPath = Join-Path $StateRoot 'file-operations-queue.lock'
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) {
+        New-Item -Path $script:TransportQueuePath -ItemType File -Force | Out-Null
+    }
+}
+
+function Get-TransportQueueLock {
+    $tries = 0
+    while ($tries -lt 50) {
+        try {
+            $fs = [System.IO.File]::Open($script:TransportQueueLockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+            return $fs
+        }
+        catch {
+            Start-Sleep -Milliseconds 50
+            $tries++
+        }
+    }
+    throw "Failed to acquire transport queue lock: $script:TransportQueueLockPath"
+}
+
+function Add-TransportQueueItem {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Payload,
+        [string]$Kind = 'file_op'
+    )
+    $lock = Get-TransportQueueLock
+    try {
+        $line = @{
+            ts      = (Get-Date).ToUniversalTime().ToString('o')
+            uri     = $Uri
+            payload = $Payload
+            kind    = $Kind
+        } | ConvertTo-Json -Compress
+        Add-Content -LiteralPath $script:TransportQueuePath -Value $line -Encoding UTF8
+        $script:TransportMetrics.eventsEnqueued++
+    }
+    finally {
+        $lock.Dispose()
+    }
+}
+
+function Read-TransportQueueItems {
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return @() }
+    $items = @()
+    foreach ($line in @(Get-Content -LiteralPath $script:TransportQueuePath -ErrorAction SilentlyContinue)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        try { $items += ($line | ConvertFrom-Json) } catch {}
+    }
+    return $items
+}
+
+function Flush-TransportQueue {
+    param(
+        [int]$MaxItems = 100
+    )
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return }
+    $lock = Get-TransportQueueLock
+    try {
+        $items = Read-TransportQueueItems
+        $script:TransportMetrics.queueDepth = $items.Count
+        if ($items.Count -eq 0) { return }
+
+        $left = New-Object System.Collections.Generic.List[object]
+        $sent = 0
+        foreach ($item in $items) {
+            if ($sent -ge $MaxItems) {
+                $left.Add($item)
+                continue
+            }
+            try {
+                Invoke-AwJsonPost -Uri ([string]$item.uri) -Json ([string]$item.payload)
+                $sent++
+                $script:TransportMetrics.eventsFlushed++
+            }
+            catch {
+                $script:TransportMetrics.sendFailures++
+                $left.Add($item)
+            }
+        }
+        foreach ($item in $items | Select-Object -Skip ($sent + $left.Count)) {
+            $left.Add($item)
+        }
+
+        $lines = @($left | ForEach-Object { $_ | ConvertTo-Json -Compress })
+        Set-Content -LiteralPath $script:TransportQueuePath -Value $lines -Encoding UTF8
+        $script:TransportMetrics.queueDepth = $left.Count
+    }
+    finally {
+        $lock.Dispose()
     }
 }
 
@@ -140,7 +249,29 @@ function Send-FileOperationEvent {
         data      = $data
     } | ConvertTo-Json -Depth 5 -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=15" -Json $payload
+    Add-TransportQueueItem -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=15" -Payload $payload -Kind 'file_op'
+    Flush-TransportQueue -MaxItems 20
+}
+
+function Send-CollectorHealthEvent {
+    $bucketId = 'aw-file-operations_' + $script:Hostname
+    Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
+    $payload = @{
+        timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        duration  = 0
+        data      = @{
+            signalType     = 'collector_health'
+            username       = $env:USERNAME
+            hostname       = $script:Hostname
+            sessionId      = $script:SessionId
+            queueDepth     = [int]$script:TransportMetrics.queueDepth
+            eventsEnqueued = [int]$script:TransportMetrics.eventsEnqueued
+            eventsFlushed  = [int]$script:TransportMetrics.eventsFlushed
+            sendFailures   = [int]$script:TransportMetrics.sendFailures
+        }
+    } | ConvertTo-Json -Depth 5 -Compress
+    Add-TransportQueueItem -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=30" -Payload $payload -Kind 'health'
+    Flush-TransportQueue -MaxItems 50
 }
 
 $config = Get-DeploymentConfig -Path $ConfigPath
@@ -151,6 +282,8 @@ $scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { 
 $hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
 $port = if ($ServerPort) { $ServerPort } elseif ($config.server.port) { $config.server.port } else { 5600 }
 $script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
+$stateRoot = if ($config.paths -and $config.paths.stateRoot) { [string]$config.paths.stateRoot } else { 'C:\ProgramData\AWatch-rus' }
+Initialize-TransportQueue -StateRoot $stateRoot
 
 $bucketId = 'aw-file-operations_' + $script:Hostname
 Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
@@ -206,7 +339,33 @@ foreach ($path in $resolvedPaths) {
 Write-FileCollectorLog "Collector started. Waiting for events..."
 
 try {
+    $lastHealth = [datetime]::UtcNow.AddMinutes(-5)
+    $backoffSeconds = 1
     while ($true) {
+        try {
+            Flush-TransportQueue -MaxItems 100
+            $backoffSeconds = 1
+        }
+        catch {
+            $script:TransportMetrics.sendFailures++
+            $backoffSeconds = [Math]::Min($backoffSeconds * 2, 60)
+            Write-FileCollectorLog ("Queue flush failed, backoff={0}s err={1}" -f $backoffSeconds, $_.Exception.Message)
+        }
+
+        if ((New-TimeSpan -Start $lastHealth -End ([datetime]::UtcNow)).TotalSeconds -ge ([Math]::Max($PollSeconds * 3, 30))) {
+            try {
+                Send-CollectorHealthEvent
+            }
+            catch {
+                $script:TransportMetrics.sendFailures++
+            }
+            $lastHealth = [datetime]::UtcNow
+        }
+
+        if ($backoffSeconds -gt $PollSeconds) {
+            Start-Sleep -Seconds $backoffSeconds
+            continue
+        }
         Start-Sleep -Seconds $PollSeconds
     }
 }

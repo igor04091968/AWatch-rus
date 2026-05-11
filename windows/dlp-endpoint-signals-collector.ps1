@@ -28,6 +28,15 @@ try {
 catch {
 }
 
+$script:TransportQueuePath = $null
+$script:TransportQueueLockPath = $null
+$script:TransportMetrics = @{
+    eventsEnqueued = 0
+    eventsFlushed  = 0
+    sendFailures   = 0
+    queueDepth     = 0
+}
+
 $policyClientModulePath = Join-Path $PSScriptRoot 'dlp-policy-client.ps1'
 if (Test-Path -LiteralPath $policyClientModulePath) {
     try {
@@ -118,6 +127,98 @@ function Invoke-AwJsonPost {
     }
 }
 
+function Initialize-TransportQueue {
+    param([Parameter(Mandatory = $true)][string]$StateRoot)
+    $script:TransportQueuePath = Join-Path $StateRoot 'dlp-endpoint-signals-queue.jsonl'
+    $script:TransportQueueLockPath = Join-Path $StateRoot 'dlp-endpoint-signals-queue.lock'
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) {
+        New-Item -Path $script:TransportQueuePath -ItemType File -Force | Out-Null
+    }
+}
+
+function Get-TransportQueueLock {
+    $tries = 0
+    while ($tries -lt 50) {
+        try {
+            return [System.IO.File]::Open($script:TransportQueueLockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        }
+        catch {
+            Start-Sleep -Milliseconds 50
+            $tries++
+        }
+    }
+    throw "Failed to acquire transport queue lock: $script:TransportQueueLockPath"
+}
+
+function Add-TransportQueueItem {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Payload,
+        [string]$Kind = 'endpoint'
+    )
+    $lock = Get-TransportQueueLock
+    try {
+        $line = @{
+            ts      = (Get-Date).ToUniversalTime().ToString('o')
+            uri     = $Uri
+            payload = $Payload
+            kind    = $Kind
+        } | ConvertTo-Json -Compress
+        Add-Content -LiteralPath $script:TransportQueuePath -Value $line -Encoding UTF8
+        $script:TransportMetrics.eventsEnqueued++
+    }
+    finally {
+        $lock.Dispose()
+    }
+}
+
+function Read-TransportQueueItems {
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return @() }
+    $items = @()
+    foreach ($line in @(Get-Content -LiteralPath $script:TransportQueuePath -ErrorAction SilentlyContinue)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        try { $items += ($line | ConvertFrom-Json) } catch {}
+    }
+    return $items
+}
+
+function Flush-TransportQueue {
+    param([int]$MaxItems = 200)
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return }
+    $lock = Get-TransportQueueLock
+    try {
+        $items = Read-TransportQueueItems
+        $script:TransportMetrics.queueDepth = $items.Count
+        if ($items.Count -eq 0) { return }
+        $left = New-Object System.Collections.Generic.List[object]
+        $sent = 0
+        foreach ($item in $items) {
+            if ($sent -ge $MaxItems) {
+                $left.Add($item)
+                continue
+            }
+            try {
+                Invoke-AwJsonPost -Uri ([string]$item.uri) -Json ([string]$item.payload)
+                $sent++
+                $script:TransportMetrics.eventsFlushed++
+            }
+            catch {
+                $script:TransportMetrics.sendFailures++
+                $left.Add($item)
+            }
+        }
+        foreach ($item in $items | Select-Object -Skip ($sent + $left.Count)) {
+            $left.Add($item)
+        }
+        $lines = @($left | ForEach-Object { $_ | ConvertTo-Json -Compress })
+        Set-Content -LiteralPath $script:TransportQueuePath -Value $lines -Encoding UTF8
+        $script:TransportMetrics.queueDepth = $left.Count
+    }
+    finally {
+        $lock.Dispose()
+    }
+}
+
 function Ensure-Bucket {
     param(
         [string]$BucketId,
@@ -186,7 +287,8 @@ function Send-EndpointSignalHeartbeat {
         } + $Data
     } | ConvertTo-Json -Depth 6 -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
+    Add-TransportQueueItem -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Payload $payload -Kind 'endpoint_signal'
+    Flush-TransportQueue -MaxItems 50
 }
 
 function Send-DlpIncidentHeartbeat {
@@ -227,7 +329,8 @@ function Send-DlpIncidentHeartbeat {
         } + $Data + $captureData
     } | ConvertTo-Json -Depth 7 -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
+    Add-TransportQueueItem -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Payload $payload -Kind 'dlp_incident'
+    Flush-TransportQueue -MaxItems 100
 }
 
 function Get-FileSha256Hex {
@@ -1007,6 +1110,7 @@ $script:PolicyRefreshSeconds = [Math]::Max($resolvedPolicyRefreshSeconds, 60)
 $script:PolicyCachePath = $resolvedPolicyCachePath
 $script:LocalPolicyPath = $resolvedPolicyPath
 $script:LastPolicyRefreshAt = [datetime]::MinValue
+$script:TransportBackoffSeconds = 1
 # Integration test flag (backward compatible - defaults to false)
 $script:IntegrationTestEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'integrationTestEnabled') { [bool]$deploymentConfig.integrationTestEnabled } else { $false }
 
@@ -1014,11 +1118,21 @@ $script:IntegrationTestEnabled = if ($deploymentConfig -and $deploymentConfig.PS
 $script:TotalEventsProcessed = 0
 $script:LastEventTime = $null
 
+Initialize-TransportQueue -StateRoot $resolvedStateRoot
 Initialize-DlpPolicy
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
 
 while ($true) {
     try {
+        try {
+            Flush-TransportQueue -MaxItems 200
+            $script:TransportBackoffSeconds = 1
+        }
+        catch {
+            $script:TransportBackoffSeconds = [Math]::Min($script:TransportBackoffSeconds * 2, 60)
+            Write-EndpointLog ("transport flush failed, backoff={0}s err={1}" -f $script:TransportBackoffSeconds, $_.Exception.Message)
+        }
+
         if ($script:PolicyMode -eq 'server' -and (($nowUtc = (Get-Date).ToUniversalTime()) - $script:LastPolicyRefreshAt).TotalSeconds -ge $script:PolicyRefreshSeconds) {
             [void](Refresh-DlpPolicyFromServer)
         }
@@ -1032,6 +1146,10 @@ while ($true) {
                 policySource = $script:PolicySource
                 policyVersion = $script:PolicyVersion
                 policyChecksum = $script:PolicyChecksum
+                queueDepth = [int]$script:TransportMetrics.queueDepth
+                eventsEnqueued = [int]$script:TransportMetrics.eventsEnqueued
+                eventsFlushed = [int]$script:TransportMetrics.eventsFlushed
+                sendFailures = [int]$script:TransportMetrics.sendFailures
             }
             $script:LastSelfTestAt = $nowUtc
         }
@@ -1209,5 +1327,10 @@ while ($true) {
         }
     }
 
-    Start-Sleep -Seconds $resolvedPollSeconds
+    if ($script:TransportBackoffSeconds -gt $resolvedPollSeconds) {
+        Start-Sleep -Seconds $script:TransportBackoffSeconds
+    }
+    else {
+        Start-Sleep -Seconds $resolvedPollSeconds
+    }
 }
