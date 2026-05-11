@@ -31,6 +31,7 @@ aw_dlp_policy_engine_enabled: true
 aw_dlp_policy_engine_bind_host: "0.0.0.0"
 aw_dlp_policy_engine_port: 5601
 aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
+aw_server_post_deploy_health_check_enabled: true
 
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"

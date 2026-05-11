@@ -375,6 +375,14 @@
             group: root
             mode: "0755"
 
+        - name: Установить скрипт aw-health-check
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/health-check.sh"
+            dest: /usr/local/bin/aw-health-check
+            owner: root
+            group: root
+            mode: "0755"
+
         - name: Установить systemd unit AW worktime UI bridge
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-ui-bridge.service"
@@ -940,6 +948,21 @@
           ansible.builtin.debug:
             msg: "{{ aw_hayabusa_ioc_refresh_result.stdout }}"
           when: aw_hayabusa_ioc_refresh_result.stdout is defined
+
+    - name: Post-deploy health gate (aw-health-check)
+      when:
+        - not ansible_check_mode
+        - aw_server_post_deploy_health_check_enabled | default(true) | bool
+      block:
+        - name: Запустить /usr/local/bin/aw-health-check
+          ansible.builtin.command:
+            cmd: /usr/local/bin/aw-health-check
+          register: aw_post_deploy_health
+          changed_when: false
+
+        - name: Показать результат aw-health-check
+          ansible.builtin.debug:
+            msg: "{{ aw_post_deploy_health.stdout }}"
 
   handlers:
     - name: Перезагрузить systemd

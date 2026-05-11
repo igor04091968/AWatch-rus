@@ -10,6 +10,15 @@ WARNINGS=()
 
 check_service() {
     local service=$1
+    if [[ "$service" == "aw-worktime-ui-bridge" ]]; then
+        if systemctl is-active --quiet aw-worktime-ui-bridge.timer && systemctl is-enabled --quiet aw-worktime-ui-bridge.timer; then
+            echo "✓ aw-worktime-ui-bridge.timer is running and enabled"
+        else
+            echo "✗ aw-worktime-ui-bridge.timer is not active/enabled"
+            UNHEALTHY_SERVICES+=("aw-worktime-ui-bridge.timer")
+        fi
+        return
+    fi
     if systemctl is-active --quiet "$service"; then
         echo "✓ $service is running"
     else
