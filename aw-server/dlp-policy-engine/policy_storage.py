@@ -47,6 +47,7 @@ class PolicyStorage:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     description TEXT,
+                    status TEXT NOT NULL DEFAULT 'draft',
                     is_active INTEGER NOT NULL DEFAULT 0,
                     current_version INTEGER NOT NULL DEFAULT 1,
                     checksum TEXT NOT NULL,
@@ -67,16 +68,55 @@ class PolicyStorage:
                     UNIQUE(policy_id, version)
                 );
 
+                CREATE TABLE IF NOT EXISTS policy_audit (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    policy_id INTEGER,
+                    action TEXT NOT NULL,
+                    actor TEXT,
+                    comment TEXT,
+                    details_json TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(policy_id) REFERENCES policies(id)
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_policies_active ON policies(is_active);
                 CREATE INDEX IF NOT EXISTS idx_policy_versions_policy ON policy_versions(policy_id, version DESC);
+                CREATE INDEX IF NOT EXISTS idx_policy_audit_policy ON policy_audit(policy_id, id DESC);
                 """
             )
+            cols = [r["name"] for r in conn.execute("PRAGMA table_info(policies)").fetchall()]
+            if "status" not in cols:
+                conn.execute("ALTER TABLE policies ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'")
+
+    def _audit(
+        self,
+        conn: sqlite3.Connection,
+        policy_id: int | None,
+        action: str,
+        actor: str | None,
+        comment: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO policy_audit(policy_id, action, actor, comment, details_json, created_at)
+            VALUES(?, ?, ?, ?, ?, ?)
+            """,
+            (
+                policy_id,
+                action,
+                actor,
+                comment,
+                canonical_policy_json(details) if details is not None else None,
+                utc_now(),
+            ),
+        )
 
     def list_policies(self) -> list[dict[str, Any]]:
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, name, description, is_active, current_version, checksum, created_at, updated_at
+                SELECT id, name, description, status, is_active, current_version, checksum, created_at, updated_at
                 FROM policies
                 ORDER BY is_active DESC, updated_at DESC, id DESC
                 """
@@ -87,7 +127,7 @@ class PolicyStorage:
         with self.connect() as conn:
             policy_row = conn.execute(
                 """
-                SELECT id, name, description, is_active, current_version, checksum, created_at, updated_at
+                SELECT id, name, description, status, is_active, current_version, checksum, created_at, updated_at
                 FROM policies
                 WHERE id = ?
                 """,
@@ -123,16 +163,17 @@ class PolicyStorage:
     def create_policy(self, name: str, description: str | None, policy: dict[str, Any], activate: bool, actor: str | None) -> dict[str, Any]:
         checksum = checksum_policy(policy)
         now = utc_now()
+        status = "deployed" if activate else "draft"
         policy_json = canonical_policy_json(policy)
         with self.connect() as conn:
             if activate:
                 conn.execute("UPDATE policies SET is_active = 0")
             cursor = conn.execute(
                 """
-                INSERT INTO policies(name, description, is_active, current_version, checksum, created_at, updated_at)
-                VALUES(?, ?, ?, 1, ?, ?, ?)
+                INSERT INTO policies(name, description, status, is_active, current_version, checksum, created_at, updated_at)
+                VALUES(?, ?, ?, ?, 1, ?, ?, ?)
                 """,
-                (name, description, 1 if activate else 0, checksum, now, now),
+                (name, description, status, 1 if activate else 0, checksum, now, now),
             )
             policy_id = int(cursor.lastrowid)
             conn.execute(
@@ -142,6 +183,7 @@ class PolicyStorage:
                 """,
                 (policy_id, policy_json, checksum, now, actor),
             )
+            self._audit(conn, policy_id, "create", actor, details={"activate": activate, "status": status})
         return self.get_policy(policy_id)  # type: ignore[return-value]
 
     def update_policy(
@@ -162,10 +204,12 @@ class PolicyStorage:
             new_description = description if description is not None else current["description"]
             new_version = int(current["current_version"])
             new_checksum = current["checksum"]
+            new_status = current.get("status", "draft")
 
             if policy is not None:
                 new_version += 1
                 new_checksum = checksum_policy(policy)
+                new_status = "draft"
                 policy_json = canonical_policy_json(policy)
                 conn.execute(
                     """
@@ -177,16 +221,18 @@ class PolicyStorage:
 
             if activate:
                 conn.execute("UPDATE policies SET is_active = 0")
+                new_status = "deployed"
 
             conn.execute(
                 """
                 UPDATE policies
-                SET name = ?, description = ?, is_active = ?, current_version = ?, checksum = ?, updated_at = ?
+                SET name = ?, description = ?, status = ?, is_active = ?, current_version = ?, checksum = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
                     new_name,
                     new_description,
+                    new_status,
                     1 if activate else current["is_active"],
                     new_version,
                     new_checksum,
@@ -194,19 +240,23 @@ class PolicyStorage:
                     policy_id,
                 ),
             )
+            self._audit(conn, policy_id, "update", actor, details={"activate": activate, "status": new_status})
         return self.get_policy(policy_id)
 
     def activate_policy(self, policy_id: int, actor: str | None) -> dict[str, Any] | None:
         current = self.get_policy(policy_id)
         if not current:
             return None
+        if current.get("status") != "approved":
+            raise ValueError("policy must be approved before deploy")
 
         with self.connect() as conn:
             conn.execute("UPDATE policies SET is_active = 0")
             conn.execute(
-                "UPDATE policies SET is_active = 1, updated_at = ? WHERE id = ?",
+                "UPDATE policies SET status = 'deployed', is_active = 1, updated_at = ? WHERE id = ?",
                 (utc_now(), policy_id),
             )
+            self._audit(conn, policy_id, "deploy", actor)
         return self.get_policy(policy_id)
 
     def rollback_active_policy(self, actor: str | None) -> dict[str, Any] | None:
@@ -252,11 +302,12 @@ class PolicyStorage:
             conn.execute(
                 """
                 UPDATE policies
-                SET current_version = ?, checksum = ?, updated_at = ?
+                SET status = 'draft', current_version = ?, checksum = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (rollback_version, rollback_checksum, now, active["id"]),
             )
+            self._audit(conn, int(active["id"]), "rollback", actor, details={"rollback_to": previous_version})
         return self.get_policy(int(active["id"]))
 
     def delete_policy(self, policy_id: int) -> bool:
@@ -267,6 +318,50 @@ class PolicyStorage:
             raise ValueError("cannot delete active policy")
 
         with self.connect() as conn:
+            self._audit(conn, policy_id, "delete", None)
             conn.execute("DELETE FROM policy_versions WHERE policy_id = ?", (policy_id,))
             conn.execute("DELETE FROM policies WHERE id = ?", (policy_id,))
         return True
+
+    def set_policy_status(self, policy_id: int, status: str, actor: str | None, comment: str | None = None) -> dict[str, Any] | None:
+        current = self.get_policy(policy_id)
+        if not current:
+            return None
+        allowed = {"draft", "pending_approval", "approved", "deployed"}
+        if status not in allowed:
+            raise ValueError(f"unsupported status: {status}")
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE policies SET status = ?, updated_at = ? WHERE id = ?",
+                (status, utc_now(), policy_id),
+            )
+            self._audit(conn, policy_id, "status_change", actor, comment=comment, details={"status": status})
+        return self.get_policy(policy_id)
+
+    def list_audit(self, policy_id: int | None = None, limit: int = 200) -> list[dict[str, Any]]:
+        query = """
+            SELECT id, policy_id, action, actor, comment, details_json, created_at
+            FROM policy_audit
+        """
+        params: tuple[Any, ...]
+        if policy_id is None:
+            query += " ORDER BY id DESC LIMIT ?"
+            params = (limit,)
+        else:
+            query += " WHERE policy_id = ? ORDER BY id DESC LIMIT ?"
+            params = (policy_id, limit)
+        with self.connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            d = dict(row)
+            if d.get("details_json"):
+                try:
+                    d["details"] = json.loads(d["details_json"])
+                except Exception:
+                    d["details"] = None
+            else:
+                d["details"] = None
+            d.pop("details_json", None)
+            items.append(d)
+        return items

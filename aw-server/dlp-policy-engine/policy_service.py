@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 
 from policy_distributor import build_policy_bundle
-from policy_schema import PolicyActivateRequest, PolicyCreateRequest, PolicyUpdateRequest
+from policy_schema import PolicyActivateRequest, PolicyCreateRequest, PolicyStatusRequest, PolicyUpdateRequest
 from policy_storage import PolicyStorage
 
 
@@ -157,7 +157,34 @@ def update_policy(policy_id: int, payload: PolicyUpdateRequest) -> dict[str, obj
 
 @app.post("/api/0/dlp/policies/{policy_id}/activate")
 def activate_policy(policy_id: int, payload: PolicyActivateRequest) -> dict[str, object]:
-    item = storage.activate_policy(policy_id=policy_id, actor=payload.actor)
+    try:
+        item = storage.activate_policy(policy_id=policy_id, actor=payload.actor)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not item:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return {"item": item}
+
+
+@app.post("/api/0/dlp/policies/{policy_id}/submit")
+def submit_policy_for_approval(policy_id: int, payload: PolicyStatusRequest) -> dict[str, object]:
+    item = storage.set_policy_status(policy_id, "pending_approval", payload.actor, payload.comment)
+    if not item:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return {"item": item}
+
+
+@app.post("/api/0/dlp/policies/{policy_id}/approve")
+def approve_policy(policy_id: int, payload: PolicyStatusRequest) -> dict[str, object]:
+    item = storage.set_policy_status(policy_id, "approved", payload.actor, payload.comment)
+    if not item:
+        raise HTTPException(status_code=404, detail="policy not found")
+    return {"item": item}
+
+
+@app.post("/api/0/dlp/policies/{policy_id}/draft")
+def return_policy_to_draft(policy_id: int, payload: PolicyStatusRequest) -> dict[str, object]:
+    item = storage.set_policy_status(policy_id, "draft", payload.actor, payload.comment)
     if not item:
         raise HTTPException(status_code=404, detail="policy not found")
     return {"item": item}
@@ -173,3 +200,15 @@ def delete_policy(policy_id: int) -> dict[str, bool]:
     if not deleted:
         raise HTTPException(status_code=404, detail="policy not found")
     return {"deleted": True}
+
+
+@app.get("/api/0/dlp/policies/audit")
+def list_policy_audit(limit: int = 200) -> dict[str, object]:
+    return {"items": storage.list_audit(policy_id=None, limit=max(1, min(limit, 1000)))}
+
+
+@app.get("/api/0/dlp/policies/{policy_id}/audit")
+def list_single_policy_audit(policy_id: int, limit: int = 200) -> dict[str, object]:
+    if not storage.get_policy(policy_id):
+        raise HTTPException(status_code=404, detail="policy not found")
+    return {"items": storage.list_audit(policy_id=policy_id, limit=max(1, min(limit, 1000)))}

@@ -47,6 +47,11 @@ class PolicyActivateRequest(BaseModel):
     actor: str | None = Field(default="api")
 
 
+class PolicyStatusRequest(BaseModel):
+    actor: str | None = Field(default="api")
+    comment: str | None = Field(default=None, max_length=2048)
+
+
 class PolicyRecord(BaseModel):
     id: int
     name: str
@@ -64,4 +69,3 @@ class PolicyVersionRecord(BaseModel):
     checksum: str
     created_at: datetime
     created_by: str | None
-

@@ -2,88 +2,74 @@
 
 ## Purpose
 
-`aw-server/dlp-policy-engine` centralizes DLP policy lifecycle for `AWatch-rus` Windows endpoints.
+`aw-server/dlp-policy-engine` is the centralized policy lifecycle service for `AWatch-rus` endpoints.
 
-It does not replace endpoint-local safety. Endpoints can run in:
-- `local`
-- `server`
-- `cached` fallback after server outage
+It supports:
+- full CRUD for policy documents;
+- policy versioning in SQLite;
+- approval workflow (`draft -> pending_approval -> approved -> deployed`);
+- audit trail for every policy mutation;
+- agent push/pull coordination (`heartbeat` + `desired` refresh hint).
 
-## API
-
-Base URL:
+## Base URL
 
 ```text
 http://<aw-server>:5601
 ```
 
-Routes:
+## REST API
 
+Health:
 - `GET /healthz`
+
+CRUD:
 - `GET /api/0/dlp/policies`
 - `POST /api/0/dlp/policies`
-- `GET /api/0/dlp/policies/active`
-- `POST /api/0/dlp/policies/rollback`
 - `GET /api/0/dlp/policies/{id}`
 - `PUT /api/0/dlp/policies/{id}`
-- `POST /api/0/dlp/policies/{id}/activate`
 - `DELETE /api/0/dlp/policies/{id}`
 
-## Policy create example
+Active policy:
+- `GET /api/0/dlp/policies/active`
+- `GET /api/0/dlp/policies/active/version`
+- `POST /api/0/dlp/policies/rollback`
 
-```json
-{
-  "name": "base-windows-policy",
-  "description": "Primary DLP policy for pilot endpoints",
-  "activate": true,
-  "actor": "ansible",
-  "policy": {
-    "version": 1,
-    "defaults": {
-      "enabled": true,
-      "cooldownSeconds": 300,
-      "action": "alert",
-      "severity": "medium"
-    },
-    "endpoint": {
-      "clipboard": [],
-      "usb": [],
-      "print": []
-    }
-  }
-}
+Approval workflow:
+- `POST /api/0/dlp/policies/{id}/submit` -> `pending_approval`
+- `POST /api/0/dlp/policies/{id}/approve` -> `approved`
+- `POST /api/0/dlp/policies/{id}/draft` -> `draft`
+- `POST /api/0/dlp/policies/{id}/activate` -> deploy (allowed only from `approved`)
+
+Audit:
+- `GET /api/0/dlp/policies/audit?limit=200`
+- `GET /api/0/dlp/policies/{id}/audit?limit=200`
+
+Agent push/pull sync:
+- `POST /api/0/dlp/policies/agents/{agent_id}/heartbeat`
+- `GET /api/0/dlp/policies/agents/{agent_id}/desired`
+
+## Workflow Example
+
+1. Create draft:
+`POST /api/0/dlp/policies`
+2. Submit:
+`POST /api/0/dlp/policies/{id}/submit`
+3. Approve:
+`POST /api/0/dlp/policies/{id}/approve`
+4. Deploy:
+`POST /api/0/dlp/policies/{id}/activate`
+
+Every step is written to `policy_audit`.
+
+## Deployment
+
+- Service unit: `aw-dlp-policy-engine.service`
+- DB path: `AW_DLP_POLICY_ENGINE_DB_PATH`
+- Port: `AW_DLP_POLICY_ENGINE_PORT` (default `5601`)
+- Ansible role: `ansible/roles/dlp-policy-engine/tasks/main.yml`
+
+Recommended server deploy:
+
+```bash
+ansible-playbook -i ansible/inventory.ini ansible/deploy_aw_server.yml
 ```
-
-## Active policy response
-
-```json
-{
-  "active": true,
-  "policyId": 1,
-  "name": "base-windows-policy",
-  "version": 3,
-  "checksum": "sha256...",
-  "updatedAtUtc": "2026-05-11T12:00:00Z",
-  "policy": {
-    "version": 1,
-    "defaults": {
-      "enabled": true,
-      "cooldownSeconds": 300,
-      "action": "alert",
-      "severity": "medium"
-    },
-    "endpoint": {
-      "clipboard": [],
-      "usb": [],
-      "print": []
-    }
-  }
-}
-```
-
-## Deployment Notes
-
-- Service runs as `aw-dlp-policy-engine.service`.
-- SQLite path is controlled by `AW_DLP_POLICY_ENGINE_DB_PATH`.
-- Default port is `5601`.
-- Endpoints should use `server` mode only after `GET /healthz` and `GET /api/0/dlp/policies/active` are confirmed.
