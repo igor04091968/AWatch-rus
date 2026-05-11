@@ -1,0 +1,10 @@
+---
+- import_playbook: deploy_aw_server.yml
+- import_playbook: deploy_aw_windows.yml
+
+- name: Deploy DLP policy engine
+  hosts: aw_server
+  become: true
+  gather_facts: false
+  roles:
+    - role: dlp-policy-engine

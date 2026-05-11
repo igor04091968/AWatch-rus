@@ -1,0 +1,15 @@
+{
+  "title": "AWatch DLP Overview",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "DLP Exporter Up",
+      "gridPos": { "x": 0, "y": 0, "w": 8, "h": 4 },
+      "targets": [
+        { "expr": "aw_dlp_exporter_up" }
+      ]
+    }
+  ]
+}

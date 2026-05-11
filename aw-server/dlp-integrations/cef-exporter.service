@@ -1,0 +1,12 @@
+[Unit]
+Description=AWatch DLP CEF Exporter
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=activitywatch
+Group=activitywatch
+ExecStart=/usr/bin/python3 /opt/activitywatch/dlp-integrations/cef_exporter.py
+
+[Install]
+WantedBy=multi-user.target

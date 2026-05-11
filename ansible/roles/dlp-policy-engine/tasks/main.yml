@@ -1,0 +1,41 @@
+---
+- name: Ensure policy engine directory exists
+  become: true
+  ansible.builtin.file:
+    path: /opt/activitywatch/dlp-policy-engine
+    state: directory
+    owner: activitywatch
+    group: activitywatch
+    mode: "0755"
+
+- name: Deploy policy engine files
+  become: true
+  ansible.builtin.copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: activitywatch
+    group: activitywatch
+    mode: "{{ item.mode | default('0644') }}"
+  loop:
+    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_service.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_service.py" }
+    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_schema.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_schema.py" }
+    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_storage.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_storage.py" }
+    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_distributor.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_distributor.py" }
+    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/dlp-policy-engine.service", dest: "/etc/systemd/system/dlp-policy-engine.service" }
+
+- name: Install python deps for policy engine
+  become: true
+  ansible.builtin.pip:
+    name:
+      - fastapi
+      - uvicorn
+      - pydantic
+    executable: pip3
+
+- name: Enable and restart policy engine
+  become: true
+  ansible.builtin.systemd:
+    daemon_reload: true
+    name: dlp-policy-engine.service
+    enabled: true
+    state: restarted

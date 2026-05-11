@@ -1,0 +1,17 @@
+{
+  "inn": {
+    "regex": "\\b\\d{10}\\b|\\b\\d{12}\\b",
+    "checksum": "inn",
+    "description": "ИНН"
+  },
+  "snils": {
+    "regex": "\\b\\d{3}-\\d{3}-\\d{3}\\s?\\d{2}\\b",
+    "checksum": "snils",
+    "description": "СНИЛС"
+  },
+  "passport": {
+    "regex": "\\b\\d{4}\\s?\\d{6}\\b",
+    "checksum": "none",
+    "description": "Паспорт РФ"
+  }
+}

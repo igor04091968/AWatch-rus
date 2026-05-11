@@ -1,0 +1,6 @@
+{
+  "rules": [
+    { "id": "card-pan", "regex": "\\b(?:\\d[ -]*?){13,19}\\b", "severity": "high" },
+    { "id": "iban", "regex": "\\b[A-Z]{2}\\d{2}[A-Z0-9]{11,30}\\b", "severity": "medium" }
+  ]
+}
