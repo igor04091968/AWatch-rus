@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 
@@ -22,6 +23,7 @@ DB_PATH = _env("AW_DLP_POLICY_ENGINE_DB_PATH", "/var/lib/activitywatch/dlp-polic
 storage = PolicyStorage(DB_PATH)
 
 app = FastAPI(title=APP_NAME, version=APP_VERSION)
+AGENT_STATE: dict[str, dict[str, Any]] = {}
 
 
 @app.get("/healthz")
@@ -60,6 +62,62 @@ def get_active_policy() -> dict[str, object]:
     if not item:
         raise HTTPException(status_code=404, detail="no active policy configured")
     return build_policy_bundle(item)
+
+
+@app.get("/api/0/dlp/policies/active/version")
+def get_active_policy_version() -> dict[str, object]:
+    item = storage.get_active_policy()
+    if not item:
+        raise HTTPException(status_code=404, detail="no active policy configured")
+    return {
+        "active": True,
+        "policyId": item["id"],
+        "version": item["current_version"],
+        "checksum": item["checksum"],
+        "updatedAtUtc": item["updated_at"],
+    }
+
+
+@app.post("/api/0/dlp/policies/agents/{agent_id}/heartbeat")
+def update_agent_policy_heartbeat(agent_id: str, payload: dict[str, Any]) -> dict[str, object]:
+    AGENT_STATE[agent_id] = {
+        "agentId": agent_id,
+        "hostname": payload.get("hostname") or agent_id,
+        "version": payload.get("version"),
+        "checksum": payload.get("checksum"),
+        "updatedAtUtc": payload.get("updatedAtUtc"),
+    }
+    return {"ok": True, "agent": AGENT_STATE[agent_id]}
+
+
+@app.get("/api/0/dlp/policies/agents/{agent_id}/desired")
+def get_agent_desired_policy(agent_id: str) -> dict[str, object]:
+    item = storage.get_active_policy()
+    if not item:
+        raise HTTPException(status_code=404, detail="no active policy configured")
+
+    current = AGENT_STATE.get(agent_id, {})
+    current_version = current.get("version")
+    current_checksum = current.get("checksum")
+    desired_version = item["current_version"]
+    desired_checksum = item["checksum"]
+    refresh_now = (str(current_version) != str(desired_version)) or (str(current_checksum) != str(desired_checksum))
+
+    return {
+        "agentId": agent_id,
+        "refreshNow": refresh_now,
+        "reason": "mismatch" if refresh_now else "up-to-date",
+        "current": {
+            "version": current_version,
+            "checksum": current_checksum,
+        },
+        "desired": {
+            "policyId": item["id"],
+            "version": desired_version,
+            "checksum": desired_checksum,
+            "updatedAtUtc": item["updated_at"],
+        },
+    }
 
 
 @app.post("/api/0/dlp/policies/rollback")

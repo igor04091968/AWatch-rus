@@ -33,6 +33,49 @@ function Invoke-DlpPolicyGetJson {
     }
 }
 
+function Invoke-DlpPolicyPostJson {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)]$Body,
+        [int]$TimeoutSec = 10
+    )
+
+    $json = $Body | ConvertTo-Json -Depth 10 -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+    $request = [System.Net.HttpWebRequest]::Create($Uri)
+    $request.Method = 'POST'
+    $request.Accept = 'application/json'
+    $request.ContentType = 'application/json'
+    $request.KeepAlive = $false
+    $request.Timeout = $TimeoutSec * 1000
+    $request.ReadWriteTimeout = $TimeoutSec * 1000
+    $request.ContentLength = $bytes.Length
+
+    $stream = $request.GetRequestStream()
+    try {
+        $stream.Write($bytes, 0, $bytes.Length)
+    }
+    finally {
+        $stream.Close()
+    }
+
+    $response = $request.GetResponse()
+    try {
+        $reader = New-Object System.IO.StreamReader($response.GetResponseStream(), [System.Text.Encoding]::UTF8)
+        try {
+            $raw = $reader.ReadToEnd()
+            if ($raw) { return ($raw | ConvertFrom-Json) }
+            return $null
+        }
+        finally {
+            $reader.Close()
+        }
+    }
+    finally {
+        $response.Close()
+    }
+}
+
 function Get-RemoteDlpPolicyBundle {
     param(
         [Parameter(Mandatory = $true)][string]$ApiBase,
@@ -50,6 +93,35 @@ function Get-RemoteDlpPolicyBundle {
         throw 'Policy engine response has no policy payload.'
     }
     return $bundle
+}
+
+function Get-RemoteDlpPolicyDesired {
+    param(
+        [Parameter(Mandatory = $true)][string]$ApiBase,
+        [Parameter(Mandatory = $true)][string]$AgentId,
+        [int]$TimeoutSec = 10
+    )
+    $path = '/dlp/policies/agents/{0}/desired' -f [uri]::EscapeDataString($AgentId)
+    return Invoke-DlpPolicyGetJson -Uri ($ApiBase.TrimEnd('/') + $path) -TimeoutSec $TimeoutSec
+}
+
+function Send-DlpPolicyAgentHeartbeat {
+    param(
+        [Parameter(Mandatory = $true)][string]$ApiBase,
+        [Parameter(Mandatory = $true)][string]$AgentId,
+        [string]$Hostname,
+        [string]$Version,
+        [string]$Checksum,
+        [int]$TimeoutSec = 10
+    )
+    $path = '/dlp/policies/agents/{0}/heartbeat' -f [uri]::EscapeDataString($AgentId)
+    $body = @{
+        hostname = $Hostname
+        version = $Version
+        checksum = $Checksum
+        updatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    return Invoke-DlpPolicyPostJson -Uri ($ApiBase.TrimEnd('/') + $path) -Body $body -TimeoutSec $TimeoutSec
 }
 
 function Read-CachedDlpPolicyBundle {
@@ -82,4 +154,4 @@ function Save-CachedDlpPolicyBundle {
     Set-Content -LiteralPath $CachePath -Value $json -Encoding UTF8
 }
 
-Export-ModuleMember -Function Invoke-DlpPolicyGetJson, Get-RemoteDlpPolicyBundle, Read-CachedDlpPolicyBundle, Save-CachedDlpPolicyBundle
+Export-ModuleMember -Function Invoke-DlpPolicyGetJson, Get-RemoteDlpPolicyBundle, Get-RemoteDlpPolicyDesired, Send-DlpPolicyAgentHeartbeat, Read-CachedDlpPolicyBundle, Save-CachedDlpPolicyBundle

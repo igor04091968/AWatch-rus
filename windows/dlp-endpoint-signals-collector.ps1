@@ -667,6 +667,29 @@ function Refresh-DlpPolicyFromServer {
     }
 }
 
+function Sync-DlpPolicyDesiredState {
+    if (-not $script:PolicyEngineEnabled -or -not $script:PolicyClientAvailable) {
+        return $false
+    }
+    if (-not $script:PolicyAgentId) {
+        return $false
+    }
+
+    try {
+        [void](Send-DlpPolicyAgentHeartbeat -ApiBase $script:PolicyApiBase -AgentId $script:PolicyAgentId -Hostname $script:Hostname -Version $script:PolicyVersion -Checksum $script:PolicyChecksum -TimeoutSec 10)
+        $desired = Get-RemoteDlpPolicyDesired -ApiBase $script:PolicyApiBase -AgentId $script:PolicyAgentId -TimeoutSec 10
+        if ($desired -and $desired.refreshNow -eq $true) {
+            Write-EndpointLog ("policy desired refresh requested: reason={0}" -f $desired.reason)
+            return (Refresh-DlpPolicyFromServer)
+        }
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("policy desired sync failed: {0}" -f $_.Exception.Message)
+        return $false
+    }
+}
+
 function Initialize-DlpPolicy {
     if ($script:PolicyMode -eq 'server') {
         if (Refresh-DlpPolicyFromServer) {
@@ -1110,6 +1133,7 @@ $script:PolicyRefreshSeconds = [Math]::Max($resolvedPolicyRefreshSeconds, 60)
 $script:PolicyCachePath = $resolvedPolicyCachePath
 $script:LocalPolicyPath = $resolvedPolicyPath
 $script:LastPolicyRefreshAt = [datetime]::MinValue
+$script:PolicyAgentId = $resolvedHostname
 $script:TransportBackoffSeconds = 1
 # Integration test flag (backward compatible - defaults to false)
 $script:IntegrationTestEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'integrationTestEnabled') { [bool]$deploymentConfig.integrationTestEnabled } else { $false }
@@ -1133,8 +1157,14 @@ while ($true) {
             Write-EndpointLog ("transport flush failed, backoff={0}s err={1}" -f $script:TransportBackoffSeconds, $_.Exception.Message)
         }
 
-        if ($script:PolicyMode -eq 'server' -and (($nowUtc = (Get-Date).ToUniversalTime()) - $script:LastPolicyRefreshAt).TotalSeconds -ge $script:PolicyRefreshSeconds) {
-            [void](Refresh-DlpPolicyFromServer)
+        if ($script:PolicyMode -eq 'server') {
+            $policyAge = ((Get-Date).ToUniversalTime() - $script:LastPolicyRefreshAt).TotalSeconds
+            if ($policyAge -ge $script:PolicyRefreshSeconds) {
+                [void](Refresh-DlpPolicyFromServer)
+            }
+            else {
+                [void](Sync-DlpPolicyDesiredState)
+            }
         }
 
         $nowUtc = (Get-Date).ToUniversalTime()
