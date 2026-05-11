@@ -24,6 +24,15 @@ param(
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
+    [ValidateSet('local', 'server')]
+    [string]$PolicyMode,
+    [bool]$PolicyEngineEnabled,
+    [string]$PolicyEngineHost,
+    [int]$PolicyEnginePort,
+    [ValidateSet('http', 'https')]
+    [string]$PolicyEngineScheme,
+    [int]$PolicyRefreshSeconds,
+    [string]$PolicyCachePath,
     [switch]$RepairPackage,
     [string]$Version,
     [string]$PackageUrl,
@@ -59,6 +68,7 @@ $effectiveFileCollector = if ($existingConfig -and $existingConfig.paths.PSObjec
 $effectiveSessionCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$existingConfig.paths.sessionCollectorScript } else { Join-Path $effectiveStateRoot 'worktime-session-collector.ps1' }
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
+$effectivePolicyClientScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$existingConfig.paths.policyClientScript } else { Join-Path $effectiveStateRoot 'dlp-policy-client.ps1' }
 
 $effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
 $effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
@@ -76,6 +86,13 @@ $effectiveIncidentArtifactsRoot = if ($PSBoundParameters.ContainsKey('IncidentAr
 $effectiveLogonMarkerEnabled = if ($PSBoundParameters.ContainsKey('LogonMarkerEnabled')) { [bool]$LogonMarkerEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$existingConfig.sessionEvents.logonEnabled } else { $true }
 $effectiveAwHostname = if ($PSBoundParameters.ContainsKey('AwHostname') -and -not [string]::IsNullOrWhiteSpace($AwHostname)) { [string]$AwHostname } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.awHostname)) { [string]$existingConfig.awHostname } else { [string]$env:COMPUTERNAME }
 $effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
+$effectivePolicyMode = if ($PSBoundParameters.ContainsKey('PolicyMode') -and $PolicyMode) { [string]$PolicyMode } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'mode') { [string]$existingConfig.policyEngine.mode } else { 'local' }
+$effectivePolicyEngineEnabled = if ($PSBoundParameters.ContainsKey('PolicyEngineEnabled')) { [bool]$PolicyEngineEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.policyEngine.enabled } else { $false }
+$effectivePolicyEngineHost = if ($PSBoundParameters.ContainsKey('PolicyEngineHost') -and -not [string]::IsNullOrWhiteSpace($PolicyEngineHost)) { [string]$PolicyEngineHost } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'host') { [string]$existingConfig.policyEngine.host } else { [string]$effectiveServerHost }
+$effectivePolicyEnginePort = if ($PSBoundParameters.ContainsKey('PolicyEnginePort')) { [int]$PolicyEnginePort } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'port') { [int]$existingConfig.policyEngine.port } else { 5601 }
+$effectivePolicyEngineScheme = if ($PSBoundParameters.ContainsKey('PolicyEngineScheme') -and $PolicyEngineScheme) { [string]$PolicyEngineScheme } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'scheme') { [string]$existingConfig.policyEngine.scheme } else { 'http' }
+$effectivePolicyRefreshSeconds = if ($PSBoundParameters.ContainsKey('PolicyRefreshSeconds')) { [int]$PolicyRefreshSeconds } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'refreshSeconds') { [int]$existingConfig.policyEngine.refreshSeconds } else { 300 }
+$effectivePolicyCachePath = if ($PSBoundParameters.ContainsKey('PolicyCachePath') -and $PolicyCachePath) { [string]$PolicyCachePath } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'cachePath') { [string]$existingConfig.policyEngine.cachePath } else { Join-Path $effectiveStateRoot 'dlp-policy-cache.json' }
 
 $effectiveUsers = if ($Users -or $UserListPath) {
     Normalize-ActivityWatchUsers -Users $Users -UserListPath $UserListPath -Domain $Domain
@@ -125,6 +142,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
     -EndpointCollectorScript $effectiveEndpointCollector `
+    -PolicyClientScript $effectivePolicyClientScript `
     -EmailCollectorScript $assetResult.EmailCollectorScript `
     -FileCollectorScript $effectiveFileCollector `
     -SessionCollectorScript $effectiveSessionCollector `
@@ -142,6 +160,13 @@ $config = New-ActivityWatchDeploymentConfig `
     -IncidentArtifactsRoot $effectiveIncidentArtifactsRoot `
     -LogonMarkerEnabled $effectiveLogonMarkerEnabled `
     -AwHostname $effectiveAwHostname `
+    -PolicyMode $effectivePolicyMode `
+    -PolicyEngineEnabled $effectivePolicyEngineEnabled `
+    -PolicyEngineHost $effectivePolicyEngineHost `
+    -PolicyEnginePort $effectivePolicyEnginePort `
+    -PolicyEngineScheme $effectivePolicyEngineScheme `
+    -PolicyRefreshSeconds $effectivePolicyRefreshSeconds `
+    -PolicyCachePath $effectivePolicyCachePath `
     -LaunchScriptPath $effectiveLaunchScript `
     -RecoveryScriptPath $effectiveRecoveryScript `
     -UserTasks $taskDefinitions `

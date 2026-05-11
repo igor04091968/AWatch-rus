@@ -25,9 +25,9 @@ aw_windows_extra_users: []
 aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
 aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
 aw_windows_hostname_override: ""
-aw_windows_policy_mode: "local"
+aw_windows_policy_mode: "server"
 aw_windows_policy_refresh_seconds: 300
-aw_windows_policy_engine_enabled: false
+aw_windows_policy_engine_enabled: true
 aw_windows_policy_engine_host: "{{ aw_windows_server_host }}"
 aw_windows_policy_engine_port: 5601
 aw_windows_policy_engine_scheme: "http"

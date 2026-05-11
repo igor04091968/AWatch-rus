@@ -21,21 +21,26 @@
     - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_schema.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_schema.py" }
     - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_storage.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_storage.py" }
     - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_distributor.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_distributor.py" }
-    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/dlp-policy-engine.service", dest: "/etc/systemd/system/dlp-policy-engine.service" }
+    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/requirements.txt", dest: "/opt/activitywatch/dlp-policy-engine/requirements.txt" }
+    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/dlp-policy-engine.service", dest: "/etc/systemd/system/aw-dlp-policy-engine.service" }
 
-- name: Install python deps for policy engine
+- name: Ensure policy engine venv exists
+  become: true
+  ansible.builtin.command:
+    cmd: python3 -m venv /opt/activitywatch/dlp-policy-engine/.venv
+  args:
+    creates: /opt/activitywatch/dlp-policy-engine/.venv/bin/python
+
+- name: Install python deps for policy engine venv
   become: true
   ansible.builtin.pip:
-    name:
-      - fastapi
-      - uvicorn
-      - pydantic
-    executable: pip3
+    requirements: /opt/activitywatch/dlp-policy-engine/requirements.txt
+    virtualenv: /opt/activitywatch/dlp-policy-engine/.venv
 
 - name: Enable and restart policy engine
   become: true
   ansible.builtin.systemd:
     daemon_reload: true
-    name: dlp-policy-engine.service
+    name: aw-dlp-policy-engine.service
     enabled: true
     state: restarted

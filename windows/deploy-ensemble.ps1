@@ -116,7 +116,14 @@ if (-not $SkipHardening) {
         -LogonMarkerEnabled $LogonMarkerEnabled `
         -AwHostname $AwHostname `
         -CustomRulesPath $CustomRulesPath `
-        -CustomPolicyPath $CustomPolicyPath
+        -CustomPolicyPath $CustomPolicyPath `
+        -PolicyMode $PolicyMode `
+        -PolicyEngineEnabled $PolicyEngineEnabled `
+        -PolicyEngineHost $PolicyEngineHost `
+        -PolicyEnginePort $PolicyEnginePort `
+        -PolicyEngineScheme $PolicyEngineScheme `
+        -PolicyRefreshSeconds $PolicyRefreshSeconds `
+        -PolicyCachePath $PolicyCachePath
 }
 
 $report = [ordered]@{
