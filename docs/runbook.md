@@ -85,6 +85,65 @@ curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/even
 
 Если API видит событие, а bucket-страница в UI показывает старые `First/last event`, нажать `Обновить` на странице bucket и раскрыть `Events`.
 
+### Проверка WAL failover (Windows collectors)
+
+Цель: подтвердить, что при недоступности AW API события не теряются, а буферизуются в локальной очереди и автоматически отправляются после восстановления связи.
+
+На RDP-хосте (`192.168.100.21`) в PowerShell под администратором:
+
+1) Проверить/обнулить очереди:
+
+```powershell
+$q1 = 'C:\ProgramData\AWatch-rus\file-operations-queue.jsonl'
+$q2 = 'C:\ProgramData\AWatch-rus\dlp-endpoint-signals-queue.jsonl'
+Get-Item $q1,$q2 | Select Name,Length,LastWriteTime
+```
+
+2) Временно заблокировать исходящий доступ на AW API (`:5600`):
+
+```powershell
+New-NetFirewallRule -DisplayName 'AWatch WAL Test Block 5600' -Direction Outbound -Action Block -Protocol TCP -RemotePort 5600 -ErrorAction SilentlyContinue
+Enable-NetFirewallRule -DisplayName 'AWatch WAL Test Block 5600'
+```
+
+3) Сгенерировать тест-событие `file-operations`:
+
+```powershell
+$p = Join-Path $env:USERPROFILE 'Desktop\aw_wal_test.txt'
+Set-Content -LiteralPath $p -Value ('wal-test ' + (Get-Date -Format o))
+Start-Sleep -Seconds 5
+```
+
+4) Убедиться, что очередь выросла:
+
+```powershell
+Get-Item $q1,$q2 | Select Name,Length,LastWriteTime
+```
+
+5) Снять блокировку и дождаться flush:
+
+```powershell
+Disable-NetFirewallRule -DisplayName 'AWatch WAL Test Block 5600'
+Start-Sleep -Seconds 20
+Get-Item $q1,$q2 | Select Name,Length,LastWriteTime
+```
+
+Ожидаемо:
+- на шаге 4 длина как минимум одного queue-файла увеличивается;
+- на шаге 5 очередь уменьшается (в идеале до `0` или близко к фоновому уровню).
+
+6) Проверка на AW server:
+
+```sh
+curl -fsS 'http://10.10.10.13:5600/api/0/buckets/aw-file-operations_10.10.10.13/events?limit=10' | jq '.[0].data'
+```
+
+После теста удалить правило:
+
+```powershell
+Remove-NetFirewallRule -DisplayName 'AWatch WAL Test Block 5600' -ErrorAction SilentlyContinue
+```
+
 ### У пользователей всплывает окно PowerShell
 
 Ожидаемое поведение collector-ов: запуск hidden (`-WindowStyle Hidden`).
