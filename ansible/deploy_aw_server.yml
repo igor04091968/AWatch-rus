@@ -20,6 +20,7 @@
       ansible.builtin.apt:
         name:
           - curl
+          - python3-venv
           - rsync
           - unzip
         state: present
@@ -298,8 +299,57 @@
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
               AW_WORKTIME_TZ={{ aw_worktime_timezone }}
               AW_DLP_IOC_DIR={{ aw_dlp_ioc_workdir }}/output
+              AW_DLP_POLICY_ENGINE_BIND_HOST={{ aw_dlp_policy_engine_bind_host }}
+              AW_DLP_POLICY_ENGINE_PORT={{ aw_dlp_policy_engine_port }}
+              AW_DLP_POLICY_ENGINE_DB_PATH={{ aw_dlp_policy_engine_db_path }}
               XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
               XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
+
+        - name: Создать каталог DLP policy engine
+          ansible.builtin.file:
+            path: /opt/activitywatch/dlp-policy-engine
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          when: aw_dlp_policy_engine_enabled | default(false) | bool
+
+        - name: Скопировать файлы DLP policy engine
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-policy-engine/{{ item }}"
+            dest: "/opt/activitywatch/dlp-policy-engine/{{ item }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          loop:
+            - policy_service.py
+            - policy_schema.py
+            - policy_storage.py
+            - policy_distributor.py
+            - requirements.txt
+          when: aw_dlp_policy_engine_enabled | default(false) | bool
+
+        - name: Создать virtualenv DLP policy engine
+          ansible.builtin.command:
+            cmd: python3 -m venv /opt/activitywatch/dlp-policy-engine/.venv
+          args:
+            creates: /opt/activitywatch/dlp-policy-engine/.venv/bin/python
+          when: aw_dlp_policy_engine_enabled | default(false) | bool
+
+        - name: Установить зависимости DLP policy engine
+          ansible.builtin.pip:
+            requirements: /opt/activitywatch/dlp-policy-engine/requirements.txt
+            virtualenv: /opt/activitywatch/dlp-policy-engine/.venv
+          when: aw_dlp_policy_engine_enabled | default(false) | bool
+
+        - name: Установить systemd unit DLP policy engine
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-policy-engine/dlp-policy-engine.service"
+            dest: /etc/systemd/system/aw-dlp-policy-engine.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_policy_engine_enabled | default(false) | bool
 
         - name: Установить скрипт AW worktime API
           ansible.builtin.copy:
@@ -344,6 +394,13 @@
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
             daemon_reload: true
+
+        - name: Включить и перезапустить DLP policy engine
+          ansible.builtin.systemd:
+            name: aw-dlp-policy-engine.service
+            enabled: true
+            state: restarted
+          when: aw_dlp_policy_engine_enabled | default(false) | bool
 
         - name: Включить и перезапустить AW worktime API
           ansible.builtin.systemd:

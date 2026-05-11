@@ -18,6 +18,7 @@ $fileCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'fil
 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
 $rulesPath = [string]$config.paths.rulesPath
 $policyPath = if ($config.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$config.paths.policyPath } else { Join-Path $stateRoot 'dlp-policy.json' }
+$policyClientScript = if ($config.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$config.paths.policyClientScript } else { Join-Path $stateRoot 'dlp-policy-client.ps1' }
 $launchScript = [string]$config.paths.launchScript
 $recoveryScript = [string]$config.paths.recoveryScript
 
@@ -44,6 +45,7 @@ $requiredFiles = @(
     $sessionCollectorScript,
     $rulesPath,
     $policyPath,
+    $policyClientScript,
     $launchScript,
     $recoveryScript,
     $ConfigPath
@@ -59,7 +61,9 @@ if ($windowExpected) {
 }
 
 $missingFiles = @(
-    $requiredFiles | Where-Object { -not (Test-Path -LiteralPath $_) }
+    $requiredFiles |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Where-Object { -not (Test-Path -LiteralPath $_) }
 )
 
 $processNames = @()

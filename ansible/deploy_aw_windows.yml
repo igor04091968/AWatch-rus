@@ -25,6 +25,12 @@
     aw_windows_users_effective: "{{ (aw_windows_users + aw_windows_extra_users) | unique }}"
     aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
     aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
+    aw_windows_policy_mode: "local"
+    aw_windows_policy_refresh_seconds: 300
+    aw_windows_policy_engine_enabled: false
+    aw_windows_policy_engine_host: "{{ aw_windows_server_host }}"
+    aw_windows_policy_engine_port: 5601
+    aw_windows_policy_engine_scheme: "http"
     aw_windows_afk_enabled: true
     aw_windows_window_enabled: true
     aw_windows_file_ops_enabled: true
@@ -83,6 +89,7 @@
         - ActivityWatch.Windows.Common.psm1
         - browser-domains-native-collector.ps1
         - dlp-endpoint-signals-collector.ps1
+        - dlp-policy-client.ps1
         - email-outbound-collector.ps1
         - file-operations-collector.ps1
         - worktime-session-collector.ps1
@@ -156,6 +163,12 @@
             IncidentScreenshotEnabled = {{ '$true' if (aw_windows_incident_screenshot_enabled | bool) else '$false' }}
             IncidentArtifactsRoot = "{{ aw_windows_incident_artifacts_root }}"
             LogonMarkerEnabled = {{ '$true' if (aw_windows_logon_marker_enabled | bool) else '$false' }}
+            PolicyMode = "{{ aw_windows_policy_mode }}"
+            PolicyEngineEnabled = {{ '$true' if (aw_windows_policy_engine_enabled | bool) else '$false' }}
+            PolicyEngineHost = "{{ aw_windows_policy_engine_host }}"
+            PolicyEnginePort = {{ aw_windows_policy_engine_port }}
+            PolicyEngineScheme = "{{ aw_windows_policy_engine_scheme }}"
+            PolicyRefreshSeconds = {{ aw_windows_policy_refresh_seconds }}
             CustomRulesPath = "{{ aw_windows_rules_path }}"
             CustomPolicyPath = "{{ aw_windows_policy_path }}"
           }
@@ -170,6 +183,9 @@
           {% endif %}
           {% if aw_windows_skip_hardening | bool %}
           $params.SkipHardening = $true
+          {% endif %}
+          {% if aw_windows_integration_test_enabled | bool %}
+          $params.IntegrationTestEnabled = $true
           {% endif %}
           & "{{ aw_windows_deploy_root }}\windows\deploy-ensemble.ps1" @params
 
@@ -346,7 +362,7 @@
       ansible.builtin.shell: |
         python3 - <<'PY'
         import json, sys
-        with open('{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json', 'r') as f:
+        with open('{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json', 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
         if not data.get('overallOk', False):
             print(f"Validation failed for {{ inventory_hostname }}: {data.get('summary', 'Unknown error')}")

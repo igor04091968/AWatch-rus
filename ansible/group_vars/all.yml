@@ -27,6 +27,10 @@ aw_dlp_ioc_workdir: "/opt/activitywatch/dlp-ioc"
 aw_dlp_ioc_rules_zip_url: "https://github.com/Yamato-Security/hayabusa-rules/archive/refs/heads/main.zip"
 aw_dlp_ioc_refresh_on_boot_sec: "5min"
 aw_dlp_ioc_refresh_interval: "6h"
+aw_dlp_policy_engine_enabled: true
+aw_dlp_policy_engine_bind_host: "0.0.0.0"
+aw_dlp_policy_engine_port: 5601
+aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
 
 aw_worktime_from: "08:00"
 aw_worktime_to: "17:00"

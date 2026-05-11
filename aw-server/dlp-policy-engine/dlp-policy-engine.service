@@ -1,12 +1,13 @@
 [Unit]
-Description=AW Worktime Report API
+Description=AW DLP Policy Engine
 After=network.target activitywatch-server.service
 Wants=activitywatch-server.service
 
 [Service]
 Type=simple
 EnvironmentFile=/etc/activitywatch/aw-server.env
-ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-api.py
+WorkingDirectory=/opt/activitywatch/dlp-policy-engine
+ExecStart=/opt/activitywatch/dlp-policy-engine/.venv/bin/uvicorn policy_service:app --host ${AW_DLP_POLICY_ENGINE_BIND_HOST} --port ${AW_DLP_POLICY_ENGINE_PORT}
 Restart=on-failure
 RestartSec=5
 StartLimitBurst=3
@@ -15,7 +16,7 @@ User=activitywatch
 Group=activitywatch
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=aw-worktime-api
+SyslogIdentifier=aw-dlp-policy-engine
 
 [Install]
 WantedBy=multi-user.target

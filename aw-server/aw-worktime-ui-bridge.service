@@ -4,12 +4,19 @@ After=network-online.target activitywatch-server.service
 Wants=network-online.target
 
 [Service]
-Type=oneshot
+Type=simple
 Environment=AW_SERVER_URL=http://127.0.0.1:5600
 Environment=AW_WORKTIME_HOST=SHARKON2025
 ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-ui-bridge.py
-User=root
-Group=root
+Restart=on-failure
+RestartSec=10
+StartLimitBurst=3
+StartLimitIntervalSec=120
+User=activitywatch
+Group=activitywatch
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-worktime-ui-bridge
 
 [Install]
 WantedBy=multi-user.target

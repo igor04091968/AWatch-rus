@@ -5,7 +5,15 @@ param(
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
     [string]$ServerScheme,
+    [string]$PolicyEngineHost,
+    [int]$PolicyEnginePort,
+    [ValidateSet('http', 'https')]
+    [string]$PolicyEngineScheme,
     [string]$PolicyPath,
+    [ValidateSet('local', 'server')]
+    [string]$PolicyMode,
+    [int]$PolicyRefreshSeconds,
+    [string]$PolicyCachePath,
     [string]$LogPath,
     [int]$PollSeconds
 )
@@ -18,6 +26,20 @@ try {
     Add-Type -AssemblyName System.Net.Http
 }
 catch {
+}
+
+$policyClientModulePath = Join-Path $PSScriptRoot 'dlp-policy-client.ps1'
+if (Test-Path -LiteralPath $policyClientModulePath) {
+    try {
+        Import-Module $policyClientModulePath -Force -DisableNameChecking
+        $script:PolicyClientAvailable = $true
+    }
+    catch {
+        $script:PolicyClientAvailable = $false
+    }
+}
+else {
+    $script:PolicyClientAvailable = $false
 }
 
 function Get-DeploymentConfig {
@@ -464,6 +486,10 @@ function Load-DlpPolicy {
         }
     }
 
+    $script:PolicySource = 'defaults'
+    $script:PolicyVersion = $null
+    $script:PolicyChecksum = $null
+
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
         Write-EndpointLog ("policy not found, using defaults: {0}" -f $Path)
         return
@@ -485,10 +511,85 @@ function Load-DlpPolicy {
             if ($props -contains 'usb' -and $raw.endpoint.usb) { $script:Policy.endpoint.usb = @($raw.endpoint.usb) }
             if ($props -contains 'print' -and $raw.endpoint.print) { $script:Policy.endpoint.print = @($raw.endpoint.print) }
         }
+        $script:PolicySource = 'local'
     }
     catch {
         Write-EndpointLog ("policy parse failed: {0}" -f $_.Exception.Message)
     }
+}
+
+function Apply-PolicyFromBundle {
+    param(
+        [Parameter(Mandatory = $true)]$Bundle,
+        [Parameter(Mandatory = $true)][string]$Source
+    )
+
+    if (-not $Bundle.policy) {
+        throw 'Policy bundle has no policy payload.'
+    }
+
+    $tempPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $Bundle.policy | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempPath -Encoding UTF8
+        Load-DlpPolicy -Path $tempPath
+        $script:PolicySource = $Source
+        $script:PolicyVersion = if ($Bundle.PSObject.Properties.Name -contains 'version') { [string]$Bundle.version } else { $null }
+        $script:PolicyChecksum = if ($Bundle.PSObject.Properties.Name -contains 'checksum') { [string]$Bundle.checksum } else { $null }
+    }
+    finally {
+        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Refresh-DlpPolicyFromServer {
+    if (-not $script:PolicyEngineEnabled) {
+        return $false
+    }
+    if (-not $script:PolicyClientAvailable) {
+        Write-EndpointLog 'policy client module unavailable, cannot use server mode'
+        return $false
+    }
+
+    try {
+        $bundle = Get-RemoteDlpPolicyBundle -ApiBase $script:PolicyApiBase -TimeoutSec 10
+        Save-CachedDlpPolicyBundle -Bundle $bundle -CachePath $script:PolicyCachePath
+        Apply-PolicyFromBundle -Bundle $bundle -Source 'server'
+        $script:LastPolicyRefreshAt = (Get-Date).ToUniversalTime()
+        Write-EndpointLog ("policy refreshed from server version={0} checksum={1}" -f $script:PolicyVersion, $script:PolicyChecksum)
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("policy refresh failed: {0}" -f $_.Exception.Message)
+        return $false
+    }
+}
+
+function Initialize-DlpPolicy {
+    if ($script:PolicyMode -eq 'server') {
+        if (Refresh-DlpPolicyFromServer) {
+            return
+        }
+
+        if ($script:PolicyClientAvailable) {
+            $cached = Read-CachedDlpPolicyBundle -CachePath $script:PolicyCachePath
+            if ($cached) {
+                try {
+                    Apply-PolicyFromBundle -Bundle $cached -Source 'cache'
+                    Write-EndpointLog ("policy loaded from cache version={0} checksum={1}" -f $script:PolicyVersion, $script:PolicyChecksum)
+                    return
+                }
+                catch {
+                    Write-EndpointLog ("cached policy load failed: {0}" -f $_.Exception.Message)
+                }
+            }
+        }
+
+        Load-DlpPolicy -Path $script:LocalPolicyPath
+        $script:PolicySource = 'local-fallback'
+        return
+    }
+
+    Load-DlpPolicy -Path $script:LocalPolicyPath
 }
 
 function Should-EmitByCooldown {
@@ -862,6 +963,7 @@ $resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
 $resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\AWatch-rus\dlp-policy.json' }
+$resolvedStateRoot = if ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'stateRoot') { [string]$deploymentConfig.paths.stateRoot } else { Split-Path -Path $resolvedPolicyPath -Parent }
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
 $resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\AWatch-rus\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("endpoint-signals-{0}.log" -f $env:USERNAME) }
@@ -869,12 +971,20 @@ $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PS
 $resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
 $resolvedHostname = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$deploymentConfig.awHostname)) { [string]$deploymentConfig.awHostname } else { [string]$env:COMPUTERNAME }
+$resolvedPolicyMode = if ($PolicyMode) { [string]$PolicyMode } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'mode') { [string]$deploymentConfig.policyEngine.mode } else { 'local' }
+$resolvedPolicyEngineEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'enabled') { [bool]$deploymentConfig.policyEngine.enabled } else { $false }
+$resolvedPolicyEngineHost = if ($PolicyEngineHost) { [string]$PolicyEngineHost } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'host') { [string]$deploymentConfig.policyEngine.host } else { $resolvedServerHost }
+$resolvedPolicyEnginePort = if ($PSBoundParameters.ContainsKey('PolicyEnginePort')) { $PolicyEnginePort } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'port') { [int]$deploymentConfig.policyEngine.port } else { $resolvedServerPort }
+$resolvedPolicyEngineScheme = if ($PolicyEngineScheme) { [string]$PolicyEngineScheme } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'scheme') { [string]$deploymentConfig.policyEngine.scheme } else { $resolvedServerScheme }
+$resolvedPolicyRefreshSeconds = if ($PSBoundParameters.ContainsKey('PolicyRefreshSeconds')) { $PolicyRefreshSeconds } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'refreshSeconds') { [int]$deploymentConfig.policyEngine.refreshSeconds } else { 300 }
+$resolvedPolicyCachePath = if ($PolicyCachePath) { [string]$PolicyCachePath } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'cachePath') { [string]$deploymentConfig.policyEngine.cachePath } else { Join-Path $resolvedStateRoot 'dlp-policy-cache.json' }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
 }
 
 $script:ApiBase = '{0}://{1}:{2}/api/0' -f $resolvedServerScheme, $resolvedServerHost, $resolvedServerPort
+$script:PolicyApiBase = '{0}://{1}:{2}/api/0' -f $resolvedPolicyEngineScheme, $resolvedPolicyEngineHost, $resolvedPolicyEnginePort
 $script:Hostname = $resolvedHostname
 $script:SessionId = (Get-Process -Id $PID).SessionId
 $script:KnownBuckets = @{}
@@ -891,17 +1001,37 @@ $script:LogPath = $resolvedLogPath
 $script:IncidentArtifactsRoot = $resolvedIncidentArtifactsRoot
 $script:IncidentScreenshotEnabled = $resolvedIncidentScreenshotEnabled
 $script:ScreenshotTypesLoaded = $false
+$script:PolicyMode = $resolvedPolicyMode
+$script:PolicyEngineEnabled = $resolvedPolicyEngineEnabled
+$script:PolicyRefreshSeconds = [Math]::Max($resolvedPolicyRefreshSeconds, 60)
+$script:PolicyCachePath = $resolvedPolicyCachePath
+$script:LocalPolicyPath = $resolvedPolicyPath
+$script:LastPolicyRefreshAt = [datetime]::MinValue
+# Integration test flag (backward compatible - defaults to false)
+$script:IntegrationTestEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'integrationTestEnabled') { [bool]$deploymentConfig.integrationTestEnabled } else { $false }
 
-Load-DlpPolicy -Path $resolvedPolicyPath
+# Integration metadata tracking (backward compatible)
+$script:TotalEventsProcessed = 0
+$script:LastEventTime = $null
+
+Initialize-DlpPolicy
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
 
 while ($true) {
     try {
+        if ($script:PolicyMode -eq 'server' -and (($nowUtc = (Get-Date).ToUniversalTime()) - $script:LastPolicyRefreshAt).TotalSeconds -ge $script:PolicyRefreshSeconds) {
+            [void](Refresh-DlpPolicyFromServer)
+        }
+
         $nowUtc = (Get-Date).ToUniversalTime()
         if (($nowUtc - $script:LastSelfTestAt).TotalSeconds -ge $script:SelfTestIntervalSeconds) {
             Send-EndpointSignalHeartbeat -SignalType 'self_test' -Data @{
                 collector = 'dlp-endpoint-signals'
                 policyEnabled = [bool]$script:Policy.defaults.enabled
+                policyMode = $script:PolicyMode
+                policySource = $script:PolicySource
+                policyVersion = $script:PolicyVersion
+                policyChecksum = $script:PolicyChecksum
             }
             $script:LastSelfTestAt = $nowUtc
         }
@@ -921,6 +1051,8 @@ while ($true) {
                         clipboardHash = $clipboardHash
                         clipboardLength = $clipboardText.Length
                     }
+                    $script:TotalEventsProcessed++
+                    $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                     Evaluate-ClipboardRules -ClipboardText $clipboardText -ClipboardHash $clipboardHash
                 }
             }
@@ -942,6 +1074,8 @@ while ($true) {
                         driveLetter = $deviceId
                         volumeName  = $volumeName
                     }
+                    $script:TotalEventsProcessed++
+                    $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                     Evaluate-UsbRules -DriveLetter $deviceId -VolumeName $volumeName
                 }
             }
@@ -981,6 +1115,8 @@ while ($true) {
                     documentNameOriginal = $documentNameOriginal
                     owner        = $owner
                 }
+                $script:TotalEventsProcessed++
+                $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName $documentName -Owner $owner
             }
 
@@ -1028,6 +1164,8 @@ while ($true) {
                     eventRecordId = $recordId
                     eventSource = 'printservice-307'
                 }
+                $script:TotalEventsProcessed++
+                $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName (if ($resolvedDocument) { $resolvedDocument } else { $documentName }) -Owner $owner
             }
 
@@ -1044,6 +1182,31 @@ while ($true) {
     }
     catch {
         Write-EndpointLog ("collector error: {0}" -f $_.Exception.Message)
+    }
+
+    # Integration metadata self-test (backward compatible)
+    if ($script:IntegrationTestEnabled -and (Get-Date).Minute -eq 0) {
+        try {
+            $testMetadata = @{
+                timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+                collector = 'dlp-endpoint-signals'
+                version = '1.0.0'
+                hostname = $env:COMPUTERNAME
+                username = $env:USERNAME
+                status = 'healthy'
+                checks = @{
+                    eventsProcessed = $script:TotalEventsProcessed
+                    lastEventTime = $script:LastEventTime
+                    iocRulesLoaded = if ($script:IocRules) { @($script:IocRules).Count } else { 0 }
+                    policyRulesLoaded = if ($script:Policy -and $script:Policy.endpoint) { (@($script:Policy.endpoint.clipboard).Count + @($script:Policy.endpoint.usb).Count + @($script:Policy.endpoint.print).Count) } else { 0 }
+                }
+            }
+            Send-EndpointSignalHeartbeat -SignalType 'integration_test' -Data $testMetadata
+            Write-EndpointLog "Integration metadata test sent"
+        }
+        catch {
+            Write-EndpointLog "Integration test failed: $($_.Exception.Message)"
+        }
     }
 
     Start-Sleep -Seconds $resolvedPollSeconds

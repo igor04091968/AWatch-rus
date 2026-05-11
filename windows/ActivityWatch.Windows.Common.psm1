@@ -265,6 +265,7 @@ function Copy-ActivityWatchCollectorAssets {
         [string]$CollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScriptSource,
+        [string]$PolicyClientScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$FileCollectorScriptSource,
         [Parameter(Mandatory = $true)]
@@ -284,6 +285,7 @@ function Copy-ActivityWatchCollectorAssets {
 
     $collectorTarget = Join-Path $StateRoot 'browser-domains-native-collector.ps1'
     $endpointCollectorTarget = Join-Path $StateRoot 'dlp-endpoint-signals-collector.ps1'
+    $policyClientTarget = Join-Path $StateRoot 'dlp-policy-client.ps1'
     $fileCollectorTarget = Join-Path $StateRoot 'file-operations-collector.ps1'
     $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
     $emailCollectorTarget = Join-Path $StateRoot 'email-outbound-collector.ps1'
@@ -294,6 +296,9 @@ function Copy-ActivityWatchCollectorAssets {
 
     Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
     Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
+    if ($PolicyClientScriptSource -and (Test-Path -LiteralPath $PolicyClientScriptSource)) {
+        Copy-Item -LiteralPath $PolicyClientScriptSource -Destination $policyClientTarget -Force
+    }
     Copy-Item -LiteralPath $FileCollectorScriptSource -Destination $fileCollectorTarget -Force
     Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
     if ($EmailCollectorScriptSource -and (Test-Path -LiteralPath $EmailCollectorScriptSource)) {
@@ -321,6 +326,7 @@ function Copy-ActivityWatchCollectorAssets {
     return [pscustomobject]@{
         CollectorScript         = $collectorTarget
         EndpointCollectorScript = $endpointCollectorTarget
+        PolicyClientScript      = $policyClientTarget
         FileCollectorScript     = $fileCollectorTarget
         SessionCollectorScript  = $sessionCollectorTarget
         EmailCollectorScript    = $emailCollectorTarget
@@ -349,6 +355,7 @@ function New-ActivityWatchDeploymentConfig {
         [string]$CollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScript,
+        [string]$PolicyClientScript,
         [Parameter(Mandatory = $true)]
         [string]$FileCollectorScript,
         [Parameter(Mandatory = $true)]
@@ -377,12 +384,24 @@ function New-ActivityWatchDeploymentConfig {
         [Parameter(Mandatory = $true)]
         [string]$RecoveryScriptPath,
         [string]$AwHostname,
+        [ValidateSet('local', 'server')]
+        [string]$PolicyMode = 'local',
+        [bool]$PolicyEngineEnabled = $false,
+        [string]$PolicyEngineHost,
+        [int]$PolicyEnginePort = 5601,
+        [ValidateSet('http', 'https')]
+        [string]$PolicyEngineScheme = 'http',
+        [int]$PolicyRefreshSeconds = 300,
+        [string]$PolicyCachePath,
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$UserTasks,
-        [string]$PackageVersion = 'v0.13.2'
+        [string]$PackageVersion = 'v0.13.2',
+        [switch]$IntegrationTestEnabled
     )
 
     $effectiveIncidentArtifactsRoot = if ($IncidentArtifactsRoot) { $IncidentArtifactsRoot } else { Join-Path $StateRoot 'incident-artifacts' }
+    $effectivePolicyEngineHost = if ([string]::IsNullOrWhiteSpace($PolicyEngineHost)) { $ServerHost } else { $PolicyEngineHost }
+    $effectivePolicyCachePath = if ([string]::IsNullOrWhiteSpace($PolicyCachePath)) { Join-Path $StateRoot 'dlp-policy-cache.json' } else { $PolicyCachePath }
 
     return [pscustomobject]@{
         version  = 1
@@ -399,6 +418,7 @@ function New-ActivityWatchDeploymentConfig {
             logsRoot       = $LogsRoot
             collectorScript = $CollectorScript
             endpointCollectorScript = $EndpointCollectorScript
+            policyClientScript = $PolicyClientScript
             emailCollectorScript = $EmailCollectorScript
             fileCollectorScript = $FileCollectorScript
             sessionCollectorScript = $SessionCollectorScript
@@ -415,7 +435,7 @@ function New-ActivityWatchDeploymentConfig {
             afkEnabled   = $AfkEnabled
             windowEnabled = $WindowEnabled
             fileOpsEnabled = $FileOpsEnabled
-            emailEnabled = ($null -ne $EmailCollectorScript -and $EmailCollectorScript -ne '')
+            emailEnabled = $false
         }
         logging = [pscustomobject]@{
             localAgentLogsEnabled = $LocalAgentLogsEnabled
@@ -437,10 +457,20 @@ function New-ActivityWatchDeploymentConfig {
             incidentBucketPrefix = 'aw-dlp-incidents'
             enabled              = $true
         }
+        policyEngine = [pscustomobject]@{
+            enabled        = $PolicyEngineEnabled
+            mode           = $PolicyMode
+            host           = $effectivePolicyEngineHost
+            port           = $PolicyEnginePort
+            scheme         = $PolicyEngineScheme
+            refreshSeconds = $PolicyRefreshSeconds
+            cachePath      = $effectivePolicyCachePath
+        }
         package = [pscustomobject]@{
             version = $PackageVersion
         }
         userTasks = @($UserTasks)
+        integrationTestEnabled = [bool]$IntegrationTestEnabled
     }
 }
 
@@ -1048,10 +1078,24 @@ function Set-ActivityWatchScheduledTaskAction {
         [string]$Arguments
     )
 
-    $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
-    & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "schtasks.exe /Change завершился с ошибкой для $TaskName"
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        return $false
+    }
+
+    $newAction = New-ScheduledTaskAction -Execute $Execute -Argument $Arguments
+    try {
+        # Non-interactive update path. Avoids schtasks.exe /Change password prompt for user-bound tasks.
+        Set-ScheduledTask -TaskName $TaskName -Action $newAction -ErrorAction Stop | Out-Null
+        return $true
+    }
+    catch {
+        $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
+        & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Не удалось обновить action задачи ${TaskName}: $($_.Exception.Message)"
+        }
+        return $true
     }
 }
 
@@ -1136,8 +1180,10 @@ function Register-ActivityWatchUserTasks {
         $existingTask = Get-ActivityWatchScheduledTaskByCommand -TaskName $definition.LaunchTaskName -CommandMatch $ConfigPath
 
         if ($existingTask) {
-            Set-ActivityWatchScheduledTaskAction -TaskName $existingTask.TaskName -Execute $wscriptExe -Arguments $action.Arguments
-            continue
+            $updated = Set-ActivityWatchScheduledTaskAction -TaskName $existingTask.TaskName -Execute $wscriptExe -Arguments $action.Arguments
+            if ($updated) {
+                continue
+            }
         }
 
         Remove-ActivityWatchScheduledTask -TaskName $definition.LaunchTaskName

@@ -25,6 +25,12 @@ aw_windows_extra_users: []
 aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
 aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
 aw_windows_hostname_override: ""
+aw_windows_policy_mode: "local"
+aw_windows_policy_refresh_seconds: 300
+aw_windows_policy_engine_enabled: false
+aw_windows_policy_engine_host: "{{ aw_windows_server_host }}"
+aw_windows_policy_engine_port: 5601
+aw_windows_policy_engine_scheme: "http"
 
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
@@ -53,3 +59,6 @@ aw_windows_migration_report_remote_path: "{{ aw_windows_state_root }}\\aw_migrat
 aw_windows_api_smoke_check_enabled: true
 aw_windows_api_smoke_check_bucket: ""
 aw_windows_api_smoke_check_limit: 10
+
+# Integration test settings (backward compatible - defaults to disabled)
+aw_windows_integration_test_enabled: false

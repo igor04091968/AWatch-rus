@@ -7,3 +7,12 @@ ansible_become: true
 ansible_become_method: sudo
 # If sudo password differs, set AW_SUDO_PASSWORD. Otherwise it will reuse AW_SSH_PASSWORD.
 ansible_become_password: "{{ lookup('env', 'AW_SUDO_PASSWORD') | default(lookup('env', 'AW_SSH_PASSWORD'), true) }}"
+
+# Hayabusa IOC refresh settings (backward compatible - defaults to disabled)
+aw_hayabusa_ioc_refresh_enabled: false
+aw_hayabusa_rules_root: "/mnt/usb_hdd1/Projects/hayabusa/rules"
+aw_hayabusa_ioc_output_dir: "{{ aw_server_data_dir }}/dlp-ioc"
+aw_dlp_policy_engine_enabled: true
+aw_dlp_policy_engine_bind_host: "0.0.0.0"
+aw_dlp_policy_engine_port: 5601
+aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"

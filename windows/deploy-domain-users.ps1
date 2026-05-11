@@ -26,7 +26,17 @@ param(
     [bool]$LogonMarkerEnabled = $true,
     [string]$AwHostname,
     [string]$CustomRulesPath,
-    [string]$CustomPolicyPath
+    [string]$CustomPolicyPath,
+    [ValidateSet('local', 'server')]
+    [string]$PolicyMode = 'local',
+    [bool]$PolicyEngineEnabled = $false,
+    [string]$PolicyEngineHost,
+    [int]$PolicyEnginePort = 5601,
+    [ValidateSet('http', 'https')]
+    [string]$PolicyEngineScheme = 'http',
+    [int]$PolicyRefreshSeconds = 300,
+    [string]$PolicyCachePath,
+    [switch]$IntegrationTestEnabled
 )
 
 Set-StrictMode -Version Latest
@@ -46,6 +56,7 @@ $launchScriptPath = Join-Path $StateRoot 'launch-watchers.ps1'
 $recoveryScriptPath = Join-Path $StateRoot 'recovery-loop.ps1'
 $collectorSource = Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1'
 $endpointCollectorSource = Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1'
+$policyClientSource = Join-Path $PSScriptRoot 'dlp-policy-client.ps1'
 $emailCollectorSource = Join-Path $PSScriptRoot 'email-outbound-collector.ps1'
 $fileCollectorSource = Join-Path $PSScriptRoot 'file-operations-collector.ps1'
 $sessionCollectorSource = Join-Path $PSScriptRoot 'worktime-session-collector.ps1'
@@ -63,6 +74,7 @@ Get-ActivityWatchExecutableMap -InstallRoot $InstallRoot | Out-Null
 $assetResult = Copy-ActivityWatchCollectorAssets `
     -CollectorScriptSource $collectorSource `
     -EndpointCollectorScriptSource $endpointCollectorSource `
+    -PolicyClientScriptSource $policyClientSource `
     -EmailCollectorScriptSource $emailCollectorSource `
     -FileCollectorScriptSource $fileCollectorSource `
     -SessionCollectorScriptSource $sessionCollectorSource `
@@ -85,6 +97,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $logsRoot `
     -CollectorScript $assetResult.CollectorScript `
     -EndpointCollectorScript $assetResult.EndpointCollectorScript `
+    -PolicyClientScript $assetResult.PolicyClientScript `
     -EmailCollectorScript $assetResult.EmailCollectorScript `
     -FileCollectorScript $assetResult.FileCollectorScript `
     -SessionCollectorScript $assetResult.SessionCollectorScript `
@@ -102,10 +115,18 @@ $config = New-ActivityWatchDeploymentConfig `
     -IncidentArtifactsRoot $IncidentArtifactsRoot `
     -LogonMarkerEnabled $LogonMarkerEnabled `
     -AwHostname $AwHostname `
+    -PolicyMode $PolicyMode `
+    -PolicyEngineEnabled $PolicyEngineEnabled `
+    -PolicyEngineHost $PolicyEngineHost `
+    -PolicyEnginePort $PolicyEnginePort `
+    -PolicyEngineScheme $PolicyEngineScheme `
+    -PolicyRefreshSeconds $PolicyRefreshSeconds `
+    -PolicyCachePath $PolicyCachePath `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `
     -UserTasks $taskDefinitions `
-    -PackageVersion $Version
+    -PackageVersion $Version `
+    -IntegrationTestEnabled:$IntegrationTestEnabled
 
 Write-ActivityWatchDeploymentConfig -Config $config -Path $configPath
 Remove-LegacyActivityWatchEntries

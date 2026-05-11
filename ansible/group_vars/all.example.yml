@@ -35,3 +35,8 @@ aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
 aw_server_always_active_pattern: "aw-watcher-window"
 aw_server_landingpage: "/activity/SHARKON2025/view/"
+
+aw_dlp_policy_engine_enabled: true
+aw_dlp_policy_engine_bind_host: "0.0.0.0"
+aw_dlp_policy_engine_port: 5601
+aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
