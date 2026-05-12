@@ -113,9 +113,26 @@ def transform(events):
             continue
         grouped.setdefault(ts, []).append(e)
 
-    for ts in sorted(grouped.keys()):
+    ordered_ts = sorted(grouped.keys())
+    parsed_ts = {}
+    for ts in ordered_ts:
+        try:
+            parsed_ts[ts] = parse_iso_utc(ts)
+        except Exception:
+            parsed_ts[ts] = None
+
+    for idx, ts in enumerate(ordered_ts):
         rows = grouped[ts]
-        duration = max(float(r.get("duration", 0.0)) for r in rows)
+        src_duration = max(float(r.get("duration", 0.0)) for r in rows)
+        duration = src_duration
+        if duration <= 0:
+            cur_dt = parsed_ts.get(ts)
+            next_dt = parsed_ts.get(ordered_ts[idx + 1]) if idx + 1 < len(ordered_ts) else None
+            if cur_dt and next_dt:
+                duration = max(0.0, (next_dt - cur_dt).total_seconds())
+            if duration <= 0:
+                duration = 10.0
+        duration = min(duration, 3600.0)
         active_users = []
         for r in rows:
             data = r.get("data") or {}
