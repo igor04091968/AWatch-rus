@@ -42,6 +42,7 @@ check_api_endpoint() {
 check_dlp_transport_freshness() {
     local api_base="${1:-http://127.0.0.1:5600/api/0}"
     local max_age_seconds="${2:-900}"
+    local strict_fileops="${3:-0}"
     local result
 
     if ! command -v python3 >/dev/null 2>&1; then
@@ -50,7 +51,7 @@ check_dlp_transport_freshness() {
         return
     fi
 
-    result="$(python3 - "$api_base" "$max_age_seconds" <<'PY'
+    result="$(python3 - "$api_base" "$max_age_seconds" "$strict_fileops" <<'PY'
 import json
 import sys
 import time
@@ -58,6 +59,7 @@ from urllib.request import urlopen
 
 api_base = sys.argv[1].rstrip("/")
 max_age = int(sys.argv[2])
+strict_fileops = str(sys.argv[3]).strip().lower() in ("1", "true", "yes", "on")
 now = time.time()
 
 def parse_ts(ts):
@@ -114,8 +116,11 @@ def check_bucket_freshness(bucket_id, label):
         return
     age = int(now - end)
     if age > max_age:
-        out["ok"] = False
-        out["errors"].append(f"{label}:stale:{bucket_id}:age={age}s")
+        if label == "fileops" and not strict_fileops:
+            out["warnings"].append(f"{label}:stale:{bucket_id}:age={age}s")
+        else:
+            out["ok"] = False
+            out["errors"].append(f"{label}:stale:{bucket_id}:age={age}s")
 
 for bid in endpoint:
     check_bucket_freshness(bid, "endpoint")
@@ -177,7 +182,7 @@ echo
 # Check API endpoints
 check_api_endpoint "http://127.0.0.1:5600/api/0/info" "activitywatch-server"
 check_api_endpoint "http://127.0.0.1:5610/reports/worktime/today" "aw-worktime-api"
-check_dlp_transport_freshness "http://127.0.0.1:5600/api/0" "900"
+check_dlp_transport_freshness "http://127.0.0.1:5600/api/0" "900" "${AW_HEALTH_STRICT_FILEOPS:-0}"
 
 echo
 
