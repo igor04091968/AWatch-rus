@@ -1,0 +1,12 @@
+[Unit]
+Description=Run AW Worktime Autoheal every 3 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+Unit=aw-worktime-autoheal.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

@@ -1,0 +1,16 @@
+[Unit]
+Description=AW Worktime Autoheal (SHARKON2025)
+After=network-online.target activitywatch-server.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=AW_URL=http://127.0.0.1:5600
+Environment=AW_WORKTIME_HOST=SHARKON2025
+ExecStart=/usr/local/bin/aw-worktime-autoheal.sh
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-worktime-autoheal
+
