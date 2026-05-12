@@ -1500,6 +1500,17 @@
 
   function rewriteUnknownCategoryBuilderQueryBody(body) {
     if (typeof body !== "string") return body;
+    function stripUnknownBucketQueries(raw) {
+      return raw
+        .replace(/flood\(query_bucket\(find_bucket\(\\"aw-watcher-window_unknown\\"\)\)\)/g, '[]')
+        .replace(/flood\(query_bucket\(find_bucket\(\\"aw-watcher-afk_unknown\\"\)\)\)/g, '[]')
+        .replace(/query_bucket\(find_bucket\(\\"aw-watcher-window_unknown\\"\)\)/g, '[]')
+        .replace(/query_bucket\(find_bucket\(\\"aw-watcher-afk_unknown\\"\)\)/g, '[]')
+        .replace(/flood\(query_bucket\(\\"aw-watcher-window_unknown\\"\)\)/g, '[]')
+        .replace(/flood\(query_bucket\(\\"aw-watcher-afk_unknown\\"\)\)/g, '[]')
+        .replace(/query_bucket\(\\"aw-watcher-window_unknown\\"\)/g, '[]')
+        .replace(/query_bucket\(\\"aw-watcher-afk_unknown\\"\)/g, '[]');
+    }
     if (body.indexOf("undefined") !== -1) {
       body = body
         .replace(/flood\(query_bucket\(find_bucket\(\\"undefined\\"\)\)\)/g, '[]')
@@ -1519,6 +1530,8 @@
         body = body
           .replace(/aw-watcher-window_unknown/g, "aw-watcher-window_" + preferredHost)
           .replace(/aw-watcher-afk_unknown/g, "aw-watcher-afk_" + preferredHost);
+      } else {
+        body = stripUnknownBucketQueries(body);
       }
     }
     return body;
