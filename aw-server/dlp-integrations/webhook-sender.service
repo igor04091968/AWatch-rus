@@ -1,5 +1,5 @@
 [Unit]
-Description=AWatch DLP CEF Exporter
+Description=AWatch DLP Webhook Sender
 After=network-online.target
 
 [Service]
@@ -7,7 +7,7 @@ Type=oneshot
 User=activitywatch
 Group=activitywatch
 WorkingDirectory=/opt/activitywatch/dlp-integrations
-ExecStart=/opt/activitywatch/dlp-integrations/.venv/bin/python /opt/activitywatch/dlp-integrations/cef_exporter.py
+ExecStart=/opt/activitywatch/dlp-integrations/.venv/bin/python /opt/activitywatch/dlp-integrations/webhook_sender.py
 
 [Install]
 WantedBy=multi-user.target

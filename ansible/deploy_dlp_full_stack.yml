@@ -8,3 +8,5 @@
   gather_facts: false
   roles:
     - role: dlp-policy-engine
+    - role: dlp-content-analysis
+    - role: dlp-integrations

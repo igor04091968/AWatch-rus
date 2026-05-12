@@ -1,0 +1,10 @@
+aw_api_base: "http://127.0.0.1:5600/api/0"
+state_path: "/var/lib/activitywatch/dlp-integrations/cef-state.json"
+syslog_host: "127.0.0.1"
+syslog_port: 514
+syslog_proto: "udp"
+per_bucket_limit: 300
+severity_mapping:
+  low: 3
+  medium: 6
+  high: 10

@@ -40,4 +40,6 @@ aw_dlp_policy_engine_enabled: true
 aw_dlp_policy_engine_bind_host: "0.0.0.0"
 aw_dlp_policy_engine_port: 5601
 aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
+aw_dlp_content_analysis_enabled: true
+aw_dlp_integrations_enabled: true
 aw_server_post_deploy_health_check_enabled: true

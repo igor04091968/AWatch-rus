@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AWatch DLP Webhook sender every 2 minutes
+
+[Timer]
+OnBootSec=90s
+OnUnitActiveSec=2min
+Unit=aw-dlp-webhook-sender.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -4,7 +4,7 @@ Description=Run AWatch DLP CEF Exporter every 5 minutes
 [Timer]
 OnBootSec=2min
 OnUnitActiveSec=5min
-Unit=cef-exporter.service
+Unit=aw-dlp-cef-exporter.service
 Persistent=true
 
 [Install]

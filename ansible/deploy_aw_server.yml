@@ -385,6 +385,99 @@
             virtualenv: /opt/activitywatch/dlp-content-analysis/.venv
           when: aw_dlp_content_analysis_enabled | default(true) | bool
 
+        - name: Создать каталог DLP integrations
+          ansible.builtin.file:
+            path: /opt/activitywatch/dlp-integrations
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Скопировать файлы DLP integrations
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-integrations/{{ item }}"
+            dest: "/opt/activitywatch/dlp-integrations/{{ item }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          loop:
+            - cef_exporter.py
+            - webhook_sender.py
+            - cef-config.yaml
+            - webhook-config.yaml
+            - requirements.txt
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Выставить executable для python scripts DLP integrations
+          ansible.builtin.file:
+            path: "/opt/activitywatch/dlp-integrations/{{ item }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          loop:
+            - cef_exporter.py
+            - webhook_sender.py
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Создать virtualenv DLP integrations
+          ansible.builtin.command:
+            cmd: python3 -m venv /opt/activitywatch/dlp-integrations/.venv
+          args:
+            creates: /opt/activitywatch/dlp-integrations/.venv/bin/python
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить зависимости DLP integrations
+          ansible.builtin.pip:
+            requirements: /opt/activitywatch/dlp-integrations/requirements.txt
+            virtualenv: /opt/activitywatch/dlp-integrations/.venv
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Создать state каталог DLP integrations
+          ansible.builtin.file:
+            path: /var/lib/activitywatch/dlp-integrations
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить systemd unit CEF exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-integrations/cef-exporter.service"
+            dest: /etc/systemd/system/aw-dlp-cef-exporter.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить systemd timer CEF exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-integrations/cef-exporter.timer"
+            dest: /etc/systemd/system/aw-dlp-cef-exporter.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить systemd unit webhook sender
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-integrations/webhook-sender.service"
+            dest: /etc/systemd/system/aw-dlp-webhook-sender.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить systemd timer webhook sender
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-integrations/webhook-sender.timer"
+            dest: /etc/systemd/system/aw-dlp-webhook-sender.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
         - name: Установить скрипт AW worktime API
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-api.py"
@@ -467,6 +560,20 @@
             enabled: true
             state: restarted
           when: aw_dlp_policy_engine_enabled | default(false) | bool
+
+        - name: Включить и перезапустить timer CEF exporter
+          ansible.builtin.systemd:
+            name: aw-dlp-cef-exporter.timer
+            enabled: true
+            state: restarted
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Включить и перезапустить timer webhook sender
+          ansible.builtin.systemd:
+            name: aw-dlp-webhook-sender.timer
+            enabled: true
+            state: restarted
+          when: aw_dlp_integrations_enabled | default(true) | bool
 
         - name: Включить и перезапустить AW worktime API
           ansible.builtin.systemd:
