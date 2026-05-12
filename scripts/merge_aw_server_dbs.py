@@ -22,6 +22,44 @@ def bucket_key(row: sqlite3.Row) -> tuple[str, str, str, str]:
         str(row["hostname"]),
     )
 
+def find_bucket_by_name(connection: sqlite3.Connection, name: str) -> int | None:
+    row = connection.execute(
+        "select rowid as bucketrow from buckets where name = ? order by rowid limit 1",
+        (name,),
+    ).fetchone()
+    return int(row["bucketrow"]) if row else None
+
+
+def find_bucket_by_key(connection: sqlite3.Connection, name: str, type_: str, client: str, hostname: str) -> int | None:
+    row = connection.execute(
+        "select rowid as bucketrow from buckets where name = ? and type = ? and client = ? and hostname = ? order by rowid limit 1",
+        (name, type_, client, hostname),
+    ).fetchone()
+    return int(row["bucketrow"]) if row else None
+
+
+def copy_sqlite_via_backup(src: Path, dst: Path) -> None:
+    """Create a consistent copy of an sqlite DB using the sqlite backup API.
+
+    This avoids corrupt/inconsistent files if the source DB is live.
+    """
+    # ensure parent exists
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    # remove any existing tmp file
+    if dst.exists():
+        dst.unlink()
+    src_conn = sqlite3.connect(str(src))
+    dst_conn = sqlite3.connect(str(dst))
+    try:
+        # perform online backup
+        src_conn.backup(dst_conn)
+        dst_conn.commit()
+    finally:
+        try:
+            src_conn.close()
+        finally:
+            dst_conn.close()
+
 
 def ensure_parent(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,9 +89,8 @@ def main() -> int:
 
     ensure_parent(output)
     tmp_output = output.with_suffix(output.suffix + ".tmp")
-    if tmp_output.exists():
-        tmp_output.unlink()
-    shutil.copy2(base, tmp_output)
+    # make a consistent copy of the base DB into tmp_output
+    copy_sqlite_via_backup(base, tmp_output)
 
     dest = connect(tmp_output)
     dest.row_factory = sqlite3.Row
@@ -75,15 +112,37 @@ def main() -> int:
                     "select rowid as bucketrow, id, name, type, client, hostname, created, data_deprecated, data from buckets order by rowid"
                 ).fetchall()
             }
+            dest_id_map = {
+                row["id"]: row["bucketrow"]
+                for row in dest.execute(
+                    "select rowid as bucketrow, id, name, type, client, hostname, created, data_deprecated, data from buckets order by rowid"
+                ).fetchall()
+                if row["id"]
+            }
 
             for src_bucket in source_buckets:
                 key = bucket_key(src_bucket)
-                dest_rowid = dest_bucket_map.get(key)
+                src_id = src_bucket["id"] if "id" in src_bucket.keys() else None
+                dest_rowid = None
+                # Prefer exact id match if available
+                if src_id:
+                    dest_rowid = dest_id_map.get(src_id)
                 if dest_rowid is None:
+                    dest_rowid = dest_bucket_map.get(key)
+                if dest_rowid is None:
+                    # Use UPSERT to handle UNIQUE(name) constraint gracefully
                     cursor = dest.execute(
                         """
-                        insert into buckets (name, type, client, hostname, created, data_deprecated, data)
-                        values (?, ?, ?, ?, ?, ?, ?)
+                        INSERT INTO buckets (name, type, client, hostname, created, data_deprecated, data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT(name) DO UPDATE SET
+                            type=excluded.type,
+                            client=excluded.client,
+                            hostname=excluded.hostname,
+                            created=excluded.created,
+                            data_deprecated=excluded.data_deprecated,
+                            data=excluded.data
+                        WHERE rowid = (SELECT rowid FROM buckets WHERE name = ? LIMIT 1)
                         """,
                         (
                             src_bucket["name"],
@@ -93,11 +152,21 @@ def main() -> int:
                             src_bucket["created"],
                             src_bucket["data_deprecated"],
                             src_bucket["data"],
+                            str(src_bucket["name"]),
                         ),
                     )
-                    dest_rowid = int(cursor.lastrowid)
-                    dest_bucket_map[key] = dest_rowid
-                    inserted_buckets += 1
+                    # Get the rowid of the affected bucket (either inserted or updated)
+                    cursor.execute("SELECT last_insert_rowid(), (SELECT rowid FROM buckets WHERE name = ? LIMIT 1)", 
+                                   (str(src_bucket["name"]),))
+                    result = cursor.fetchone()
+                    dest_rowid = result[0] if result[0] != 0 else result[1]
+                    
+                    if dest_rowid:
+                        dest_bucket_map[key] = dest_rowid
+                        # Only count as inserted if it was a true insert (not update)
+                        cursor.execute("SELECT changes() FROM buckets WHERE rowid = ?", (dest_rowid,))
+                        if cursor.fetchone()[0] > 0:
+                            inserted_buckets += 1
 
                 existing_events = load_existing_events(dest, dest_rowid)
                 for starttime, endtime, data in source.execute(

@@ -21,7 +21,10 @@
         name:
           - curl
           - python3-venv
+          - python3-pip
           - rsync
+          - tesseract-ocr
+          - tesseract-ocr-rus
           - unzip
         state: present
         update_cache: true
@@ -351,6 +354,37 @@
             mode: "0644"
           when: aw_dlp_policy_engine_enabled | default(false) | bool
 
+        - name: Создать каталог DLP content analysis
+          ansible.builtin.file:
+            path: /opt/activitywatch/dlp-content-analysis
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          when: aw_dlp_content_analysis_enabled | default(true) | bool
+
+        - name: Скопировать файлы DLP content analysis
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-content-analysis/"
+            dest: /opt/activitywatch/dlp-content-analysis/
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          when: aw_dlp_content_analysis_enabled | default(true) | bool
+
+        - name: Создать virtualenv DLP content analysis
+          ansible.builtin.command:
+            cmd: python3 -m venv /opt/activitywatch/dlp-content-analysis/.venv
+          args:
+            creates: /opt/activitywatch/dlp-content-analysis/.venv/bin/python
+          when: aw_dlp_content_analysis_enabled | default(true) | bool
+
+        - name: Установить зависимости DLP content analysis
+          ansible.builtin.pip:
+            requirements: /opt/activitywatch/dlp-content-analysis/requirements.txt
+            virtualenv: /opt/activitywatch/dlp-content-analysis/.venv
+          when: aw_dlp_content_analysis_enabled | default(true) | bool
+
         - name: Установить скрипт AW worktime API
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-api.py"
@@ -576,6 +610,15 @@
               - "{{ aw_server_db_path }}"
               - --output
               - "{{ aw_server_db_path }}.merged"
+          register: aw_merge_result
+          failed_when: false
+          when:
+            - aw_legacy_root_db.stat.exists | default(false)
+            - aw_target_db.stat.exists | default(false)
+
+        - name: Показать результат merge legacy root DB
+          ansible.builtin.debug:
+            msg: "{{ aw_merge_result.stdout | default(aw_merge_result.stderr | default('merge not executed')) }}"
           when:
             - aw_legacy_root_db.stat.exists | default(false)
             - aw_target_db.stat.exists | default(false)
@@ -591,6 +634,8 @@
           when:
             - aw_legacy_root_db.stat.exists | default(false)
             - aw_target_db.stat.exists | default(false)
+            - aw_merge_result is defined
+            - (aw_merge_result.rc | default(1) | int) == 0
 
         - name: Скопировать legacy root DB в target DB если target ещё не существует
           ansible.builtin.copy:
