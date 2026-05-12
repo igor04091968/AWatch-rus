@@ -4,12 +4,24 @@ set -euo pipefail
 AW_URL="${AW_URL:-http://127.0.0.1:5600}"
 HOST="${AW_WORKTIME_HOST:-SHARKON2025}"
 PYTHON_BIN="${PYTHON_BIN:-/usr/bin/python3}"
+WORKTIME_REPORT_URL="${WORKTIME_REPORT_URL:-http://127.0.0.1:5610/reports/worktime/today?format=csv}"
 LOG_TAG="aw-worktime-autoheal"
 
 log() {
   logger -t "$LOG_TAG" "$*"
   printf '%s %s\n' "$(date '+%F %T')" "$*"
 }
+
+if ! curl -fsS --max-time 8 "$WORKTIME_REPORT_URL" >/dev/null 2>&1; then
+  log "worktime API check failed, restarting aw-worktime-api.service"
+  systemctl restart aw-worktime-api.service || true
+  sleep 2
+  if ! curl -fsS --max-time 8 "$WORKTIME_REPORT_URL" >/dev/null 2>&1; then
+    log "worktime API still unavailable after restart"
+  else
+    log "worktime API recovered after restart"
+  fi
+fi
 
 need_heal="$("$PYTHON_BIN" - <<'PY'
 import json, urllib.request, datetime, os, sys
@@ -77,6 +89,17 @@ def req(method,path,payload=None):
         body=resp.read()
         return json.loads(body.decode("utf-8")) if body else None
 
+def reset_bucket(bucket_id, event_type, client, hostname):
+    try:
+        req("DELETE", f"/api/0/buckets/{bucket_id}")
+    except Exception:
+        pass
+    req("POST", f"/api/0/buckets/{bucket_id}", {
+        "client": client,
+        "type": event_type,
+        "hostname": hostname,
+    })
+
 def parse(ts):
     if ts.endswith("Z"): ts=ts[:-1]+"+00:00"
     return datetime.datetime.fromisoformat(ts).astimezone(datetime.timezone.utc)
@@ -96,6 +119,10 @@ rows=req("GET",f"/api/0/buckets/{sb}/events?limit=12000") or []
 rows=[e for e in rows if e.get("timestamp") and parse(e["timestamp"])>=start]
 if not rows:
     raise SystemExit(0)
+
+# Hard normalization: drop corrupted/mixed watcher buckets and rebuild from source sessions.
+reset_bucket(afk, "afkstatus", "aw-worktime-ui-bridge", host)
+reset_bucket(win, "currentwindow", "aw-worktime-ui-bridge", host)
 
 by={}
 for e in rows:

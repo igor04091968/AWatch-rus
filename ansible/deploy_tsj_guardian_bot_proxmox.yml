@@ -1,0 +1,166 @@
+---
+- name: Развернуть TSJ Guardian Telegram Bot на Proxmox
+  hosts: proxmox
+  become: true
+  gather_facts: true
+
+  vars:
+    tsj_bot_user: "codex"
+    tsj_bot_group: "admin"
+    tsj_bot_root: "/home/codex/infra-admin/tsj-bot"
+    tsj_bot_script_name: "tsj_guardian_bot.py"
+    tsj_bot_script_dest: "{{ tsj_bot_root }}/{{ tsj_bot_script_name }}"
+    tsj_bot_source_local_path: "{{ aw_repo_root }}/proxmox/tsj_guardian_bot.py"
+    tsj_bot_service_name: "tsj-guardian-bot.service"
+    tsj_bot_env_path: "{{ tsj_bot_root }}/.env"
+    tsj_bot_state_dir: "/home/codex/infra-admin/.state"
+    tsj_bot_logs_dir: "/home/codex/infra-admin/logs"
+    tsj_bot_default_chat_id: "{{ telegram_default_chat_id | default(telegram_allowed_chat_ids.split(',')[0]) }}"
+
+  pre_tasks:
+    - name: Проверить обязательные переменные
+      ansible.builtin.assert:
+        that:
+          - telegram_bot_token is defined
+          - telegram_bot_token | length > 20
+          - telegram_allowed_chat_ids is defined
+          - telegram_allowed_chat_ids | length > 0
+        fail_msg: "Задайте telegram_bot_token и telegram_allowed_chat_ids (см. group_vars/proxmox-bot.example.yml)."
+
+    - name: Проверить наличие исходного файла бота на контроллере
+      ansible.builtin.stat:
+        path: "{{ tsj_bot_source_local_path }}"
+      register: tsj_bot_source_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Остановить выполнение если файл бота не найден на контроллере
+      ansible.builtin.assert:
+        that:
+          - tsj_bot_source_stat.stat.exists
+          - tsj_bot_source_stat.stat.isreg
+        fail_msg: "Файл бота не найден: {{ tsj_bot_source_local_path }}"
+
+  tasks:
+    - name: Установить зависимости Python для бота
+      ansible.builtin.package:
+        name:
+          - python3
+          - python3-requests
+        state: present
+
+    - name: Создать каталоги бота
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: directory
+        owner: "{{ item.owner | default(tsj_bot_user) }}"
+        group: "{{ item.group | default(tsj_bot_group) }}"
+        mode: "{{ item.mode }}"
+      loop:
+        - { path: "{{ tsj_bot_root }}", mode: "0775" }
+        - { path: "{{ tsj_bot_state_dir }}", mode: "0775" }
+        - { path: "{{ tsj_bot_logs_dir }}", mode: "0775" }
+
+    - name: Развернуть скрипт бота
+      ansible.builtin.copy:
+        src: "{{ tsj_bot_source_local_path }}"
+        dest: "{{ tsj_bot_script_dest }}"
+        owner: root
+        group: "{{ tsj_bot_group }}"
+        mode: "0750"
+      notify: Restart tsj bot
+
+    - name: Сгенерировать .env бота
+      ansible.builtin.copy:
+        dest: "{{ tsj_bot_env_path }}"
+        owner: "{{ tsj_bot_user }}"
+        group: "{{ tsj_bot_group }}"
+        mode: "0640"
+        content: |
+          TELEGRAM_BOT_TOKEN={{ telegram_bot_token }}
+          TELEGRAM_ALLOWED_CHAT_IDS={{ telegram_allowed_chat_ids }}
+          TELEGRAM_DEFAULT_CHAT_ID={{ tsj_bot_default_chat_id }}
+          CHECK_SCRIPT={{ tsj_bot_check_script | default('/home/codex/infra-admin/scripts/system_self_support.sh --check') }}
+          HEAL_SCRIPT={{ tsj_bot_heal_script | default('/home/codex/infra-admin/scripts/system_self_support.sh --heal') }}
+          STATE_FILE={{ tsj_bot_state_file | default('/home/codex/infra-admin/.state/tsj_guardian_state.json') }}
+          LOG_FILE={{ tsj_bot_log_file | default('/home/codex/infra-admin/logs/tsj_guardian_bot.log') }}
+          HEARTBEAT_FILE={{ tsj_bot_heartbeat_file | default('/home/codex/infra-admin/.state/tsj_guardian_heartbeat') }}
+          CHECK_INTERVAL_SEC={{ tsj_bot_check_interval_sec | default(60) }}
+          OPERATOR_TIMEOUT_SEC={{ tsj_bot_operator_timeout_sec | default(900) }}
+          RETRY_AUTORECOVERY_EVERY_SEC={{ tsj_bot_retry_autorecovery_every_sec | default(300) }}
+          EXIT_ON_AUTORECOVERY_SUCCESS={{ tsj_bot_exit_on_autorecovery_success | default('true') }}
+          ENABLE_AI_ESCALATION={{ tsj_bot_enable_ai_escalation | default('true') }}
+          ENABLE_SERVER_FALLBACK={{ tsj_bot_enable_server_fallback | default('true') }}
+          TELEGRAM_PROXY_URL={{ tsj_bot_telegram_proxy_url | default('http://127.0.0.1:11090') }}
+          AI_CHAT_ENABLED={{ tsj_bot_ai_chat_enabled | default('true') }}
+          AI_CHAT_TIMEOUT_SEC={{ tsj_bot_ai_chat_timeout_sec | default(1800) }}
+          AI_CHAT_WORKDIR={{ tsj_bot_ai_chat_workdir | default('/home/codex/infra-admin') }}
+          AI_CHAT_SANDBOX={{ tsj_bot_ai_chat_sandbox | default('workspace-write') }}
+          CODEX_MODEL={{ tsj_bot_codex_model | default('gpt-5.3-codex') }}
+          CODEX_FALLBACK_MODELS={{ tsj_bot_codex_fallback_models | default('gpt-5.4-mini') }}
+          AI_EXEC_USER={{ tsj_bot_ai_exec_user | default('codex') }}
+          TMUX_USER={{ tsj_bot_tmux_user | default('codex') }}
+          TMUX_SESSION={{ tsj_bot_tmux_session | default('ai') }}
+          TMUX_CREATE_IF_MISSING={{ tsj_bot_tmux_create_if_missing | default('false') }}
+          TMUX_START_COMMAND={{ tsj_bot_tmux_start_command | default('codex') }}
+          AW_RUS_API_BASE={{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}
+          AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}
+          AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart aw-worktime-api.service'") }}
+          AW_RUS_HOST={{ tsj_bot_aw_rus_host | default('SHARKON2025') }}
+          AW_RUS_PRIMARY_USER={{ tsj_bot_aw_rus_primary_user | default('USER1') }}
+          AW_RUS_STALE_SEC={{ tsj_bot_aw_rus_stale_sec | default(900) }}
+      notify: Restart tsj bot
+
+    - name: Установить systemd unit бота
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ tsj_bot_service_name }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=TSJ Guardian Telegram Bot
+          After=network-online.target gost-tg.service anet-client.service pfsense-mcp-server.service
+          Wants=network-online.target gost-tg.service anet-client.service pfsense-mcp-server.service
+
+          [Service]
+          Type=simple
+          User=root
+          WorkingDirectory=/home/codex/infra-admin
+          EnvironmentFile={{ tsj_bot_env_path }}
+          ExecStart=/usr/bin/python3 {{ tsj_bot_script_dest }}
+          Restart=always
+          RestartSec=5
+          KillMode=control-group
+
+          [Install]
+          WantedBy=multi-user.target
+      notify:
+        - Reload systemd
+        - Restart tsj bot
+
+    - name: Проверить синтаксис Python скрипта бота
+      ansible.builtin.command: "python3 -m py_compile {{ tsj_bot_script_dest }}"
+      changed_when: false
+
+    - name: Включить и запустить сервис бота
+      ansible.builtin.systemd:
+        name: "{{ tsj_bot_service_name }}"
+        enabled: true
+        state: started
+
+    - name: Проверить что сервис активен
+      ansible.builtin.command: "systemctl is-active {{ tsj_bot_service_name }}"
+      register: tsj_bot_active
+      changed_when: false
+      failed_when: tsj_bot_active.stdout.strip() != "active"
+
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart tsj bot
+      ansible.builtin.systemd:
+        name: "{{ tsj_bot_service_name }}"
+        state: restarted
