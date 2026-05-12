@@ -132,7 +132,7 @@ def transform(events):
                 duration = max(0.0, (next_dt - cur_dt).total_seconds())
             if duration <= 0:
                 duration = 10.0
-        duration = min(duration, 3600.0)
+        duration = min(duration, 30.0)
         active_users = []
         for r in rows:
             data = r.get("data") or {}

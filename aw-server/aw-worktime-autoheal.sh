@@ -106,7 +106,7 @@ for i,ts in enumerate(keys):
     cur=parse(ts)
     nxt=parse(keys[i+1]) if i+1<len(keys) else None
     dur=max(0.0,(nxt-cur).total_seconds()) if nxt else 10.0
-    dur=min(3600.0, dur if dur>0 else 10.0)
+    dur=min(30.0, dur if dur>0 else 10.0)
     act=[]
     for r in by[ts]:
         d=r.get("data") or {}
