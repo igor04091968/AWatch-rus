@@ -305,6 +305,9 @@
               AW_DLP_POLICY_ENGINE_BIND_HOST={{ aw_dlp_policy_engine_bind_host }}
               AW_DLP_POLICY_ENGINE_PORT={{ aw_dlp_policy_engine_port }}
               AW_DLP_POLICY_ENGINE_DB_PATH={{ aw_dlp_policy_engine_db_path }}
+              AW_DLP_CASE_BIND_HOST={{ aw_dlp_case_bind_host }}
+              AW_DLP_CASE_PORT={{ aw_dlp_case_port }}
+              AW_DLP_CASE_DB_PATH={{ aw_dlp_case_db_path }}
               XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
               XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
 
@@ -478,6 +481,59 @@
             mode: "0644"
           when: aw_dlp_integrations_enabled | default(true) | bool
 
+        - name: Создать каталог DLP case management
+          ansible.builtin.file:
+            path: /opt/activitywatch/dlp-case-management
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          when: aw_dlp_case_management_enabled | default(true) | bool
+
+        - name: Скопировать файлы DLP case management
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-case-management/{{ item }}"
+            dest: "/opt/activitywatch/dlp-case-management/{{ item }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0644"
+          loop:
+            - case_service.py
+            - case_schema.py
+            - case_storage.py
+            - requirements.txt
+          when: aw_dlp_case_management_enabled | default(true) | bool
+
+        - name: Выставить executable для case_service
+          ansible.builtin.file:
+            path: /opt/activitywatch/dlp-case-management/case_service.py
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          when: aw_dlp_case_management_enabled | default(true) | bool
+
+        - name: Создать virtualenv DLP case management
+          ansible.builtin.command:
+            cmd: python3 -m venv /opt/activitywatch/dlp-case-management/.venv
+          args:
+            creates: /opt/activitywatch/dlp-case-management/.venv/bin/python
+          when: aw_dlp_case_management_enabled | default(true) | bool
+
+        - name: Установить зависимости DLP case management
+          ansible.builtin.pip:
+            requirements: /opt/activitywatch/dlp-case-management/requirements.txt
+            virtualenv: /opt/activitywatch/dlp-case-management/.venv
+          when: aw_dlp_case_management_enabled | default(true) | bool
+
+        - name: Установить systemd unit DLP case management
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-case-management/case-service.service"
+            dest: /etc/systemd/system/aw-dlp-case-management.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_case_management_enabled | default(true) | bool
+
         - name: Установить скрипт AW worktime API
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-api.py"
@@ -574,6 +630,13 @@
             enabled: true
             state: restarted
           when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Включить и перезапустить DLP case management
+          ansible.builtin.systemd:
+            name: aw-dlp-case-management.service
+            enabled: true
+            state: restarted
+          when: aw_dlp_case_management_enabled | default(true) | bool
 
         - name: Включить и перезапустить AW worktime API
           ansible.builtin.systemd:

@@ -33,6 +33,10 @@ aw_dlp_policy_engine_port: 5601
 aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
 aw_dlp_content_analysis_enabled: true
 aw_dlp_integrations_enabled: true
+aw_dlp_case_management_enabled: true
+aw_dlp_case_bind_host: "0.0.0.0"
+aw_dlp_case_port: 5602
+aw_dlp_case_db_path: "/opt/activitywatch/dlp-case-management/cases.db"
 aw_server_post_deploy_health_check_enabled: true
 
 aw_worktime_from: "08:00"

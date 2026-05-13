@@ -1,0 +1,54 @@
+---
+- name: Ensure DLP case management directory
+  ansible.builtin.file:
+    path: /opt/activitywatch/dlp-case-management
+    state: directory
+    owner: "{{ aw_server_user | default('activitywatch') }}"
+    group: "{{ aw_server_group | default('activitywatch') }}"
+    mode: "0755"
+
+- name: Copy DLP case management files
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../aw-server/dlp-case-management/{{ item }}"
+    dest: "/opt/activitywatch/dlp-case-management/{{ item }}"
+    owner: "{{ aw_server_user | default('activitywatch') }}"
+    group: "{{ aw_server_group | default('activitywatch') }}"
+    mode: "0644"
+  loop:
+    - case_service.py
+    - case_schema.py
+    - case_storage.py
+    - requirements.txt
+
+- name: Make case service executable
+  ansible.builtin.file:
+    path: /opt/activitywatch/dlp-case-management/case_service.py
+    owner: "{{ aw_server_user | default('activitywatch') }}"
+    group: "{{ aw_server_group | default('activitywatch') }}"
+    mode: "0755"
+
+- name: Create venv for DLP case management
+  ansible.builtin.command:
+    cmd: python3 -m venv /opt/activitywatch/dlp-case-management/.venv
+  args:
+    creates: /opt/activitywatch/dlp-case-management/.venv/bin/python
+
+- name: Install Python dependencies for DLP case management
+  ansible.builtin.pip:
+    requirements: /opt/activitywatch/dlp-case-management/requirements.txt
+    virtualenv: /opt/activitywatch/dlp-case-management/.venv
+
+- name: Install systemd unit DLP case management
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../aw-server/dlp-case-management/case-service.service"
+    dest: /etc/systemd/system/aw-dlp-case-management.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Reload systemd and restart DLP case management
+  ansible.builtin.systemd:
+    name: aw-dlp-case-management.service
+    daemon_reload: true
+    enabled: true
+    state: restarted

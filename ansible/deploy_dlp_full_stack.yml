@@ -10,3 +10,4 @@
     - role: dlp-policy-engine
     - role: dlp-content-analysis
     - role: dlp-integrations
+    - role: dlp-case-management

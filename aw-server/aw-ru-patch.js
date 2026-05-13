@@ -958,6 +958,7 @@
           '<td class="aw-ru-dlp-actions">' +
             '<button type="button" data-aw-ru-save-review>Сохранить</button>' +
             '<button type="button" data-aw-ru-save-rule>Правило</button>' +
+            '<button type="button" data-aw-ru-create-case>Кейс</button>' +
           "</td>" +
         "</tr>"
       );
@@ -1028,6 +1029,55 @@
     }, 1);
   }
 
+  function getCaseApiBase() {
+    if (window.__awCaseApiBase && typeof window.__awCaseApiBase === "string") {
+      return window.__awCaseApiBase.replace(/\/+$/, "");
+    }
+    try {
+      const origin = window.location.origin || "";
+      if (/:\d+$/.test(origin)) return origin.replace(/:\d+$/, ":5602");
+      return origin + ":5602";
+    } catch (error) {
+      return "http://127.0.0.1:5602";
+    }
+  }
+
+  async function caseApi(path, init) {
+    const response = await fetch(getCaseApiBase() + path, Object.assign({ credentials: "omit" }, init || {}));
+    if (!response.ok) throw new Error("Case API HTTP " + response.status);
+    if (response.status === 204) return null;
+    return response.json();
+  }
+
+  async function createCaseFromEvent(host, event, row) {
+    const data = event.data || {};
+    const verdict = row.querySelector("[data-aw-ru-dlp-verdict]").value;
+    const category = row.querySelector("[data-aw-ru-dlp-category]").value.trim();
+    const comment = row.querySelector("[data-aw-ru-dlp-comment]").value.trim();
+    const incidentId = buildDlpKey(event);
+    const title = "DLP " + (data.signalType || "incident") + " · " + (data.username || data.owner || host || "unknown");
+    return caseApi("/api/0/dlp/cases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        incident_id: incidentId,
+        host: host,
+        title: title,
+        severity: verdict === "incident" ? "high" : "medium",
+        source_bucket: getDlpBucketIdFromHash(),
+        source_event_ts: event.timestamp,
+        evidence: {
+          signalType: data.signalType || "",
+          username: data.username || data.owner || "",
+          documentName: data.documentName || "",
+          printerName: data.printerName || "",
+          category: category,
+          comment: comment
+        }
+      })
+    });
+  }
+
   async function saveDlpRule(host, event, row) {
     const bucketId = "aw-dlp-rules_" + host;
     await ensureAwBucket(bucketId, "aw-dlp-rules", "aw.dlp.rule", host);
@@ -1081,7 +1131,45 @@
           message.textContent = "Ошибка сохранения правила: " + error.message;
         }
       });
+      row.querySelector("[data-aw-ru-create-case]").addEventListener("click", async function () {
+        const message = center.querySelector("[data-aw-ru-dlp-message]");
+        try {
+          const created = await createCaseFromEvent(host, event, row);
+          await renderCaseManager(center, host);
+          message.textContent = "Кейс создан: #" + (created && created.id ? created.id : "?");
+        } catch (error) {
+          message.textContent = "Ошибка создания кейса: " + error.message;
+        }
+      });
     });
+  }
+
+  async function renderCaseManager(center, host) {
+    const tbody = center.querySelector("[data-aw-ru-dlp-cases]");
+    if (!tbody) return;
+    try {
+      const cases = await caseApi("/api/0/dlp/cases?host=" + encodeURIComponent(host) + "&limit=100", { method: "GET" });
+      const rows = (cases || []).map(function (c) {
+        return (
+          "<tr>" +
+          "<td>" + escapeHtml(String(c.id || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.status || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.severity || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.title || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.assignee || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.incident_id || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.updated_at || c.created_at || "")) + "</td>" +
+          "</tr>"
+        );
+      });
+      tbody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="7">Кейсов нет.</td></tr>';
+      const status = center.querySelector("[data-aw-ru-dlp-cases-status]");
+      if (status) status.textContent = "Кейсов: " + (cases || []).length;
+    } catch (error) {
+      tbody.innerHTML = '<tr><td colspan="7">Ошибка загрузки кейсов: ' + escapeHtml(error.message) + '</td></tr>';
+      const status = center.querySelector("[data-aw-ru-dlp-cases-status]");
+      if (status) status.textContent = "Кейсы недоступны";
+    }
   }
 
   async function setDlpRuleEnabled(host, ruleEvent, enabled) {
@@ -1238,6 +1326,7 @@
         state.reviews = [];
       }
       renderDlpTableRows(center, host);
+      await renderCaseManager(center, host);
       center.querySelector("[data-aw-ru-dlp-message]").textContent = "DLP review центр обновлен.";
     } catch (error) {
       center.querySelector("[data-aw-ru-dlp-message]").textContent = "Ошибка загрузки DLP-событий: " + error.message;
@@ -1291,6 +1380,16 @@
           '<table class="aw-ru-dlp-table">' +
             '<thead><tr><th>Время</th><th>Статус</th><th>Вердикт</th><th>Категория</th><th>Комментарий</th><th>Источник</th><th>Управление</th></tr></thead>' +
             '<tbody data-aw-ru-dlp-reviews><tr><td colspan="7">Загрузка...</td></tr></tbody>' +
+          '</table>' +
+        '</div>' +
+        '<div class="aw-ru-dlp-section">' +
+          '<div class="aw-ru-dlp-toolbar">' +
+            '<h5>Case Management</h5>' +
+            '<div class="aw-ru-dlp-status" data-aw-ru-dlp-cases-status>Кейсов: 0</div>' +
+          '</div>' +
+          '<table class="aw-ru-dlp-table">' +
+            '<thead><tr><th>ID</th><th>Статус</th><th>Severity</th><th>Заголовок</th><th>Исполнитель</th><th>Incident ID</th><th>Обновлено</th></tr></thead>' +
+            '<tbody data-aw-ru-dlp-cases><tr><td colspan="7">Загрузка...</td></tr></tbody>' +
           '</table>' +
         '</div>' +
         '<div class="aw-ru-dlp-message" data-aw-ru-dlp-message></div>';

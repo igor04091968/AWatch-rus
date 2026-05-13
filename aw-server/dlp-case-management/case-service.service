@@ -1,0 +1,16 @@
+[Unit]
+Description=AWatch DLP Case Management API
+After=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/activitywatch/aw-server.env
+WorkingDirectory=/opt/activitywatch/dlp-case-management
+ExecStart=/opt/activitywatch/dlp-case-management/.venv/bin/uvicorn case_service:APP --host ${AW_DLP_CASE_BIND_HOST} --port ${AW_DLP_CASE_PORT}
+Restart=on-failure
+RestartSec=3
+User=activitywatch
+Group=activitywatch
+
+[Install]
+WantedBy=multi-user.target
