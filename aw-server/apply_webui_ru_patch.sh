@@ -11,6 +11,8 @@ source "$ENV_FILE"
 
 WEBUI_DIR="${AW_SERVER_WEBUI_DIR:-${AW_WEBUI_DIR:-/opt/activitywatch/webui-ru}}"
 REPORT_BASE="${AW_WORKTIME_REPORT_BASE:-http://10.10.10.13:5610}"
+CASE_PORT="${AW_DLP_CASE_PORT:-5602}"
+CASE_BASE="${AW_DLP_CASE_PUBLIC_BASE:-}"
 PATCH_JS_SRC="/root/bootstrap/aw-ru-patch.js"
 SW_CLEANUP_SRC="/root/bootstrap/aw-sw-cleanup.js"
 WORKTIME_PANEL_SRC="/root/bootstrap/aw-worktime-panel.js"
@@ -46,6 +48,21 @@ patch_hash="$(sha1sum "$PATCH_TARGET" | awk '{print substr($1,1,12)}')"
 sw_hash="$(sha1sum "$SW_TARGET" | awk '{print substr($1,1,12)}')"
 worktime_panel_hash="$(sha1sum "$WORKTIME_PANEL_TARGET" | awk '{print substr($1,1,12)}')"
 
+if [[ -z "$CASE_BASE" ]]; then
+  CASE_BASE="$(python3 - "$REPORT_BASE" "$CASE_PORT" <<'PY'
+from urllib.parse import urlsplit, urlunsplit
+import sys
+
+report_base = sys.argv[1]
+case_port = sys.argv[2]
+parts = urlsplit(report_base)
+hostname = parts.hostname or "10.10.10.13"
+scheme = parts.scheme or "http"
+print(urlunsplit((scheme, f"{hostname}:{case_port}", "", "", "")))
+PY
+)"
+fi
+
 python3 - "$WORKTIME_PANEL_TARGET" "$REPORT_BASE" <<'PY'
 from pathlib import Path
 import sys
@@ -57,16 +74,18 @@ text = text.replace("__AW_WORKTIME_REPORT_BASE__", report_base)
 path.write_text(text)
 PY
 
-python3 - "$INDEX_HTML" "$sw_hash" "$patch_hash" "$worktime_panel_hash" "$REPORT_BASE" <<'PY'
+python3 - "$INDEX_HTML" "$sw_hash" "$patch_hash" "$worktime_panel_hash" "$REPORT_BASE" "$CASE_BASE" <<'PY'
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlsplit
 
 path = Path(sys.argv[1])
 sw_hash = sys.argv[2]
 patch_hash = sys.argv[3]
 panel_hash = sys.argv[4]
 report_base = sys.argv[5]
+case_base = sys.argv[6]
 content = path.read_text()
 
 content = re.sub(
@@ -74,11 +93,21 @@ content = re.sub(
     '',
     content,
 )
-content = re.sub(r"; frame-src 'self' [^\";>]*", "", content)
-content = content.replace(
-    "script-src 'self' 'unsafe-eval'",
-    f"script-src 'self' 'unsafe-eval'; frame-src 'self' {report_base}",
-    1,
+content = re.sub(r";\s*frame-src 'self' [^\";>]*", "", content)
+content = re.sub(r";\s*connect-src 'self' [^\";>]*", "", content)
+report_origin = urlsplit(report_base)
+case_origin = urlsplit(case_base)
+connect_targets = " ".join(
+    [
+        f"{report_origin.scheme}://{report_origin.netloc}",
+        f"{case_origin.scheme}://{case_origin.netloc}",
+    ]
+)
+content = re.sub(
+    r"script-src 'self' 'unsafe-eval'(?:;\s*connect-src 'self' [^\";>]*)?(?:;\s*frame-src 'self' [^\";>]*)?",
+    f"script-src 'self' 'unsafe-eval'; connect-src 'self' {connect_targets}; frame-src 'self' {report_base}",
+    content,
+    count=1,
 )
 content = content.replace(
     "</head>",
