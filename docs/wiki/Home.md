@@ -8,6 +8,7 @@
 - [Обзор архитектуры](Architecture) - высокоуровневая архитектура системы
 - [Компоненты системы](Components) - описание всех компонентов
 - [Интерактивная карта](Interactive-Map) - визуальная карта связей
+- [ИБ-профиль DLP](../dlp-security-functional-spec-ru.md) - подробное описание реализованного DLP/monitoring-контура для службы ИБ
 
 ### Компоненты
 - [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring) - мониторинг clipboard, печати, USB
