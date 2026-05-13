@@ -80,8 +80,20 @@
           TELEGRAM_BOT_TOKEN={{ telegram_bot_token }}
           TELEGRAM_ALLOWED_CHAT_IDS={{ telegram_allowed_chat_ids }}
           TELEGRAM_DEFAULT_CHAT_ID={{ tsj_bot_default_chat_id }}
+          HTTPS_PROXY={{ tsj_bot_https_proxy_url | default(tsj_bot_telegram_proxy_url | default('http://127.0.0.1:11090')) }}
+          HTTP_PROXY={{ tsj_bot_http_proxy_url | default(tsj_bot_telegram_proxy_url | default('http://127.0.0.1:11090')) }}
+          NO_PROXY={{ tsj_bot_no_proxy | default('localhost,127.0.0.1,10.10.10.0/24') }}
+          NODE_13_HOST={{ tsj_bot_node_13_host | default('10.10.10.13') }}
+          NODE_16_HOST={{ tsj_bot_node_16_host | default('10.10.10.16') }}
+          NODE_13_URL={{ tsj_bot_node_13_url | default('http://10.10.10.13:5600/') }}
+          NODE_16_URL={{ tsj_bot_node_16_url | default('http://10.10.10.16/') }}
+          NODE_16_ENABLED={{ tsj_bot_node_16_enabled | default('false') }}
           CHECK_SCRIPT={{ tsj_bot_check_script | default('/home/codex/infra-admin/scripts/system_self_support.sh --check') }}
           HEAL_SCRIPT={{ tsj_bot_heal_script | default('/home/codex/infra-admin/scripts/system_self_support.sh --heal') }}
+          FS_WARN_PCT={{ tsj_bot_fs_warn_pct | default(85) }}
+          FS_CRIT_PCT={{ tsj_bot_fs_crit_pct | default(92) }}
+          FS_TARGETS={{ tsj_bot_fs_targets | default('host,200,201,202,203') }}
+          FS_EXCLUDE_TYPES={{ tsj_bot_fs_exclude_types | default('tmpfs,devtmpfs,proc,sysfs,cgroup,cgroup2,overlay,squashfs,nsfs,tracefs,debugfs,securityfs,configfs,fusectl,mqueue,hugetlbfs,ramfs') }}
           STATE_FILE={{ tsj_bot_state_file | default('/home/codex/infra-admin/.state/tsj_guardian_state.json') }}
           LOG_FILE={{ tsj_bot_log_file | default('/home/codex/infra-admin/logs/tsj_guardian_bot.log') }}
           HEARTBEAT_FILE={{ tsj_bot_heartbeat_file | default('/home/codex/infra-admin/.state/tsj_guardian_heartbeat') }}
@@ -90,6 +102,8 @@
           RETRY_AUTORECOVERY_EVERY_SEC={{ tsj_bot_retry_autorecovery_every_sec | default(300) }}
           EXIT_ON_AUTORECOVERY_SUCCESS={{ tsj_bot_exit_on_autorecovery_success | default('true') }}
           ENABLE_AI_ESCALATION={{ tsj_bot_enable_ai_escalation | default('true') }}
+          FS_IMMEDIATE_AI_ON_CRITICAL={{ tsj_bot_fs_immediate_ai_on_critical | default('true') }}
+          AI_ESCALATION_MODE={{ tsj_bot_ai_escalation_mode | default('codex_exec') }}
           ENABLE_SERVER_FALLBACK={{ tsj_bot_enable_server_fallback | default('true') }}
           TELEGRAM_PROXY_URL={{ tsj_bot_telegram_proxy_url | default('http://127.0.0.1:11090') }}
           AI_CHAT_ENABLED={{ tsj_bot_ai_chat_enabled | default('true') }}
@@ -103,9 +117,22 @@
           TMUX_SESSION={{ tsj_bot_tmux_session | default('ai') }}
           TMUX_CREATE_IF_MISSING={{ tsj_bot_tmux_create_if_missing | default('false') }}
           TMUX_START_COMMAND={{ tsj_bot_tmux_start_command | default('codex') }}
+          PFSENSE_CHANGE_CONTROL_ENABLED={{ tsj_bot_pfsense_change_control_enabled | default('true') }}
+          PFSENSE_CHANGE_CONFIRM_TTL_SEC={{ tsj_bot_pfsense_change_confirm_ttl_sec | default(900) }}
+          OPENVPN_CONFIG_ENABLED={{ tsj_bot_openvpn_config_enabled | default('true') }}
+          OPENVPN_CONFIG_CONFIRM_TTL_SEC={{ tsj_bot_openvpn_config_confirm_ttl_sec | default(900) }}
+          OPENVPN_EXPIRY_WARN_ENABLED={{ tsj_bot_openvpn_expiry_warn_enabled | default('false') }}
+          OPENVPN_EXPIRY_WARN_DAYS={{ tsj_bot_openvpn_expiry_warn_days | default(30) }}
+          OPENVPN_EXPIRY_WARN_TIMEOUT_SEC={{ tsj_bot_openvpn_expiry_warn_timeout_sec | default(120) }}
+          OPENVPN_EXPIRY_WARN_INTERVAL_SEC={{ tsj_bot_openvpn_expiry_warn_interval_sec | default(21600) }}
+          PFSENSE_MCP_BEARER={{ tsj_bot_pfsense_mcp_bearer | default(pfsense_mcp_bearer | default('')) }}
+          SERVER_FALLBACK_COMMANDS={{ tsj_bot_server_fallback_commands | default('/home/codex/infra-admin/scripts/system_self_support.sh --heal') }}
+          UPDATES_SCRIPT={{ tsj_bot_updates_script | default('/usr/bin/python3 /home/codex/infra-admin/scripts/proxmox_lxc_critical_updates.py') }}
+          UPDATE_TARGETS={{ tsj_bot_update_targets | default('auto') }}
           AW_RUS_API_BASE={{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}
           AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}
           AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl start aw-worktime-ui-bridge.service'") }}
+          AW_RUS_DLP_HEAL_CMD={{ tsj_bot_aw_rus_dlp_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'") }}
           AW_RUS_HOST={{ tsj_bot_aw_rus_host | default('SHARKON2025') }}
           AW_RUS_PRIMARY_USER={{ tsj_bot_aw_rus_primary_user | default('USER1') }}
           AW_RUS_STALE_SEC={{ tsj_bot_aw_rus_stale_sec | default(900) }}

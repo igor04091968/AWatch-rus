@@ -2,6 +2,8 @@
 Description=AW Worktime UI bridge (sessions -> afk/window)
 After=network-online.target activitywatch-server.service
 Wants=network-online.target
+StartLimitBurst=3
+StartLimitIntervalSec=120
 
 [Service]
 Type=simple
@@ -10,8 +12,6 @@ Environment=AW_WORKTIME_HOST=SHARKON2025
 ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-ui-bridge.py
 Restart=on-failure
 RestartSec=10
-StartLimitBurst=3
-StartLimitIntervalSec=120
 User=activitywatch
 Group=activitywatch
 StandardOutput=journal

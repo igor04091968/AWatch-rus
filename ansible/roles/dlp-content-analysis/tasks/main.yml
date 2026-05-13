@@ -25,6 +25,14 @@
     group: "{{ aw_server_group | default('activitywatch') }}"
     mode: "0644"
 
+- name: Install content analysis wrapper
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../aw-server/dlp-content-analysis/aw-dlp-content-analyzer.sh"
+    dest: /usr/local/bin/aw-dlp-content-analyzer
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Create venv for content analysis
   ansible.builtin.command:
     cmd: python3 -m venv /opt/activitywatch/dlp-content-analysis/.venv

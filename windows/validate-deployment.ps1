@@ -89,6 +89,62 @@ if ($config.userTasks) {
 $taskNames += [string]$config.recovery.taskName
 $taskNames = $taskNames | Sort-Object -Unique
 
+function Get-LoggedOnUsers {
+    $users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    try {
+        $lines = & quser.exe 2>$null
+        foreach ($line in @($lines)) {
+            $normalized = [string]$line
+            if ([string]::IsNullOrWhiteSpace($normalized)) { continue }
+            $normalized = $normalized.TrimStart(' ', '>')
+            if ([string]::IsNullOrWhiteSpace($normalized)) { continue }
+            if ($normalized -match '^(USERNAME|ПОЛЬЗОВАТЕЛЬ)\s+') { continue }
+            $parts = $normalized -split '\s+'
+            if ($parts.Count -lt 1) { continue }
+            $user = [string]$parts[0]
+            if ([string]::IsNullOrWhiteSpace($user)) { continue }
+            [void]$users.Add($user)
+            [void]$users.Add(('{0}\{1}' -f $env:COMPUTERNAME, $user))
+            if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
+                [void]$users.Add(('{0}\{1}' -f $env:USERDOMAIN, $user))
+            }
+        }
+    }
+    catch {
+    }
+    return @($users)
+}
+
+function Test-UserHasSession {
+    param(
+        [string]$UserId,
+        [string[]]$LoggedOnUsers
+    )
+    if ([string]::IsNullOrWhiteSpace($UserId)) { return $false }
+    $candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    [void]$candidateIds.Add($UserId)
+    $leafUser = $UserId
+    if ($leafUser -match '^[^\\]+\\(.+)$') {
+        $leafUser = $Matches[1]
+        [void]$candidateIds.Add($leafUser)
+    }
+    [void]$candidateIds.Add(('{0}\{1}' -f $env:COMPUTERNAME, $leafUser))
+    if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
+        [void]$candidateIds.Add(('{0}\{1}' -f $env:USERDOMAIN, $leafUser))
+    }
+    foreach ($candidate in @($candidateIds)) {
+        if ($LoggedOnUsers -contains $candidate) { return $true }
+    }
+    return $false
+}
+
+$loggedOnUsers = Get-LoggedOnUsers
+$sessionBoundUsers = @(
+    @($config.userTasks) |
+        Where-Object { Test-UserHasSession -UserId ([string]$_.userId) -LoggedOnUsers $loggedOnUsers } |
+        ForEach-Object { [string]$_.userId }
+)
+
 $tasks = @(
     foreach ($taskName in $taskNames) {
         $task = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -eq $taskName } | Select-Object -First 1
@@ -111,6 +167,7 @@ $tasks = @(
 
 $serverUrl = '{0}://{1}:{2}' -f [string]$config.server.scheme, [string]$config.server.host, [int]$config.server.port
 $uniqueRunningProcessNames = @($runningProcesses | Select-Object -ExpandProperty Name -Unique)
+$sessionBoundCollectorsExpected = ($sessionBoundUsers.Count -gt 0)
 $result = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
     configPath = $ConfigPath
@@ -128,10 +185,12 @@ $result = [ordered]@{
     }
     processes = [ordered]@{
         expected = $processNames
+        sessionBoundUsers = $sessionBoundUsers
         list = @($runningProcesses)
         sessionCollectors = @($sessionCollectorProcesses)
         ok = [bool](
             (
+                (-not $sessionBoundCollectorsExpected) -or
                 ($processNames.Count -eq 0) -or
                 ($uniqueRunningProcessNames.Count -ge $processNames.Count)
             ) -and

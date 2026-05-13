@@ -206,6 +206,68 @@ def check_bucket_group(
     )
 
 
+def check_incident_buckets(
+    report: HealthReport,
+    api_base: str,
+    buckets: dict[str, Any],
+    max_age_seconds: int,
+) -> None:
+    now = _now_utc()
+    prefix = "aw-dlp-incidents_"
+    matched = sorted(bucket_id for bucket_id in buckets if bucket_id.startswith(prefix))
+
+    if not matched:
+        report.add(
+            "buckets:incidents",
+            "ok",
+            "no incident buckets yet",
+            prefix=prefix,
+            bucket_count=0,
+        )
+        return
+
+    ages: dict[str, int] = {}
+    unknown: list[str] = []
+    stale: list[dict[str, Any]] = []
+    for bucket_id in matched:
+        ts = _latest_bucket_ts(api_base, bucket_id, buckets.get(bucket_id, {}))
+        age = _age_seconds(ts, now)
+        if age is None:
+            unknown.append(bucket_id)
+            continue
+        ages[bucket_id] = age
+        if age > max_age_seconds:
+            stale.append({"bucket": bucket_id, "age_seconds": age})
+
+    if stale and not unknown:
+        report.add(
+            "buckets:incidents",
+            "ok",
+            "no recent incidents",
+            prefix=prefix,
+            bucket_count=len(matched),
+            max_age_seconds=max_age_seconds,
+            max_observed_age_seconds=max(ages.values()) if ages else None,
+            stale=stale,
+            unknown=[],
+        )
+        return
+
+    status = "ok" if not unknown else "warn"
+    summary = "incident buckets healthy" if not unknown else f"{len(unknown)} incident buckets without timestamp"
+    report.add(
+        "buckets:incidents",
+        status,
+        summary,
+        prefix=prefix,
+        bucket_count=len(matched),
+        max_age_seconds=max_age_seconds,
+        max_observed_age_seconds=max(ages.values()) if ages else None,
+        stale=stale,
+        unknown=unknown,
+    )
+
+
 def _worktime_activity_map(api_base: str, buckets: dict[str, Any], max_age_seconds: int) -> dict[str, dict[str, Any]]:
     now = _now_utc()
     activity: dict[str, dict[str, Any]] = {}
@@ -401,7 +463,7 @@ def main() -> int:
         report.add("aw:buckets-index", "ok", "bucket index loaded", total=len(buckets))
         check_bucket_group(report, aw_api_base, buckets, "endpoint-signals", "aw-dlp-endpoint-signals_", args.max_age_seconds)
         check_file_operations_buckets(report, aw_api_base, buckets, args.max_age_seconds, args.strict_fileops)
-        check_bucket_group(report, aw_api_base, buckets, "incidents", "aw-dlp-incidents_", args.max_age_seconds * 24, severity_if_missing="warn", severity_if_stale="warn")
+        check_incident_buckets(report, aw_api_base, buckets, args.max_age_seconds * 24)
         check_endpoint_self_test_metrics(report, aw_api_base, buckets)
     except Exception as exc:
         report.add("aw:buckets-index", "fail", f"failed to inspect bucket index: {exc}")

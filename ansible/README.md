@@ -171,12 +171,23 @@ Playbook:
    - `telegram_allowed_chat_ids`
    - `tsj_bot_source_local_path`
 3. Убедитесь, что в inventory есть группа `[proxmox]`.
-4. Запустите:
+   Для текущего контура AW-Rus bot ожидает Proxmox host `10.10.10.2`.
+   Рабочая модель для этого контура: `igor` + `sudo`, а не обязательный `root` login.
+4. При необходимости задайте recovery-команды для AW-Rus:
+   - `tsj_bot_aw_rus_worktime_heal_cmd`
+   - `tsj_bot_aw_rus_dlp_heal_cmd`
+5. Запустите:
 
 ```bash
 cd ansible
 ansible-playbook -i inventory.ini deploy_tsj_guardian_bot_proxmox.yml
 ```
+
+После актуального production hardening:
+
+- bot различает `worktime idle` и реальную деградацию;
+- bot поддерживает отдельный `AW_RUS_DLP_HEAL_CMD`;
+- redeploy не должен терять runtime env-ключи, связанные с proxy, FS checks и AI escalation.
 
 ## Результат
 

@@ -9,6 +9,8 @@
 - [Компоненты системы](Components) - описание всех компонентов
 - [Интерактивная карта](Interactive-Map) - визуальная карта связей
 - [ИБ-профиль DLP](../dlp-security-functional-spec-ru.md) - подробное описание реализованного DLP/monitoring-контура для службы ИБ
+- [Runtime status: DLP chain](../dlp-runtime-chain-status-2026-05-13.md) - фактический live-статус policy/cases/integrations/compliance
+- [Runtime status: Content analysis](../dlp-content-analysis-runtime-status-2026-05-13.md) - фактический live-статус dictionary/regex/OCR/IOC
 
 ### Компоненты
 - [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring) - мониторинг clipboard, печати, USB
@@ -22,6 +24,7 @@
 - [Установка на Windows](Windows-Installation) - установка коллекторов
 - [Настройка сервера](Server-Setup) - настройка Linux сервера
 - [Grafana + Prometheus](Monitoring-Setup) - мониторинг стек
+- [Windows startup model](../windows-deploy-startup-model.md) - canonical startup model для RDP/standalone deployment
 
 ### Конфигурация
 - [DLP Правила](DLP-Rules) - настройка DLP политик

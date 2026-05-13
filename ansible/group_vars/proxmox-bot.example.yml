@@ -10,11 +10,38 @@ tsj_bot_check_interval_sec: 60
 tsj_bot_operator_timeout_sec: 900
 tsj_bot_retry_autorecovery_every_sec: 300
 tsj_bot_telegram_proxy_url: "http://127.0.0.1:11090"
+tsj_bot_https_proxy_url: "http://127.0.0.1:11090"
+tsj_bot_http_proxy_url: "http://127.0.0.1:11090"
+tsj_bot_no_proxy: "localhost,127.0.0.1,10.10.10.0/24"
+tsj_bot_node_13_host: "10.10.10.13"
+tsj_bot_node_16_host: "10.10.10.16"
+tsj_bot_node_13_url: "http://10.10.10.13:5600/"
+tsj_bot_node_16_url: "http://10.10.10.16/"
+tsj_bot_node_16_enabled: "false"
+tsj_bot_fs_warn_pct: 85
+tsj_bot_fs_crit_pct: 92
+tsj_bot_fs_targets: "host,200,201,202,203"
+tsj_bot_fs_exclude_types: "tmpfs,devtmpfs,proc,sysfs,cgroup,cgroup2,overlay,squashfs,nsfs,tracefs,debugfs,securityfs,configfs,fusectl,mqueue,hugetlbfs,ramfs"
+tsj_bot_fs_immediate_ai_on_critical: "true"
+tsj_bot_ai_escalation_mode: "codex_exec"
+tsj_bot_pfsense_change_control_enabled: "true"
+tsj_bot_pfsense_change_confirm_ttl_sec: 900
+tsj_bot_openvpn_config_enabled: "true"
+tsj_bot_openvpn_config_confirm_ttl_sec: 900
+tsj_bot_openvpn_expiry_warn_enabled: "false"
+tsj_bot_openvpn_expiry_warn_days: 30
+tsj_bot_openvpn_expiry_warn_timeout_sec: 120
+tsj_bot_openvpn_expiry_warn_interval_sec: 21600
+tsj_bot_server_fallback_commands: "/home/codex/infra-admin/scripts/system_self_support.sh --heal"
+tsj_bot_updates_script: "/usr/bin/python3 /home/codex/infra-admin/scripts/proxmox_lxc_critical_updates.py"
+tsj_bot_update_targets: "auto"
+tsj_bot_pfsense_mcp_bearer: "CHANGE_ME"
 
 # AW-Rus + DLP check defaults
 tsj_bot_aw_rus_api_base: "http://10.10.10.13:5600/api/0"
 tsj_bot_aw_rus_worktime_base: "http://10.10.10.13:5610"
 tsj_bot_aw_rus_worktime_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl start aw-worktime-ui-bridge.service'"
+tsj_bot_aw_rus_dlp_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'"
 tsj_bot_aw_rus_host: "SHARKON2025"
 tsj_bot_aw_rus_primary_user: "USER1"
 tsj_bot_aw_rus_stale_sec: 900

@@ -378,6 +378,15 @@
             mode: "0644"
           when: aw_dlp_content_analysis_enabled | default(true) | bool
 
+        - name: Установить wrapper запуска DLP content analysis через virtualenv
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-content-analysis/aw-dlp-content-analyzer.sh"
+            dest: /usr/local/bin/aw-dlp-content-analyzer
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_dlp_content_analysis_enabled | default(true) | bool
+
         - name: Создать virtualenv DLP content analysis
           ansible.builtin.command:
             cmd: python3 -m venv /opt/activitywatch/dlp-content-analysis/.venv

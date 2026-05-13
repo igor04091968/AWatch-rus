@@ -11,6 +11,10 @@
 #define AwDefaultStateRoot "C:\\ProgramData\\AWatch-rus"
 #define AwDefaultZipName "activitywatch-v0.13.2-windows-x86_64.zip"
 
+; This installer wraps the standalone-service path.
+; It is suitable for standalone/headless deployment and must not be treated
+; as the canonical multi-user RDP deployment path used on SHARKON2025.
+
 [Setup]
 AppId={{6D6A1F74-0F4F-4A57-B5E3-1C2C2F56C0E9}
 AppName={#MyAppName}

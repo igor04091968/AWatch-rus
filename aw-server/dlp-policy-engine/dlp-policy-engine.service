@@ -2,6 +2,8 @@
 Description=AW DLP Policy Engine
 After=network.target activitywatch-server.service
 Wants=activitywatch-server.service
+StartLimitBurst=3
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -10,8 +12,6 @@ WorkingDirectory=/opt/activitywatch/dlp-policy-engine
 ExecStart=/opt/activitywatch/dlp-policy-engine/.venv/bin/uvicorn policy_service:app --host ${AW_DLP_POLICY_ENGINE_BIND_HOST} --port ${AW_DLP_POLICY_ENGINE_PORT}
 Restart=on-failure
 RestartSec=5
-StartLimitBurst=3
-StartLimitIntervalSec=60
 User=activitywatch
 Group=activitywatch
 StandardOutput=journal

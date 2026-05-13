@@ -357,6 +357,10 @@ class TSJGuardianBot:
             "sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 "
             "'sudo -S systemctl restart aw-worktime-api.service'",
         ).strip()
+        self.aw_rus_dlp_heal_cmd = os.getenv(
+            "AW_RUS_DLP_HEAL_CMD",
+            "",
+        ).strip()
         self.aw_rus_host = os.getenv("AW_RUS_HOST", "SHARKON2025").strip()
         self.aw_rus_primary_user = os.getenv("AW_RUS_PRIMARY_USER", "USER1").strip()
         self.aw_rus_stale_sec = max(60, env_int("AW_RUS_STALE_SEC", 900))
@@ -2305,6 +2309,21 @@ class TSJGuardianBot:
             report.append("- heal: skipped (no DLP targets)")
             return True, report
 
+        cmd = (self.aw_rus_dlp_heal_cmd or "").strip()
+        if cmd:
+            try:
+                rc, out = self._run_shell(cmd, timeout_sec=120)
+                if rc != 0:
+                    tail = (out or "").strip().splitlines()[-1:] or [f"rc={rc}"]
+                    report.append(f"- dlp-heal: FAIL ({tail[0]})")
+                    return False, report
+                report.append("- dlp-heal: configured recovery command OK")
+                return True, report
+            except Exception as exc:
+                report.append(f"- dlp-heal: FAIL ({exc})")
+                return False, report
+
+        report.append("- dlp-heal: no configured recovery command, using freshness reseed fallback")
         ok = True
         for bucket_id in selected:
             btype, client, hostname = bucket_defs[bucket_id]

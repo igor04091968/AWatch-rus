@@ -311,6 +311,83 @@ function New-ActivityWatchUserTaskDefinitions {
     return @($result)
 }
 
+function Get-ActivityWatchLoggedOnUsers {
+    $users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    try {
+        $lines = & quser.exe 2>$null
+        foreach ($line in @($lines)) {
+            $normalized = [string]$line
+            if ([string]::IsNullOrWhiteSpace($normalized)) {
+                continue
+            }
+
+            $normalized = $normalized.TrimStart(' ', '>')
+            if ([string]::IsNullOrWhiteSpace($normalized)) {
+                continue
+            }
+
+            if ($normalized -match '^(USERNAME|ПОЛЬЗОВАТЕЛЬ)\s+') {
+                continue
+            }
+
+            $parts = $normalized -split '\s+'
+            if ($parts.Count -lt 1) {
+                continue
+            }
+
+            $user = [string]$parts[0]
+            if ([string]::IsNullOrWhiteSpace($user)) {
+                continue
+            }
+
+            [void]$users.Add($user)
+            [void]$users.Add(('{0}\{1}' -f $env:COMPUTERNAME, $user))
+            if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
+                [void]$users.Add(('{0}\{1}' -f $env:USERDOMAIN, $user))
+            }
+        }
+    }
+    catch {
+    }
+
+    return @($users)
+}
+
+function Test-ActivityWatchUserHasSession {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserId,
+        [string[]]$LoggedOnUsers
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserId)) {
+        return $false
+    }
+
+    $candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    [void]$candidateIds.Add($UserId)
+
+    $leafUser = $UserId
+    if ($leafUser -match '^[^\\]+\\(.+)$') {
+        $leafUser = $Matches[1]
+        [void]$candidateIds.Add($leafUser)
+    }
+
+    [void]$candidateIds.Add(('{0}\{1}' -f $env:COMPUTERNAME, $leafUser))
+    if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
+        [void]$candidateIds.Add(('{0}\{1}' -f $env:USERDOMAIN, $leafUser))
+    }
+
+    foreach ($candidate in @($candidateIds)) {
+        if ($LoggedOnUsers -contains $candidate) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Copy-ActivityWatchCollectorAssets {
     param(
         [Parameter(Mandatory = $true)]
@@ -939,17 +1016,21 @@ function Get-RecoveryConfigPaths {
     return @(`$paths | Sort-Object -Unique)
 }
 
-function Get-RecoveryTaskNames {
+function Get-RecoveryTaskDefinitions {
     param([string[]]`$ConfigPaths)
 
-    `$taskNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    `$taskMap = [ordered]@{}
     foreach (`$candidatePath in @(`$ConfigPaths)) {
         try {
             `$config = Get-DeploymentConfig -Path `$candidatePath
             foreach (`$task in @(`$config.userTasks)) {
                 `$taskName = [string]`$task.launchTaskName
-                if (-not [string]::IsNullOrWhiteSpace(`$taskName)) {
-                    [void]`$taskNames.Add(`$taskName)
+                `$userId = [string]`$task.userId
+                if (-not [string]::IsNullOrWhiteSpace(`$taskName) -and -not `$taskMap.Contains(`$taskName)) {
+                    `$taskMap[`$taskName] = [pscustomobject]@{
+                        taskName = `$taskName
+                        userId   = `$userId
+                    }
                 }
             }
         }
@@ -957,7 +1038,7 @@ function Get-RecoveryTaskNames {
         }
     }
 
-    return @(`$taskNames)
+    return @(`$taskMap.Values)
 }
 
 function New-RecoveryLock {
@@ -990,8 +1071,20 @@ function New-RecoveryLock {
 }
 
 function Start-TaskIfNotRunning {
-    param([string]`$TaskName)
+    param(
+        [string]`$TaskName,
+        [string]`$UserId,
+        [string[]]`$LoggedOnUsers
+    )
     if ([string]::IsNullOrWhiteSpace(`$TaskName)) {
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace(`$UserId)) {
+        return
+    }
+
+    if (-not (Test-UserHasSession -UserId `$UserId -LoggedOnUsers `$LoggedOnUsers)) {
         return
     }
 
@@ -1007,6 +1100,82 @@ function Start-TaskIfNotRunning {
     }
     catch {
     }
+}
+
+function Get-LoggedOnUsers {
+    `$users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    try {
+        `$lines = & quser.exe 2>`$null
+        foreach (`$line in @(`$lines)) {
+            `$normalized = [string]`$line
+            if ([string]::IsNullOrWhiteSpace(`$normalized)) {
+                continue
+            }
+
+            `$normalized = `$normalized.TrimStart(' ', '>')
+            if ([string]::IsNullOrWhiteSpace(`$normalized)) {
+                continue
+            }
+
+            if (`$normalized -match '^(USERNAME|ПОЛЬЗОВАТЕЛЬ)\s+') {
+                continue
+            }
+
+            `$parts = `$normalized -split '\s+'
+            if (`$parts.Count -lt 1) {
+                continue
+            }
+
+            `$user = [string]`$parts[0]
+            if ([string]::IsNullOrWhiteSpace(`$user)) {
+                continue
+            }
+
+            [void]`$users.Add(`$user)
+            [void]`$users.Add(('{0}\{1}' -f `$env:COMPUTERNAME, `$user))
+            if (-not [string]::IsNullOrWhiteSpace(`$env:USERDOMAIN)) {
+                [void]`$users.Add(('{0}\{1}' -f `$env:USERDOMAIN, `$user))
+            }
+        }
+    }
+    catch {
+    }
+
+    return @(`$users)
+}
+
+function Test-UserHasSession {
+    param(
+        [string]`$UserId,
+        [string[]]`$LoggedOnUsers
+    )
+
+    if ([string]::IsNullOrWhiteSpace(`$UserId)) {
+        return `$false
+    }
+
+    `$candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    [void]`$candidateIds.Add(`$UserId)
+
+    `$leafUser = `$UserId
+    if (`$leafUser -match '^[^\\]+\\(.+)$') {
+        `$leafUser = `$Matches[1]
+        [void]`$candidateIds.Add(`$leafUser)
+    }
+
+    [void]`$candidateIds.Add(('{0}\{1}' -f `$env:COMPUTERNAME, `$leafUser))
+    if (-not [string]::IsNullOrWhiteSpace(`$env:USERDOMAIN)) {
+        [void]`$candidateIds.Add(('{0}\{1}' -f `$env:USERDOMAIN, `$leafUser))
+    }
+
+    foreach (`$candidate in @(`$candidateIds)) {
+        if (`$LoggedOnUsers -contains `$candidate) {
+            return `$true
+        }
+    }
+
+    return `$false
 }
 
 function Test-CollectorRunningGlobal {
@@ -1058,11 +1227,12 @@ try {
         try {
             `$configPaths = Get-RecoveryConfigPaths -PrimaryConfigPath `$ConfigPath
             `$config = Get-DeploymentConfig -Path `$ConfigPath
+            `$loggedOnUsers = Get-LoggedOnUsers
             `$stateRoot = [string]`$config.paths.stateRoot
             `$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { Join-Path `$stateRoot 'worktime-session-collector.ps1' }
             Start-CollectorScriptGlobalIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath
-            foreach (`$taskName in Get-RecoveryTaskNames -ConfigPaths `$configPaths) {
-                Start-TaskIfNotRunning -TaskName `$taskName
+            foreach (`$taskDef in Get-RecoveryTaskDefinitions -ConfigPaths `$configPaths) {
+                Start-TaskIfNotRunning -TaskName `$taskDef.taskName -UserId `$taskDef.userId -LoggedOnUsers `$loggedOnUsers
             }
 
             if (`$config -and `$config.recovery -and `$config.recovery.intervalSeconds) {
@@ -1343,8 +1513,12 @@ function Start-ActivityWatchTasks {
         [string]$RecoveryTaskName = 'ActivityWatch Recovery'
     )
 
+    $loggedOnUsers = Get-ActivityWatchLoggedOnUsers
+
     foreach ($definition in $TaskDefinitions) {
-        Start-ScheduledTask -TaskName $definition.LaunchTaskName -ErrorAction SilentlyContinue
+        if (Test-ActivityWatchUserHasSession -UserId $definition.UserId -LoggedOnUsers $loggedOnUsers) {
+            Start-ScheduledTask -TaskName $definition.LaunchTaskName -ErrorAction SilentlyContinue
+        }
     }
 
     Start-ScheduledTask -TaskName $RecoveryTaskName -ErrorAction SilentlyContinue
