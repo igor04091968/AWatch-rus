@@ -1650,6 +1650,17 @@
 
   function rewriteUnknownCategoryBuilderQueryBody(body) {
     if (typeof body !== "string") return body;
+    function stripUnknownBucketTokens(raw) {
+      return raw
+        .replace(/aw-watcher-window_unknown/gi, "__AW_RU_UNKNOWN_WINDOW__")
+        .replace(/aw-watcher-afk_unknown/gi, "__AW_RU_UNKNOWN_AFK__")
+        .replace(/find_bucket\((\\?["'])__AW_RU_UNKNOWN_WINDOW__(\\?["'])\)/gi, "[]")
+        .replace(/find_bucket\((\\?["'])__AW_RU_UNKNOWN_AFK__(\\?["'])\)/gi, "[]")
+        .replace(/query_bucket\((\\?["'])__AW_RU_UNKNOWN_WINDOW__(\\?["'])\)/gi, "[]")
+        .replace(/query_bucket\((\\?["'])__AW_RU_UNKNOWN_AFK__(\\?["'])\)/gi, "[]")
+        .replace(/__AW_RU_UNKNOWN_WINDOW__/g, "")
+        .replace(/__AW_RU_UNKNOWN_AFK__/g, "");
+    }
     function stripUnknownBucketQueries(raw) {
       return raw
         .replace(/flood\(query_bucket\(find_bucket\(\\"aw-watcher-window_unknown\\"\)\)\)/g, '[]')
@@ -1683,6 +1694,10 @@
       } else {
         body = stripUnknownBucketQueries(body);
       }
+    }
+    if (body.indexOf("aw-watcher-window_unknown") !== -1 || body.indexOf("aw-watcher-afk_unknown") !== -1) {
+      body = stripUnknownBucketQueries(body);
+      body = stripUnknownBucketTokens(body);
     }
     return body;
   }
