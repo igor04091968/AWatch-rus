@@ -873,7 +873,6 @@ try {
     if (`$fileOpsEnabled) {
         Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     }
-    Start-CollectorScriptIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     if (`$emailEnabled -and (Test-Path -LiteralPath `$emailCollectorScript)) {
         Start-CollectorScriptIfNeeded -ScriptPath `$emailCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     }
@@ -1010,6 +1009,44 @@ function Start-TaskIfNotRunning {
     }
 }
 
+function Test-CollectorRunningGlobal {
+    param([string]`$ScriptPath)
+    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
+        return `$false
+    }
+
+    return [bool]@(
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                (`$_.Name -ieq 'powershell.exe' -or `$_.Name -ieq 'pwsh.exe') -and
+                `$_.CommandLine -match [Regex]::Escape(`$ScriptPath)
+            }
+    ).Count
+}
+
+function Start-CollectorScriptGlobalIfNeeded {
+    param(
+        [string]`$ScriptPath,
+        [string]`$ConfigPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath `$ScriptPath)) {
+        return
+    }
+
+    if (Test-CollectorRunningGlobal -ScriptPath `$ScriptPath) {
+        return
+    }
+
+    `$powershellExe = Join-Path `$env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    `$argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
+    Start-Process -FilePath `$powershellExe -ArgumentList `$argumentList -WindowStyle Hidden
+}
+
 `$recoveryLockPath = New-RecoveryLock -PrimaryConfigPath `$ConfigPath
 if (-not `$recoveryLockPath) {
     return
@@ -1020,11 +1057,14 @@ try {
         `$sleepSeconds = 180
         try {
             `$configPaths = Get-RecoveryConfigPaths -PrimaryConfigPath `$ConfigPath
+            `$config = Get-DeploymentConfig -Path `$ConfigPath
+            `$stateRoot = [string]`$config.paths.stateRoot
+            `$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { Join-Path `$stateRoot 'worktime-session-collector.ps1' }
+            Start-CollectorScriptGlobalIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath
             foreach (`$taskName in Get-RecoveryTaskNames -ConfigPaths `$configPaths) {
                 Start-TaskIfNotRunning -TaskName `$taskName
             }
 
-            `$config = Get-DeploymentConfig -Path `$ConfigPath
             if (`$config -and `$config.recovery -and `$config.recovery.intervalSeconds) {
                 `$sleepSeconds = [Math]::Max([int]`$config.recovery.intervalSeconds, 30)
             }

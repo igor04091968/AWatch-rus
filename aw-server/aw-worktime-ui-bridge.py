@@ -96,7 +96,8 @@ def _is_session_active(row_data):
         except Exception:
             sid = -1
         user = str(row_data.get("username", "")).strip().lower()
-        if sid > 0 and user and (not user.endswith("$")):
+        session_name = str(row_data.get("sessionName", "")).strip().lower()
+        if sid > 0 and user and (not user.endswith("$")) and (session_name.startswith("rdp-") or session_name == "console"):
             return True
     return False
 
@@ -111,7 +112,11 @@ def transform(events):
         ts = e.get("timestamp")
         if not ts:
             continue
-        grouped.setdefault(ts, []).append(e)
+        try:
+            normalized_ts = to_iso_utc(parse_iso_utc(ts).replace(microsecond=0).isoformat())
+        except Exception:
+            normalized_ts = ts
+        grouped.setdefault(normalized_ts, []).append(e)
 
     ordered_ts = sorted(grouped.keys())
     parsed_ts = {}

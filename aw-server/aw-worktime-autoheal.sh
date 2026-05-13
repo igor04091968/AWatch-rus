@@ -112,7 +112,8 @@ def is_active(d):
         try: sid=int(d.get("sessionId"))
         except: sid=-1
         u=str(d.get("username","")).strip().lower()
-        if sid>0 and u and (not u.endswith("$")): return True
+        sn=str(d.get("sessionName","")).strip().lower()
+        if sid>0 and u and (not u.endswith("$")) and (sn.startswith("rdp-") or sn=="console"): return True
     return False
 
 rows=req("GET",f"/api/0/buckets/{sb}/events?limit=12000") or []

@@ -31,8 +31,8 @@
     aw_windows_policy_engine_host: "{{ aw_windows_server_host }}"
     aw_windows_policy_engine_port: 5601
     aw_windows_policy_engine_scheme: "http"
-    aw_windows_afk_enabled: true
-    aw_windows_window_enabled: true
+    aw_windows_afk_enabled_default: true
+    aw_windows_window_enabled_default: true
     aw_windows_file_ops_enabled: true
     aw_windows_local_agent_logs_enabled: false
     aw_windows_incident_capture_enabled: true
@@ -50,7 +50,7 @@
     aw_windows_api_smoke_check_enabled: true
     aw_windows_api_smoke_check_bucket: ""
     aw_windows_api_smoke_check_limit: 10
-    aw_windows_api_smoke_check_window_enabled: true
+    aw_windows_api_smoke_check_window_enabled_default: true
     aw_windows_api_smoke_check_window_bucket: ""
     aw_windows_api_smoke_check_min_events: 1
     aw_windows_fail_on_validation_error: true
@@ -71,6 +71,12 @@
           - aw_windows_install_root is defined
           - aw_windows_state_root is defined
         fail_msg: "Не заданы обязательные переменные Windows-развёртывания."
+
+    - name: Нормализовать effective флаги collector'ов и smoke-check
+      ansible.builtin.set_fact:
+        aw_windows_afk_enabled_effective: "{{ (aw_windows_afk_enabled | default(aw_windows_afk_enabled_default)) | bool }}"
+        aw_windows_window_enabled_effective: "{{ (aw_windows_window_enabled | default(aw_windows_window_enabled_default)) | bool }}"
+        aw_windows_api_smoke_check_window_enabled_effective: "{{ (aw_windows_api_smoke_check_window_enabled | default(aw_windows_api_smoke_check_window_enabled_default)) | bool }}"
 
     - name: Создать каталоги развёртывания
       ansible.windows.win_file:
@@ -97,6 +103,7 @@
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1
         - hardening-recovery.ps1
+        - rebuild-worktime-tasks.ps1
         - validate-deployment.ps1
         - web-category-rules.example.json
         - dlp-policy.example.json
@@ -155,8 +162,8 @@
             UserListPath = "{{ aw_windows_deploy_root }}\windows\users.txt"
             InstallRoot = "{{ aw_windows_install_root }}"
             StateRoot = "{{ aw_windows_state_root }}"
-            AfkEnabled = {{ '$true' if (aw_windows_afk_enabled | bool) else '$false' }}
-            WindowEnabled = {{ '$true' if (aw_windows_window_enabled | bool) else '$false' }}
+            AfkEnabled = {{ '$true' if (aw_windows_afk_enabled_effective | bool) else '$false' }}
+            WindowEnabled = {{ '$true' if (aw_windows_window_enabled_effective | bool) else '$false' }}
             FileOpsEnabled = {{ '$true' if (aw_windows_file_ops_enabled | bool) else '$false' }}
             LocalAgentLogsEnabled = {{ '$true' if (aw_windows_local_agent_logs_enabled | bool) else '$false' }}
             IncidentCaptureEnabled = {{ '$true' if (aw_windows_incident_capture_enabled | bool) else '$false' }}
@@ -225,18 +232,20 @@
             ForEach-Object {
               $key = Get-CollectorKey -CommandLine $_.CommandLine
               if ($key) {
+                $groupKey = if ($key -eq 'worktime') { 'worktime::global' } else { '{0}::{1}' -f $key, ([int]$_.SessionId) }
                 [pscustomobject]@{
                   ProcessId    = [int]$_.ProcessId
                   SessionId    = [int]$_.SessionId
                   CreationDate = $_.CreationDate
                   CollectorKey = $key
+                  GroupKey     = $groupKey
                 }
               }
             } |
             Where-Object { $_ -ne $null }
 
-          # Keep only one process per (collector, session): newest survives, older duplicates are stopped.
-          foreach ($group in ($collectorProcs | Group-Object CollectorKey, SessionId)) {
+          # Keep only one process per collector scope: worktime collector is global, others stay per-session.
+          foreach ($group in ($collectorProcs | Group-Object GroupKey)) {
             $ordered = @($group.Group | Sort-Object CreationDate -Descending)
             if ($ordered.Count -le 1) { continue }
             foreach ($dup in $ordered | Select-Object -Skip 1) {
@@ -271,7 +280,7 @@
     - name: Вычислить AW AFK smoke-check bucket
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_afk_enabled | bool
+        - aw_windows_afk_enabled_effective | bool
         - aw_windows_hostname_result.stdout is defined
       ansible.builtin.set_fact:
         aw_windows_api_smoke_check_bucket_effective: >-
@@ -284,8 +293,8 @@
     - name: Вычислить AW Window smoke-check bucket
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_api_smoke_check_window_enabled | bool
-        - aw_windows_window_enabled | bool
+        - aw_windows_api_smoke_check_window_enabled_effective | bool
+        - aw_windows_window_enabled_effective | bool
         - aw_windows_hostname_result.stdout is defined
       ansible.builtin.set_fact:
         aw_windows_api_smoke_check_window_bucket_effective: >-
@@ -298,7 +307,7 @@
     - name: Выполнить AW API smoke-check (AFK bucket должен получать события)
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_afk_enabled | bool
+        - aw_windows_afk_enabled_effective | bool
       ansible.builtin.uri:
         url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
@@ -318,8 +327,8 @@
     - name: Выполнить AW API smoke-check (Window bucket должен получать события)
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_api_smoke_check_window_enabled | bool
-        - aw_windows_window_enabled | bool
+        - aw_windows_api_smoke_check_window_enabled_effective | bool
+        - aw_windows_window_enabled_effective | bool
       ansible.builtin.uri:
         url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_window_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET

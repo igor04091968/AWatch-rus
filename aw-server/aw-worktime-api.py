@@ -42,7 +42,8 @@ def _is_active_sample(data: dict) -> bool:
         except Exception:
             sid = -1
         user = str(data.get("username") or "").strip()
-        if sid > 0 and user and (not _is_machine_user(user)):
+        session_name = str(data.get("sessionName") or "").strip().lower()
+        if sid > 0 and user and (not _is_machine_user(user)) and (session_name.startswith("rdp-") or session_name == "console"):
             return True
     return False
 

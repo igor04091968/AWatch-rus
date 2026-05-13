@@ -158,19 +158,31 @@ function Parse-SessionLines {
     if ($Lines.Count -gt 0 -and $Lines[0] -match '\b(USERNAME|UserName|USER)\b') { $startIndex = 1 }
 
     for ($i = $startIndex; $i -lt $Lines.Count; $i++) {
-        $line = $Lines[$i].Trim()
+        $line = ($Lines[$i] -replace '^\s*>', '').Trim()
         if (-not $line) { continue }
 
-        $m = [regex]::Match($line, '^\s*(?<user>\S+)\s+(?<sess>\S+)?\s+(?<id>\d+)\s+(?<state>\S+)', [System.Text.RegularExpressions.RegexOptions]::None)
-        if ($m.Success) {
-            $user = $m.Groups['user'].Value; $sess = $m.Groups['sess'].Value; $id = [int]$m.Groups['id'].Value; $state = $m.Groups['state'].Value
+        $parts = $line -split '\s+'
+        if ($parts.Count -lt 3) { continue }
+        $user = $parts[0]
+        $sess = ''
+        $id = -1
+        $state = ''
+
+        if ($parts.Count -ge 4 -and $parts[1] -match '^\d+$') {
+            $sess = ''
+            $id = [int]$parts[1]
+            $state = [string]$parts[2]
+        }
+        elseif ($parts.Count -ge 4 -and $parts[2] -match '^\d+$') {
+            $sess = [string]$parts[1]
+            $id = [int]$parts[2]
+            $state = [string]$parts[3]
         }
         else {
-            $parts = $line -split '\s+'
-            if ($parts.Count -lt 4) { continue }
-            $user = $parts[0]
-            if ($parts[1] -match '^\d+$') { $sess = ''; $id = [int]$parts[1]; $state = $parts[2] } else { $sess = $parts[1]; $id = [int]$parts[2]; $state = $parts[3] }
+            continue
         }
+
+        if ($id -lt 0) { continue }
 
         $records += [pscustomobject]@{ username=$user; sessionName=$sess; sessionId=$id; state=$state }
     }
