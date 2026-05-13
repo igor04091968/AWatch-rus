@@ -1764,6 +1764,37 @@
     });
   }
 
+  function normalizeCategoryBuilderUnknownHostRefs() {
+    const hash = window.location.hash || "";
+    if (!/^#\/settings\/category-builder(?:[/?#]|$)/i.test(hash)) return;
+    const preferredHost = getPreferredWindowHostFromBuckets();
+    if (!preferredHost) return;
+
+    const nextHash = hash
+      .replace(/aw-watcher-window_unknown/gi, "aw-watcher-window_" + preferredHost)
+      .replace(/aw-watcher-afk_unknown/gi, "aw-watcher-afk_" + preferredHost);
+    if (nextHash !== hash) {
+      window.location.replace(nextHash);
+      return;
+    }
+
+    try {
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const key = window.localStorage.key(i);
+        if (!key) continue;
+        const value = window.localStorage.getItem(key);
+        if (!value || (value.indexOf("aw-watcher-window_unknown") === -1 && value.indexOf("aw-watcher-afk_unknown") === -1)) continue;
+        window.localStorage.setItem(
+          key,
+          value
+            .replace(/aw-watcher-window_unknown/gi, "aw-watcher-window_" + preferredHost)
+            .replace(/aw-watcher-afk_unknown/gi, "aw-watcher-afk_" + preferredHost)
+        );
+      }
+    } catch (error) {
+    }
+  }
+
   function patchActivityHeading(root) {
     const heading = root.querySelector("h3");
     if (!heading) return;
@@ -1780,6 +1811,7 @@
     enforceSafeActivityViewForPveHost();
     ensureSettingsHost();
     ensureHostGroupsData().catch(function () {});
+    normalizeCategoryBuilderUnknownHostRefs();
     installCategoryBuilderNetworkPatch();
     injectStyles();
     walk(document.body);
