@@ -14,6 +14,7 @@
 - `ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый полный playbook (несколько CT).
 - `ansible/deploy_aw_windows.yml` — WinRM playbook для развёртывания Windows/RDP collector'ов.
 - `ansible/deploy_aw_pfsense_poller.yml` — развёртывание pfSense poller'а.
+- `ansible/deploy_tsj_guardian_bot_proxmox.yml` — развёртывание TSJ Guardian Telegram Bot на Proxmox host.
 - `ansible/install_full_stack.yml` — полный установочный playbook (оркестратор всех этапов).
 - `ansible/inventory.example.ini` — шаблон inventory.
 - `ansible/group_vars/*.example.yml` — шаблоны переменных.
@@ -160,6 +161,22 @@ Playbook:
 - копирует `pfsense-aw-poller.py`;
 - пишет `/etc/aw-pfsense/poller.json`;
 - поднимает `aw-pfsense-poller.service`.
+
+## Развёртывание TSJ Guardian Bot на Proxmox
+
+1. Подготовьте vars:
+   - `cp ansible/group_vars/proxmox-bot.example.yml ansible/group_vars/proxmox-bot.yml`
+2. Заполните минимум:
+   - `telegram_bot_token`
+   - `telegram_allowed_chat_ids`
+   - `tsj_bot_source_local_path`
+3. Убедитесь, что в inventory есть группа `[proxmox]`.
+4. Запустите:
+
+```bash
+cd ansible
+ansible-playbook -i inventory.ini deploy_tsj_guardian_bot_proxmox.yml
+```
 
 ## Результат
 

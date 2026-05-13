@@ -35,3 +35,19 @@ def validate_snils(value: str) -> bool:
         if expected == 100:
             expected = 0
     return checksum == expected
+
+
+def validate_passport(value: str) -> bool:
+    """
+    Lightweight Russian passport validator:
+    - expects 10 digits (series+number), optionally with spaces
+    - rejects obvious invalid placeholders (all same digit, all zeros)
+    """
+    digits = re.sub(r"\D", "", value)
+    if len(digits) != 10:
+        return False
+    if digits == "0000000000":
+        return False
+    if len(set(digits)) == 1:
+        return False
+    return True

@@ -146,6 +146,10 @@ def _latest_bucket_ts(api_base: str, bucket_id: str, bucket_meta: dict[str, Any]
     return None
 
 
+def _bucket_suffix(bucket_id: str, prefix: str) -> str:
+    return bucket_id[len(prefix):] if bucket_id.startswith(prefix) else bucket_id
+
+
 def check_bucket_group(
     report: HealthReport,
     api_base: str,
@@ -199,6 +203,115 @@ def check_bucket_group(
         max_observed_age_seconds=max(ages.values()) if ages else None,
         stale=stale,
         unknown=unknown,
+    )
+
+
+def _worktime_activity_map(api_base: str, buckets: dict[str, Any], max_age_seconds: int) -> dict[str, dict[str, Any]]:
+    now = _now_utc()
+    activity: dict[str, dict[str, Any]] = {}
+    prefix = "aw-worktime-sessions_"
+    for bucket_id in sorted(key for key in buckets if key.startswith(prefix)):
+        host = _bucket_suffix(bucket_id, prefix)
+        latest_ts: datetime | None = None
+        latest_active = False
+        try:
+            events = _http_json(f"{api_base}/buckets/{bucket_id}/events?limit=20")
+        except Exception:
+            activity[host] = {"active": False, "age_seconds": None, "bucket": bucket_id}
+            continue
+        if isinstance(events, list):
+            for event in events:
+                ts = _parse_ts(event.get("timestamp"))
+                if ts is None:
+                    continue
+                if latest_ts is None or ts > latest_ts:
+                    latest_ts = ts
+                    latest_active = bool((event.get("data") or {}).get("active"))
+        activity[host] = {
+            "active": bool(latest_ts and latest_active and (_age_seconds(latest_ts, now) or 0) <= max_age_seconds),
+            "age_seconds": _age_seconds(latest_ts, now),
+            "bucket": bucket_id,
+        }
+    return activity
+
+
+def check_file_operations_buckets(
+    report: HealthReport,
+    api_base: str,
+    buckets: dict[str, Any],
+    max_age_seconds: int,
+    strict: bool,
+) -> None:
+    now = _now_utc()
+    prefix = "aw-file-operations_"
+    matched = sorted(bucket_id for bucket_id in buckets if bucket_id.startswith(prefix))
+    worktime = _worktime_activity_map(api_base, buckets, max_age_seconds)
+    active_hosts = sorted(host for host, meta in worktime.items() if meta.get("active"))
+    matched_by_host = {_bucket_suffix(bucket_id, prefix): bucket_id for bucket_id in matched}
+
+    ignored_unmanaged: list[str] = []
+    ignored_inactive: list[str] = []
+    missing_active: list[str] = []
+    stale: list[dict[str, Any]] = []
+    unknown: list[str] = []
+    fresh: list[str] = []
+
+    for host, bucket_id in matched_by_host.items():
+        if host not in worktime:
+            ignored_unmanaged.append(bucket_id)
+            continue
+        if host not in active_hosts:
+            ignored_inactive.append(bucket_id)
+            continue
+        ts = _latest_bucket_ts(api_base, bucket_id, buckets.get(bucket_id, {}))
+        age = _age_seconds(ts, now)
+        if age is None:
+            unknown.append(bucket_id)
+            continue
+        if age > max_age_seconds:
+            stale.append({"bucket": bucket_id, "age_seconds": age})
+        else:
+            fresh.append(bucket_id)
+
+    for host in active_hosts:
+        if host not in matched_by_host:
+            missing_active.append(host)
+
+    if not active_hosts:
+        report.add(
+            "buckets:file-operations",
+            "ok",
+            "no active managed hosts require file-operations freshness",
+            active_hosts=[],
+            ignored_unmanaged=ignored_unmanaged,
+            ignored_inactive=ignored_inactive,
+            worktime_hosts=sorted(worktime),
+        )
+        return
+
+    status = "ok"
+    summary = f"{len(fresh)} active host buckets fresh"
+    if missing_active:
+        status = "fail" if strict else "warn"
+        summary = f"{len(missing_active)} active hosts missing file-operations buckets"
+    elif stale:
+        status = "fail" if strict else "warn"
+        summary = f"{len(stale)} active host buckets stale"
+    elif unknown:
+        status = "warn"
+        summary = f"{len(unknown)} active host buckets without timestamp"
+
+    report.add(
+        "buckets:file-operations",
+        status,
+        summary,
+        active_hosts=active_hosts,
+        fresh=fresh,
+        stale=stale,
+        missing_active=missing_active,
+        unknown=unknown,
+        ignored_unmanaged=ignored_unmanaged,
+        ignored_inactive=ignored_inactive,
     )
 
 
@@ -287,16 +400,7 @@ def main() -> int:
             raise RuntimeError("bucket list is not a dict")
         report.add("aw:buckets-index", "ok", "bucket index loaded", total=len(buckets))
         check_bucket_group(report, aw_api_base, buckets, "endpoint-signals", "aw-dlp-endpoint-signals_", args.max_age_seconds)
-        check_bucket_group(
-            report,
-            aw_api_base,
-            buckets,
-            "file-operations",
-            "aw-file-operations_",
-            args.max_age_seconds,
-            severity_if_missing="warn",
-            severity_if_stale="fail" if args.strict_fileops else "warn",
-        )
+        check_file_operations_buckets(report, aw_api_base, buckets, args.max_age_seconds, args.strict_fileops)
         check_bucket_group(report, aw_api_base, buckets, "incidents", "aw-dlp-incidents_", args.max_age_seconds * 24, severity_if_missing="warn", severity_if_stale="warn")
         check_endpoint_self_test_metrics(report, aw_api_base, buckets)
     except Exception as exc:

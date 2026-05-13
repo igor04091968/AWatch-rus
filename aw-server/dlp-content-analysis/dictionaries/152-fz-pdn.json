@@ -10,8 +10,8 @@
     "description": "СНИЛС"
   },
   "passport": {
-    "regex": "\\b\\d{4}\\s?\\d{6}\\b",
-    "checksum": "none",
+    "regex": "\\b\\d{4}\\s\\d{6}\\b",
+    "checksum": "passport",
     "description": "Паспорт РФ"
   }
 }

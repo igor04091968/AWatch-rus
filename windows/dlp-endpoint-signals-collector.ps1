@@ -587,6 +587,11 @@ function Load-DlpPolicy {
             usb = @()
             print = @()
         }
+        contentAnalysis = [ordered]@{
+            dictionaryPack = $null
+            regexPack = $null
+            ocrEnabled = $false
+        }
     }
 
     $script:PolicySource = 'defaults'
@@ -614,11 +619,135 @@ function Load-DlpPolicy {
             if ($props -contains 'usb' -and $raw.endpoint.usb) { $script:Policy.endpoint.usb = @($raw.endpoint.usb) }
             if ($props -contains 'print' -and $raw.endpoint.print) { $script:Policy.endpoint.print = @($raw.endpoint.print) }
         }
+
+        if ($raw.contentAnalysis) {
+            if ($raw.contentAnalysis.PSObject.Properties.Name -contains 'dictionaryPack' -and $raw.contentAnalysis.dictionaryPack) {
+                $script:Policy.contentAnalysis.dictionaryPack = [string]$raw.contentAnalysis.dictionaryPack
+            }
+            if ($raw.contentAnalysis.PSObject.Properties.Name -contains 'regexPack' -and $raw.contentAnalysis.regexPack) {
+                $script:Policy.contentAnalysis.regexPack = [string]$raw.contentAnalysis.regexPack
+            }
+            if ($raw.contentAnalysis.PSObject.Properties.Name -contains 'ocrEnabled') {
+                $script:Policy.contentAnalysis.ocrEnabled = [bool]$raw.contentAnalysis.ocrEnabled
+            }
+        }
         $script:PolicySource = 'local'
     }
     catch {
         Write-EndpointLog ("policy parse failed: {0}" -f $_.Exception.Message)
     }
+}
+
+function Test-ValidInn {
+    param([string]$Value)
+    $digits = ($Value -replace '\D', '')
+    if ($digits.Length -eq 10) {
+        $coef = @(2, 4, 10, 3, 5, 9, 4, 6, 8)
+        $sum = 0
+        for ($i = 0; $i -lt 9; $i++) { $sum += ([int][string]$digits[$i]) * $coef[$i] }
+        $chk = ($sum % 11) % 10
+        return $chk -eq ([int][string]$digits[9])
+    }
+    if ($digits.Length -eq 12) {
+        $c11 = @(7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
+        $c12 = @(3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
+        $sum11 = 0
+        for ($i = 0; $i -lt 10; $i++) { $sum11 += ([int][string]$digits[$i]) * $c11[$i] }
+        $sum12 = 0
+        for ($i = 0; $i -lt 11; $i++) { $sum12 += ([int][string]$digits[$i]) * $c12[$i] }
+        return ((($sum11 % 11) % 10) -eq ([int][string]$digits[10])) -and ((($sum12 % 11) % 10) -eq ([int][string]$digits[11]))
+    }
+    return $false
+}
+
+function Test-ValidSnils {
+    param([string]$Value)
+    $digits = ($Value -replace '\D', '')
+    if ($digits.Length -ne 11) { return $false }
+    $num = $digits.Substring(0, 9)
+    $checksum = [int]$digits.Substring(9, 2)
+    $sum = 0
+    for ($i = 0; $i -lt 9; $i++) { $sum += ([int][string]$num[$i]) * (9 - $i) }
+    if ($sum -lt 100) { $expected = $sum }
+    elseif ($sum -eq 100 -or $sum -eq 101) { $expected = 0 }
+    else {
+        $expected = $sum % 101
+        if ($expected -eq 100) { $expected = 0 }
+    }
+    return $checksum -eq $expected
+}
+
+function Test-ValidPassport {
+    param([string]$Value)
+    $digits = ($Value -replace '\D', '')
+    if ($digits.Length -ne 10) { return $false }
+    if ($digits -eq '0000000000') { return $false }
+    return ($digits.ToCharArray() | Select-Object -Unique).Count -gt 1
+}
+
+function Get-AdvancedContentMatches {
+    param(
+        [string]$Text,
+        [string]$DictionaryPack,
+        [string]$RegexPack
+    )
+
+    $result = @{
+        dictionaryMatches = @()
+        regexMatches = @()
+    }
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $result }
+
+    if ($DictionaryPack -eq '152-fz-pdn') {
+        $m = [regex]::Matches($Text, '\b\d{10}\b|\b\d{12}\b')
+        foreach ($item in $m) {
+            if (Test-ValidInn -Value $item.Value) {
+                $result.dictionaryMatches += @{ name = 'inn'; value = $item.Value; severity = 'high' }
+            }
+        }
+        $m = [regex]::Matches($Text, '\b\d{3}-\d{3}-\d{3}\s?\d{2}\b')
+        foreach ($item in $m) {
+            if (Test-ValidSnils -Value $item.Value) {
+                $result.dictionaryMatches += @{ name = 'snils'; value = $item.Value; severity = 'high' }
+            }
+        }
+        $m = [regex]::Matches($Text, '\b\d{4}\s?\d{6}\b')
+        foreach ($item in $m) {
+            if (Test-ValidPassport -Value $item.Value) {
+                $result.dictionaryMatches += @{ name = 'passport'; value = $item.Value; severity = 'high' }
+            }
+        }
+    }
+
+    $regexRules = @()
+    switch ($RegexPack) {
+        'financial' {
+            $regexRules = @(
+                @{ id = 'card-pan'; regex = '\b(?:\d[ -]*?){13,19}\b'; severity = 'high' },
+                @{ id = 'iban'; regex = '\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b'; severity = 'medium' }
+            )
+        }
+        'contacts' {
+            $regexRules = @(
+                @{ id = 'email'; regex = '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'; severity = 'low' },
+                @{ id = 'phone-ru'; regex = '(?:\+7|8)\s*\(?\d{3}\)?\s*\d{3}[- ]?\d{2}[- ]?\d{2}'; severity = 'low' }
+            )
+        }
+        'secrets' {
+            $regexRules = @(
+                @{ id = 'aws-access-key'; regex = 'AKIA[0-9A-Z]{16}'; severity = 'high' },
+                @{ id = 'generic-password'; regex = '(?i)(password|пароль)\s*[:=]\s*\S{6,}'; severity = 'medium' }
+            )
+        }
+    }
+    foreach ($rule in $regexRules) {
+        $m = [regex]::Matches($Text, [string]$rule.regex)
+        foreach ($item in $m) {
+            $result.regexMatches += @{ name = [string]$rule.id; value = $item.Value; severity = [string]$rule.severity }
+        }
+    }
+
+    return $result
 }
 
 function Apply-PolicyFromBundle {
@@ -749,6 +878,9 @@ function Evaluate-ClipboardRules {
         if (-not $ruleId) { continue }
         $minLength = if ($rule.minLength) { [int]$rule.minLength } else { 0 }
         $regexPatterns = if ($rule.regexPatterns) { @($rule.regexPatterns) } else { @() }
+        $dictionaryPack = if ($rule.dictionaryPack) { [string]$rule.dictionaryPack } elseif ($script:Policy.contentAnalysis.dictionaryPack) { [string]$script:Policy.contentAnalysis.dictionaryPack } else { $null }
+        $regexPack = if ($rule.regexPack) { [string]$rule.regexPack } elseif ($script:Policy.contentAnalysis.regexPack) { [string]$script:Policy.contentAnalysis.regexPack } else { $null }
+        $ocrEnabled = if ($rule.PSObject.Properties.Name -contains 'ocrEnabled') { [bool]$rule.ocrEnabled } else { [bool]$script:Policy.contentAnalysis.ocrEnabled }
         if ($ClipboardText.Length -lt $minLength) { continue }
 
         $matched = $false
@@ -758,6 +890,9 @@ function Evaluate-ClipboardRules {
                 break
             }
         }
+        $advanced = Get-AdvancedContentMatches -Text $ClipboardText -DictionaryPack $dictionaryPack -RegexPack $regexPack
+        $advancedMatched = (@($advanced.dictionaryMatches).Count -gt 0) -or (@($advanced.regexMatches).Count -gt 0)
+        if ($advancedMatched) { $matched = $true }
 
         if (-not $matched) { continue }
 
@@ -779,6 +914,11 @@ function Evaluate-ClipboardRules {
             clipboardHash = $ClipboardHash
             clipboardLength = $ClipboardText.Length
             enforced = $enforced
+            dictionaryPack = $dictionaryPack
+            regexPack = $regexPack
+            dictionaryMatches = @($advanced.dictionaryMatches)
+            regexMatches = @($advanced.regexMatches)
+            ocrRequested = $ocrEnabled
         }
         Write-EndpointLog ("incident clipboard rule={0} action={1} severity={2} enforced={3}" -f $ruleId, $action, $severity, $enforced)
     }
@@ -839,6 +979,12 @@ function Evaluate-PrintRules {
         if ($rule.documentRegex) {
             $match = $match -and ($DocumentName -match [string]$rule.documentRegex)
         }
+        $dictionaryPack = if ($rule.dictionaryPack) { [string]$rule.dictionaryPack } elseif ($script:Policy.contentAnalysis.dictionaryPack) { [string]$script:Policy.contentAnalysis.dictionaryPack } else { $null }
+        $regexPack = if ($rule.regexPack) { [string]$rule.regexPack } elseif ($script:Policy.contentAnalysis.regexPack) { [string]$script:Policy.contentAnalysis.regexPack } else { $null }
+        $ocrEnabled = if ($rule.PSObject.Properties.Name -contains 'ocrEnabled') { [bool]$rule.ocrEnabled } else { [bool]$script:Policy.contentAnalysis.ocrEnabled }
+        $advanced = Get-AdvancedContentMatches -Text $DocumentName -DictionaryPack $dictionaryPack -RegexPack $regexPack
+        $advancedMatched = (@($advanced.dictionaryMatches).Count -gt 0) -or (@($advanced.regexMatches).Count -gt 0)
+        if ($advancedMatched) { $match = $true }
         if (-not $match) { continue }
 
         $cooldown = if ($rule.cooldownSeconds) { [int]$rule.cooldownSeconds } else { [int]$script:Policy.defaults.cooldownSeconds }
@@ -860,6 +1006,11 @@ function Evaluate-PrintRules {
             documentName = $DocumentName
             owner        = $Owner
             enforced = $enforced
+            dictionaryPack = $dictionaryPack
+            regexPack = $regexPack
+            dictionaryMatches = @($advanced.dictionaryMatches)
+            regexMatches = @($advanced.regexMatches)
+            ocrRequested = $ocrEnabled
         }
         Write-EndpointLog ("incident print rule={0} action={1} severity={2} printer={3} enforced={4}" -f $ruleId, $action, $severity, $PrinterName, $enforced)
     }

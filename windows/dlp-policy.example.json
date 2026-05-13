@@ -96,6 +96,11 @@
       }
     ]
   },
+  "contentAnalysis": {
+    "dictionaryPack": "152-fz-pdn",
+    "regexPack": "secrets",
+    "ocrEnabled": true
+  },
   "ioc": {
     "enabled": true,
     "source": "http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.json",

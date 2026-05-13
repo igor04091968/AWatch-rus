@@ -10,6 +10,8 @@
 - Print job мониторинг  
 - USB write блокировка
 - DLP правило evaluation
+- Advanced Content Analysis (dictionaryPack/regexPack)
+- Checksum валидация ПДн (ИНН/СНИЛС/паспорт)
 - Скриншоты при инцидентах
 
 **Файл:** `windows/dlp-endpoint-signals-collector.ps1`
@@ -53,6 +55,16 @@
 
 **Технологии:** Rust
 **API:** HTTP на порту 5600
+
+### DLP Content Analysis
+Серверные модули для анализа текста и OCR.
+
+**Функции:**
+- Словари ПДн 152-ФЗ
+- Regex packs (financial/contacts/secrets)
+- OCR распознавание скриншотов
+
+**Файлы:** `aw-server/dlp-content-analysis/*`
 
 ### PostgreSQL Database
 Основное хранилище данных.
