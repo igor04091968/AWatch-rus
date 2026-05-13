@@ -18,6 +18,7 @@
     - case_service.py
     - case_schema.py
     - case_storage.py
+    - evidence_chain.py
     - requirements.txt
 
 - name: Make case service executable

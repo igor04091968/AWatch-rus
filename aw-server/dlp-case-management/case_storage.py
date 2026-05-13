@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
+from evidence_chain import evidence_sha256, normalize_evidence_chain
+
 
 class CaseStorage:
     def __init__(self, db_path: Path) -> None:
@@ -98,6 +100,15 @@ class CaseStorage:
 
     def create_case(self, payload: dict[str, Any], actor: str | None = None) -> dict[str, Any]:
         now = self._now()
+        normalized_evidence = None
+        evidence_digest = None
+        if payload.get("evidence") is not None:
+            normalized_evidence = normalize_evidence_chain(
+                payload=payload.get("evidence"),
+                source_bucket=payload.get("source_bucket"),
+                source_event_ts=payload.get("source_event_ts"),
+            )
+            evidence_digest = normalized_evidence.get("latest_sha256") or evidence_sha256(payload.get("evidence"))
         with self.conn() as c:
             cur = c.execute(
                 """
@@ -114,7 +125,7 @@ class CaseStorage:
                     payload.get("assignee"),
                     payload.get("source_bucket"),
                     payload.get("source_event_ts"),
-                    json.dumps(payload.get("evidence"), ensure_ascii=False) if payload.get("evidence") is not None else None,
+                    json.dumps(normalized_evidence, ensure_ascii=False) if normalized_evidence is not None else None,
                     now,
                     now,
                 ),
@@ -125,7 +136,10 @@ class CaseStorage:
                 case_id=case_id,
                 action="create",
                 actor=actor,
-                details={"fields": {k: v for k, v in payload.items() if k != "evidence"}},
+                details={
+                    "fields": {k: v for k, v in payload.items() if k != "evidence"},
+                    "evidence_sha256": evidence_digest,
+                },
             )
             c.commit()
             return self.get_case(case_id, c)
@@ -252,4 +266,3 @@ class CaseStorage:
                 self._now(),
             ),
         )
-

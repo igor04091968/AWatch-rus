@@ -20,8 +20,10 @@
     mode: "{{ item.mode }}"
   loop:
     - { src: "report_generator.py", dest: "/opt/activitywatch/dlp-compliance/report_generator.py", mode: "0755" }
+    - { src: "compliance_scheduler.py", dest: "/opt/activitywatch/dlp-compliance/compliance_scheduler.py", mode: "0755" }
     - { src: "requirements.txt", dest: "/opt/activitywatch/dlp-compliance/requirements.txt", mode: "0644" }
     - { src: "templates/152-fz-report.html", dest: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html", mode: "0644" }
+    - { src: "templates/pci-dss-report.html", dest: "/opt/activitywatch/dlp-compliance/templates/pci-dss-report.html", mode: "0644" }
     - { src: "report-scheduler.service", dest: "/etc/systemd/system/aw-dlp-report-scheduler.service", mode: "0644" }
     - { src: "report-scheduler.timer", dest: "/etc/systemd/system/aw-dlp-report-scheduler.timer", mode: "0644" }
 
@@ -50,4 +52,3 @@
   ansible.builtin.systemd:
     name: aw-dlp-report-scheduler.service
     state: started
-

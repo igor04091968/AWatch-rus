@@ -18,7 +18,11 @@ def _env(name: str, default: str) -> str:
 
 AW_API_BASE = _env("AW_SERVER_URL", "http://127.0.0.1:5600/api/0").rstrip("/")
 OUTPUT_DIR = Path(_env("AW_DLP_COMPLIANCE_REPORT_DIR", "/opt/activitywatch/dlp-compliance/reports"))
-TEMPLATE_PATH = Path(_env("AW_DLP_COMPLIANCE_TEMPLATE", "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html"))
+BASE_DIR = Path(__file__).resolve().parent
+PROFILE_TEMPLATE_MAP = {
+    "152-fz": BASE_DIR / "templates" / "152-fz-report.html",
+    "pci-dss": BASE_DIR / "templates" / "pci-dss-report.html",
+}
 
 
 @dataclass
@@ -108,10 +112,18 @@ def _render_table(title: str, rows: list[tuple[str, int]]) -> str:
     return f"<h3>{title}</h3><table><thead><tr><th>Параметр</th><th>Значение</th></tr></thead><tbody>{body}</tbody></table>"
 
 
-def _render_html(period_label: str, stats: ReportStats, generated_at: str) -> str:
-    template = TEMPLATE_PATH.read_text(encoding="utf-8")
+def _resolve_template_path(profile: str) -> Path:
+    if profile == "152-fz":
+        explicit = _env("AW_DLP_COMPLIANCE_TEMPLATE", str(PROFILE_TEMPLATE_MAP["152-fz"]))
+        return Path(explicit)
+    return PROFILE_TEMPLATE_MAP.get(profile, PROFILE_TEMPLATE_MAP["152-fz"])
+
+
+def _render_html(profile: str, period_label: str, stats: ReportStats, generated_at: str) -> str:
+    template = _resolve_template_path(profile).read_text(encoding="utf-8")
     return (
         template.replace("{{PERIOD}}", period_label)
+        .replace("{{PROFILE}}", profile)
         .replace("{{GENERATED_AT}}", generated_at)
         .replace("{{TOTAL}}", str(stats.total_incidents))
         .replace("{{HIGH}}", str(stats.high))
@@ -136,22 +148,18 @@ def _period_bounds(month: str | None) -> tuple[datetime, datetime, str]:
     return start, end, start.strftime("%Y-%m")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate 152-FZ compliance report from AW DLP incidents")
-    parser.add_argument("--month", help="Month in YYYY-MM format (default: current month)")
-    parser.add_argument("--stdout-json", action="store_true", help="Print report metadata as JSON")
-    args = parser.parse_args()
-
-    start, end, period_label = _period_bounds(args.month)
+def generate_report(month: str | None = None, profile: str = "152-fz") -> dict[str, object]:
+    start, end, period_label = _period_bounds(month)
     incidents = _load_incidents(start, end)
     stats = _build_stats(incidents)
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     generated_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-    html_out = OUTPUT_DIR / f"152-fz-{period_label}.html"
-    html_out.write_text(_render_html(period_label, stats, generated_at), encoding="utf-8")
+    html_out = OUTPUT_DIR / f"{profile}-{period_label}.html"
+    html_out.write_text(_render_html(profile, period_label, stats, generated_at), encoding="utf-8")
 
     metadata = {
+        "profile": profile,
         "period": period_label,
         "generated_at": generated_at,
         "aw_api_base": AW_API_BASE,
@@ -163,10 +171,20 @@ def main() -> None:
             "low": stats.low,
         },
     }
-    (OUTPUT_DIR / f"152-fz-{period_label}.json").write_text(
+    (OUTPUT_DIR / f"{profile}-{period_label}.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    return metadata
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate DLP compliance report from AW DLP incidents")
+    parser.add_argument("--month", help="Month in YYYY-MM format (default: current month)")
+    parser.add_argument("--profile", default="152-fz", help="Profile name: 152-fz or pci-dss")
+    parser.add_argument("--stdout-json", action="store_true", help="Print report metadata as JSON")
+    args = parser.parse_args()
+    metadata = generate_report(month=args.month, profile=args.profile)
 
     if args.stdout_json:
         print(json.dumps(metadata, ensure_ascii=False))

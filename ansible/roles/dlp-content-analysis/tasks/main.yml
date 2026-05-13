@@ -1,0 +1,37 @@
+---
+- name: Install OCR/system dependencies
+  ansible.builtin.apt:
+    name:
+      - python3-venv
+      - python3-pip
+      - tesseract-ocr
+      - tesseract-ocr-rus
+    state: present
+    update_cache: true
+
+- name: Create content analysis directory
+  ansible.builtin.file:
+    path: /opt/activitywatch/dlp-content-analysis
+    state: directory
+    owner: "{{ aw_server_user | default('activitywatch') }}"
+    group: "{{ aw_server_group | default('activitywatch') }}"
+    mode: "0755"
+
+- name: Copy content analysis sources
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../aw-server/dlp-content-analysis/"
+    dest: /opt/activitywatch/dlp-content-analysis/
+    owner: "{{ aw_server_user | default('activitywatch') }}"
+    group: "{{ aw_server_group | default('activitywatch') }}"
+    mode: "0644"
+
+- name: Create venv for content analysis
+  ansible.builtin.command:
+    cmd: python3 -m venv /opt/activitywatch/dlp-content-analysis/.venv
+  args:
+    creates: /opt/activitywatch/dlp-content-analysis/.venv/bin/python
+
+- name: Install Python dependencies for content analysis
+  ansible.builtin.pip:
+    requirements: /opt/activitywatch/dlp-content-analysis/requirements.txt
+    virtualenv: /opt/activitywatch/dlp-content-analysis/.venv

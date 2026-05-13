@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>PCI DSS Report {{PERIOD}}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; color: #1f2937; }
+    h1, h2, h3 { margin: 0 0 12px 0; }
+    .meta { margin-bottom: 18px; color: #4b5563; }
+    .cards { display: flex; gap: 12px; margin: 18px 0; }
+    .card { border: 1px solid #d1d5db; border-radius: 8px; padding: 10px 14px; min-width: 120px; }
+    .label { color: #6b7280; font-size: 12px; }
+    .value { font-size: 22px; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 18px; }
+    th, td { border: 1px solid #d1d5db; padding: 8px; text-align: left; }
+    th { background: #f3f4f6; }
+  </style>
+</head>
+<body>
+  <h1>Compliance отчёт PCI DSS</h1>
+  <div class="meta">Профиль: {{PROFILE}} | Период: {{PERIOD}} | Сформирован: {{GENERATED_AT}}</div>
+
+  <div class="cards">
+    <div class="card"><div class="label">Всего инцидентов</div><div class="value">{{TOTAL}}</div></div>
+    <div class="card"><div class="label">High</div><div class="value">{{HIGH}}</div></div>
+    <div class="card"><div class="label">Medium</div><div class="value">{{MEDIUM}}</div></div>
+    <div class="card"><div class="label">Low</div><div class="value">{{LOW}}</div></div>
+  </div>
+
+  {{HOST_TABLE}}
+  {{CHANNEL_TABLE}}
+</body>
+</html>

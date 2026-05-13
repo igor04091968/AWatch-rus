@@ -409,8 +409,10 @@
             mode: "0644"
           loop:
             - cef_exporter.py
+            - syslog_forwarder.py
             - webhook_sender.py
             - cef-config.yaml
+            - syslog-forwarder-config.yaml
             - webhook-config.yaml
             - requirements.txt
           when: aw_dlp_integrations_enabled | default(true) | bool
@@ -423,6 +425,7 @@
             mode: "0755"
           loop:
             - cef_exporter.py
+            - syslog_forwarder.py
             - webhook_sender.py
           when: aw_dlp_integrations_enabled | default(true) | bool
 
@@ -466,6 +469,24 @@
             mode: "0644"
           when: aw_dlp_integrations_enabled | default(true) | bool
 
+        - name: Установить systemd unit syslog forwarder
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-integrations/syslog-forwarder.service"
+            dest: /etc/systemd/system/aw-dlp-syslog-forwarder.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить systemd timer syslog forwarder
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-integrations/syslog-forwarder.timer"
+            dest: /etc/systemd/system/aw-dlp-syslog-forwarder.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
         - name: Установить systemd unit webhook sender
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/dlp-integrations/webhook-sender.service"
@@ -504,6 +525,7 @@
             - case_service.py
             - case_schema.py
             - case_storage.py
+            - evidence_chain.py
             - requirements.txt
           when: aw_dlp_case_management_enabled | default(true) | bool
 
@@ -559,8 +581,10 @@
             mode: "{{ item.mode }}"
           loop:
             - { src: "report_generator.py", dest: "/opt/activitywatch/dlp-compliance/report_generator.py", mode: "0755" }
+            - { src: "compliance_scheduler.py", dest: "/opt/activitywatch/dlp-compliance/compliance_scheduler.py", mode: "0755" }
             - { src: "requirements.txt", dest: "/opt/activitywatch/dlp-compliance/requirements.txt", mode: "0644" }
             - { src: "templates/152-fz-report.html", dest: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html", mode: "0644" }
+            - { src: "templates/pci-dss-report.html", dest: "/opt/activitywatch/dlp-compliance/templates/pci-dss-report.html", mode: "0644" }
             - { src: "report-scheduler.service", dest: "/etc/systemd/system/aw-dlp-report-scheduler.service", mode: "0644" }
             - { src: "report-scheduler.timer", dest: "/etc/systemd/system/aw-dlp-report-scheduler.timer", mode: "0644" }
           when: aw_dlp_compliance_enabled | default(true) | bool
@@ -672,6 +696,13 @@
         - name: Включить и перезапустить timer CEF exporter
           ansible.builtin.systemd:
             name: aw-dlp-cef-exporter.timer
+            enabled: true
+            state: restarted
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Включить и перезапустить timer syslog forwarder
+          ansible.builtin.systemd:
+            name: aw-dlp-syslog-forwarder.timer
             enabled: true
             state: restarted
           when: aw_dlp_integrations_enabled | default(true) | bool

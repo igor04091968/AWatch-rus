@@ -16,8 +16,10 @@
     mode: "0644"
   loop:
     - cef_exporter.py
+    - syslog_forwarder.py
     - webhook_sender.py
     - cef-config.yaml
+    - syslog-forwarder-config.yaml
     - webhook-config.yaml
     - requirements.txt
 
@@ -29,6 +31,7 @@
     mode: "0755"
   loop:
     - cef_exporter.py
+    - syslog_forwarder.py
     - webhook_sender.py
 
 - name: Create venv for DLP integrations
@@ -60,6 +63,8 @@
   loop:
     - { src: "cef-exporter.service", dest: "/etc/systemd/system/aw-dlp-cef-exporter.service" }
     - { src: "cef-exporter.timer", dest: "/etc/systemd/system/aw-dlp-cef-exporter.timer" }
+    - { src: "syslog-forwarder.service", dest: "/etc/systemd/system/aw-dlp-syslog-forwarder.service" }
+    - { src: "syslog-forwarder.timer", dest: "/etc/systemd/system/aw-dlp-syslog-forwarder.timer" }
     - { src: "webhook-sender.service", dest: "/etc/systemd/system/aw-dlp-webhook-sender.service" }
     - { src: "webhook-sender.timer", dest: "/etc/systemd/system/aw-dlp-webhook-sender.timer" }
 
@@ -74,4 +79,5 @@
     state: restarted
   loop:
     - aw-dlp-cef-exporter.timer
+    - aw-dlp-syslog-forwarder.timer
     - aw-dlp-webhook-sender.timer

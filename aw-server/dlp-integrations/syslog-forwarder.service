@@ -1,0 +1,10 @@
+[Unit]
+Description=AWatch DLP syslog forwarder
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/activitywatch/dlp-integrations
+ExecStart=/opt/activitywatch/dlp-integrations/.venv/bin/python /opt/activitywatch/dlp-integrations/syslog_forwarder.py
+User=activitywatch
+Group=activitywatch

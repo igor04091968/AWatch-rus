@@ -6,7 +6,6 @@ After=network-online.target
 Type=oneshot
 EnvironmentFile=-/etc/activitywatch/aw-server.env
 WorkingDirectory=/opt/activitywatch/dlp-compliance
-ExecStart=/opt/activitywatch/dlp-compliance/.venv/bin/python /opt/activitywatch/dlp-compliance/report_generator.py
+ExecStart=/opt/activitywatch/dlp-compliance/.venv/bin/python /opt/activitywatch/dlp-compliance/compliance_scheduler.py
 User=activitywatch
 Group=activitywatch
-

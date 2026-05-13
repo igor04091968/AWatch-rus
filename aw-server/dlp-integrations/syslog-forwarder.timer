@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AWatch DLP syslog forwarder every 3 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=3min
+Persistent=true
+Unit=aw-dlp-syslog-forwarder.service
+
+[Install]
+WantedBy=timers.target
