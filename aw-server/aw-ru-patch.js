@@ -1808,6 +1808,7 @@
   }
 
   function applyPatch() {
+    const isDlpBucketRoute = isDlpSignalBucketRoute();
     enforceSafeActivityViewForPveHost();
     ensureSettingsHost();
     ensureHostGroupsData().catch(function () {});
@@ -1821,7 +1822,10 @@
     patchCategoryBuilderHostLabel(document.body);
     injectPveAuditCenter(document.body);
     injectDlpNavigation(document.body);
-    injectDlpReviewCenter(document.body);
+    // Temporary safe-mode: disable heavy DLP overlay on bucket route due recursion in browser.
+    if (!isDlpBucketRoute) {
+      injectDlpReviewCenter(document.body);
+    }
     injectDlpAlertsCenter(document.body);
     injectHostGroupsCenter(document.body).catch(function () {});
     redirectBareTrendsRoute();
