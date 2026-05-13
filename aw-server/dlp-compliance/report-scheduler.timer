@@ -1,0 +1,12 @@
+[Unit]
+Description=Monthly AWatch DLP 152-FZ compliance report schedule
+
+[Timer]
+OnCalendar=monthly
+Persistent=true
+RandomizedDelaySec=5m
+Unit=aw-dlp-report-scheduler.service
+
+[Install]
+WantedBy=timers.target
+

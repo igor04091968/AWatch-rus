@@ -11,3 +11,4 @@
     - role: dlp-content-analysis
     - role: dlp-integrations
     - role: dlp-case-management
+    - role: dlp-compliance

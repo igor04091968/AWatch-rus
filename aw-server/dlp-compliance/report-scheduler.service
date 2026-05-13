@@ -1,0 +1,12 @@
+[Unit]
+Description=AWatch DLP 152-FZ compliance report generator
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/activitywatch/aw-server.env
+WorkingDirectory=/opt/activitywatch/dlp-compliance
+ExecStart=/opt/activitywatch/dlp-compliance/.venv/bin/python /opt/activitywatch/dlp-compliance/report_generator.py
+User=activitywatch
+Group=activitywatch
+

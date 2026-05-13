@@ -37,6 +37,9 @@ aw_dlp_case_management_enabled: true
 aw_dlp_case_bind_host: "0.0.0.0"
 aw_dlp_case_port: 5602
 aw_dlp_case_db_path: "/opt/activitywatch/dlp-case-management/cases.db"
+aw_dlp_compliance_enabled: true
+aw_dlp_compliance_report_dir: "/opt/activitywatch/dlp-compliance/reports"
+aw_dlp_compliance_template_path: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html"
 aw_server_post_deploy_health_check_enabled: true
 
 aw_worktime_from: "08:00"

@@ -308,6 +308,9 @@
               AW_DLP_CASE_BIND_HOST={{ aw_dlp_case_bind_host }}
               AW_DLP_CASE_PORT={{ aw_dlp_case_port }}
               AW_DLP_CASE_DB_PATH={{ aw_dlp_case_db_path }}
+              AW_DLP_COMPLIANCE_REPORT_DIR={{ aw_dlp_compliance_report_dir }}
+              AW_DLP_COMPLIANCE_TEMPLATE={{ aw_dlp_compliance_template_path }}
+              AW_SERVER_URL=http://127.0.0.1:5600/api/0
               XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
               XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
 
@@ -534,6 +537,55 @@
             mode: "0644"
           when: aw_dlp_case_management_enabled | default(true) | bool
 
+        - name: Создать каталоги DLP compliance
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0755"
+          loop:
+            - /opt/activitywatch/dlp-compliance
+            - /opt/activitywatch/dlp-compliance/templates
+            - "{{ aw_dlp_compliance_report_dir }}"
+          when: aw_dlp_compliance_enabled | default(true) | bool
+
+        - name: Скопировать файлы DLP compliance
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/dlp-compliance/{{ item.src }}"
+            dest: "{{ item.dest }}"
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - { src: "report_generator.py", dest: "/opt/activitywatch/dlp-compliance/report_generator.py", mode: "0755" }
+            - { src: "requirements.txt", dest: "/opt/activitywatch/dlp-compliance/requirements.txt", mode: "0644" }
+            - { src: "templates/152-fz-report.html", dest: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html", mode: "0644" }
+            - { src: "report-scheduler.service", dest: "/etc/systemd/system/aw-dlp-report-scheduler.service", mode: "0644" }
+            - { src: "report-scheduler.timer", dest: "/etc/systemd/system/aw-dlp-report-scheduler.timer", mode: "0644" }
+          when: aw_dlp_compliance_enabled | default(true) | bool
+
+        - name: Создать virtualenv DLP compliance
+          ansible.builtin.command:
+            cmd: python3 -m venv /opt/activitywatch/dlp-compliance/.venv
+          args:
+            creates: /opt/activitywatch/dlp-compliance/.venv/bin/python
+          when: aw_dlp_compliance_enabled | default(true) | bool
+
+        - name: Установить зависимости DLP compliance
+          ansible.builtin.pip:
+            requirements: /opt/activitywatch/dlp-compliance/requirements.txt
+            virtualenv: /opt/activitywatch/dlp-compliance/.venv
+          when: aw_dlp_compliance_enabled | default(true) | bool
+
+        - name: Установить dlp-admin-cli
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/dlp-admin-cli.py"
+            dest: /usr/local/bin/dlp-admin-cli.py
+            owner: root
+            group: root
+            mode: "0755"
+
         - name: Установить скрипт AW worktime API
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-api.py"
@@ -637,6 +689,20 @@
             enabled: true
             state: restarted
           when: aw_dlp_case_management_enabled | default(true) | bool
+
+        - name: Включить и перезапустить timer DLP compliance report
+          ansible.builtin.systemd:
+            name: aw-dlp-report-scheduler.timer
+            enabled: true
+            state: restarted
+          when: aw_dlp_compliance_enabled | default(true) | bool
+
+        - name: Выполнить разовый прогон DLP compliance report
+          ansible.builtin.systemd:
+            name: aw-dlp-report-scheduler.service
+            state: started
+          failed_when: false
+          when: aw_dlp_compliance_enabled | default(true) | bool
 
         - name: Включить и перезапустить AW worktime API
           ansible.builtin.systemd:

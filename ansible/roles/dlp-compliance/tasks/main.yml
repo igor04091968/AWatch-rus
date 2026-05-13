@@ -1,0 +1,53 @@
+---
+- name: Ensure DLP compliance directory tree
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ aw_server_user | default('activitywatch') }}"
+    group: "{{ aw_server_group | default('activitywatch') }}"
+    mode: "0755"
+  loop:
+    - /opt/activitywatch/dlp-compliance
+    - /opt/activitywatch/dlp-compliance/templates
+    - /opt/activitywatch/dlp-compliance/reports
+
+- name: Copy DLP compliance files
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../aw-server/dlp-compliance/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: "{{ aw_server_user | default('activitywatch') }}"
+    group: "{{ aw_server_group | default('activitywatch') }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: "report_generator.py", dest: "/opt/activitywatch/dlp-compliance/report_generator.py", mode: "0755" }
+    - { src: "requirements.txt", dest: "/opt/activitywatch/dlp-compliance/requirements.txt", mode: "0644" }
+    - { src: "templates/152-fz-report.html", dest: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html", mode: "0644" }
+    - { src: "report-scheduler.service", dest: "/etc/systemd/system/aw-dlp-report-scheduler.service", mode: "0644" }
+    - { src: "report-scheduler.timer", dest: "/etc/systemd/system/aw-dlp-report-scheduler.timer", mode: "0644" }
+
+- name: Create venv for DLP compliance
+  ansible.builtin.command:
+    cmd: python3 -m venv /opt/activitywatch/dlp-compliance/.venv
+  args:
+    creates: /opt/activitywatch/dlp-compliance/.venv/bin/python
+
+- name: Install Python dependencies for DLP compliance
+  ansible.builtin.pip:
+    requirements: /opt/activitywatch/dlp-compliance/requirements.txt
+    virtualenv: /opt/activitywatch/dlp-compliance/.venv
+
+- name: Reload systemd
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable and start DLP compliance timer
+  ansible.builtin.systemd:
+    name: aw-dlp-report-scheduler.timer
+    enabled: true
+    state: restarted
+
+- name: Run DLP compliance report once
+  ansible.builtin.systemd:
+    name: aw-dlp-report-scheduler.service
+    state: started
+
