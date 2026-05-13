@@ -650,6 +650,14 @@
             group: root
             mode: "0755"
 
+        - name: Установить скрипт dlp-health-check
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/dlp-health-check.py"
+            dest: /usr/local/bin/dlp-health-check
+            owner: root
+            group: root
+            mode: "0755"
+
         - name: Установить systemd unit AW worktime UI bridge
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-ui-bridge.service"
@@ -1311,6 +1319,16 @@
         - name: Показать результат aw-health-check
           ansible.builtin.debug:
             msg: "{{ aw_post_deploy_health.stdout }}"
+
+        - name: Запустить /usr/local/bin/dlp-health-check --json
+          ansible.builtin.command:
+            cmd: /usr/local/bin/dlp-health-check --json
+          register: dlp_post_deploy_health
+          changed_when: false
+
+        - name: Показать результат dlp-health-check
+          ansible.builtin.debug:
+            msg: "{{ dlp_post_deploy_health.stdout }}"
 
   handlers:
     - name: Перезагрузить systemd

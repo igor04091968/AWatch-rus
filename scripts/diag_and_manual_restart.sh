@@ -14,7 +14,7 @@ Usage:
   scripts/diag_and_manual_restart.sh [--with-windows] [--yes] [--inventory <path>]
 
 Behavior:
-  1) Runs remote diagnostics on aw_server using /usr/local/bin/aw-health-check
+  1) Runs remote diagnostics on aw_server using /usr/local/bin/aw-health-check and /usr/local/bin/dlp-health-check
   2) If diagnostics fail:
      - restarts required server services
      - optionally restarts Windows launch/recovery tasks (with --with-windows)
@@ -40,7 +40,8 @@ command -v ansible-playbook >/dev/null 2>&1 || die "ansible-playbook not found"
 [[ -f "$INVENTORY" ]] || die "inventory not found: $INVENTORY"
 
 run_health_check() {
-  ansible -i "$INVENTORY" aw_server -b -m ansible.builtin.command -a "/usr/local/bin/aw-health-check"
+  ansible -i "$INVENTORY" aw_server -b -m ansible.builtin.command -a "/usr/local/bin/aw-health-check" &&
+  ansible -i "$INVENTORY" aw_server -b -m ansible.builtin.command -a "/usr/local/bin/dlp-health-check"
 }
 
 restart_server_components() {
