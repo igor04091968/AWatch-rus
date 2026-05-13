@@ -105,7 +105,7 @@
           TMUX_START_COMMAND={{ tsj_bot_tmux_start_command | default('codex') }}
           AW_RUS_API_BASE={{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}
           AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}
-          AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart aw-worktime-api.service'") }}
+          AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl start aw-worktime-ui-bridge.service'") }}
           AW_RUS_HOST={{ tsj_bot_aw_rus_host | default('SHARKON2025') }}
           AW_RUS_PRIMARY_USER={{ tsj_bot_aw_rus_primary_user | default('USER1') }}
           AW_RUS_STALE_SEC={{ tsj_bot_aw_rus_stale_sec | default(900) }}

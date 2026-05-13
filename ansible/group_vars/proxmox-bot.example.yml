@@ -14,7 +14,7 @@ tsj_bot_telegram_proxy_url: "http://127.0.0.1:11090"
 # AW-Rus + DLP check defaults
 tsj_bot_aw_rus_api_base: "http://10.10.10.13:5600/api/0"
 tsj_bot_aw_rus_worktime_base: "http://10.10.10.13:5610"
-tsj_bot_aw_rus_worktime_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart aw-worktime-api.service'"
+tsj_bot_aw_rus_worktime_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl start aw-worktime-ui-bridge.service'"
 tsj_bot_aw_rus_host: "SHARKON2025"
 tsj_bot_aw_rus_primary_user: "USER1"
 tsj_bot_aw_rus_stale_sec: 900
