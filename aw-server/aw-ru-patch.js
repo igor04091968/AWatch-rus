@@ -1570,6 +1570,7 @@
   let settingsHostFetchInFlight = false;
   let applyPatchScheduled = false;
   let networkPatchesInstalled = false;
+  let dlpOverlayFailureCount = 0;
 
   function getTrendsHostFromSettings(settings) {
     if (!settings || typeof settings !== "object") return "";
@@ -1808,7 +1809,6 @@
   }
 
   function applyPatch() {
-    const isDlpBucketRoute = isDlpSignalBucketRoute();
     enforceSafeActivityViewForPveHost();
     ensureSettingsHost();
     ensureHostGroupsData().catch(function () {});
@@ -1822,8 +1822,15 @@
     patchCategoryBuilderHostLabel(document.body);
     injectPveAuditCenter(document.body);
     injectDlpNavigation(document.body);
-    // Temporary safe-mode: disable heavy DLP overlay on bucket route due recursion in browser.
-    if (!isDlpBucketRoute) {
+    if (isDlpSignalBucketRoute() && dlpOverlayFailureCount === 0) {
+      try {
+        injectDlpReviewCenter(document.body);
+      } catch (error) {
+        dlpOverlayFailureCount += 1;
+        const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
+        if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+      }
+    } else if (!isDlpSignalBucketRoute()) {
       injectDlpReviewCenter(document.body);
     }
     injectDlpAlertsCenter(document.body);
