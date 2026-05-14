@@ -28,10 +28,27 @@
   "links": [],
   "panels": [
     {
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "### Как читать дашборд\n- **Верхний блок** показывает **вчерашний завершённый день**. Это основной управленческий срез.\n- **Средний блок** показывает **сегодня с начала дня**. Эти цифры оперативные и к вечеру будут меняться.\n- Если утром по блоку **сегодня** мало часов или нули, это не ошибка: день ещё не завершён.\n- Нижние графики нужны для ответа на два вопроса: **как меняется нагрузка по дням** и **кто сколько времени работал**.",
+        "mode": "markdown"
+      },
+      "title": "Руководителю: как смотреть этот экран",
+      "transparent": true,
+      "type": "text"
+    },
+    {
       "datasource": {
         "type": "influxdb",
         "uid": "influxdb_aw"
       },
+      "description": "Сколько сотрудников было в активности за вчерашний завершённый день.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -52,59 +69,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 0
-      },
-      "id": 1,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"users_count\" and r.host == \"${host}\")\n  |> group()\n  |> last()",
-          "refId": "A"
-        }
-      ],
-      "title": "Пользователи в последнем отчёте",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb_aw"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green"
-              }
-            ]
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 6,
-        "y": 0
+        "y": 3
       },
       "id": 2,
       "options": {
@@ -123,11 +88,11 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group()\n  |> last()",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"users_count\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:2)\n  |> limit(n:1)",
           "refId": "A"
         }
       ],
-      "title": "Активное время в последнем отчёте",
+      "title": "Вчера: сотрудников с активностью",
       "type": "stat"
     },
     {
@@ -135,25 +100,37 @@
         "type": "influxdb",
         "uid": "influxdb_aw"
       },
+      "description": "Суммарное активное время всех пользователей за вчера.",
       "fieldConfig": {
         "defaults": {
-          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
           "unit": "h"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 4,
-        "w": 12,
-        "x": 12,
-        "y": 0
+        "w": 6,
+        "x": 6,
+        "y": 3
       },
       "id": 3,
       "options": {
         "colorMode": "value",
-        "displayMode": "basic",
-        "namePlacement": "left",
-        "orientation": "horizontal",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -161,26 +138,134 @@
           "fields": "",
           "values": false
         },
-        "showUnfilled": true,
-        "sizing": "auto"
+        "textMode": "auto"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns: [\"host\", \"user\"])\n  |> last()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:2)\n  |> limit(n:1)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))",
           "refId": "A"
         }
       ],
-      "title": "Пользователи: последнее активное время, часы",
-      "type": "bargauge"
+      "title": "Вчера: суммарное активное время",
+      "type": "stat"
     },
     {
       "datasource": {
         "type": "influxdb",
         "uid": "influxdb_aw"
       },
+      "description": "Среднее активное время на одного сотрудника за вчера.",
       "fieldConfig": {
         "defaults": {
-          "decimals": 2,
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 3
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and (r._field == \"users_count\" or r._field == \"total_active_seconds\") and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:2)\n  |> limit(n:1)\n  |> map(fn:(r) => ({ r with _value: float(v: r.total_active_seconds) / float(v: r.users_count) / 3600.0 }))",
+          "refId": "A"
+        }
+      ],
+      "title": "Вчера: среднее время на сотрудника",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "description": "Оперативное значение за текущий день. Нормально, если утром оно ещё низкое.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 3
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:1)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))",
+          "refId": "A"
+        }
+      ],
+      "title": "Сегодня: накопленное активное время",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "description": "Кто сколько реально работал вчера.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
           "unit": "h"
         },
         "overrides": []
@@ -189,9 +274,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 4
+        "y": 7
       },
-      "id": 4,
+      "id": 6,
       "options": {
         "colorMode": "value",
         "displayMode": "basic",
@@ -209,11 +294,11 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns: [\"host\", \"user\"])\n  |> sort(columns: [\"_time\"])\n  |> tail(n: 2)\n  |> first()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns: [\"user\"])\n  |> sort(columns: [\"_time\"])\n  |> tail(n: 2)\n  |> first()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))",
           "refId": "A"
         }
       ],
-      "title": "Пользователи: предыдущий отчёт, часы",
+      "title": "Вчера: активность по сотрудникам",
       "type": "bargauge"
     },
     {
@@ -221,6 +306,97 @@
         "type": "influxdb",
         "uid": "influxdb_aw"
       },
+      "description": "Накопленное время текущего дня. Это оперативный срез, не итог дня.",
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "displayMode": "basic",
+        "namePlacement": "left",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "sizing": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns: [\"user\"])\n  |> last()\n  |> filter(fn:(r)=>r._value > 0)\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))",
+          "refId": "A"
+        }
+      ],
+      "title": "Сегодня: накопленное время по сотрудникам",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "description": "Командный итог по дням. Нужен для сравнения нагрузки от дня к дню.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "decimals": 1,
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "hidden",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> sort(columns:[\"report_date\"])\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))",
+          "refId": "A"
+        }
+      ],
+      "title": "Команда: активное время по дням",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "description": "Показывает распределение активности внутри суток по сотрудникам.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -237,9 +413,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 4
+        "y": 15
       },
-      "id": 5,
+      "id": 9,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -257,7 +433,7 @@
           "refId": "A"
         }
       ],
-      "title": "Почасовая активность пользователей, последние 48 часов",
+      "title": "Когда работали в течение суток",
       "type": "timeseries"
     },
     {
@@ -265,6 +441,7 @@
         "type": "influxdb",
         "uid": "influxdb_aw"
       },
+      "description": "Подробный список по сотрудникам и дням за последнюю неделю.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -278,12 +455,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 9,
+        "h": 10,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 23
       },
-      "id": 6,
+      "id": 10,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -293,19 +470,20 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))\n  |> keep(columns: [\"_time\", \"report_date\", \"user\", \"user_id\", \"_value\"])\n  |> sort(columns: [\"_time\", \"user\"], desc: true)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"user\"])\n  |> last()\n  |> sort(columns:[\"report_date\",\"user\"], desc:true)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> keep(columns:[\"report_date\",\"user\",\"user_id\",\"_value\"])\n  |> rename(columns:{report_date:\"Дата\", user:\"Пользователь\", user_id:\"Учётная_запись\", _value:\"Часы\"})",
           "refId": "A"
         }
       ],
-      "title": "Ежедневная сводка по пользователям, последние 7 дней",
+      "title": "Подробно: последние 7 дней по сотрудникам",
       "type": "table"
     }
   ],
   "refresh": "10m",
   "schemaVersion": 41,
   "tags": [
-    "detmir",
     "activitywatch",
+    "detmir",
+    "management",
     "rdp",
     "worktime"
   ],
@@ -338,12 +516,12 @@
     ]
   },
   "time": {
-    "from": "now-48h",
+    "from": "now-7d",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "DetMir RDP User Activity",
+  "title": "DetMir: Работа пользователей в RDP",
   "uid": "detmir-rdp-user-activity",
   "version": 1,
   "weekStart": ""
