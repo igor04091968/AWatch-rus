@@ -11,6 +11,8 @@
 - [ИБ-профиль DLP](../dlp-security-functional-spec-ru.md) - подробное описание реализованного DLP/monitoring-контура для службы ИБ
 - [Runtime status: DLP chain](../dlp-runtime-chain-status-2026-05-13.md) - фактический live-статус policy/cases/integrations/compliance
 - [Runtime status: Content analysis](../dlp-content-analysis-runtime-status-2026-05-13.md) - фактический live-статус dictionary/regex/OCR/IOC
+- [Hayabusa AW-rus integration](../hayabusa-aw-rus-integration-2026-05-14.md) - bounded DFIR enrichment path для incidents/cases/operator flow
+- [Hayabusa operator and IB guide](../hayabusa-operator-ib-guide-2026-05-14.md) - когда запускать forensic path, где лежат артефакты и какие у него границы
 
 ### Компоненты
 - [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring) - мониторинг clipboard, печати, USB

@@ -18,14 +18,24 @@
     tsj_bot_default_chat_id: "{{ telegram_default_chat_id | default(telegram_allowed_chat_ids.split(',')[0]) }}"
 
   pre_tasks:
+    - name: Проверить наличие существующего .env бота на хосте
+      ansible.builtin.stat:
+        path: "{{ tsj_bot_env_path }}"
+      register: tsj_bot_existing_env
+
     - name: Проверить обязательные переменные
       ansible.builtin.assert:
         that:
-          - telegram_bot_token is defined
-          - telegram_bot_token | length > 20
-          - telegram_allowed_chat_ids is defined
-          - telegram_allowed_chat_ids | length > 0
-        fail_msg: "Задайте telegram_bot_token и telegram_allowed_chat_ids (см. group_vars/proxmox-bot.example.yml)."
+          - >
+            (
+              telegram_bot_token is defined and
+              (telegram_bot_token | string | length) > 20 and
+              telegram_allowed_chat_ids is defined and
+              (telegram_allowed_chat_ids | string | length) > 0
+            )
+            or
+            (tsj_bot_existing_env.stat.exists | default(false))
+        fail_msg: "Задайте telegram_bot_token и telegram_allowed_chat_ids или оставьте на хосте существующий {{ tsj_bot_env_path }}."
 
     - name: Проверить наличие исходного файла бота на контроллере
       ansible.builtin.stat:
@@ -70,7 +80,12 @@
         mode: "0750"
       notify: Restart tsj bot
 
-    - name: Сгенерировать .env бота
+    - name: Сгенерировать полный .env бота
+      when:
+        - telegram_bot_token is defined
+        - (telegram_bot_token | string | length) > 20
+        - telegram_allowed_chat_ids is defined
+        - (telegram_allowed_chat_ids | string | length) > 0
       ansible.builtin.copy:
         dest: "{{ tsj_bot_env_path }}"
         owner: "{{ tsj_bot_user }}"
@@ -133,9 +148,42 @@
           AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}
           AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl start aw-worktime-ui-bridge.service'") }}
           AW_RUS_DLP_HEAL_CMD={{ tsj_bot_aw_rus_dlp_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'") }}
+          AW_RUS_CASE_API_BASE={{ tsj_bot_aw_rus_case_api_base | default('http://10.10.10.13:5602') }}
+          AW_RUS_HAYABUSA_ENABLED={{ tsj_bot_aw_rus_hayabusa_enabled | default('true') }}
+          AW_RUS_HAYABUSA_SSH_CMD={{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13") }}
           AW_RUS_HOST={{ tsj_bot_aw_rus_host | default('SHARKON2025') }}
           AW_RUS_PRIMARY_USER={{ tsj_bot_aw_rus_primary_user | default('USER1') }}
           AW_RUS_STALE_SEC={{ tsj_bot_aw_rus_stale_sec | default(900) }}
+      notify: Restart tsj bot
+
+    - name: Обновить только AW-Rus/Hayabusa env ключи в существующем .env
+      when:
+        - not (
+            telegram_bot_token is defined and
+            (telegram_bot_token | string | length) > 20 and
+            telegram_allowed_chat_ids is defined and
+            (telegram_allowed_chat_ids | string | length) > 0
+          )
+        - tsj_bot_existing_env.stat.exists | default(false)
+      ansible.builtin.lineinfile:
+        path: "{{ tsj_bot_env_path }}"
+        regexp: "^{{ item.key }}="
+        line: "{{ item.key }}={{ item.value }}"
+        create: false
+        owner: "{{ tsj_bot_user }}"
+        group: "{{ tsj_bot_group }}"
+        mode: "0640"
+      loop:
+        - { key: "AW_RUS_API_BASE", value: "{{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}" }
+        - { key: "AW_RUS_WORKTIME_BASE", value: "{{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}" }
+        - { key: "AW_RUS_WORKTIME_HEAL_CMD", value: "{{ tsj_bot_aw_rus_worktime_heal_cmd | default(\"sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl start aw-worktime-ui-bridge.service'\") }}" }
+        - { key: "AW_RUS_DLP_HEAL_CMD", value: "{{ tsj_bot_aw_rus_dlp_heal_cmd | default(\"sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'\") }}" }
+        - { key: "AW_RUS_CASE_API_BASE", value: "{{ tsj_bot_aw_rus_case_api_base | default('http://10.10.10.13:5602') }}" }
+        - { key: "AW_RUS_HAYABUSA_ENABLED", value: "{{ tsj_bot_aw_rus_hayabusa_enabled | default('true') }}" }
+        - { key: "AW_RUS_HAYABUSA_SSH_CMD", value: "{{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default(\"sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13\") }}" }
+        - { key: "AW_RUS_HOST", value: "{{ tsj_bot_aw_rus_host | default('SHARKON2025') }}" }
+        - { key: "AW_RUS_PRIMARY_USER", value: "{{ tsj_bot_aw_rus_primary_user | default('USER1') }}" }
+        - { key: "AW_RUS_STALE_SEC", value: "{{ tsj_bot_aw_rus_stale_sec | default(900) }}" }
       notify: Restart tsj bot
 
     - name: Установить systemd unit бота

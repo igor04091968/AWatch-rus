@@ -21,6 +21,9 @@ param(
     [bool]$IncidentCaptureEnabled = $true,
     [bool]$IncidentScreenshotEnabled = $true,
     [string]$IncidentArtifactsRoot,
+    [string]$EvtxExportRoot,
+    [int]$EvtxRetentionDays = 14,
+    [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
     [string]$AwHostname,
     [string]$CustomRulesPath,
@@ -45,6 +48,7 @@ $collectorSource = Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1
 $endpointCollectorSource = Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1'
 $emailCollectorSource = Join-Path $PSScriptRoot 'email-outbound-collector.ps1'
 $sessionCollectorSource = Join-Path $PSScriptRoot 'worktime-session-collector.ps1'
+$evtxExportScriptSource = Join-Path $PSScriptRoot 'export-evtx-for-hayabusa.ps1'
 $exampleRulesSource = Join-Path $PSScriptRoot 'web-category-rules.example.json'
 $examplePolicySource = Join-Path $PSScriptRoot 'dlp-policy.example.json'
 
@@ -60,6 +64,7 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -EndpointCollectorScriptSource $endpointCollectorSource `
     -EmailCollectorScriptSource $emailCollectorSource `
     -SessionCollectorScriptSource $sessionCollectorSource `
+    -EvtxExportScriptSource $evtxExportScriptSource `
     -ExampleRulesSource $exampleRulesSource `
     -ExamplePolicySource $examplePolicySource `
     -StateRoot $StateRoot `
@@ -81,6 +86,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -EndpointCollectorScript $assetResult.EndpointCollectorScript `
     -EmailCollectorScript $assetResult.EmailCollectorScript `
     -SessionCollectorScript $assetResult.SessionCollectorScript `
+    -EvtxExportScript $assetResult.EvtxExportScript `
     -RulesPath $assetResult.ActiveRules `
     -PolicyPath $assetResult.ActivePolicy `
     -PollSeconds $PollSeconds `
@@ -92,6 +98,9 @@ $config = New-ActivityWatchDeploymentConfig `
     -IncidentCaptureEnabled $IncidentCaptureEnabled `
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
     -IncidentArtifactsRoot $IncidentArtifactsRoot `
+    -EvtxExportRoot $EvtxExportRoot `
+    -EvtxRetentionDays $EvtxRetentionDays `
+    -EvtxChannels $EvtxChannels `
     -LogonMarkerEnabled $LogonMarkerEnabled `
     -AwHostname $AwHostname `
     -LaunchScriptPath $launchScriptPath `

@@ -1149,6 +1149,15 @@
     if (!tbody) return;
     try {
       const cases = await caseApi("/api/0/dlp/cases?host=" + encodeURIComponent(host) + "&limit=100", { method: "GET" });
+      function renderCaseDfir(c) {
+        const hayabusa = c && c.forensics && c.forensics.hayabusa;
+        if (!hayabusa) return "";
+        const status = String(hayabusa.status || "");
+        const mode = String(hayabusa.mode || "");
+        const reportDir = String(hayabusa.report_dir || "");
+        const title = reportDir ? ' title="' + escapeHtml(reportDir) + '"' : "";
+        return '<span' + title + '>Hayabusa ' + escapeHtml(status) + (mode ? " · " + escapeHtml(mode) : "") + '</span>';
+      }
       const rows = (cases || []).map(function (c) {
         return (
           "<tr>" +
@@ -1158,15 +1167,16 @@
           "<td>" + escapeHtml(String(c.title || "")) + "</td>" +
           "<td>" + escapeHtml(String(c.assignee || "")) + "</td>" +
           "<td>" + escapeHtml(String(c.incident_id || "")) + "</td>" +
+          "<td>" + renderCaseDfir(c) + "</td>" +
           "<td>" + escapeHtml(String(c.updated_at || c.created_at || "")) + "</td>" +
           "</tr>"
         );
       });
-      tbody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="7">Кейсов нет.</td></tr>';
+      tbody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="8">Кейсов нет.</td></tr>';
       const status = center.querySelector("[data-aw-ru-dlp-cases-status]");
       if (status) status.textContent = "Кейсов: " + (cases || []).length;
     } catch (error) {
-      tbody.innerHTML = '<tr><td colspan="7">Ошибка загрузки кейсов: ' + escapeHtml(error.message) + '</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8">Ошибка загрузки кейсов: ' + escapeHtml(error.message) + '</td></tr>';
       const status = center.querySelector("[data-aw-ru-dlp-cases-status]");
       if (status) status.textContent = "Кейсы недоступны";
     }
@@ -1388,8 +1398,8 @@
             '<div class="aw-ru-dlp-status" data-aw-ru-dlp-cases-status>Кейсов: 0</div>' +
           '</div>' +
           '<table class="aw-ru-dlp-table">' +
-            '<thead><tr><th>ID</th><th>Статус</th><th>Severity</th><th>Заголовок</th><th>Исполнитель</th><th>Incident ID</th><th>Обновлено</th></tr></thead>' +
-            '<tbody data-aw-ru-dlp-cases><tr><td colspan="7">Загрузка...</td></tr></tbody>' +
+            '<thead><tr><th>ID</th><th>Статус</th><th>Severity</th><th>Заголовок</th><th>Исполнитель</th><th>Incident ID</th><th>DFIR</th><th>Обновлено</th></tr></thead>' +
+            '<tbody data-aw-ru-dlp-cases><tr><td colspan="8">Загрузка...</td></tr></tbody>' +
           '</table>' +
         '</div>' +
         '<div class="aw-ru-dlp-message" data-aw-ru-dlp-message></div>';

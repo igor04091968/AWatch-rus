@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from case_schema import CaseCommentCreate, CaseCreate, CaseUpdate
+from case_schema import CaseCommentCreate, CaseCreate, CaseHayabusaLink, CaseUpdate
 from case_storage import CaseStorage
 
 DB = Path(os.environ.get("AW_DLP_CASE_DB_PATH", "/opt/activitywatch/dlp-case-management/cases.db"))
@@ -76,3 +76,11 @@ def add_comment(case_id: int, payload: CaseCommentCreate) -> dict[str, Any]:
 @APP.get("/api/0/dlp/cases/{case_id}/comments")
 def list_comments(case_id: int, limit: int = Query(default=200, ge=1, le=2000)) -> list[dict[str, Any]]:
     return STORE.list_comments(case_id=case_id, limit=limit)
+
+
+@APP.post("/api/0/dlp/cases/{case_id}/forensics/hayabusa")
+def link_hayabusa(case_id: int, payload: CaseHayabusaLink) -> dict[str, Any]:
+    try:
+        return STORE.link_hayabusa(case_id=case_id, payload=payload.model_dump(exclude_none=True), actor="api")
+    except KeyError:
+        raise HTTPException(status_code=404, detail="case not found")

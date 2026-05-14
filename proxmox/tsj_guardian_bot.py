@@ -319,6 +319,7 @@ class TSJGuardianBot:
     BTN_PFSENSE_CONFIRM = "Подтвердить pfSense: шаг 1"
     BTN_PFSENSE_CANCEL = "Отменить pfSense изменение"
     BTN_AW_DLP_CHECK = "Проверка AW-Rus + DLP"
+    BTN_AW_DFIR = "Hayabusa DFIR"
     BTN_AI_CHAT_ALIASES = ("AI чат", "Чат с поддержкой", "Техподдержка", "Тех поддержка")
     BTN_OVPN_CERTS_ALIASES = ("OpenVPN certs", "OpenVPN cert", "OpenVPN серты", "OpenVPN сертификат")
     PFSENSE_ENV_PATH = "/home/codex/infra-admin/vendor/pfsense-mcp-server/.env.readonly"
@@ -360,6 +361,12 @@ class TSJGuardianBot:
         self.aw_rus_dlp_heal_cmd = os.getenv(
             "AW_RUS_DLP_HEAL_CMD",
             "",
+        ).strip()
+        self.aw_rus_case_api_base = os.getenv("AW_RUS_CASE_API_BASE", "http://10.10.10.13:5602").strip()
+        self.aw_rus_hayabusa_enabled = env_bool("AW_RUS_HAYABUSA_ENABLED", True)
+        self.aw_rus_hayabusa_ssh_cmd = os.getenv(
+            "AW_RUS_HAYABUSA_SSH_CMD",
+            "sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13",
         ).strip()
         self.aw_rus_host = os.getenv("AW_RUS_HOST", "SHARKON2025").strip()
         self.aw_rus_primary_user = os.getenv("AW_RUS_PRIMARY_USER", "USER1").strip()
@@ -491,6 +498,7 @@ class TSJGuardianBot:
             "keyboard": [
                 [self.BTN_STATUS, self.BTN_CHECK, self.BTN_HEAL],
                 [self.BTN_AW_DLP_CHECK],
+                [self.BTN_AW_DFIR],
                 [self.BTN_ACK, self.BTN_RESOLVE],
                 [self.BTN_AI, self.BTN_FALLBACK],
                 [self.BTN_AI_CHAT],
@@ -1988,6 +1996,11 @@ class TSJGuardianBot:
             "- Проверяет AW-Rus и DLP по свежести bucket-данных и сегодняшнему worktime.\n"
             "- Формирует операторский итог OK/DEGRADED прямо в чате.\n"
             "\n"
+            f"{self.BTN_AW_DFIR}\n"
+            "- Показывает, как запустить bounded DFIR-путь через Hayabusa.\n"
+            "- Рабочий формат: `/aw_dfir /path/to/package.zip HOST [CASE_ID] [MODE]`.\n"
+            "- В кейс пишется только metadata/linkage, без raw Sigma output.\n"
+            "\n"
             f"{self.BTN_HEAL}\n"
             "- Пробует автоматическое лечение проблем (рестарт нужных сервисов).\n"
             "- Для критичного заполнения ФС авто-очистка не выполняется, нужен разбор причины.\n"
@@ -2088,7 +2101,7 @@ class TSJGuardianBot:
             "1) Нажмите кнопку создания/восстановления или используйте `/proxmox_snapshot TARGET`.\n"
             "2) Для восстановления после выбора узла отправьте `/proxmox_restore_apply CODE`.\n"
             "\n"
-            "Резервные slash-команды: /status /check /aw_dlp_check /heal /ack /resolve /run ... /openvpn_certs [filter] /openvpn_expiring /openvpn_config USER /openvpn_config_confirm /openvpn_config_cancel /openvpn_config_apply CODE /pfsense_confirm /pfsense_cancel /pfsense_apply CODE /proxmox_snapshot TARGET /proxmox_restore TARGET /proxmox_restore_apply CODE /proxmox_restore_cancel /proxmox_selection_cancel"
+            "Резервные slash-команды: /status /check /aw_dlp_check /aw_dfir PACKAGE HOST [CASE_ID] [MODE] /heal /ack /resolve /run ... /openvpn_certs [filter] /openvpn_expiring /openvpn_config USER /openvpn_config_confirm /openvpn_config_cancel /openvpn_config_apply CODE /pfsense_confirm /pfsense_cancel /pfsense_apply CODE /proxmox_snapshot TARGET /proxmox_restore TARGET /proxmox_restore_apply CODE /proxmox_restore_cancel /proxmox_selection_cancel"
         )
 
     def _cmd_status(self) -> str:
@@ -2205,12 +2218,59 @@ class TSJGuardianBot:
             except Exception as exc:
                 return None, f"error:{exc}"
 
+        def load_worktime_activity() -> Tuple[Optional[Dict[str, Dict[str, Optional[int]]]], Optional[str]]:
+            try:
+                r = requests.get(f"{base}/buckets", timeout=20)
+                r.raise_for_status()
+                buckets = r.json()
+            except Exception as exc:
+                return None, f"error:{exc}"
+
+            prefix = "aw-worktime-sessions_"
+            activity: Dict[str, Dict[str, Optional[int]]] = {}
+            for bucket_id in sorted(key for key in buckets if key.startswith(prefix)):
+                bucket_host = bucket_id[len(prefix):]
+                latest_ts = None
+                latest_active = False
+                try:
+                    r = requests.get(f"{base}/buckets/{bucket_id}/events?limit=20", timeout=20)
+                    r.raise_for_status()
+                    events = r.json()
+                except Exception as exc:
+                    activity[bucket_host] = {
+                        "active": False,
+                        "age_seconds": None,
+                        "error": str(exc),
+                    }
+                    continue
+
+                if isinstance(events, list):
+                    for event in events:
+                        raw_ts = event.get("timestamp")
+                        if not raw_ts:
+                            continue
+                        try:
+                            event_ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00")).astimezone(timezone.utc)
+                        except Exception:
+                            continue
+                        if latest_ts is None or event_ts > latest_ts:
+                            latest_ts = event_ts
+                            latest_active = bool((event.get("data") or {}).get("active"))
+
+                age_seconds = None
+                if latest_ts is not None:
+                    age_seconds = max(0, int((now - latest_ts).total_seconds()))
+                activity[bucket_host] = {
+                    "active": bool(latest_ts and latest_active and (age_seconds or 0) <= self.aw_rus_stale_sec),
+                    "age_seconds": age_seconds,
+                }
+
+            return activity, None
+
         checks = [
             (f"aw-watcher-window_{host}", "watcher-window"),
             (f"aw-watcher-afk_{host}", "watcher-afk"),
             (f"aw-dlp-endpoint-signals_{host}", "dlp-endpoint"),
-            (f"aw-file-operations_{host}", "dlp-fileops-host"),
-            ("aw-file-operations_10.10.10.13", "dlp-fileops-server"),
         ]
 
         lines = ["Проверка AW-Rus + DLP:"]
@@ -2219,6 +2279,46 @@ class TSJGuardianBot:
             age, tail = bucket_age(bucket_id)
             if age is None:
                 lines.append(f"- {label}: FAIL ({tail})")
+                failures.append(label)
+                continue
+            if age > self.aw_rus_stale_sec:
+                lines.append(f"- {label}: STALE age={age}s end={tail}")
+                failures.append(label)
+            else:
+                lines.append(f"- {label}: OK age={age}s end={tail}")
+
+        worktime_activity, worktime_error = load_worktime_activity()
+        fileops_checks = [
+            (f"aw-file-operations_{host}", "dlp-fileops-host", host),
+            ("aw-file-operations_10.10.10.13", "dlp-fileops-server", "10.10.10.13"),
+        ]
+        for bucket_id, label, bucket_host in fileops_checks:
+            if worktime_activity is None:
+                age, tail = bucket_age(bucket_id)
+                if age is None:
+                    lines.append(f"- {label}: FAIL (worktime-map {worktime_error}; bucket {tail})")
+                    failures.append(label)
+                    continue
+                if age > self.aw_rus_stale_sec:
+                    lines.append(f"- {label}: STALE age={age}s end={tail} (worktime-map unavailable)")
+                    failures.append(label)
+                else:
+                    lines.append(f"- {label}: OK age={age}s end={tail} (worktime-map unavailable)")
+                continue
+
+            host_meta = worktime_activity.get(bucket_host)
+            if host_meta is None:
+                lines.append(f"- {label}: OK unmanaged host={bucket_host}")
+                continue
+            if not host_meta.get("active"):
+                age_seconds = host_meta.get("age_seconds")
+                age_tail = f" age={age_seconds}s" if age_seconds is not None else ""
+                lines.append(f"- {label}: OK inactive host={bucket_host}{age_tail}")
+                continue
+
+            age, tail = bucket_age(bucket_id)
+            if age is None:
+                lines.append(f"- {label}: FAIL (active host bucket missing or unreadable: {tail})")
                 failures.append(label)
                 continue
             if age > self.aw_rus_stale_sec:
@@ -2411,6 +2511,111 @@ class TSJGuardianBot:
         out.extend(after_lines)
         return "\n".join(out)
 
+    def _aw_rus_hayabusa_usage_text(self) -> str:
+        return (
+            "Hayabusa DFIR:\n"
+            "- bounded forensic path для EVTX package -> Hayabusa -> case linkage.\n"
+            "- рабочий запуск: /aw_dfir /path/to/package.zip HOST [CASE_ID] [MODE]\n"
+            "- MODE по умолчанию: incident\n"
+            "- в кейс пишутся только metadata и ссылки на артефакты, без raw Sigma output."
+        )
+
+    @staticmethod
+    def _extract_marked_block(text: str, begin_marker: str, end_marker: str) -> str:
+        start = text.find(begin_marker)
+        end = text.find(end_marker)
+        if start < 0 or end < 0 or end <= start:
+            return ""
+        return text[start + len(begin_marker):end].strip()
+
+    def _aw_rus_case_link_hayabusa(self, case_id: int, payload: Dict) -> None:
+        response = requests.post(
+            f"{self.aw_rus_case_api_base.rstrip('/')}/api/0/dlp/cases/{int(case_id)}/forensics/hayabusa",
+            json=payload,
+            timeout=20,
+        )
+        response.raise_for_status()
+
+    def _aw_rus_hayabusa_run(
+        self,
+        package_path: str,
+        host: str | None = None,
+        case_id: int | None = None,
+        mode: str = "incident",
+    ) -> str:
+        if not self.aw_rus_hayabusa_enabled:
+            return "Hayabusa DFIR trigger отключён."
+        package_path = (package_path or "").strip()
+        host = (host or "").strip() or None
+        mode = (mode or "incident").strip().lower() or "incident"
+        if not package_path:
+            return self._aw_rus_hayabusa_usage_text()
+        if mode not in {"quick", "incident", "full"}:
+            return f"Неверный mode: {mode}. Допустимо: quick, incident, full."
+
+        accept_cmd = f"sudo /usr/local/bin/aw-hayabusa accept --package {shlex.quote(package_path)}"
+        if host:
+            accept_cmd += f" --host {shlex.quote(host)}"
+        remote_script = (
+            "set -eu\n"
+            f"{accept_cmd}\n"
+            "process_rc=0\n"
+            f"sudo /usr/local/bin/aw-hayabusa process-inbox --mode {shlex.quote(mode)} --limit 1 || process_rc=$?\n"
+            "echo '__AW_HAYA_INTAKE_JSON_BEGIN__'\n"
+            "sudo cat /opt/hayabusa/state/latest-intake.json\n"
+            "echo '__AW_HAYA_INTAKE_JSON_END__'\n"
+            "exit \"$process_rc\"\n"
+        )
+        cmd = f"{self.aw_rus_hayabusa_ssh_cmd} bash -lc {shlex.quote(remote_script)}"
+        rc, out = self._run_shell(cmd, timeout_sec=900)
+        json_block = self._extract_marked_block(out, "__AW_HAYA_INTAKE_JSON_BEGIN__", "__AW_HAYA_INTAKE_JSON_END__")
+        if not json_block:
+            tail = "\n".join((out or "").splitlines()[-20:])
+            return f"Hayabusa DFIR: не удалось получить intake metadata.\nrc={rc}\n{tail}"
+        try:
+            intake = json.loads(json_block)
+        except Exception as exc:
+            tail = "\n".join((out or "").splitlines()[-20:])
+            return f"Hayabusa DFIR: intake metadata повреждены ({exc}).\nrc={rc}\n{tail}"
+
+        report_dir = intake.get("report_dir") or ""
+        report_dir = str(report_dir)
+        status = str(intake.get("status") or ("ok" if rc == 0 else f"rc-{rc}"))
+        link_payload = {
+            "host": str(intake.get("host") or host or self.aw_rus_host),
+            "mode": mode,
+            "status": status,
+            "intake_id": intake.get("intake_id"),
+            "package_path": intake.get("package_path"),
+            "sha256": intake.get("sha256"),
+            "report_dir": report_dir or None,
+            "summary_html": f"{report_dir}/summary.html" if report_dir else None,
+            "timeline_path": f"{report_dir}/timeline.jsonl" if report_dir else None,
+            "manifest_path": f"{report_dir}/manifest.json" if report_dir else None,
+            "link_source": "telegram-bot",
+        }
+        linked_line = "- case linkage: skipped"
+        if case_id is not None:
+            self._aw_rus_case_link_hayabusa(case_id, link_payload)
+            linked_line = f"- case linkage: OK case_id={case_id}"
+
+        verdict = "OK" if rc == 0 else f"DEGRADED rc={rc}"
+        lines = [
+            f"Hayabusa DFIR: {verdict}",
+            f"- host: {link_payload['host']}",
+            f"- mode: {mode}",
+            f"- status: {status}",
+            f"- intake_id: {intake.get('intake_id') or '-'}",
+            f"- package: {intake.get('package_path') or package_path}",
+            f"- report_dir: {report_dir or '-'}",
+            linked_line,
+        ]
+        if rc != 0:
+            tail = "\n".join((out or "").splitlines()[-20:])
+            lines.append("- runner tail:")
+            lines.append(tail)
+        return "\n".join(lines)
+
     def _pfsense_security_status_lines(self) -> str:
         cmd = "/usr/bin/python3 /home/codex/infra-admin/scripts/pfsense_security_status.py"
         try:
@@ -2518,6 +2723,29 @@ class TSJGuardianBot:
             return
         if text.startswith("/aw_dlp_check") or text == self.BTN_AW_DLP_CHECK:
             self._send_text(chat_id, self._run_operator_action("aw-dlp-check"))
+            return
+        if text == self.BTN_AW_DFIR:
+            self._send_text(chat_id, self._aw_rus_hayabusa_usage_text())
+            return
+        if text.strip() == "/aw_dfir":
+            self._send_text(chat_id, self._aw_rus_hayabusa_usage_text())
+            return
+        if text.startswith("/aw_dfir "):
+            parts = text.split()
+            if len(parts) < 3:
+                self._send_text(chat_id, self._aw_rus_hayabusa_usage_text())
+                return
+            package_path = parts[1]
+            host = parts[2]
+            case_id = None
+            mode = "incident"
+            if len(parts) >= 4 and parts[3].isdigit():
+                case_id = int(parts[3])
+                if len(parts) >= 5:
+                    mode = parts[4]
+            elif len(parts) >= 4:
+                mode = parts[3]
+            self._send_text(chat_id, self._aw_rus_hayabusa_run(package_path=package_path, host=host, case_id=case_id, mode=mode))
             return
         if text.startswith("/heal") or text == self.BTN_HEAL:
             self._send_text(chat_id, self._run_operator_action("heal"))

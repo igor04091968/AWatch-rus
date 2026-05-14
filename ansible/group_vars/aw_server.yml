@@ -12,6 +12,24 @@ ansible_become_password: "{{ lookup('env', 'AW_SUDO_PASSWORD') | default(lookup(
 aw_hayabusa_ioc_refresh_enabled: false
 aw_hayabusa_rules_root: "/mnt/usb_hdd1/Projects/hayabusa/rules"
 aw_hayabusa_ioc_output_dir: "{{ aw_server_data_dir }}/dlp-ioc"
+aw_hayabusa_runner_enabled: true
+aw_hayabusa_version: "v3.9.0"
+aw_hayabusa_asset_name: "hayabusa-3.9.0-lin-x64-gnu.zip"
+aw_hayabusa_binary_name: "hayabusa-3.9.0-lin-x64-gnu"
+aw_hayabusa_download_url: "https://github.com/Yamato-Security/hayabusa/releases/download/v3.9.0/hayabusa-3.9.0-lin-x64-gnu.zip"
+aw_hayabusa_root: "/opt/hayabusa"
+aw_hayabusa_release_dir: "{{ aw_hayabusa_root }}/releases/{{ aw_hayabusa_version }}"
+aw_hayabusa_current_link: "{{ aw_hayabusa_root }}/current"
+aw_hayabusa_archive_path: "/tmp/{{ aw_hayabusa_asset_name }}"
+aw_hayabusa_reports_dir: "{{ aw_hayabusa_root }}/reports"
+aw_hayabusa_state_dir: "{{ aw_hayabusa_root }}/state"
+aw_hayabusa_inbox_dir: "{{ aw_hayabusa_root }}/inbox"
+aw_hayabusa_archive_dir: "{{ aw_hayabusa_root }}/archive"
+aw_hayabusa_incoming_dir: "{{ aw_hayabusa_inbox_dir }}/incoming"
+aw_hayabusa_staging_dir: "{{ aw_hayabusa_inbox_dir }}/staging"
+aw_hayabusa_archive_packages_dir: "{{ aw_hayabusa_archive_dir }}/packages"
+aw_hayabusa_archive_extracted_dir: "{{ aw_hayabusa_archive_dir }}/extracted"
+aw_hayabusa_logs_dir: "{{ aw_hayabusa_state_dir }}/logs"
 aw_dlp_policy_engine_enabled: true
 aw_dlp_policy_engine_bind_host: "0.0.0.0"
 aw_dlp_policy_engine_port: 5601

@@ -16,6 +16,7 @@ $collectorScript = [string]$config.paths.collectorScript
 $endpointCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$config.paths.endpointCollectorScript } else { Join-Path $stateRoot 'dlp-endpoint-signals-collector.ps1' }
 $fileCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$config.paths.fileCollectorScript } else { Join-Path $stateRoot 'file-operations-collector.ps1' }
 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
+$evtxExportScript = if ($config.paths.PSObject.Properties.Name -contains 'evtxExportScript') { [string]$config.paths.evtxExportScript } else { Join-Path $stateRoot 'export-evtx-for-hayabusa.ps1' }
 $rulesPath = [string]$config.paths.rulesPath
 $policyPath = if ($config.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$config.paths.policyPath } else { Join-Path $stateRoot 'dlp-policy.json' }
 $policyClientScript = if ($config.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$config.paths.policyClientScript } else { Join-Path $stateRoot 'dlp-policy-client.ps1' }
@@ -43,6 +44,7 @@ $requiredFiles = @(
     $collectorScript,
     $endpointCollectorScript,
     $sessionCollectorScript,
+    $evtxExportScript,
     $rulesPath,
     $policyPath,
     $policyClientScript,
@@ -202,8 +204,20 @@ $result = [ordered]@{
         jobTitlePolicyEnabled = $printJobTitlePolicyEnabled
         ok = [bool]($printServiceOperationalEnabled -and $printJobTitlePolicyEnabled)
     }
+    forensics = [ordered]@{
+        evtxExportRoot = if ($config.PSObject.Properties.Name -contains 'forensics' -and $config.forensics.PSObject.Properties.Name -contains 'evtxExportRoot') { [string]$config.forensics.evtxExportRoot } else { $null }
+        retentionDays = if ($config.PSObject.Properties.Name -contains 'forensics' -and $config.forensics.PSObject.Properties.Name -contains 'retentionDays') { [int]$config.forensics.retentionDays } else { $null }
+        evtxChannels = if ($config.PSObject.Properties.Name -contains 'forensics' -and $config.forensics.PSObject.Properties.Name -contains 'evtxChannels') { @($config.forensics.evtxChannels) } else { @() }
+        ok = [bool](
+            ($config.PSObject.Properties.Name -contains 'forensics') -and
+            ($config.forensics.PSObject.Properties.Name -contains 'evtxExportRoot') -and
+            ($config.forensics.PSObject.Properties.Name -contains 'retentionDays') -and
+            ($config.forensics.PSObject.Properties.Name -contains 'evtxChannels') -and
+            (@($config.forensics.evtxChannels).Count -gt 0)
+        )
+    }
 }
 
-$result.overallOk = [bool]($result.files.ok -and $result.tasks.ok -and $result.processes.ok -and $result.printTelemetry.ok)
+$result.overallOk = [bool]($result.files.ok -and $result.tasks.ok -and $result.processes.ok -and $result.printTelemetry.ok -and $result.forensics.ok)
 
 $result

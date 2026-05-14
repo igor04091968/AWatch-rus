@@ -9,6 +9,22 @@ from pydantic import BaseModel, Field
 CaseStatus = Literal["open", "investigating", "resolved", "closed"]
 
 
+class CaseHayabusaLink(BaseModel):
+    tool: Literal["hayabusa"] = "hayabusa"
+    host: str = Field(min_length=1, max_length=128)
+    mode: str = Field(min_length=1, max_length=32)
+    status: str = Field(min_length=1, max_length=64)
+    intake_id: str | None = Field(default=None, max_length=256)
+    package_path: str | None = Field(default=None, max_length=1024)
+    sha256: str | None = Field(default=None, max_length=128)
+    report_dir: str | None = Field(default=None, max_length=1024)
+    summary_html: str | None = Field(default=None, max_length=1024)
+    timeline_path: str | None = Field(default=None, max_length=1024)
+    manifest_path: str | None = Field(default=None, max_length=1024)
+    linked_at: str | None = Field(default=None, max_length=64)
+    link_source: str | None = Field(default=None, max_length=64)
+
+
 class CaseCreate(BaseModel):
     incident_id: str = Field(min_length=1, max_length=256)
     host: str | None = Field(default=None, max_length=128)
@@ -51,6 +67,6 @@ class CaseRecord(BaseModel):
     source_bucket: str | None
     source_event_ts: str | None
     evidence: dict | None
+    forensics: dict | None
     created_at: datetime
     updated_at: datetime
-

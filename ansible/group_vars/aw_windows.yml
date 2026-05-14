@@ -41,6 +41,15 @@ aw_windows_local_agent_logs_enabled: false
 aw_windows_incident_capture_enabled: true
 aw_windows_incident_screenshot_enabled: true
 aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
+aw_windows_forensics_root: "{{ aw_windows_state_root }}\\forensics\\evtx-exports"
+aw_windows_evtx_retention_days: 14
+aw_windows_evtx_channels:
+  - Security
+  - System
+  - Application
+  - Microsoft-Windows-PowerShell/Operational
+  - Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+  - Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational
 aw_windows_logon_marker_enabled: true
 aw_windows_skip_hardening: false
 

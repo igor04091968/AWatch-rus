@@ -399,6 +399,7 @@ function Copy-ActivityWatchCollectorAssets {
         [string]$FileCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScriptSource,
+        [string]$EvtxExportScriptSource,
         [string]$EmailCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
@@ -417,6 +418,7 @@ function Copy-ActivityWatchCollectorAssets {
     $policyClientTarget = Join-Path $StateRoot 'dlp-policy-client.ps1'
     $fileCollectorTarget = Join-Path $StateRoot 'file-operations-collector.ps1'
     $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
+    $evtxExportTarget = Join-Path $StateRoot 'export-evtx-for-hayabusa.ps1'
     $emailCollectorTarget = Join-Path $StateRoot 'email-outbound-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
@@ -430,6 +432,9 @@ function Copy-ActivityWatchCollectorAssets {
     }
     Copy-Item -LiteralPath $FileCollectorScriptSource -Destination $fileCollectorTarget -Force
     Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
+    if ($EvtxExportScriptSource -and (Test-Path -LiteralPath $EvtxExportScriptSource)) {
+        Copy-Item -LiteralPath $EvtxExportScriptSource -Destination $evtxExportTarget -Force
+    }
     if ($EmailCollectorScriptSource -and (Test-Path -LiteralPath $EmailCollectorScriptSource)) {
         Copy-Item -LiteralPath $EmailCollectorScriptSource -Destination $emailCollectorTarget -Force
     }
@@ -458,6 +463,7 @@ function Copy-ActivityWatchCollectorAssets {
         PolicyClientScript      = $policyClientTarget
         FileCollectorScript     = $fileCollectorTarget
         SessionCollectorScript  = $sessionCollectorTarget
+        EvtxExportScript        = $evtxExportTarget
         EmailCollectorScript    = $emailCollectorTarget
         ExampleRules            = $exampleRulesTarget
         ActiveRules             = $rulesTarget
@@ -489,6 +495,7 @@ function New-ActivityWatchDeploymentConfig {
         [string]$FileCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScript,
+        [string]$EvtxExportScript,
         [string]$EmailCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
@@ -507,6 +514,9 @@ function New-ActivityWatchDeploymentConfig {
         [bool]$IncidentCaptureEnabled = $true,
         [bool]$IncidentScreenshotEnabled = $true,
         [string]$IncidentArtifactsRoot,
+        [string]$EvtxExportRoot,
+        [int]$EvtxRetentionDays = 14,
+        [string[]]$EvtxChannels = @(),
         [bool]$LogonMarkerEnabled = $true,
         [Parameter(Mandatory = $true)]
         [string]$LaunchScriptPath,
@@ -529,6 +539,19 @@ function New-ActivityWatchDeploymentConfig {
     )
 
     $effectiveIncidentArtifactsRoot = if ($IncidentArtifactsRoot) { $IncidentArtifactsRoot } else { Join-Path $StateRoot 'incident-artifacts' }
+    $effectiveEvtxExportRoot = if ($EvtxExportRoot) { $EvtxExportRoot } else { Join-Path $StateRoot 'forensics\evtx-exports' }
+    $effectiveEvtxChannels = if ($EvtxChannels -and $EvtxChannels.Count -gt 0) {
+        @($EvtxChannels)
+    } else {
+        @(
+            'Security',
+            'System',
+            'Application',
+            'Microsoft-Windows-PowerShell/Operational',
+            'Microsoft-Windows-TerminalServices-LocalSessionManager/Operational',
+            'Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational'
+        )
+    }
     $effectivePolicyEngineHost = if ([string]::IsNullOrWhiteSpace($PolicyEngineHost)) { $ServerHost } else { $PolicyEngineHost }
     $effectivePolicyCachePath = if ([string]::IsNullOrWhiteSpace($PolicyCachePath)) { Join-Path $StateRoot 'dlp-policy-cache.json' } else { $PolicyCachePath }
 
@@ -551,6 +574,7 @@ function New-ActivityWatchDeploymentConfig {
             emailCollectorScript = $EmailCollectorScript
             fileCollectorScript = $FileCollectorScript
             sessionCollectorScript = $SessionCollectorScript
+            evtxExportScript = $EvtxExportScript
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -573,6 +597,11 @@ function New-ActivityWatchDeploymentConfig {
             enabled           = $IncidentCaptureEnabled
             screenshotEnabled = $IncidentScreenshotEnabled
             artifactsRoot     = $effectiveIncidentArtifactsRoot
+        }
+        forensics = [pscustomobject]@{
+            evtxExportRoot = $effectiveEvtxExportRoot
+            retentionDays  = $EvtxRetentionDays
+            evtxChannels   = @($effectiveEvtxChannels)
         }
         sessionEvents = [pscustomobject]@{
             logonEnabled = $LogonMarkerEnabled

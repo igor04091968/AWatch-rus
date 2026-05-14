@@ -43,6 +43,7 @@ class CaseStorage:
                   source_bucket TEXT,
                   source_event_ts TEXT,
                   evidence_json TEXT,
+                  forensics_json TEXT,
                   created_at TEXT NOT NULL,
                   updated_at TEXT NOT NULL
                 );
@@ -69,20 +70,35 @@ class CaseStorage:
                 );
                 """
             )
+            self._ensure_column(c, "cases", "forensics_json", "TEXT")
             c.commit()
+
+    @staticmethod
+    def _ensure_column(c: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {
+            str(row["name"])
+            for row in c.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if column not in columns:
+            c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     @staticmethod
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat()
 
     @staticmethod
-    def _to_case_dict(row: sqlite3.Row) -> dict[str, Any]:
-        evidence = None
-        if row["evidence_json"]:
-            try:
-                evidence = json.loads(row["evidence_json"])
-            except Exception:
-                evidence = None
+    def _load_json_field(raw: Any) -> dict[str, Any] | None:
+        if not raw:
+            return None
+        try:
+            return json.loads(raw)
+        except Exception:
+            return None
+
+    @classmethod
+    def _to_case_dict(cls, row: sqlite3.Row) -> dict[str, Any]:
+        evidence = cls._load_json_field(row["evidence_json"])
+        forensics = cls._load_json_field(row["forensics_json"])
         return {
             "id": int(row["id"]),
             "incident_id": row["incident_id"],
@@ -94,6 +110,7 @@ class CaseStorage:
             "source_bucket": row["source_bucket"],
             "source_event_ts": row["source_event_ts"],
             "evidence": evidence,
+            "forensics": forensics,
             "created_at": row["created_at"],
             "updated_at": row["updated_at"],
         }
@@ -114,8 +131,8 @@ class CaseStorage:
                 """
                 INSERT INTO cases (
                   incident_id, host, title, severity, assignee, status,
-                  source_bucket, source_event_ts, evidence_json, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?)
+                  source_bucket, source_event_ts, evidence_json, forensics_json, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     payload["incident_id"],
@@ -126,6 +143,7 @@ class CaseStorage:
                     payload.get("source_bucket"),
                     payload.get("source_event_ts"),
                     json.dumps(normalized_evidence, ensure_ascii=False) if normalized_evidence is not None else None,
+                    None,
                     now,
                     now,
                 ),
@@ -192,6 +210,46 @@ class CaseStorage:
         with self.conn() as c:
             c.execute(f"UPDATE cases SET {', '.join(fields)} WHERE id = ?", args)
             self._insert_audit(c, case_id=case_id, action="update", actor=actor, details=patch)
+            c.commit()
+            return self.get_case(case_id, c)
+
+    def link_hayabusa(self, case_id: int, payload: dict[str, Any], actor: str | None = None) -> dict[str, Any]:
+        now = self._now()
+        with self.conn() as c:
+            existing = self.get_case(case_id, c)
+            forensics = existing.get("forensics") or {}
+            forensics["hayabusa"] = {
+                "tool": "hayabusa",
+                "host": payload["host"],
+                "mode": payload["mode"],
+                "status": payload["status"],
+                "intake_id": payload.get("intake_id"),
+                "package_path": payload.get("package_path"),
+                "sha256": payload.get("sha256"),
+                "report_dir": payload.get("report_dir"),
+                "summary_html": payload.get("summary_html"),
+                "timeline_path": payload.get("timeline_path"),
+                "manifest_path": payload.get("manifest_path"),
+                "linked_at": payload.get("linked_at") or now,
+                "link_source": payload.get("link_source") or "api",
+            }
+            c.execute(
+                "UPDATE cases SET forensics_json = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(forensics, ensure_ascii=False), now, int(case_id)),
+            )
+            self._insert_audit(
+                c,
+                case_id=case_id,
+                action="link_hayabusa",
+                actor=actor,
+                details={
+                    "host": payload["host"],
+                    "mode": payload["mode"],
+                    "status": payload["status"],
+                    "intake_id": payload.get("intake_id"),
+                    "report_dir": payload.get("report_dir"),
+                },
+            )
             c.commit()
             return self.get_case(case_id, c)
 

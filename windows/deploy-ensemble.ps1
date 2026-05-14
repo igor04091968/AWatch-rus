@@ -23,6 +23,9 @@ param(
     [bool]$IncidentCaptureEnabled = $true,
     [bool]$IncidentScreenshotEnabled = $true,
     [string]$IncidentArtifactsRoot,
+    [string]$EvtxExportRoot,
+    [int]$EvtxRetentionDays = 14,
+    [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
     [string]$AwHostname,
     [string]$CustomRulesPath,
@@ -81,6 +84,9 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -IncidentCaptureEnabled $IncidentCaptureEnabled `
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
     -IncidentArtifactsRoot $IncidentArtifactsRoot `
+    -EvtxExportRoot $EvtxExportRoot `
+    -EvtxRetentionDays $EvtxRetentionDays `
+    -EvtxChannels $EvtxChannels `
     -LogonMarkerEnabled $LogonMarkerEnabled `
     -AwHostname $AwHostname `
     -CustomRulesPath $CustomRulesPath `
@@ -113,6 +119,9 @@ if (-not $SkipHardening) {
         -IncidentCaptureEnabled $IncidentCaptureEnabled `
         -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
         -IncidentArtifactsRoot $IncidentArtifactsRoot `
+        -EvtxExportRoot $EvtxExportRoot `
+        -EvtxRetentionDays $EvtxRetentionDays `
+        -EvtxChannels $EvtxChannels `
         -LogonMarkerEnabled $LogonMarkerEnabled `
         -AwHostname $AwHostname `
         -CustomRulesPath $CustomRulesPath `

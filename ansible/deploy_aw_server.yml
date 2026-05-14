@@ -1314,6 +1314,99 @@
             msg: "{{ aw_hayabusa_ioc_refresh_result.stdout }}"
           when: aw_hayabusa_ioc_refresh_result.stdout is defined
 
+    - name: Установить server-side Hayabusa runner
+      when: aw_hayabusa_runner_enabled | default(false) | bool
+      block:
+        - name: Создать каталоги Hayabusa
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          loop:
+            - "{{ aw_hayabusa_root }}"
+            - "{{ aw_hayabusa_root }}/releases"
+            - "{{ aw_hayabusa_release_dir }}"
+            - "{{ aw_hayabusa_reports_dir }}"
+            - "{{ aw_hayabusa_state_dir }}"
+            - "{{ aw_hayabusa_inbox_dir }}"
+            - "{{ aw_hayabusa_archive_dir }}"
+            - "{{ aw_hayabusa_incoming_dir }}"
+            - "{{ aw_hayabusa_staging_dir }}"
+            - "{{ aw_hayabusa_archive_packages_dir }}"
+            - "{{ aw_hayabusa_archive_extracted_dir }}"
+            - "{{ aw_hayabusa_logs_dir }}"
+
+        - name: Скачать архив Hayabusa
+          ansible.builtin.get_url:
+            url: "{{ aw_hayabusa_download_url }}"
+            dest: "{{ aw_hayabusa_archive_path }}"
+            mode: "0644"
+
+        - name: Распаковать pinned Hayabusa release
+          ansible.builtin.unarchive:
+            src: "{{ aw_hayabusa_archive_path }}"
+            dest: "{{ aw_hayabusa_release_dir }}"
+            remote_src: true
+            creates: "{{ aw_hayabusa_release_dir }}/{{ aw_hayabusa_binary_name }}"
+
+        - name: Нормализовать права release Hayabusa
+          ansible.builtin.file:
+            path: "{{ aw_hayabusa_release_dir }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+            recurse: true
+
+        - name: Сделать бинарь Hayabusa исполняемым
+          ansible.builtin.file:
+            path: "{{ aw_hayabusa_release_dir }}/{{ aw_hayabusa_binary_name }}"
+            owner: root
+            group: root
+            mode: "0755"
+            state: file
+
+        - name: Создать canonical symlink на текущий релиз Hayabusa
+          ansible.builtin.file:
+            src: "{{ aw_hayabusa_release_dir }}"
+            dest: "{{ aw_hayabusa_current_link }}"
+            state: link
+            force: true
+
+        - name: Создать canonical symlink на бинарь Hayabusa
+          ansible.builtin.file:
+            src: "{{ aw_hayabusa_binary_name }}"
+            dest: "{{ aw_hayabusa_release_dir }}/hayabusa"
+            state: link
+            force: true
+
+        - name: Установить wrapper aw-hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa.sh"
+            dest: /usr/local/bin/aw-hayabusa
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Проверить server-side runner через doctor
+          ansible.builtin.command:
+            cmd: /usr/local/bin/aw-hayabusa doctor
+          changed_when: false
+
+        - name: Проверить загрузку profiles Hayabusa
+          ansible.builtin.shell: /usr/local/bin/aw-hayabusa profiles > /tmp/aw-hayabusa-profiles.txt
+          args:
+            executable: /bin/bash
+          changed_when: false
+
+        - name: Проверить наличие standard profile у Hayabusa
+          ansible.builtin.shell: "grep -q 'standard:' /tmp/aw-hayabusa-profiles.txt"
+          args:
+            executable: /bin/bash
+          changed_when: false
+
     - name: Post-deploy health gate (aw-health-check)
       when:
         - not ansible_check_mode

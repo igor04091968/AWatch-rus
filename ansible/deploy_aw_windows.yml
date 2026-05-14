@@ -38,6 +38,7 @@
     aw_windows_incident_capture_enabled: true
     aw_windows_incident_screenshot_enabled: true
     aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
+    aw_windows_forensics_root: "{{ aw_windows_state_root }}\\forensics\\evtx-exports"
     aw_windows_logon_marker_enabled: true
     aw_windows_skip_hardening: false
     aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
@@ -169,6 +170,8 @@
             IncidentCaptureEnabled = {{ '$true' if (aw_windows_incident_capture_enabled | bool) else '$false' }}
             IncidentScreenshotEnabled = {{ '$true' if (aw_windows_incident_screenshot_enabled | bool) else '$false' }}
             IncidentArtifactsRoot = "{{ aw_windows_incident_artifacts_root }}"
+            EvtxExportRoot = "{{ aw_windows_forensics_root }}"
+            EvtxRetentionDays = {{ aw_windows_evtx_retention_days | int }}
             LogonMarkerEnabled = {{ '$true' if (aw_windows_logon_marker_enabled | bool) else '$false' }}
             PolicyMode = "{{ aw_windows_policy_mode }}"
             PolicyEngineEnabled = {{ '$true' if (aw_windows_policy_engine_enabled | bool) else '$false' }}
@@ -184,6 +187,13 @@
           {% endif %}
           {% if (aw_windows_package_zip_path | default('') | string | length) > 0 %}
           $params.PackageZipPath = "{{ aw_windows_package_zip_path }}"
+          {% endif %}
+          {% if (aw_windows_evtx_channels | default([]) | length) > 0 %}
+          $params.EvtxChannels = @(
+          {% for channel in aw_windows_evtx_channels %}
+            "{{ channel }}"{% if not loop.last %},{% endif %}
+          {% endfor %}
+          )
           {% endif %}
           {% if (aw_windows_hostname_override | default('') | string | length) > 0 %}
           $params.AwHostname = "{{ aw_windows_hostname_override }}"
