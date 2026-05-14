@@ -8,6 +8,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
+from case_rules import is_self_test_case
 from case_schema import CaseCommentCreate, CaseCreate, CaseHayabusaLink, CaseUpdate
 from case_storage import CaseStorage
 
@@ -30,6 +31,8 @@ def health() -> dict[str, Any]:
 
 @APP.post("/api/0/dlp/cases")
 def create_case(payload: CaseCreate) -> dict[str, Any]:
+    if is_self_test_case(payload.incident_id, payload.title):
+        raise HTTPException(status_code=422, detail="self_test cases are not allowed")
     return STORE.create_case(payload.model_dump(exclude_none=True), actor="api")
 
 

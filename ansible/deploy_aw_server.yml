@@ -532,6 +532,7 @@
             mode: "0644"
           loop:
             - case_service.py
+            - case_rules.py
             - case_schema.py
             - case_storage.py
             - evidence_chain.py

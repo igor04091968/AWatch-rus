@@ -127,6 +127,17 @@ class CaseStorage:
             )
             evidence_digest = normalized_evidence.get("latest_sha256") or evidence_sha256(payload.get("evidence"))
         with self.conn() as c:
+            existing = c.execute(
+                """
+                SELECT * FROM cases
+                WHERE incident_id = ? AND COALESCE(host, '') = COALESCE(?, '')
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (payload["incident_id"], payload.get("host")),
+            ).fetchone()
+            if existing:
+                return self._to_case_dict(existing)
             cur = c.execute(
                 """
                 INSERT INTO cases (

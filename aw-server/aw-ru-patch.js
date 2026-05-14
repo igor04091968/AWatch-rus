@@ -936,9 +936,10 @@
     const hideSuppressed = center.querySelector("[data-aw-ru-hide-suppressed]") && center.querySelector("[data-aw-ru-hide-suppressed]").checked;
     const rows = [];
     for (const event of state.events) {
+      const data = event.data || {};
+      if (String(data.signalType || "").toLowerCase() === "self_test") continue;
       const matchedRule = state.activeRules.find(function (rule) { return ruleMatchesEvent(rule, event); }) || null;
       if (hideSuppressed && matchedRule) continue;
-      const data = event.data || {};
       const eventKey = buildDlpKey(event);
       rows.push(
         '<tr class="aw-ru-dlp-row' + (matchedRule ? ' aw-ru-dlp-muted' : '') + '" data-aw-ru-dlp-key="' + escapeHtml(eventKey) + '">' +
@@ -1051,6 +1052,9 @@
 
   async function createCaseFromEvent(host, event, row) {
     const data = event.data || {};
+    if (String(data.signalType || "").toLowerCase() === "self_test") {
+      throw new Error("self_test не должен превращаться в кейс");
+    }
     const verdict = row.querySelector("[data-aw-ru-dlp-verdict]").value;
     const category = row.querySelector("[data-aw-ru-dlp-category]").value.trim();
     const comment = row.querySelector("[data-aw-ru-dlp-comment]").value.trim();

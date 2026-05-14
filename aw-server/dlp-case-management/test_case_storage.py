@@ -46,6 +46,22 @@ class CaseStorageHayabusaLinkTest(unittest.TestCase):
             audit = storage.list_audit(int(created["id"]))
             self.assertTrue(any(row.get("action") == "link_hayabusa" for row in audit))
 
+    def test_create_case_deduplicates_by_incident_and_host(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cases.db"
+            storage = CaseStorage(db_path)
+            payload = {
+                "incident_id": "2026-05-14T17:00:52.186Z|self_test|Администратор|||",
+                "host": "SHARKON2025",
+                "title": "DLP self_test · Администратор",
+                "severity": "medium",
+            }
+            created = storage.create_case(payload, actor="test")
+            duplicate = storage.create_case(payload, actor="test")
+            self.assertEqual(created["id"], duplicate["id"])
+            cases = storage.list_cases(host="SHARKON2025", limit=10)
+            self.assertEqual(len(cases), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
