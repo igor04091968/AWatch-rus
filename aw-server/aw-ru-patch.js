@@ -1581,6 +1581,9 @@
   let applyPatchScheduled = false;
   let networkPatchesInstalled = false;
   let dlpOverlayFailureCount = 0;
+  let applyPatchInFlight = false;
+  let observerAttached = false;
+  let staticPatchRouteKey = "";
 
   function getTrendsHostFromSettings(settings) {
     if (!settings || typeof settings !== "object") return "";
@@ -1818,38 +1821,63 @@
     });
   }
 
+  function detachObserver() {
+    if (!observerAttached) return;
+    observer.disconnect();
+    observerAttached = false;
+  }
+
+  function attachObserver() {
+    if (observerAttached || !document.body) return;
+    observer.observe(document.body, { childList: true, subtree: true });
+    observerAttached = true;
+  }
+
   function applyPatch() {
-    enforceSafeActivityViewForPveHost();
-    ensureSettingsHost();
-    ensureHostGroupsData().catch(function () {});
-    normalizeCategoryBuilderUnknownHostRefs();
-    installCategoryBuilderNetworkPatch();
-    injectStyles();
-    walk(document.body);
-    translateAttributes(document.body);
-    hideNoiseNavigation(document.body);
-    patchActivityHeading(document.body);
-    patchCategoryBuilderHostLabel(document.body);
-    injectPveAuditCenter(document.body);
-    injectDlpNavigation(document.body);
-    if (isDlpSignalBucketRoute() && dlpOverlayFailureCount === 0) {
-      try {
-        injectDlpReviewCenter(document.body);
-      } catch (error) {
-        dlpOverlayFailureCount += 1;
-        const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
-        if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+    if (applyPatchInFlight || !document.body) return;
+    applyPatchInFlight = true;
+    detachObserver();
+    try {
+      const routeKey = window.location.hash || "#";
+      const routeChanged = routeKey !== staticPatchRouteKey;
+      enforceSafeActivityViewForPveHost();
+      ensureSettingsHost();
+      ensureHostGroupsData().catch(function () {});
+      normalizeCategoryBuilderUnknownHostRefs();
+      installCategoryBuilderNetworkPatch();
+      injectStyles();
+      if (routeChanged) {
+        walk(document.body);
+        translateAttributes(document.body);
+        hideNoiseNavigation(document.body);
+        patchActivityHeading(document.body);
+        patchCategoryBuilderHostLabel(document.body);
+        staticPatchRouteKey = routeKey;
       }
-    } else if (!isDlpSignalBucketRoute()) {
-      injectDlpReviewCenter(document.body);
+      injectPveAuditCenter(document.body);
+      injectDlpNavigation(document.body);
+      if (isDlpSignalBucketRoute() && dlpOverlayFailureCount === 0) {
+        try {
+          injectDlpReviewCenter(document.body);
+        } catch (error) {
+          dlpOverlayFailureCount += 1;
+          const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
+          if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+        }
+      } else if (!isDlpSignalBucketRoute()) {
+        injectDlpReviewCenter(document.body);
+      }
+      injectDlpAlertsCenter(document.body);
+      injectHostGroupsCenter(document.body).catch(function () {});
+      redirectBareTrendsRoute();
+    } finally {
+      applyPatchInFlight = false;
+      attachObserver();
     }
-    injectDlpAlertsCenter(document.body);
-    injectHostGroupsCenter(document.body).catch(function () {});
-    redirectBareTrendsRoute();
   }
 
   function scheduleApplyPatch() {
-    if (applyPatchScheduled) return;
+    if (applyPatchScheduled || applyPatchInFlight) return;
     applyPatchScheduled = true;
     window.setTimeout(function () {
       applyPatchScheduled = false;
@@ -1858,15 +1886,17 @@
   }
 
   const observer = new MutationObserver(function () {
+    if (applyPatchInFlight) return;
     scheduleApplyPatch();
   });
 
   window.addEventListener("load", function () {
     applyPatch();
-    observer.observe(document.body, { childList: true, subtree: true });
+    attachObserver();
   });
   window.addEventListener("hashchange", function () {
     redirectBareTrendsRoute();
+    staticPatchRouteKey = "";
     scheduleApplyPatch();
   });
 })();

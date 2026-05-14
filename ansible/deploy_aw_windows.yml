@@ -100,6 +100,7 @@
         - email-outbound-collector.ps1
         - file-operations-collector.ps1
         - worktime-session-collector.ps1
+        - export-evtx-for-hayabusa.ps1
         - migrate-awatch-rus-paths.ps1
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1

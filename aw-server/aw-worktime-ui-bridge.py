@@ -16,8 +16,8 @@ TIMEOUT = float(os.environ.get("AW_WORKTIME_UI_BRIDGE_TIMEOUT", "20"))
 
 
 SESSIONS_BUCKET = f"aw-worktime-sessions_{HOST}"
-AFK_BUCKET = f"aw-watcher-afk_{HOST}"
-WINDOW_BUCKET = f"aw-watcher-window_{HOST}"
+AFK_BUCKET = f"aw-rdp-afk_{HOST}"
+WINDOW_BUCKET = f"aw-rdp-window_{HOST}"
 
 
 def _req(method: str, path: str, payload=None):

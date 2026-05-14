@@ -27,7 +27,7 @@ need_heal="$("$PYTHON_BIN" - <<'PY'
 import json, urllib.request, datetime, os, sys
 AW=os.environ.get("AW_URL","http://127.0.0.1:5600")
 host=os.environ.get("HOST","SHARKON2025")
-bucket=f"aw-watcher-window_{host}"
+bucket=f"aw-rdp-window_{host}"
 msk=datetime.timezone(datetime.timedelta(hours=3))
 start=datetime.datetime.now(msk).replace(hour=0,minute=0,second=0,microsecond=0).astimezone(datetime.timezone.utc)
 
@@ -75,8 +75,8 @@ import json, urllib.request, datetime, os
 AW=os.environ.get("AW_URL","http://127.0.0.1:5600")
 host=os.environ.get("HOST","SHARKON2025")
 sb=f"aw-worktime-sessions_{host}"
-afk=f"aw-watcher-afk_{host}"
-win=f"aw-watcher-window_{host}"
+afk=f"aw-rdp-afk_{host}"
+win=f"aw-rdp-window_{host}"
 msk=datetime.timezone(datetime.timedelta(hours=3))
 start=datetime.datetime.now(msk).replace(hour=0,minute=0,second=0,microsecond=0).astimezone(datetime.timezone.utc)
 
