@@ -30,10 +30,5 @@
       { "type": "category_tree", "size": 3, "props": {} },
       { "type": "top_apps", "size": 3, "props": {} }
     ]
-  },
-  {
-    "id": "pve_audit",
-    "name": "PVE Audit",
-    "elements": []
   }
 ]

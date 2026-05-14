@@ -382,15 +382,23 @@
 
   function enforceSafeActivityViewForPveHost() {
     const hash = window.location.hash || "";
-    const match = hash.match(/^#\/activity\/([^/]+)\/day\/([^/]+)\/view\/([^/?#]+)/i);
+    const match = hash.match(/^#\/activity\/([^/]+)(?:\/day\/([^/]+))?\/view\/([^/?#]+)/i);
     if (!match) return;
     const host = decodeURIComponent(match[1] || "");
-    const day = decodeURIComponent(match[2] || "");
+    const day = match[2] ? decodeURIComponent(match[2]) : "";
     const viewId = decodeURIComponent(match[3] || "");
-    if (!isPveLikeHost(host)) return;
-    const safeHash = "#/activity/" + encodeURIComponent(host) + "/day/" + encodeURIComponent(day) + "/view/" + encodeURIComponent("pve_audit");
-    if (safeHash !== hash && !/^pve_audit$/i.test(viewId)) {
-      window.location.replace(safeHash);
+    const prefix = day
+      ? "#/activity/" + encodeURIComponent(host) + "/day/" + encodeURIComponent(day) + "/view/"
+      : "#/activity/" + encodeURIComponent(host) + "/view/";
+    if (isPveLikeHost(host)) {
+      const safeHash = prefix + encodeURIComponent("pve_audit");
+      if (safeHash !== hash && !/^pve_audit$/i.test(viewId)) {
+        window.location.replace(safeHash);
+      }
+      return;
+    }
+    if (/^pve_audit$/i.test(viewId)) {
+      window.location.replace(prefix + encodeURIComponent("summary"));
     }
   }
 
@@ -1542,6 +1550,16 @@
     }
   }
 
+  function hidePveAuditTabForRegularHost(root) {
+    const hash = window.location.hash || "";
+    const match = hash.match(/^#\/activity\/([^/]+)/i);
+    const host = match && match[1] ? decodeURIComponent(match[1]) : "";
+    if (!host || isPveLikeHost(host)) return;
+    Array.from(root.querySelectorAll('a[href*="/view/pve_audit"]')).forEach(function (link) {
+      link.style.display = "none";
+    });
+  }
+
   function injectDlpAlertsCenter(root) {
     if (!isAlertsRoute()) return;
     const host = window.__awRuPatchSettingsHost || getCurrentHostFromHash();
@@ -1578,6 +1596,10 @@
       center.setAttribute("data-aw-ru-loaded", "1");
       refreshDlpAlertsCenter(center, host);
     }
+    Array.from(heading.parentElement.children).forEach(function (child) {
+      if (child === heading || child === center) return;
+      child.style.display = "none";
+    });
   }
 
   let trendsRedirectInFlight = false;
@@ -1646,6 +1668,9 @@
       .finally(function () {
         settingsHostFetchInFlight = false;
         injectDlpNavigation(document.body);
+        if (isAlertsRoute()) {
+          scheduleApplyPatch();
+        }
       });
   }
 
@@ -1854,6 +1879,7 @@
         walk(document.body);
         translateAttributes(document.body);
         hideNoiseNavigation(document.body);
+        hidePveAuditTabForRegularHost(document.body);
         patchActivityHeading(document.body);
         patchCategoryBuilderHostLabel(document.body);
         staticPatchRouteKey = routeKey;

@@ -809,7 +809,20 @@
           ansible.builtin.assert:
             that:
               - aw_webui_ru_index.stat.exists
+              - (aw_webui_ru_index.stat.size | default(0) | int) > 0
             fail_msg: "Не найден index.html WebUI для применения RU patch."
+
+        - name: Проверить, что index.html не опустел после применения RU patch
+          ansible.builtin.stat:
+            path: "{{ aw_server_webui_dir }}/index.html"
+          register: aw_webui_ru_index_after_patch
+
+        - name: Подтвердить, что index.html остался непустым
+          ansible.builtin.assert:
+            that:
+              - aw_webui_ru_index_after_patch.stat.exists
+              - (aw_webui_ru_index_after_patch.stat.size | default(0) | int) > 0
+            fail_msg: "index.html WebUI пуст после RU patch."
 
         - name: Удалить старые теги RU patch из index.html
           ansible.builtin.replace:

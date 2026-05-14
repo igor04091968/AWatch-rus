@@ -37,6 +37,17 @@ CATEGORY_HELPER_REPLACEMENT='hostname:t.hostnameChoices.filter((function(t){retu
 [[ -f "$HOST_GROUPS_SRC" ]] || { echo "missing $HOST_GROUPS_SRC" >&2; exit 1; }
 [[ -f "$INDEX_HTML" ]] || { echo "missing $INDEX_HTML" >&2; exit 1; }
 
+if [[ ! -s "$INDEX_HTML" ]]; then
+  latest_nonempty_backup="$(find "$WEBUI_DIR" -maxdepth 1 -type f -name 'index.html.bak.*' -size +0c | sort | tail -n 1 || true)"
+  if [[ -n "$latest_nonempty_backup" ]]; then
+    cp "$latest_nonempty_backup" "$INDEX_HTML"
+    echo "restored empty index.html from backup: $latest_nonempty_backup"
+  else
+    echo "index.html is empty and no non-empty backup exists: $INDEX_HTML" >&2
+    exit 1
+  fi
+fi
+
 install -d "$WEBUI_DIR/js"
 install -m 0644 "$PATCH_JS_SRC" "$PATCH_TARGET"
 install -m 0644 "$SW_CLEANUP_SRC" "$SW_TARGET"
@@ -131,6 +142,11 @@ if 'id="aw-report-links"' not in content:
 path.write_text(content)
 PY
 cp "$SW_CLEANUP_SRC" "$SERVICE_WORKER"
+
+if [[ ! -s "$INDEX_HTML" ]]; then
+  echo "index.html became empty after RU patch: $INDEX_HTML" >&2
+  exit 1
+fi
 
 trends_chunk="$(grep -Rsl "$TRENDS_NEEDLE" "$WEBUI_DIR/js"/*.js 2>/dev/null | head -n 1 || true)"
 if [[ -n "$trends_chunk" ]]; then
