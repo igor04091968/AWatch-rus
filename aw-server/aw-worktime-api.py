@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import csv
+import html
 import io
 import importlib.util
 import json
@@ -9,7 +10,7 @@ import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from zoneinfo import ZoneInfo
 
 
@@ -52,6 +53,20 @@ def to_iso_utc(dt):
 def hhmm(total_seconds):
     total_seconds = max(0, int(total_seconds))
     return "%02d:%02d" % (total_seconds // 3600, (total_seconds % 3600) // 60)
+
+
+def safe_slug(value):
+    text = str(value or "").strip().lower()
+    slug = []
+    for char in text:
+        if char.isalnum():
+            slug.append(char)
+        else:
+            slug.append("-")
+    normalized = "".join(slug).strip("-")
+    while "--" in normalized:
+        normalized = normalized.replace("--", "-")
+    return normalized or "user"
 
 
 def clamp_seconds(value, fallback=DEFAULT_SAMPLE_SECONDS):
@@ -227,6 +242,33 @@ def aggregate_rows(events, start, end, host):
     return rows
 
 
+def build_report_summary(rows):
+    if not rows:
+        return {
+            "users_count": 0,
+            "total_active_seconds": 0,
+            "total_active_hhmm": "00:00",
+            "first_activity": "",
+            "last_activity": "",
+            "top_user": "",
+            "top_user_active_hhmm": "00:00",
+        }
+
+    total_active_seconds = sum(int(row.get("active_seconds", 0) or 0) for row in rows)
+    first_values = [row.get("first_activity") for row in rows if row.get("first_activity")]
+    last_values = [row.get("last_activity") for row in rows if row.get("last_activity")]
+    top_row = max(rows, key=lambda row: int(row.get("active_seconds", 0) or 0))
+    return {
+        "users_count": len(rows),
+        "total_active_seconds": total_active_seconds,
+        "total_active_hhmm": hhmm(total_active_seconds),
+        "first_activity": min(first_values) if first_values else "",
+        "last_activity": max(last_values) if last_values else "",
+        "top_user": top_row.get("user", ""),
+        "top_user_active_hhmm": top_row.get("active_hhmm", "00:00"),
+    }
+
+
 def report_for_date(host, report_date):
     start_local = datetime(report_date.year, report_date.month, report_date.day, tzinfo=REPORT_TZ)
     end_local = start_local + timedelta(days=1) - timedelta(seconds=1)
@@ -262,23 +304,70 @@ def render_html(rows, host, report_date, selected_day=None):
     date_local = report_date.strftime("%Y-%m-%d")
     day_query = f"&day={selected_day}" if selected_day in {"today", "yesterday"} else ""
     date_query = f"&date={date_local}" if not day_query else ""
+    summary = build_report_summary(rows)
+    today_url = "/reports/worktime/today?" + urlencode({"format": "html", "host": resolve_host(host), "day": "today"})
+    yesterday_url = "/reports/worktime/today?" + urlencode({"format": "html", "host": resolve_host(host), "day": "yesterday"})
+    csv_url = "/reports/worktime/today?" + urlencode({"format": "csv", "host": resolve_host(host), **({"day": selected_day} if selected_day in {"today", "yesterday"} else {"date": date_local})})
+    json_url = "/reports/worktime/today?" + urlencode({"host": resolve_host(host), **({"day": selected_day} if selected_day in {"today", "yesterday"} else {"date": date_local})})
+    form_action = "/reports/worktime/today"
+    cards = [
+        ("Users", str(summary["users_count"])),
+        ("Total active", summary["total_active_hhmm"]),
+        ("Top user", f"{summary['top_user']} · {summary['top_user_active_hhmm']}" if summary["top_user"] else "n/a"),
+        ("Range", f"{summary['first_activity']} -> {summary['last_activity']}" if summary["first_activity"] else "no activity"),
+    ]
     trs = []
+    detail_cards = []
     for row in rows:
+        user_slug = safe_slug(row["user"])
+        active_seconds = int(row.get("active_seconds", 0) or 0)
+        utilization = 0.0
+        day_total = 24 * 3600
+        if day_total > 0:
+            utilization = round((active_seconds / day_total) * 100.0, 2)
         trs.append(
             "<tr>"
-            f"<td>{row['user']}</td>"
-            f"<td>{row['user_id']}</td>"
+            f"<td><a class='user-link' href='#{user_slug}'>{html.escape(row['user'])}</a></td>"
+            f"<td>{html.escape(row['user_id'])}</td>"
             f"<td class='good'>{row['active_hhmm']}</td>"
             f"<td>{row['active_seconds']}</td>"
-            f"<td>{row['first_activity']}</td>"
-            f"<td>{row['last_activity']}</td>"
+            f"<td>{html.escape(row['first_activity'])}</td>"
+            f"<td>{html.escape(row['last_activity'])}</td>"
             f"<td>{row['idle_seconds']}</td>"
             f"<td>{row['sessions_count']}</td>"
             f"<td>{row['samples_count']}</td>"
             "</tr>"
         )
+        detail_cards.append(
+            "<article class='detail-card' id='{slug}'>"
+            "<div class='detail-head'>"
+            "<h3>{user}</h3>"
+            "<span class='badge'>{active}</span>"
+            "</div>"
+            "<div class='detail-grid'>"
+            "<div><span>User ID</span><strong>{user_id}</strong></div>"
+            "<div><span>Utilization</span><strong>{utilization}%</strong></div>"
+            "<div><span>First activity</span><strong>{first_activity}</strong></div>"
+            "<div><span>Last activity</span><strong>{last_activity}</strong></div>"
+            "<div><span>Sessions</span><strong>{sessions}</strong></div>"
+            "<div><span>Active samples</span><strong>{active_samples} / {samples}</strong></div>"
+            "</div>"
+            "</article>"
+        .format(
+            slug=user_slug,
+            user=html.escape(row["user"]),
+            active=html.escape(row["active_hhmm"]),
+            user_id=html.escape(row["user_id"]),
+            utilization=utilization,
+            first_activity=html.escape(row["first_activity"] or "n/a"),
+            last_activity=html.escape(row["last_activity"] or "n/a"),
+            sessions=row["sessions_count"],
+            active_samples=row["active_samples"],
+            samples=row["samples_count"],
+        ))
     if not trs:
         trs.append('<tr><td colspan="9">No data for today yet.</td></tr>')
+        detail_cards.append("<article class='detail-card empty'><h3>No per-user activity for selected date.</h3></article>")
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -324,6 +413,59 @@ def render_html(rows, host, report_date, selected_day=None):
       padding: 8px 12px;
       border-radius: 999px;
     }}
+    .toolbar {{
+      margin-top: 16px;
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }}
+    .toolbar form {{
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }}
+    .toolbar input, .toolbar button {{
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.22);
+      background: rgba(255,255,255,.14);
+      color: #fff;
+      padding: 9px 12px;
+      font: inherit;
+    }}
+    .toolbar button {{
+      cursor: pointer;
+      font-weight: 600;
+    }}
+    .toolbar input::-webkit-calendar-picker-indicator {{ filter: invert(1); }}
+    .summary-grid {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }}
+    .summary-card {{
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 14px 16px;
+      min-height: 96px;
+    }}
+    .summary-card span {{
+      display: block;
+      color: rgba(255,255,255,.78);
+      font-size: 12px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }}
+    .summary-card strong {{
+      display: block;
+      font-size: 22px;
+      line-height: 1.25;
+      word-break: break-word;
+    }}
     .card {{
       margin-top: 18px;
       background: var(--card);
@@ -337,11 +479,74 @@ def render_html(rows, host, report_date, selected_day=None):
     th {{ background: #eef4fb; color: var(--muted); font-weight: 600; position: sticky; top: 0; }}
     tr:nth-child(even) td {{ background: rgba(148,163,184,.06); }}
     .good {{ color: var(--accent); font-weight: 700; }}
+    .user-link {{ color: #0f4db3; text-decoration: none; font-weight: 600; }}
+    .section-title {{
+      margin: 0;
+      padding: 18px 18px 0;
+      color: var(--text);
+      font-size: 18px;
+    }}
+    .details-wrap {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      padding: 18px;
+    }}
+    .detail-card {{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      background: linear-gradient(180deg, rgba(238,244,251,.7), #fff);
+      scroll-margin-top: 16px;
+    }}
+    .detail-card.empty {{
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--muted);
+    }}
+    .detail-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+    }}
+    .detail-head h3 {{
+      margin: 0;
+      font-size: 18px;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 6px 10px;
+      background: #d1fae5;
+      color: #065f46;
+      border-radius: 999px;
+      font-weight: 700;
+      font-size: 12px;
+    }}
+    .detail-grid {{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }}
+    .detail-grid span {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }}
+    .detail-grid strong {{
+      display: block;
+      word-break: break-word;
+    }}
     @media (max-width: 900px) {{
       .wrap {{ padding: 14px; }}
       .hero h1 {{ font-size: 22px; }}
+      .summary-grid {{ grid-template-columns: 1fr; }}
       .card {{ overflow-x: auto; }}
       table {{ min-width: 1080px; }}
+      .details-wrap {{ grid-template-columns: 1fr; }}
+      .detail-grid {{ grid-template-columns: 1fr; }}
     }}
   </style>
 </head>
@@ -351,13 +556,25 @@ def render_html(rows, host, report_date, selected_day=None):
       <h1>RDP Worktime Report</h1>
       <div class="meta">Host: {resolve_host(host)} · Date: {date_local} · Timezone: {REPORT_TZ} · Generated UTC: {generated}</div>
       <div class="actions">
-        <a href="/reports/worktime/today?format=html&host={resolve_host(host)}&day=today">Today</a>
-        <a href="/reports/worktime/today?format=html&host={resolve_host(host)}&day=yesterday">Yesterday</a>
-        <a href="/reports/worktime/today?format=csv&host={resolve_host(host)}{day_query}{date_query}">Download CSV</a>
-        <a href="/reports/worktime/today?host={resolve_host(host)}{day_query}{date_query}">View JSON</a>
+        <a href="{today_url}">Today</a>
+        <a href="{yesterday_url}">Yesterday</a>
+        <a href="{csv_url}">Download CSV</a>
+        <a href="{json_url}">View JSON</a>
+      </div>
+      <div class="toolbar">
+        <form method="get" action="{form_action}">
+          <input type="hidden" name="format" value="html">
+          <input type="hidden" name="host" value="{html.escape(resolve_host(host))}">
+          <input type="date" name="date" value="{date_local}">
+          <button type="submit">Open Date</button>
+        </form>
+      </div>
+      <div class="summary-grid">
+        {''.join(f"<div class='summary-card'><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>" for label, value in cards)}
       </div>
     </section>
     <section class="card">
+      <h2 class="section-title">Per-user table</h2>
       <table>
         <thead>
           <tr>
@@ -376,6 +593,12 @@ def render_html(rows, host, report_date, selected_day=None):
           {''.join(trs)}
         </tbody>
       </table>
+    </section>
+    <section class="card">
+      <h2 class="section-title">Per-user details</h2>
+      <div class="details-wrap">
+        {''.join(detail_cards)}
+      </div>
     </section>
   </div>
 </body>
