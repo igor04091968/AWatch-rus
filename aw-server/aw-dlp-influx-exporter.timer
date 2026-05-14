@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW DLP InfluxDB exporter every 10 minutes
+
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Unit=aw-dlp-influx-exporter.service
+
+[Install]
+WantedBy=timers.target

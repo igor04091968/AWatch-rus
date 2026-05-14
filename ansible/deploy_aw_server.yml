@@ -320,6 +320,16 @@
               AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default('SHARKON2025') }}
               AW_WORKTIME_INFLUX_DAYS={{ aw_worktime_influx_days | default('today,yesterday') }}
               AW_WORKTIME_INFLUX_TOKEN={{ aw_worktime_influx_token | default('') }}
+              AW_DLP_INFLUX_ENABLED={{ 'true' if (aw_dlp_influx_enabled | default(false) | bool) else 'false' }}
+              AW_DLP_INFLUX_URL={{ aw_dlp_influx_url | default('') }}
+              AW_DLP_INFLUX_ORG={{ aw_dlp_influx_org | default('proxmox') }}
+              AW_DLP_INFLUX_BUCKET={{ aw_dlp_influx_bucket | default('aw_metrics') }}
+              AW_DLP_INFLUX_HOSTS={{ aw_dlp_influx_hosts | default('SHARKON2025') }}
+              AW_DLP_INFLUX_LOOKBACK_DAYS={{ aw_dlp_influx_lookback_days | default(30) }}
+              AW_DLP_INFLUX_EVENT_LIMIT={{ aw_dlp_influx_event_limit | default(2000) }}
+              AW_DLP_INFLUX_TOKEN={{ aw_dlp_influx_token | default('') }}
+              AW_DLP_AW_API_BASE=http://127.0.0.1:5600/api/0
+              AW_DLP_CASE_API_BASE=http://127.0.0.1:5602/api/0/dlp/cases
 
         - name: Создать каталог DLP policy engine
           ansible.builtin.file:
@@ -668,6 +678,15 @@
             mode: "0755"
           when: aw_worktime_influx_enabled | default(false) | bool
 
+        - name: Установить скрипт AW DLP Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-dlp-influx-exporter.py"
+            dest: /usr/local/bin/aw-dlp-influx-exporter.py
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_dlp_influx_enabled | default(false) | bool
+
         - name: Установить скрипт aw-health-check
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/health-check.sh"
@@ -733,6 +752,24 @@
             group: root
             mode: "0644"
           when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Установить systemd unit AW DLP Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-dlp-influx-exporter.service"
+            dest: /etc/systemd/system/aw-dlp-influx-exporter.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_influx_enabled | default(false) | bool
+
+        - name: Установить systemd timer AW DLP Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-dlp-influx-exporter.timer"
+            dest: /etc/systemd/system/aw-dlp-influx-exporter.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_dlp_influx_enabled | default(false) | bool
 
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
@@ -837,6 +874,20 @@
             state: started
           failed_when: false
           when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Включить и перезапустить AW DLP Influx exporter timer
+          ansible.builtin.systemd:
+            name: aw-dlp-influx-exporter.timer
+            enabled: true
+            state: restarted
+          when: aw_dlp_influx_enabled | default(false) | bool
+
+        - name: Выполнить разовый прогон AW DLP Influx exporter
+          ansible.builtin.systemd:
+            name: aw-dlp-influx-exporter.service
+            state: started
+          failed_when: false
+          when: aw_dlp_influx_enabled | default(false) | bool
 
         - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
           ansible.builtin.command:

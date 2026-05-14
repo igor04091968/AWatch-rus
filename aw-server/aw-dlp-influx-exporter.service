@@ -1,0 +1,14 @@
+[Unit]
+Description=AW DLP InfluxDB exporter
+After=network-online.target aw-dlp-case-management.service
+Wants=network-online.target aw-dlp-case-management.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/activitywatch/aw-server.env
+ExecStart=/usr/bin/python3 /usr/local/bin/aw-dlp-influx-exporter.py
+User=activitywatch
+Group=activitywatch
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-dlp-influx-exporter

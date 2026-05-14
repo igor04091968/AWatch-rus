@@ -16,6 +16,13 @@ aw_worktime_influx_org: "proxmox"
 aw_worktime_influx_bucket: "aw_metrics"
 aw_worktime_influx_hosts: "SHARKON2025"
 aw_worktime_influx_days: "today,yesterday"
+aw_dlp_influx_enabled: false
+aw_dlp_influx_url: "http://10.10.10.10:8086"
+aw_dlp_influx_org: "proxmox"
+aw_dlp_influx_bucket: "aw_metrics"
+aw_dlp_influx_hosts: "SHARKON2025"
+aw_dlp_influx_lookback_days: 30
+aw_dlp_influx_event_limit: 2000
 
 aw_repo_root: "/mnt/usb_hdd2/Projects/ActivityWatch-Russian"
 
