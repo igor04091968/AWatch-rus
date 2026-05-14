@@ -10,6 +10,12 @@ aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
 aw_worktime_report_base: "http://10.10.10.13:5610"
 aw_worktime_timezone: "Europe/Moscow"
+aw_worktime_influx_enabled: false
+aw_worktime_influx_url: "http://10.10.10.10:8086"
+aw_worktime_influx_org: "proxmox"
+aw_worktime_influx_bucket: "aw_metrics"
+aw_worktime_influx_hosts: "SHARKON2025"
+aw_worktime_influx_days: "today,yesterday"
 
 aw_repo_root: "/mnt/usb_hdd2/Projects/ActivityWatch-Russian"
 

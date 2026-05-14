@@ -313,6 +313,13 @@
               AW_SERVER_URL=http://127.0.0.1:5600
               XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
               XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
+              AW_WORKTIME_INFLUX_ENABLED={{ 'true' if (aw_worktime_influx_enabled | default(false) | bool) else 'false' }}
+              AW_WORKTIME_INFLUX_URL={{ aw_worktime_influx_url | default('') }}
+              AW_WORKTIME_INFLUX_ORG={{ aw_worktime_influx_org | default('proxmox') }}
+              AW_WORKTIME_INFLUX_BUCKET={{ aw_worktime_influx_bucket | default('aw_metrics') }}
+              AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default('SHARKON2025') }}
+              AW_WORKTIME_INFLUX_DAYS={{ aw_worktime_influx_days | default('today,yesterday') }}
+              AW_WORKTIME_INFLUX_TOKEN={{ aw_worktime_influx_token | default('') }}
 
         - name: Создать каталог DLP policy engine
           ansible.builtin.file:
@@ -652,6 +659,15 @@
             group: root
             mode: "0755"
 
+        - name: Установить скрипт AW worktime Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-influx-exporter.py"
+            dest: /usr/local/bin/aw-worktime-influx-exporter.py
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_influx_enabled | default(false) | bool
+
         - name: Установить скрипт aw-health-check
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/health-check.sh"
@@ -699,6 +715,24 @@
             owner: root
             group: root
             mode: "0644"
+
+        - name: Установить systemd unit AW worktime Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-influx-exporter.service"
+            dest: /etc/systemd/system/aw-worktime-influx-exporter.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Установить systemd timer AW worktime Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-influx-exporter.timer"
+            dest: /etc/systemd/system/aw-worktime-influx-exporter.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_worktime_influx_enabled | default(false) | bool
 
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
@@ -789,6 +823,20 @@
             name: aw-worktime-autoheal.service
             state: started
           failed_when: false
+
+        - name: Включить и перезапустить AW worktime Influx exporter timer
+          ansible.builtin.systemd:
+            name: aw-worktime-influx-exporter.timer
+            enabled: true
+            state: restarted
+          when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Выполнить разовый прогон AW worktime Influx exporter
+          ansible.builtin.systemd:
+            name: aw-worktime-influx-exporter.service
+            state: started
+          failed_when: false
+          when: aw_worktime_influx_enabled | default(false) | bool
 
         - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
           ansible.builtin.command:

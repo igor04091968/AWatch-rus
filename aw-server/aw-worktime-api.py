@@ -99,6 +99,21 @@ def resolve_report_date(day=None, date_text=None):
     return now_local.date()
 
 
+def get_report_bounds(report_date):
+    start_local = datetime(report_date.year, report_date.month, report_date.day, tzinfo=REPORT_TZ)
+    end_local = start_local + timedelta(days=1) - timedelta(seconds=1)
+    start = start_local.astimezone(timezone.utc)
+    end = end_local.astimezone(timezone.utc)
+    end_exclusive = end + timedelta(seconds=1)
+    return {
+        "start_local": start_local,
+        "end_local": end_local,
+        "start": start,
+        "end": end,
+        "end_exclusive": end_exclusive,
+    }
+
+
 def _is_machine_user(user: str):
     u = (user or "").strip().lower()
     return u.endswith("$") or u in {"system", "localservice", "networkservice"}
@@ -169,7 +184,8 @@ def _merge_intervals(intervals):
     return merged
 
 
-def aggregate_rows(events, start, end, host):
+def _collect_user_rows(events, start, end, host):
+    end_exclusive = end + timedelta(seconds=1)
     by_user = {}
     by_identity = {}
 
@@ -212,10 +228,14 @@ def aggregate_rows(events, start, end, host):
             if active:
                 row["active_samples"] += 1
                 interval_start = sample["_ts"]
-                interval_end = min(sample["_ts"] + timedelta(seconds=sample_seconds), end + timedelta(seconds=1))
+                interval_end = min(sample["_ts"] + timedelta(seconds=sample_seconds), end_exclusive)
                 if interval_end > interval_start:
                     row["intervals"].append((interval_start, interval_end))
+    return by_user
 
+
+def aggregate_rows(events, start, end, host):
+    by_user = _collect_user_rows(events, start, end, host)
     rows = []
     full_range = int((end - start).total_seconds()) + 1
     for username in sorted(by_user):
@@ -240,6 +260,62 @@ def aggregate_rows(events, start, end, host):
             }
         )
     return rows
+
+
+def aggregate_hourly_rows(events, start, end, host):
+    by_user = _collect_user_rows(events, start, end, host)
+    rows = []
+    for username in sorted(by_user):
+        row = by_user[username]
+        merged = _merge_intervals(row["intervals"])
+        per_bucket = {}
+        for interval_start, interval_end in merged:
+            cursor = interval_start
+            while cursor < interval_end:
+                bucket_local = cursor.astimezone(REPORT_TZ).replace(minute=0, second=0, microsecond=0)
+                bucket_start = bucket_local.astimezone(timezone.utc)
+                bucket_end = (bucket_local + timedelta(hours=1)).astimezone(timezone.utc)
+                overlap_start = max(interval_start, bucket_start)
+                overlap_end = min(interval_end, bucket_end)
+                if overlap_end > overlap_start:
+                    key = bucket_start
+                    per_bucket[key] = per_bucket.get(key, 0) + int((overlap_end - overlap_start).total_seconds())
+                cursor = bucket_end
+
+        for bucket_start in sorted(per_bucket):
+            active_seconds = per_bucket[bucket_start]
+            if active_seconds <= 0:
+                continue
+            bucket_local = bucket_start.astimezone(REPORT_TZ)
+            rows.append(
+                {
+                    "user": row["user"],
+                    "user_id": row["user_id"],
+                    "bucket_start_utc": to_iso_utc(bucket_start),
+                    "bucket_start_local": bucket_local.isoformat(),
+                    "report_date": bucket_local.date().isoformat(),
+                    "hour_local": bucket_local.strftime("%H:00"),
+                    "active_seconds": active_seconds,
+                    "active_hhmm": hhmm(active_seconds),
+                }
+            )
+    return rows
+
+
+def fetch_events_for_date(host, report_date):
+    bounds = get_report_bounds(report_date)
+    bucket_id = get_sessions_bucket_id(host)
+    try:
+        get(f"{AW}/buckets/{bucket_id}")
+    except Exception:
+        log_warning(f"bucket lookup failed for host={host} bucket={bucket_id} aw_base={AW}")
+        return bounds, []
+    try:
+        events = get(f"{AW}/buckets/{bucket_id}/events?limit=50000")
+    except Exception:
+        log_warning(f"events fetch failed for host={host} bucket={bucket_id} aw_base={AW}")
+        return bounds, []
+    return bounds, events
 
 
 def build_report_summary(rows):
@@ -270,22 +346,8 @@ def build_report_summary(rows):
 
 
 def report_for_date(host, report_date):
-    start_local = datetime(report_date.year, report_date.month, report_date.day, tzinfo=REPORT_TZ)
-    end_local = start_local + timedelta(days=1) - timedelta(seconds=1)
-    start = start_local.astimezone(timezone.utc)
-    end = end_local.astimezone(timezone.utc)
-    bucket_id = get_sessions_bucket_id(host)
-    try:
-        get(f"{AW}/buckets/{bucket_id}")
-    except Exception:
-        log_warning(f"bucket lookup failed for host={host} bucket={bucket_id} aw_base={AW}")
-        return []
-    try:
-        events = get(f"{AW}/buckets/{bucket_id}/events?limit=50000")
-    except Exception:
-        log_warning(f"events fetch failed for host={host} bucket={bucket_id} aw_base={AW}")
-        return []
-    return aggregate_rows(events, start, end, host)
+    bounds, events = fetch_events_for_date(host, report_date)
+    return aggregate_rows(events, bounds["start"], bounds["end"], host)
 
 
 def report_today(host):

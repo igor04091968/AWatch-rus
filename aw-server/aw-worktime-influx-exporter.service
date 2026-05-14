@@ -1,0 +1,15 @@
+[Unit]
+Description=AW Worktime InfluxDB exporter
+After=network-online.target aw-worktime-api.service
+Wants=network-online.target aw-worktime-api.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/activitywatch/aw-server.env
+ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-influx-exporter.py
+User=activitywatch
+Group=activitywatch
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-worktime-influx-exporter
+

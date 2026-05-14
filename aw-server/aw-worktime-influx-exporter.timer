@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW Worktime InfluxDB exporter every 10 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+AccuracySec=1min
+Unit=aw-worktime-influx-exporter.service
+
+[Install]
+WantedBy=timers.target

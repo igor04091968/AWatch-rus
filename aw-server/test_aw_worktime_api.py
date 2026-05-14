@@ -71,3 +71,19 @@ def test_build_aw_api_base_accepts_root_and_api_urls():
     assert MODULE.build_aw_api_base("http://127.0.0.1:5600") == "http://127.0.0.1:5600/api/0"
     assert MODULE.build_aw_api_base("http://127.0.0.1:5600/") == "http://127.0.0.1:5600/api/0"
     assert MODULE.build_aw_api_base("http://127.0.0.1:5600/api/0") == "http://127.0.0.1:5600/api/0"
+
+
+def test_aggregate_hourly_rows_splits_interval_by_local_hour():
+    start = datetime(2026, 5, 14, 6, 0, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 5, 14, 8, 59, 59, tzinfo=timezone.utc)
+    rows = MODULE.aggregate_hourly_rows(
+        [
+            _event("2026-05-14T06:50:00Z", "user5", 4, True, sampleSeconds=1800),
+            _event("2026-05-14T07:20:00Z", "user5", 4, True, sampleSeconds=1800),
+        ],
+        start,
+        end,
+        "SHARKON2025",
+    )
+    assert [row["hour_local"] for row in rows] == ["09:00", "10:00"]
+    assert [row["active_seconds"] for row in rows] == [600, 3000]
