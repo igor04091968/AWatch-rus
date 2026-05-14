@@ -311,10 +311,10 @@ def render_html(rows, host, report_date, selected_day=None):
     json_url = "/reports/worktime/today?" + urlencode({"host": resolve_host(host), **({"day": selected_day} if selected_day in {"today", "yesterday"} else {"date": date_local})})
     form_action = "/reports/worktime/today"
     cards = [
-        ("Users", str(summary["users_count"])),
-        ("Total active", summary["total_active_hhmm"]),
-        ("Top user", f"{summary['top_user']} · {summary['top_user_active_hhmm']}" if summary["top_user"] else "n/a"),
-        ("Range", f"{summary['first_activity']} -> {summary['last_activity']}" if summary["first_activity"] else "no activity"),
+        ("Пользователи", str(summary["users_count"])),
+        ("Активное время", summary["total_active_hhmm"]),
+        ("Лидер дня", f"{summary['top_user']} · {summary['top_user_active_hhmm']}" if summary["top_user"] else "н/д"),
+        ("Диапазон", f"{summary['first_activity']} -> {summary['last_activity']}" if summary["first_activity"] else "нет активности"),
     ]
     trs = []
     detail_cards = []
@@ -345,12 +345,12 @@ def render_html(rows, host, report_date, selected_day=None):
             "<span class='badge'>{active}</span>"
             "</div>"
             "<div class='detail-grid'>"
-            "<div><span>User ID</span><strong>{user_id}</strong></div>"
-            "<div><span>Utilization</span><strong>{utilization}%</strong></div>"
-            "<div><span>First activity</span><strong>{first_activity}</strong></div>"
-            "<div><span>Last activity</span><strong>{last_activity}</strong></div>"
-            "<div><span>Sessions</span><strong>{sessions}</strong></div>"
-            "<div><span>Active samples</span><strong>{active_samples} / {samples}</strong></div>"
+            "<div><span>Пользователь</span><strong>{user_id}</strong></div>"
+            "<div><span>Загрузка</span><strong>{utilization}%</strong></div>"
+            "<div><span>Начало активности</span><strong>{first_activity}</strong></div>"
+            "<div><span>Конец активности</span><strong>{last_activity}</strong></div>"
+            "<div><span>Сессии</span><strong>{sessions}</strong></div>"
+            "<div><span>Активные сэмплы</span><strong>{active_samples} / {samples}</strong></div>"
             "</div>"
             "</article>"
         .format(
@@ -359,21 +359,21 @@ def render_html(rows, host, report_date, selected_day=None):
             active=html.escape(row["active_hhmm"]),
             user_id=html.escape(row["user_id"]),
             utilization=utilization,
-            first_activity=html.escape(row["first_activity"] or "n/a"),
-            last_activity=html.escape(row["last_activity"] or "n/a"),
+            first_activity=html.escape(row["first_activity"] or "н/д"),
+            last_activity=html.escape(row["last_activity"] or "н/д"),
             sessions=row["sessions_count"],
             active_samples=row["active_samples"],
             samples=row["samples_count"],
         ))
     if not trs:
-        trs.append('<tr><td colspan="9">No data for today yet.</td></tr>')
-        detail_cards.append("<article class='detail-card empty'><h3>No per-user activity for selected date.</h3></article>")
+        trs.append('<tr><td colspan="9">За выбранную дату данных пока нет.</td></tr>')
+        detail_cards.append("<article class='detail-card empty'><h3>За выбранную дату нет активности пользователей.</h3></article>")
     return f"""<!doctype html>
-<html lang="en">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AW-rus Worktime</title>
+  <title>AW-rus Отчёт по работе в RDP</title>
   <style>
     :root {{
       color-scheme: light;
@@ -553,20 +553,20 @@ def render_html(rows, host, report_date, selected_day=None):
 <body>
   <div class="wrap">
     <section class="hero">
-      <h1>RDP Worktime Report</h1>
-      <div class="meta">Host: {resolve_host(host)} · Date: {date_local} · Timezone: {REPORT_TZ} · Generated UTC: {generated}</div>
+      <h1>Отчёт по работе в RDP</h1>
+      <div class="meta">Хост: {resolve_host(host)} · Дата: {date_local} · Часовой пояс: {REPORT_TZ} · Сформировано UTC: {generated}</div>
       <div class="actions">
-        <a href="{today_url}">Today</a>
-        <a href="{yesterday_url}">Yesterday</a>
-        <a href="{csv_url}">Download CSV</a>
-        <a href="{json_url}">View JSON</a>
+        <a href="{today_url}">Сегодня</a>
+        <a href="{yesterday_url}">Вчера</a>
+        <a href="{csv_url}">Скачать CSV</a>
+        <a href="{json_url}">Открыть JSON</a>
       </div>
       <div class="toolbar">
         <form method="get" action="{form_action}">
           <input type="hidden" name="format" value="html">
           <input type="hidden" name="host" value="{html.escape(resolve_host(host))}">
           <input type="date" name="date" value="{date_local}">
-          <button type="submit">Open Date</button>
+          <button type="submit">Открыть дату</button>
         </form>
       </div>
       <div class="summary-grid">
@@ -574,19 +574,19 @@ def render_html(rows, host, report_date, selected_day=None):
       </div>
     </section>
     <section class="card">
-      <h2 class="section-title">Per-user table</h2>
+      <h2 class="section-title">Таблица по пользователям</h2>
       <table>
         <thead>
           <tr>
-            <th>User</th>
-            <th>User ID</th>
-            <th>Active</th>
-            <th>Active sec</th>
-            <th>First activity</th>
-            <th>Last activity</th>
-            <th>Idle sec</th>
-            <th>Sessions</th>
-            <th>Samples</th>
+            <th>Пользователь</th>
+            <th>Учётная запись</th>
+            <th>Активно</th>
+            <th>Активно, сек</th>
+            <th>Начало активности</th>
+            <th>Конец активности</th>
+            <th>Простой, сек</th>
+            <th>Сессии</th>
+            <th>Сэмплы</th>
           </tr>
         </thead>
         <tbody>
@@ -595,7 +595,7 @@ def render_html(rows, host, report_date, selected_day=None):
       </table>
     </section>
     <section class="card">
-      <h2 class="section-title">Per-user details</h2>
+      <h2 class="section-title">Детали по пользователям</h2>
       <div class="details-wrap">
         {''.join(detail_cards)}
       </div>

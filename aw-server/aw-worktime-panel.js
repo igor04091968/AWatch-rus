@@ -13,11 +13,11 @@
   if (!existing) return;
 
   existing.innerHTML =
-    'RDP report: ' +
+    'RDP отчёт: ' +
     '<a href="' + htmlUrl + '" style="color:#fcd34d" target="_blank">HTML</a> | ' +
     '<a href="' + csvUrl + '" style="color:#7dd3fc" target="_blank">CSV</a> | ' +
     '<a href="' + jsonUrl + '" style="color:#86efac" target="_blank">JSON</a> | ' +
-    '<a href="#" id="aw-report-toggle" style="color:#f9fafb">Panel</a>';
+    '<a href="#" id="aw-report-toggle" style="color:#f9fafb">Панель</a>';
 
   var panel = document.createElement("div");
   panel.id = "aw-report-panel";
@@ -38,12 +38,12 @@
 
   panel.innerHTML =
     '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:#0f172a;color:#fff;font:600 13px/1.2 sans-serif">' +
-    '<div>RDP Worktime Report</div>' +
+    '<div>Отчёт по работе в RDP</div>' +
     '<div style="display:flex;gap:12px;align-items:center">' +
-    '<a href="' + htmlUrl + '" target="_blank" style="color:#93c5fd;text-decoration:none">Open</a>' +
-    '<a href="#" id="aw-report-close" style="color:#fff;text-decoration:none">Close</a>' +
+    '<a href="' + htmlUrl + '" target="_blank" style="color:#93c5fd;text-decoration:none">Открыть</a>' +
+    '<a href="#" id="aw-report-close" style="color:#fff;text-decoration:none">Закрыть</a>' +
     "</div></div>" +
-    '<iframe src="' + htmlUrl + '" title="RDP Worktime Report" style="border:0;width:100%;height:calc(100% - 42px);background:#fff"></iframe>';
+    '<iframe src="' + htmlUrl + '" title="Отчёт по работе в RDP" style="border:0;width:100%;height:calc(100% - 42px);background:#fff"></iframe>';
 
   document.body.appendChild(panel);
 
