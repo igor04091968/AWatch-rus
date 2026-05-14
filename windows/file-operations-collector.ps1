@@ -143,9 +143,10 @@ function Flush-TransportQueue {
     if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return }
     $lock = Get-TransportQueueLock
     try {
-        $items = Read-TransportQueueItems
-        $script:TransportMetrics.queueDepth = $items.Count
-        if ($items.Count -eq 0) { return }
+        $items = @(Read-TransportQueueItems)
+        $itemCount = @($items).Count
+        $script:TransportMetrics.queueDepth = $itemCount
+        if ($itemCount -eq 0) { return }
 
         $left = New-Object System.Collections.Generic.List[object]
         $sent = 0
@@ -339,7 +340,16 @@ foreach ($path in $resolvedPaths) {
 Write-FileCollectorLog "Collector started. Waiting for events..."
 
 try {
-    $lastHealth = [datetime]::UtcNow.AddMinutes(-5)
+    try {
+        Send-CollectorHealthEvent
+        Write-FileCollectorLog "Initial collector_health heartbeat sent."
+    }
+    catch {
+        $script:TransportMetrics.sendFailures++
+        Write-FileCollectorLog ("Initial collector_health failed: {0}" -f $_.Exception.Message)
+    }
+
+    $lastHealth = [datetime]::UtcNow
     $backoffSeconds = 1
     while ($true) {
         try {
@@ -355,9 +365,11 @@ try {
         if ((New-TimeSpan -Start $lastHealth -End ([datetime]::UtcNow)).TotalSeconds -ge ([Math]::Max($PollSeconds * 3, 30))) {
             try {
                 Send-CollectorHealthEvent
+                Write-FileCollectorLog "Periodic collector_health heartbeat sent."
             }
             catch {
                 $script:TransportMetrics.sendFailures++
+                Write-FileCollectorLog ("Periodic collector_health failed: {0}" -f $_.Exception.Message)
             }
             $lastHealth = [datetime]::UtcNow
         }
