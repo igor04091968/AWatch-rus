@@ -266,6 +266,7 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 1,
+          "displayName": "${__field.labels.user}",
           "unit": "h"
         },
         "overrides": []
@@ -310,6 +311,7 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 1,
+          "displayName": "${__field.labels.user}",
           "unit": "h"
         },
         "overrides": []
@@ -360,6 +362,7 @@
             "showPoints": "never"
           },
           "decimals": 1,
+          "displayName": "Команда",
           "unit": "h"
         },
         "overrides": []
@@ -405,6 +408,7 @@
             "lineWidth": 2,
             "showPoints": "auto"
           },
+          "displayName": "${__field.labels.user}",
           "unit": "h"
         },
         "overrides": []
@@ -468,6 +472,23 @@
         },
         "showHeader": true
       },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {},
+            "indexByName": {
+              "Дата": 0,
+              "Пользователь": 1,
+              "Учётная_запись": 2,
+              "Часы": 3
+            },
+            "renameByName": {
+              "Учётная_запись": "Учётная запись"
+            }
+          }
+        }
+      ],
       "targets": [
         {
           "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"user\"])\n  |> last()\n  |> sort(columns:[\"report_date\",\"user\"], desc:true)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> keep(columns:[\"report_date\",\"user\",\"user_id\",\"_value\"])\n  |> rename(columns:{report_date:\"Дата\", user:\"Пользователь\", user_id:\"Учётная_запись\", _value:\"Часы\"})",
