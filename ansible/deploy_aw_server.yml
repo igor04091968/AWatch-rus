@@ -310,7 +310,7 @@
               AW_DLP_CASE_DB_PATH={{ aw_dlp_case_db_path }}
               AW_DLP_COMPLIANCE_REPORT_DIR={{ aw_dlp_compliance_report_dir }}
               AW_DLP_COMPLIANCE_TEMPLATE={{ aw_dlp_compliance_template_path }}
-              AW_SERVER_URL=http://127.0.0.1:5600/api/0
+              AW_SERVER_URL=http://127.0.0.1:5600
               XDG_DATA_HOME={{ aw_server_data_dir }}/.local/share
               XDG_CONFIG_HOME={{ aw_server_data_dir }}/.config
 

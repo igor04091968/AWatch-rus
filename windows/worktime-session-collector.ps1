@@ -1,7 +1,7 @@
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$Hostname,
-    [int]$PollSeconds = 30
+    [int]$PollSeconds = 0
 )
 
 # Force UTF-8 for console I/O
@@ -198,14 +198,46 @@ function Test-SessionIsActive {
     return ($s -match 'active') -or ($s -match '\u0430\u043a\u0442\u0438\u0432')
 }
 
+function Get-CanonicalUserId {
+    param(
+        [pscustomobject]$Config,
+        [string]$HostnameValue,
+        [string]$Username
+    )
+
+    $normalizedUser = [string]$Username
+    if ([string]::IsNullOrWhiteSpace($normalizedUser)) {
+        return ''
+    }
+
+    if ($Config -and $Config.PSObject.Properties.Name -contains 'userTasks' -and $Config.userTasks) {
+        foreach ($task in @($Config.userTasks)) {
+            try {
+                $taskUserId = [string]$task.userId
+                if ([string]::IsNullOrWhiteSpace($taskUserId)) {
+                    continue
+                }
+                $parts = $taskUserId -split '\\', 2
+                if ($parts.Count -eq 2 -and $parts[1].Equals($normalizedUser, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    return $taskUserId
+                }
+            }
+            catch {
+            }
+        }
+    }
+
+    return "$HostnameValue\$normalizedUser"
+}
+
 # Main
 $cfg = Get-Config -Path $ConfigPath
 $hostValue = if ($Hostname -and $Hostname.Trim()) { $Hostname.Trim() } elseif ($cfg -and $cfg.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$cfg.awHostname)) { [string]$cfg.awHostname } elseif ($cfg -and $cfg.awHostname) { [string]$cfg.awHostname } else { [string]$env:COMPUTERNAME }
 try { $apiBase = '{0}://{1}:{2}/api/0' -f [string]$cfg.server.scheme, [string]$cfg.server.host, [string]$cfg.server.port } catch { throw 'Invalid server configuration in config file.' }
 
 $bucketId = 'aw-worktime-sessions_' + $hostValue
-$pulse = 120
 $sleepSec = if ($PollSeconds -gt 0) { $PollSeconds } elseif ($cfg.collector -and $cfg.collector.pollSeconds) { [int]$cfg.collector.pollSeconds } else { 30 }
+$pulse = [Math]::Max($sleepSec * 3, 30)
 
 Ensure-Bucket -ApiBase $apiBase -BucketId $bucketId -HostnameValue $hostValue
 
@@ -234,16 +266,19 @@ while ($true) {
     }
 
     foreach ($rec in $records) {
+        $canonicalUserId = Get-CanonicalUserId -Config $cfg -HostnameValue $hostValue -Username ([string]$rec.username)
         $payloadObj = [PSCustomObject]@{
             timestamp = $now
-            duration  = 0
+            duration  = $sleepSec
             data      = [PSCustomObject]@{
                 username    = [string]$rec.username
-                userId      = "${env:USERDOMAIN}\$($rec.username)"
+                userId      = $canonicalUserId
                 sessionId   = [int]$rec.sessionId
                 sessionName = [string]$rec.sessionName
                 state       = [string]$rec.state
                 active      = Test-SessionIsActive -State ([string]$rec.state)
+                sampleSeconds = $sleepSec
+                pollSeconds   = $sleepSec
                 hostname    = $hostValue
                 source      = 'worktime-session-collector'
             }
