@@ -41,7 +41,7 @@
       },
       "id": 1,
       "options": {
-        "content": "### Руководительская ИБ-сводка\n- **Верхний ряд** показывает текущий уровень внимания: открытые кейсы, тяжёлые инциденты и новые сработки.\n- **Средний блок** отвечает на вопрос: где накапливается риск и по кому он концентрируется.\n- **Нижний блок** показывает, что требует действий прямо сейчас: активные кейсы, свежие инциденты и проблемы доставки telemetry.\n- Для технического разбора есть отдельный экран по ссылке **Технический ИБ-дашборд**.",
+        "content": "### Руководительская ИБ-сводка\n- **Верхний ряд** показывает текущий уровень внимания: открытые кейсы, тяжёлые инциденты и новые сработки.\n- **Средний блок** отвечает на вопрос: где накапливается риск и по кому он концентрируется.\n- **Нижний блок** показывает, что требует действий прямо сейчас: активные кейсы, свежие инциденты и проблемы доставки данных.\n- Для технического разбора есть отдельный экран по ссылке **Технический ИБ-дашборд**.",
         "mode": "markdown"
       },
       "title": "Как читать экран",
@@ -431,7 +431,7 @@
       },
       "targets": [
         {
-          "query": "all = from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n  |> set(key: \"series\", value: \"Все сработки\")\n\nhigh = from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\" and (r.severity == \"high\" or r.severity == \"critical\"))\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n  |> set(key: \"series\", value: \"High/Critical\")\n\nunion(tables: [all, high])\n  |> group(columns:[\"series\"])",
+          "query": "all = from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n  |> set(key: \"series\", value: \"Все сработки\")\n\nhigh = from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\" and (r.severity == \"high\" or r.severity == \"critical\"))\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n  |> set(key: \"series\", value: \"Высокие и критичные\")\n\nunion(tables: [all, high])\n  |> group(columns:[\"series\"])",
           "refId": "A"
         }
       ],
@@ -484,7 +484,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.signal_type}"
+          "displayName": "${__field.labels.signal_type_ru}"
         },
         "overrides": []
       },
@@ -509,7 +509,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> group(columns:[\"signal_type\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> map(fn: (r) => ({ r with signal_type_ru: if r.signal_type == \"self_test\" then \"Самопроверка\" else if r.signal_type == \"print_job\" then \"Печать\" else if r.signal_type == \"clipboard_copy\" then \"Буфер обмена\" else if r.signal_type == \"file_operation\" then \"Файловая операция\" else if r.signal_type == \"email_outbound\" then \"Исходящая почта\" else if r.signal_type == \"browser_domain\" then \"Сайт\" else if r.signal_type == \"unknown\" then \"Неизвестно\" else r.signal_type }))\n  |> group(columns:[\"signal_type_ru\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
           "refId": "A"
         }
       ],
@@ -523,7 +523,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.verdict}"
+          "displayName": "${__field.labels.verdict_ru}"
         },
         "overrides": []
       },
@@ -548,7 +548,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_review\" and r._field == \"count\")\n  |> group(columns:[\"verdict\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_review\" and r._field == \"count\")\n  |> map(fn: (r) => ({ r with verdict_ru: if r.verdict == \"false_positive\" then \"Ложное срабатывание\" else if r.verdict == \"incident\" then \"Инцидент\" else if r.verdict == \"allowed\" then \"Разрешено\" else if r.verdict == \"review_needed\" then \"Нужен разбор\" else if r.verdict == \"pending\" then \"Ожидает решения\" else r.verdict }))\n  |> group(columns:[\"verdict_ru\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
           "refId": "A"
         }
       ],
@@ -562,7 +562,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "displayName": "Endpoint send failures",
+          "displayName": "Ошибки отправки",
           "unit": "none"
         },
         "overrides": []
@@ -589,7 +589,7 @@
           "refId": "A"
         }
       ],
-      "title": "Проблемы доставки telemetry за 7 дней",
+      "title": "Проблемы доставки данных за 7 дней",
       "type": "timeseries"
     },
     {

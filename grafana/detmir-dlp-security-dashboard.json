@@ -36,7 +36,7 @@
       },
       "id": 1,
       "options": {
-        "content": "### Как читать этот экран\n- **Верхний блок** отвечает на вопрос: сколько было сработок и в каком состоянии разбор.\n- **Средний блок** показывает характер сработок: типы, серьёзность, пользователи, verdict review.\n- **Нижний блок** нужен для оперативной работы ИБ: динамика по дням, ошибки отправки collectors, последние кейсы и последние инциденты.\n- Если нужно быстро понять, есть ли проблема прямо сейчас, смотрите на **открытые кейсы**, **high/critical**, **send failures** и **последние инциденты**.",
+        "content": "### Как читать этот экран\n- **Верхний блок** отвечает на вопрос: сколько было сработок и в каком состоянии разбор.\n- **Средний блок** показывает характер сработок: типы, серьёзность, пользователи и итоги разбора.\n- **Нижний блок** нужен для оперативной работы ИБ: динамика по дням, ошибки отправки коллекторов, последние кейсы и последние инциденты.\n- Если нужно быстро понять, есть ли проблема прямо сейчас, смотрите на **открытые кейсы**, **высокие/критичные**, **ошибки отправки** и **последние инциденты**.",
         "mode": "markdown"
       },
       "title": "ИБ: как смотреть этот дашборд",
@@ -156,7 +156,7 @@
           "refId": "A"
         }
       ],
-      "title": "High/Critical за 7 дней",
+      "title": "Высокие и критичные за 7 дней",
       "type": "stat"
     },
     {
@@ -398,7 +398,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.severity}"
+          "displayName": "${__field.labels.severity_ru}"
         },
         "overrides": []
       },
@@ -423,7 +423,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> group(columns:[\"severity\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> map(fn: (r) => ({ r with severity_ru: if r.severity == \"critical\" then \"Критичный\" else if r.severity == \"high\" then \"Высокий\" else if r.severity == \"medium\" then \"Средний\" else if r.severity == \"low\" then \"Низкий\" else if r.severity == \"info\" then \"Инфо\" else r.severity }))\n  |> group(columns:[\"severity_ru\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
           "refId": "A"
         }
       ],
@@ -437,7 +437,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.signal_type}"
+          "displayName": "${__field.labels.signal_type_ru}"
         },
         "overrides": []
       },
@@ -462,7 +462,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_signal\" and r._field == \"count\")\n  |> group(columns:[\"signal_type\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_signal\" and r._field == \"count\")\n  |> map(fn: (r) => ({ r with signal_type_ru: if r.signal_type == \"self_test\" then \"Самопроверка\" else if r.signal_type == \"print_job\" then \"Печать\" else if r.signal_type == \"clipboard_copy\" then \"Буфер обмена\" else if r.signal_type == \"file_operation\" then \"Файловая операция\" else if r.signal_type == \"email_outbound\" then \"Исходящая почта\" else if r.signal_type == \"browser_domain\" then \"Сайт\" else if r.signal_type == \"unknown\" then \"Неизвестно\" else r.signal_type }))\n  |> group(columns:[\"signal_type_ru\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
           "refId": "A"
         }
       ],
@@ -515,7 +515,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.verdict}"
+          "displayName": "${__field.labels.verdict_ru}"
         },
         "overrides": []
       },
@@ -540,11 +540,11 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_review\" and r._field == \"count\")\n  |> group(columns:[\"verdict\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_review\" and r._field == \"count\")\n  |> map(fn: (r) => ({ r with verdict_ru: if r.verdict == \"false_positive\" then \"Ложное срабатывание\" else if r.verdict == \"incident\" then \"Инцидент\" else if r.verdict == \"allowed\" then \"Разрешено\" else if r.verdict == \"review_needed\" then \"Нужен разбор\" else if r.verdict == \"pending\" then \"Ожидает решения\" else r.verdict }))\n  |> group(columns:[\"verdict_ru\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
           "refId": "A"
         }
       ],
-      "title": "Review verdicts за 30 дней",
+      "title": "Итоги разбора за 30 дней",
       "type": "bargauge"
     },
     {
@@ -554,7 +554,7 @@
       },
       "fieldConfig": {
         "defaults": {
-          "displayName": "${__field.labels.action}"
+          "displayName": "${__field.labels.action_ru}"
         },
         "overrides": []
       },
@@ -579,7 +579,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_rule\" and r._field == \"count\")\n  |> group(columns:[\"action\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_rule\" and r._field == \"count\")\n  |> map(fn: (r) => ({ r with action_ru: if r.action == \"allow\" then \"Разрешить\" else if r.action == \"alert\" then \"Оповестить\" else if r.action == \"block\" then \"Блокировать\" else if r.action == \"review\" then \"На разбор\" else if r.action == \"notify\" then \"Уведомить\" else if r.action == \"log\" then \"Логировать\" else if r.action == \"deny\" then \"Запретить\" else r.action }))\n  |> group(columns:[\"action_ru\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
           "refId": "A"
         }
       ],
@@ -603,7 +603,7 @@
               "mode": "normal"
             }
           },
-          "displayName": "${__field.labels.severity}"
+          "displayName": "${__field.labels.severity_ru}"
         },
         "overrides": []
       },
@@ -625,7 +625,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> group(columns:[\"severity\"])\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> map(fn: (r) => ({ r with severity_ru: if r.severity == \"critical\" then \"Критичный\" else if r.severity == \"high\" then \"Высокий\" else if r.severity == \"medium\" then \"Средний\" else if r.severity == \"low\" then \"Низкий\" else if r.severity == \"info\" then \"Инфо\" else r.severity }))\n  |> group(columns:[\"severity_ru\"])\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)",
           "refId": "A"
         }
       ],
@@ -666,7 +666,7 @@
           "refId": "A"
         }
       ],
-      "title": "Endpoint collector: send failures",
+      "title": "Ошибки отправки endpoint-коллектора",
       "type": "timeseries"
     },
     {
@@ -703,7 +703,7 @@
           "refId": "A"
         }
       ],
-      "title": "Endpoint collector: queue depth",
+      "title": "Очередь endpoint-коллектора",
       "type": "timeseries"
     },
     {
@@ -740,7 +740,7 @@
           "refId": "A"
         }
       ],
-      "title": "FileOps collector: send failures",
+      "title": "Ошибки отправки FileOps-коллектора",
       "type": "timeseries"
     },
     {
@@ -802,10 +802,10 @@
               "host": "Хост",
               "case_id": "Кейс",
               "status": "Статус",
-              "severity": "Severity",
+              "severity": "Уровень",
               "assignee": "Исполнитель",
               "title": "Заголовок",
-              "incident_id": "Incident ID",
+              "incident_id": "ID инцидента",
               "has_forensics": "DFIR"
             }
           }
@@ -873,12 +873,12 @@
               "host": "Хост",
               "username": "Пользователь",
               "signal_type": "Тип сигнала",
-              "severity": "Severity",
-              "action": "Action",
+              "severity": "Уровень",
+              "action": "Действие",
               "message": "Сообщение",
               "document_name": "Документ",
               "printer_name": "Принтер",
-              "incident_verdict": "Verdict"
+              "incident_verdict": "Вердикт"
             }
           }
         }
