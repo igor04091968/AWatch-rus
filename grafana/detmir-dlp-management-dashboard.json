@@ -1,0 +1,755 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Технический ИБ-дашборд",
+      "url": "/d/detmir-dlp-security/detmir3a-dlp-i-ib-obzor"
+    }
+  ],
+  "panels": [
+    {
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "### Руководительская ИБ-сводка\n- **Верхний ряд** показывает текущий уровень внимания: открытые кейсы, тяжёлые инциденты и новые сработки.\n- **Средний блок** отвечает на вопрос: где накапливается риск и по кому он концентрируется.\n- **Нижний блок** показывает, что требует действий прямо сейчас: активные кейсы, свежие инциденты и проблемы доставки telemetry.\n- Для технического разбора есть отдельный экран по ссылке **Технический ИБ-дашборд**.",
+        "mode": "markdown"
+      },
+      "title": "Как читать экран",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 3
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -180d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_case\" and r._field == \"count\")\n  |> group(columns:[\"case_id\"])\n  |> last()\n  |> filter(fn: (r) => r.status == \"open\")\n  |> group()\n  |> count()",
+          "refId": "A"
+        }
+      ],
+      "title": "Открытые кейсы",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 3
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -180d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_case\" and r._field == \"count\")\n  |> group(columns:[\"case_id\"])\n  |> last()\n  |> filter(fn: (r) => r.status == \"investigating\")\n  |> group()\n  |> count()",
+          "refId": "A"
+        }
+      ],
+      "title": "В расследовании",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 3
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\" and (r.severity == \"high\" or r.severity == \"critical\"))\n  |> sum()",
+          "refId": "A"
+        }
+      ],
+      "title": "Тяжёлые сработки за 30 дней",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 3
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> sum()",
+          "refId": "A"
+        }
+      ],
+      "title": "Все сработки за 7 дней",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 3
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_review\" and r._field == \"count\" and r.verdict == \"review_needed\")\n  |> sum()",
+          "refId": "A"
+        }
+      ],
+      "title": "Ждут решения ИБ",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 3
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_endpoint_self_test\" and r._field == \"send_failures\")\n  |> group()\n  |> last()",
+          "refId": "A"
+        }
+      ],
+      "title": "Проблемы доставки сейчас",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "displayName": "${__field.labels.series}"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "query": "all = from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n  |> set(key: \"series\", value: \"Все сработки\")\n\nhigh = from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\" and (r.severity == \"high\" or r.severity == \"critical\"))\n  |> aggregateWindow(every: 1d, fn: sum, createEmpty: false)\n  |> set(key: \"series\", value: \"High/Critical\")\n\nunion(tables: [all, high])\n  |> group(columns:[\"series\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Динамика риска по дням",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.username}"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 7
+      },
+      "id": 9,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\" and r.username != \"unknown\")\n  |> group(columns:[\"username\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)\n  |> limit(n:10)",
+          "refId": "A"
+        }
+      ],
+      "title": "Пользователи с наибольшим числом сработок",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.signal_type}"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 7
+      },
+      "id": 10,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> group(columns:[\"signal_type\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "refId": "A"
+        }
+      ],
+      "title": "По каким типам событий чаще всего срабатывает DLP",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "${__field.labels.verdict}"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 15
+      },
+      "id": 11,
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_review\" and r._field == \"count\")\n  |> group(columns:[\"verdict\"])\n  |> sum()\n  |> sort(columns:[\"_value\"], desc:true)",
+          "refId": "A"
+        }
+      ],
+      "title": "Чем заканчивается разбор сработок",
+      "type": "bargauge"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "displayName": "Endpoint send failures",
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 15
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_endpoint_self_test\" and r._field == \"send_failures\")\n  |> aggregateWindow(every: 1h, fn: last, createEmpty: false)",
+          "refId": "A"
+        }
+      ],
+      "title": "Проблемы доставки telemetry за 7 дней",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 15
+      },
+      "id": 13,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -180d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_case\" and (r._field == \"count\" or r._field == \"title\"))\n  |> group(columns:[\"case_id\",\"_field\"])\n  |> last()\n  |> pivot(rowKey:[\"_time\",\"case_id\",\"host\",\"status\",\"severity\",\"assignee\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> filter(fn:(r)=> r.status == \"open\" or r.status == \"investigating\")\n  |> sort(columns:[\"_time\"], desc:true)\n  |> limit(n:10)",
+          "refId": "A"
+        }
+      ],
+      "title": "Что требует внимания сейчас",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "count": true
+            },
+            "indexByName": {
+              "_time": 0,
+              "severity": 1,
+              "status": 2,
+              "title": 3,
+              "assignee": 4,
+              "host": 5,
+              "case_id": 6
+            },
+            "renameByName": {
+              "_time": "Обновлено",
+              "severity": "Уровень",
+              "status": "Статус",
+              "title": "Кейс",
+              "assignee": "Исполнитель",
+              "host": "Хост",
+              "case_id": "ID"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 14,
+      "options": {
+        "footer": {
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and (r._field == \"count\" or r._field == \"message\" or r._field == \"document_name\" or r._field == \"printer_name\"))\n  |> group(columns:[\"event_id\",\"_field\"])\n  |> last()\n  |> pivot(rowKey:[\"_time\",\"host\",\"username\",\"signal_type\",\"severity\",\"action\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> sort(columns:[\"_time\"], desc:true)\n  |> limit(n:15)",
+          "refId": "A"
+        }
+      ],
+      "title": "Последние значимые события",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "count": true
+            },
+            "indexByName": {
+              "_time": 0,
+              "severity": 1,
+              "username": 2,
+              "signal_type": 3,
+              "message": 4,
+              "document_name": 5,
+              "printer_name": 6,
+              "host": 7,
+              "action": 8
+            },
+            "renameByName": {
+              "_time": "Время",
+              "severity": "Уровень",
+              "username": "Пользователь",
+              "signal_type": "Тип",
+              "message": "Описание",
+              "document_name": "Документ",
+              "printer_name": "Принтер",
+              "host": "Хост",
+              "action": "Действие"
+            }
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "refresh": "5m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "detmir",
+    "aw-rus",
+    "dlp",
+    "security",
+    "management"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "DetMir: ИБ сводка для руководства",
+  "uid": "detmir-dlp-management",
+  "version": 1,
+  "weekStart": ""
+}
