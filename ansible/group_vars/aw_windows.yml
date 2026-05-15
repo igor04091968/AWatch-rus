@@ -15,6 +15,7 @@ aw_windows_package_zip_path: ""
 
 aw_windows_domain: "SHARKON2025"
 aw_windows_users:
+  - Администратор
   - user1
   - user2
   - user3

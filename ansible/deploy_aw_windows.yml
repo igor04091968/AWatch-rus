@@ -16,6 +16,7 @@
     aw_windows_package_zip_path: ""
     aw_windows_domain: "SHARKON2025"
     aw_windows_users:
+      - Администратор
       - user1
       - user2
       - user3
@@ -272,55 +273,13 @@
           } catch {}
 
           $config = Get-Content -Raw -LiteralPath "{{ aw_windows_state_root }}\deployment-config.json" | ConvertFrom-Json
-          $loggedOnUsers = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-          try {
-            foreach ($line in @(& quser.exe 2>$null)) {
-              $normalized = [string]$line
-              if ([string]::IsNullOrWhiteSpace($normalized)) { continue }
-              $normalized = $normalized.TrimStart(' ', '>')
-              if ([string]::IsNullOrWhiteSpace($normalized)) { continue }
-              if ($normalized -match '^(USERNAME|ПОЛЬЗОВАТЕЛЬ)\s+') { continue }
-              $parts = $normalized -split '\s+'
-              if ($parts.Count -lt 1) { continue }
-              $user = [string]$parts[0]
-              if ([string]::IsNullOrWhiteSpace($user)) { continue }
-              [void]$loggedOnUsers.Add($user)
-              [void]$loggedOnUsers.Add(('{0}\{1}' -f $env:COMPUTERNAME, $user))
-              if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
-                [void]$loggedOnUsers.Add(('{0}\{1}' -f $env:USERDOMAIN, $user))
-              }
-            }
-          } catch {}
-
-          function Test-TaskUserHasSession {
-            param([string]$UserId)
-            if ([string]::IsNullOrWhiteSpace($UserId)) { return $false }
-            $candidates = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-            [void]$candidates.Add($UserId)
-            $leafUser = $UserId
-            if ($leafUser -match '^[^\\]+\\(.+)$') {
-              $leafUser = $Matches[1]
-              [void]$candidates.Add($leafUser)
-            }
-            [void]$candidates.Add(('{0}\{1}' -f $env:COMPUTERNAME, $leafUser))
-            if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
-              [void]$candidates.Add(('{0}\{1}' -f $env:USERDOMAIN, $leafUser))
-            }
-            foreach ($candidate in @($candidates)) {
-              if ($loggedOnUsers.Contains($candidate)) { return $true }
-            }
-            return $false
-          }
-
           foreach ($taskDef in @($config.userTasks)) {
             try { Enable-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue | Out-Null } catch {}
           }
 
           Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
           foreach ($taskDef in @($config.userTasks)) {
-            if (Test-TaskUserHasSession -UserId ([string]$taskDef.userId)) {
-              Start-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
-            }
+            Start-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
           }
 
     - name: Получить Windows hostname для AW smoke-check bucket

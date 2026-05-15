@@ -233,7 +233,7 @@ function Normalize-ActivityWatchUsers {
         $resolved = Resolve-Path -LiteralPath $UserListPath -ErrorAction Stop
         $extension = [IO.Path]::GetExtension($resolved.Path)
         if ($extension -ieq '.csv') {
-            $rows = Import-Csv -LiteralPath $resolved.Path
+            $rows = Import-Csv -LiteralPath $resolved.Path -Encoding UTF8
             foreach ($row in $rows) {
                 foreach ($column in 'User', 'Username', 'SamAccountName', 'Login') {
                     if ($row.PSObject.Properties.Name -contains $column) {
@@ -247,7 +247,7 @@ function Normalize-ActivityWatchUsers {
             }
         }
         else {
-            Get-Content -LiteralPath $resolved.Path | ForEach-Object {
+            Get-Content -LiteralPath $resolved.Path -Encoding UTF8 | ForEach-Object {
                 $line = $_.Trim()
                 if ($line -and -not $line.StartsWith('#')) {
                     $collected.Add($line)
