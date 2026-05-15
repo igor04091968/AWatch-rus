@@ -32,7 +32,7 @@
 
 - `grafana/detmir-dlp-management-dashboard.json`
 
-## 4. DLP overview
+## 4. AW-rus: DLP обзор
 
 Обзорный dashboard для быстрых стендовых demo и smoke-проверки самого DLP-контура.
 
