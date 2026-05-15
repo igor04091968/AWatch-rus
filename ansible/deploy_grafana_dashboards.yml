@@ -90,7 +90,9 @@
         body:
           title: "{{ grafana_folder_title_eff }}"
           version: "{{ (grafana_folder_lookup.json.version | default(0) | int) + 1 }}"
-      when: grafana_folder_lookup.status == 200
+      when:
+        - grafana_folder_lookup.status == 200
+        - (grafana_folder_lookup.json.title | default('')) != grafana_folder_title_eff
 
     - name: Import Grafana dashboards from repository JSON
       ansible.builtin.uri:
