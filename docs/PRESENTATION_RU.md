@@ -60,15 +60,13 @@
 
 Live endpoint:
 
-- `http://10.10.10.13:5610/reports/worktime/today?format=html&date=2026-05-15`
+- `http://aw-local-server:5610/reports/worktime/today?format=html&date=2026-05-15`
 
 ## 7. AW-rus: DLP review, rules и события
 
 Экран AW-rus по bucket `aw-dlp-endpoint-signals_*`: здесь видны живые DLP-события, review-вердикты, правила, case-management и нижняя лента событий. Это прямое доказательство, что данные реально приходят на сервер до агрегации в InfluxDB/Grafana.
 
 ![AW-rus DLP bucket](assets/screenshots/aw-rus-dlp-bucket.png)
-
-## Что показывать на встрече
 
 1. `RDP` dashboard — ценность для руководства и HR.
 2. `DLP и ИБ обзор` — глубина технического контроля для ИБ.
