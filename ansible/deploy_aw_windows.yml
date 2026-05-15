@@ -265,6 +265,21 @@
             }
           }
 
+          # Force managed collectors/watchers to reload the freshly deployed scripts.
+          Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+              (
+                ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and
+                $_.CommandLine -match 'C:\\ProgramData\\AWatch-rus\\' -and
+                $_.CommandLine -match '(collector|launch-watchers|recovery-loop)\.ps1'
+              ) -or
+              ($_.Name -ieq 'aw-watcher-afk.exe') -or
+              ($_.Name -ieq 'aw-watcher-window.exe')
+            } |
+            ForEach-Object {
+              Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+
           Start-Sleep -Seconds 2
 
           # Ensure tasks are enabled (some environments keep them disabled, causing "0s" in WebUI).
@@ -277,9 +292,15 @@
             try { Enable-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue | Out-Null } catch {}
           }
 
-          Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
+          $recoveryTask = Get-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}" -ErrorAction SilentlyContinue
+          if ($recoveryTask -and $recoveryTask.State -notin @('Running', 'Queued')) {
+            Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
+          }
           foreach ($taskDef in @($config.userTasks)) {
-            Start-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
+            $launchTask = Get-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
+            if ($launchTask -and $launchTask.State -notin @('Running', 'Queued')) {
+              Start-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
+            }
           }
 
     - name: Получить Windows hostname для AW smoke-check bucket
@@ -289,17 +310,16 @@
       register: aw_windows_hostname_result
       changed_when: false
 
-    - name: Вычислить AW AFK smoke-check bucket
+    - name: Вычислить AW worktime smoke-check bucket
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_afk_enabled_effective | bool
         - aw_windows_hostname_result.stdout is defined
       ansible.builtin.set_fact:
         aw_windows_api_smoke_check_bucket_effective: >-
           {{
             aw_windows_api_smoke_check_bucket
             if (aw_windows_api_smoke_check_bucket | default('') | string | length) > 0
-            else 'aw-watcher-afk_' ~ (aw_windows_hostname_result.stdout | trim)
+            else 'aw-worktime-sessions_' ~ (aw_windows_hostname_result.stdout | trim)
           }}
 
     - name: Вычислить AW Window smoke-check bucket
@@ -316,10 +336,9 @@
             else 'aw-watcher-window_' ~ (aw_windows_hostname_result.stdout | trim)
           }}
 
-    - name: Выполнить AW API smoke-check (AFK bucket должен получать события)
+    - name: Выполнить AW API smoke-check (worktime bucket должен получать события)
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_afk_enabled_effective | bool
       ansible.builtin.uri:
         url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
@@ -330,6 +349,12 @@
       until: >-
         (aw_windows_api_smoke_result.status | default(0)) == 200
         and ((aw_windows_api_smoke_result.json | default([])) | length) >= aw_windows_api_smoke_check_min_events
+        and (
+          (aw_windows_api_smoke_result.json | default([]))
+          | selectattr('data.source', 'equalto', 'worktime-session-collector')
+          | list
+          | length
+        ) > 0
       retries: 12
       delay: 5
       ignore_errors: "{{ (not aw_windows_fail_on_validation_error | bool) }}"
@@ -363,7 +388,7 @@
           $ErrorActionPreference = 'Stop'
           $result = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
             -ConfigPath "{{ aw_windows_state_root }}\deployment-config.json"
-          $result | ConvertTo-Json -Depth 8 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
+          $result | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
           return $result
 
     - name: Создать локальную директорию для отчётов валидации
@@ -386,7 +411,8 @@
         with open('{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json', 'r', encoding='utf-8-sig') as f:
             data = json.load(f)
         if not data.get('overallOk', False):
-            print(f"Validation failed for {{ inventory_hostname }}: {data.get('summary', 'Unknown error')}")
+            failed = ", ".join(data.get("summary", {}).get("failedSections", [])) or "unknown"
+            print(f"Validation failed for {{ inventory_hostname }}: {failed}")
             sys.exit(1)
         PY
       delegate_to: localhost

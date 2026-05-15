@@ -18,16 +18,21 @@
     aw_windows_api_smoke_check_enabled: true
     aw_windows_api_smoke_check_bucket: ""
     aw_windows_api_smoke_check_limit: 10
+    aw_windows_api_smoke_check_wait_seconds: 20
 
   tasks:
-    - name: Принудительно запустить ActivityWatch recovery и launch tasks
+    - name: Аккуратно запустить ActivityWatch recovery и launch tasks, если они не в Running
       when: aw_windows_force_task_restart | bool
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
-          Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
+          $recovery = Get-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}" -ErrorAction SilentlyContinue
+          if ($recovery -and $recovery.State -notin @('Running', 'Queued')) {
+            Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
+          }
           Get-ScheduledTask |
             Where-Object TaskName -like "{{ aw_windows_launch_task_pattern }}" |
+            Where-Object State -notin @('Running', 'Queued') |
             ForEach-Object { Start-ScheduledTask -TaskName $_.TaskName }
 
     - name: Получить Windows hostname для AW smoke-check bucket
@@ -43,10 +48,15 @@
           {{
             aw_windows_api_smoke_check_bucket
             if (aw_windows_api_smoke_check_bucket | default('') | string | length) > 0
-            else 'aw-watcher-afk_' ~ (aw_windows_hostname_result.stdout | trim)
+            else 'aw-worktime-sessions_' ~ (aw_windows_hostname_result.stdout | trim)
           }}
 
-    - name: Дождаться свежих AFK событий на AW server
+    - name: Дождаться короткого окна стабилизации после перезапуска задач
+      when: aw_windows_api_smoke_check_enabled | bool
+      ansible.builtin.pause:
+        seconds: "{{ aw_windows_api_smoke_check_wait_seconds | int }}"
+
+    - name: Дождаться свежих worktime-событий на AW server
       when: aw_windows_api_smoke_check_enabled | bool
       delegate_to: localhost
       ansible.builtin.uri:
@@ -60,7 +70,7 @@
         (aw_windows_api_smoke.json | length) > 0 and
         (
           aw_windows_api_smoke.json
-          | selectattr('data.status', 'equalto', 'not-afk')
+          | selectattr('data.source', 'equalto', 'worktime-session-collector')
           | list
           | length
         ) > 0

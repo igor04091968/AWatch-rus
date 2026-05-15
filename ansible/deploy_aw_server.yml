@@ -330,6 +330,10 @@
               AW_DLP_INFLUX_TOKEN={{ aw_dlp_influx_token | default('') }}
               AW_DLP_AW_API_BASE=http://127.0.0.1:5600/api/0
               AW_DLP_CASE_API_BASE=http://127.0.0.1:5602/api/0/dlp/cases
+              AW_EXPECT_START_OF_DAY={{ aw_worktime_start_of_day | default('') }}
+              AW_EXPECT_ALWAYS_ACTIVE_PATTERN={{ aw_server_always_active_pattern | default('') }}
+              AW_EXPECT_LANDINGPAGE={{ aw_server_landingpage | default('') }}
+              AW_HEALTH_STRICT_FILEOPS={{ aw_health_strict_fileops | default(0) }}
 
         - name: Создать каталог DLP policy engine
           ansible.builtin.file:

@@ -8,6 +8,11 @@ SERVICES=("activitywatch-server" "aw-worktime-api" "aw-worktime-ui-bridge")
 UNHEALTHY_SERVICES=()
 WARNINGS=()
 
+if [[ -f /etc/activitywatch/aw-server.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/activitywatch/aw-server.env
+fi
+
 check_service() {
     local service=$1
     if [[ "$service" == "aw-worktime-ui-bridge" ]]; then
@@ -36,6 +41,38 @@ check_api_endpoint() {
     else
         echo "✗ $service_name API endpoint is not responding"
         UNHEALTHY_SERVICES+=("$service_name-api")
+    fi
+}
+
+read_setting_value() {
+    local key=$1
+    curl -fsS --max-time 10 "http://127.0.0.1:5600/api/0/settings/${key}" 2>/dev/null | \
+        python3 -c 'import json,sys; print(json.load(sys.stdin))'
+}
+
+check_expected_setting() {
+    local key=$1
+    local expected=$2
+    local label=${3:-$1}
+
+    if [[ -z "$expected" ]]; then
+        echo "⚠ expected value for ${label} is not configured, skipping drift check"
+        WARNINGS+=("${key}-expected-missing")
+        return
+    fi
+
+    local actual
+    if ! actual="$(read_setting_value "$key" 2>/dev/null)"; then
+        echo "✗ failed to read setting ${label}"
+        UNHEALTHY_SERVICES+=("setting-${key}")
+        return
+    fi
+
+    if [[ "$actual" == "$expected" ]]; then
+        echo "✓ ${label} matches expected value (${expected})"
+    else
+        echo "✗ ${label} drift detected: actual='${actual}' expected='${expected}'"
+        UNHEALTHY_SERVICES+=("setting-${key}")
     fi
 }
 
@@ -92,6 +129,9 @@ echo
 check_api_endpoint "http://127.0.0.1:5600/api/0/info" "activitywatch-server"
 check_api_endpoint "http://127.0.0.1:5610/reports/worktime/today" "aw-worktime-api"
 check_dlp_transport_freshness "http://127.0.0.1:5600/api/0" "900" "${AW_HEALTH_STRICT_FILEOPS:-0}"
+check_expected_setting "startOfDay" "${AW_EXPECT_START_OF_DAY:-}" "startOfDay"
+check_expected_setting "always_active_pattern" "${AW_EXPECT_ALWAYS_ACTIVE_PATTERN:-}" "always_active_pattern"
+check_expected_setting "landingpage" "${AW_EXPECT_LANDINGPAGE:-}" "landingpage"
 
 echo
 

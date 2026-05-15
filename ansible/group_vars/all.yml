@@ -58,3 +58,6 @@ aw_server_post_deploy_health_check_enabled: true
 aw_worktime_from: "00:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
+aw_server_always_active_pattern: "aw-watcher-window"
+aw_server_landingpage: "/activity/SHARKON2025/view/"
+aw_health_strict_fileops: 0
