@@ -55,6 +55,6 @@ aw_dlp_compliance_report_dir: "/opt/activitywatch/dlp-compliance/reports"
 aw_dlp_compliance_template_path: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html"
 aw_server_post_deploy_health_check_enabled: true
 
-aw_worktime_from: "08:00"
+aw_worktime_from: "00:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"

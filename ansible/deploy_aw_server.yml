@@ -1328,7 +1328,7 @@
             (
               (
                 (((aw_worktime_to | default('17:00')).split(':')[0] | int) * 60 + ((aw_worktime_to | default('17:00')).split(':')[1] | int)) -
-                (((aw_worktime_from | default('08:00')).split(':')[0] | int) * 60 + ((aw_worktime_from | default('08:00')).split(':')[1] | int))
+                (((aw_worktime_from | default('00:00')).split(':')[0] | int) * 60 + ((aw_worktime_from | default('00:00')).split(':')[1] | int))
               ) * 60
             )
           }}

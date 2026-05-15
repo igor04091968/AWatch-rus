@@ -45,7 +45,7 @@ aw_server_cors_origins:
 # durationDefault задаёт диапазон по умолчанию в секундах.
 #
 # Рекомендуется явно задать рабочий интервал и дать playbook вычислить duration.
-aw_worktime_from: "08:00"
+aw_worktime_from: "00:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
 aw_server_always_active_pattern: "aw-watcher-window"
