@@ -5,6 +5,7 @@
 # 2) развёртывание AW server на хостах [aw_server]
 # 3) развёртывание Windows/RDP collector'ов на [aw_windows]
 # 4) развёртывание pfSense poller'а на [aw_pfsense_pollers]
+# 5) импорт Grafana dashboard'ов на [grafana]
 #
 # Примечания:
 # - Заполняйте только нужные группы inventory для своего окружения.
@@ -14,3 +15,4 @@
 - import_playbook: deploy_aw_server.yml
 - import_playbook: deploy_aw_windows.yml
 - import_playbook: deploy_aw_pfsense_poller.yml
+- import_playbook: deploy_grafana_dashboards.yml

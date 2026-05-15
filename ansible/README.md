@@ -14,6 +14,7 @@
 - `ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый полный playbook (несколько CT).
 - `ansible/deploy_aw_windows.yml` — WinRM playbook для развёртывания Windows/RDP collector'ов.
 - `ansible/deploy_aw_pfsense_poller.yml` — развёртывание pfSense poller'а.
+- `ansible/deploy_grafana_dashboards.yml` — импорт version-controlled Grafana dashboard'ов через HTTP API.
 - `ansible/deploy_tsj_guardian_bot_proxmox.yml` — развёртывание TSJ Guardian Telegram Bot на Proxmox host.
 - `ansible/install_full_stack.yml` — полный установочный playbook (оркестратор всех этапов).
 - `ansible/inventory.example.ini` — шаблон inventory.
@@ -55,7 +56,8 @@ ansible-playbook -i inventory.ini install_full_stack.yml
 - `provision_proxmox_ct_and_deploy_aw.yml` (если есть хосты в группе `[proxmox]`);
 - `deploy_aw_server.yml` (группа `[aw_server]`);
 - `deploy_aw_windows.yml` (группа `[aw_windows]`);
-- `deploy_aw_pfsense_poller.yml` (группа `[aw_pfsense_pollers]`).
+- `deploy_aw_pfsense_poller.yml` (группа `[aw_pfsense_pollers]`);
+- `deploy_grafana_dashboards.yml` (группа `[grafana]`).
 
 Пустые группы в `inventory.ini` безопасны: соответствующий play будет пропущен.
 
@@ -161,6 +163,41 @@ Playbook:
 - копирует `pfsense-aw-poller.py`;
 - пишет `/etc/aw-pfsense/poller.json`;
 - поднимает `aw-pfsense-poller.service`.
+
+## Импорт Grafana dashboard'ов
+
+1. Подготовьте inventory и vars:
+   - `cp ansible/inventory.example.ini ansible/inventory.ini`
+   - `cp ansible/group_vars/grafana.example.yml ansible/group_vars/grafana.yml`
+2. Укажите в inventory группу `[grafana]` и переменную `grafana_url`.
+3. Экспортируйте пароль Grafana API:
+
+```bash
+export GRAFANA_ADMIN_PASSWORD='...'
+```
+
+4. Запустите:
+
+```bash
+cd ansible
+ansible-playbook -i inventory.ini deploy_grafana_dashboards.yml
+```
+
+Playbook:
+
+- проверяет `GET /api/health`;
+- создает или актуализирует folder `AWatch-rus` в Grafana;
+- импортирует dashboard JSON из каталога `grafana/`;
+- верифицирует доступность dashboard'ов по `uid` через Grafana API.
+
+По умолчанию импортируются:
+
+- `DetMir: Работа пользователей в RDP`
+- `DetMir: DLP и ИБ обзор`
+- `DetMir: ИБ сводка для руководства`
+- `AW-rus: DLP обзор`
+
+Подробная документация: `docs/GRAFANA_DASHBOARDS_RU.md`
 
 ## Развёртывание TSJ Guardian Bot на Proxmox
 

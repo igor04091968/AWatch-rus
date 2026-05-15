@@ -1,0 +1,125 @@
+---
+- name: Import AW-rus Grafana dashboards through HTTP API
+  hosts: grafana
+  gather_facts: false
+  connection: local
+  run_once: true
+  vars:
+    aw_repo_root: "{{ playbook_dir | dirname }}"
+    grafana_api_url: "{{ grafana_url | regex_replace('/+$', '') }}"
+    grafana_validate_tls_eff: "{{ grafana_validate_tls | default(true) }}"
+    grafana_folder_uid_eff: "{{ grafana_folder_uid | default('awatch-rus') }}"
+    grafana_folder_title_eff: "{{ grafana_folder_title | default('AWatch-rus') }}"
+    grafana_dashboards_import_overwrite_eff: "{{ grafana_dashboards_import_overwrite | default(true) }}"
+    grafana_dashboards:
+      - file: "grafana/detmir-rdp-user-activity-dashboard.json"
+        uid: "detmir-rdp-user-activity"
+        title: "DetMir: Работа пользователей в RDP"
+      - file: "grafana/detmir-dlp-security-dashboard.json"
+        uid: "detmir-dlp-security"
+        title: "DetMir: DLP и ИБ обзор"
+      - file: "grafana/detmir-dlp-management-dashboard.json"
+        uid: "detmir-dlp-management"
+        title: "DetMir: ИБ сводка для руководства"
+      - file: "grafana/dlp-dashboard.json"
+        uid: "awatch-dlp-overview"
+        title: "AW-rus: DLP обзор"
+
+  tasks:
+    - name: Validate required Grafana settings
+      ansible.builtin.assert:
+        that:
+          - grafana_url is defined
+          - grafana_url | length > 0
+          - grafana_admin_user is defined
+          - grafana_admin_user | length > 0
+          - grafana_admin_password is defined
+          - grafana_admin_password | length > 0
+        fail_msg: "Заполните grafana_url, grafana_admin_user и grafana_admin_password."
+
+    - name: Check Grafana health endpoint
+      ansible.builtin.uri:
+        url: "{{ grafana_api_url }}/api/health"
+        method: GET
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ grafana_validate_tls_eff | bool }}"
+        return_content: true
+        status_code: 200
+
+    - name: Lookup Grafana folder by uid
+      ansible.builtin.uri:
+        url: "{{ grafana_api_url }}/api/folders/{{ grafana_folder_uid_eff }}"
+        method: GET
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ grafana_validate_tls_eff | bool }}"
+        return_content: true
+        status_code:
+          - 200
+          - 404
+      register: grafana_folder_lookup
+
+    - name: Create Grafana folder when absent
+      ansible.builtin.uri:
+        url: "{{ grafana_api_url }}/api/folders"
+        method: POST
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ grafana_validate_tls_eff | bool }}"
+        body_format: json
+        status_code: 200
+        body:
+          uid: "{{ grafana_folder_uid_eff }}"
+          title: "{{ grafana_folder_title_eff }}"
+      when: grafana_folder_lookup.status == 404
+
+    - name: Update Grafana folder title when it already exists
+      ansible.builtin.uri:
+        url: "{{ grafana_api_url }}/api/folders/{{ grafana_folder_uid_eff }}"
+        method: PUT
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ grafana_validate_tls_eff | bool }}"
+        body_format: json
+        status_code: 200
+        body:
+          title: "{{ grafana_folder_title_eff }}"
+          version: "{{ (grafana_folder_lookup.json.version | default(0) | int) + 1 }}"
+      when: grafana_folder_lookup.status == 200
+
+    - name: Import Grafana dashboards from repository JSON
+      ansible.builtin.uri:
+        url: "{{ grafana_api_url }}/api/dashboards/db"
+        method: POST
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ grafana_validate_tls_eff | bool }}"
+        body_format: json
+        status_code: 200
+        body:
+          dashboard: "{{ (lookup('file', aw_repo_root ~ '/' ~ item.file) | from_json) | combine({'id': None}, recursive=True) }}"
+          folderUid: "{{ grafana_folder_uid_eff }}"
+          overwrite: "{{ grafana_dashboards_import_overwrite_eff | bool }}"
+          message: "Imported by Ansible from {{ item.file }}"
+      loop: "{{ grafana_dashboards }}"
+      loop_control:
+        label: "{{ item.title }}"
+
+    - name: Verify imported dashboards by uid
+      ansible.builtin.uri:
+        url: "{{ grafana_api_url }}/api/dashboards/uid/{{ item.uid }}"
+        method: GET
+        user: "{{ grafana_admin_user }}"
+        password: "{{ grafana_admin_password }}"
+        force_basic_auth: true
+        validate_certs: "{{ grafana_validate_tls_eff | bool }}"
+        status_code: 200
+      loop: "{{ grafana_dashboards }}"
+      loop_control:
+        label: "{{ item.uid }}"
