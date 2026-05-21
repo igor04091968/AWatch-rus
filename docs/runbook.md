@@ -82,6 +82,127 @@ Playbook вычисляет `durationDefault` автоматически (вкл
 
 ## Типовые инциденты
 
+### Hayabusa: production validation end-to-end
+
+Цель: подтвердить один реальный путь
+
+- Windows EVTX export
+- перенос пакета на `10.10.10.13`
+- intake через `aw-hayabusa`
+- генерация отчёта
+- привязка bounded metadata к операторскому follow-up
+
+Минимальный production-proven сценарий:
+
+1. На Windows-хосте сделать экспорт:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-evtx-for-hayabusa.ps1 -DaysBack 1
+```
+
+2. Проверить, что пакет реально появился:
+
+```powershell
+Get-ChildItem 'C:\ProgramData\AWatch-rus\forensics\evtx-exports' |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -First 5 Name,Length,LastWriteTime
+```
+
+Ожидаемо должен появиться zip вида:
+
+- `HOST-YYYYMMDD-HHMMSS.zip`
+
+3. Перенести zip на `10.10.10.13` в операторскую рабочую зону.
+
+4. На `AW-server` проверить раннер:
+
+```bash
+aw-hayabusa doctor
+aw-hayabusa inventory
+aw-hayabusa profiles
+```
+
+5. Принять пакет:
+
+```bash
+aw-hayabusa accept --package /path/to/HOST-YYYYMMDD-HHMMSS.zip --host HOST
+```
+
+6. Обработать inbox:
+
+```bash
+aw-hayabusa process-inbox --mode incident
+```
+
+7. Проверить результат:
+
+```bash
+aw-hayabusa inventory
+readlink -f /opt/hayabusa/state/latest-run
+readlink -f /opt/hayabusa/state/latest-HOST
+find /opt/hayabusa/reports/HOST -maxdepth 2 -type f | sort
+```
+
+Ожидаемо должны быть:
+
+- `summary.html`
+- `manifest.json`
+- `run.log`
+- `timeline.jsonl` или `timeline.csv`
+- `logon-summary-*.csv`
+
+8. Проверить traceability:
+
+```bash
+cat /opt/hayabusa/state/latest-intake.json
+find /opt/hayabusa/archive/packages/HOST -maxdepth 1 -type f | sort
+find /opt/hayabusa/archive/extracted/HOST -maxdepth 2 -type f | sort
+```
+
+Нужно зафиксировать:
+
+- `host`
+- `intake_id`
+- `sha256`
+- `package_path`
+- `report_dir`
+- `status`
+
+9. Для AW-rus/operator follow-up заносить только bounded metadata:
+
+- `tool=hayabusa`
+- `host`
+- `mode=incident`
+- `status`
+- `intake_id`
+- `package_path`
+- `sha256`
+- `report_dir`
+- `summary_html`
+- `timeline_path`
+- `manifest_path`
+
+Не заносить в case / comments:
+
+- сырые EVTX
+- полный Sigma output
+- полный timeline body
+
+10. Если прогона не получилось, записать tuning backlog:
+
+- пустой/битый zip
+- нет EVTX в payload
+- слабый audit scope на Windows
+- шумный или слишком тяжёлый результат
+- неочевидная трассировка от пакета к отчёту
+
+Acceptance для этого сценария:
+
+- есть хотя бы один реальный zip-пакет;
+- `aw-hayabusa` провёл intake и analysis без ручной импровизации;
+- артефакты трассируются от `HOST` до `report_dir`;
+- follow-up не тащит сырые forensic данные в обычные AW buckets.
+
 ### DLP не виден в вебе
 
 Быстрый чек сервера:
