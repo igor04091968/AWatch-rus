@@ -1,0 +1,10 @@
+[Unit]
+Description=Watch AW-RUS Hayabusa drop directory for new zip packages
+
+[Path]
+PathModified=/opt/activitywatch/aw-rus-ops/drop
+PathExistsGlob=/opt/activitywatch/aw-rus-ops/drop/*.zip
+Unit=aw-hayabusa-drop.service
+
+[Install]
+WantedBy=multi-user.target

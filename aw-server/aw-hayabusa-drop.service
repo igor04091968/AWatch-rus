@@ -1,0 +1,13 @@
+[Unit]
+Description=AW-RUS Hayabusa auto-process dropped packages
+After=network-online.target activitywatch-server.service
+Wants=network-online.target activitywatch-server.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/bin/aw-hayabusa-autoprocess
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-hayabusa-drop

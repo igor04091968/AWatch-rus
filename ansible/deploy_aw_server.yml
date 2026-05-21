@@ -1545,6 +1545,108 @@
             group: root
             mode: "0755"
 
+        - name: Создать server-side ops bundle для Hayabusa
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          loop:
+            - /opt/activitywatch/aw-rus-ops
+            - /opt/activitywatch/aw-rus-ops/hayabusa
+            - /opt/activitywatch/aw-rus-ops/ansible
+            - /opt/activitywatch/aw-rus-ops/drop
+
+        - name: Положить исходный wrapper в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa.sh"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa.sh
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить helper link-case для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-link-case.py"
+            dest: /usr/local/bin/aw-hayabusa-link-case
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper link-case в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-link-case.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-link-case.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить helper from-windows для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-from-windows.py"
+            dest: /usr/local/bin/aw-hayabusa-from-windows
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper from-windows в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-from-windows.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-from-windows.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить README Hayabusa в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/README.md"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/README.md
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить helper autoprocess для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-autoprocess.py"
+            dest: /usr/local/bin/aw-hayabusa-autoprocess
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper autoprocess в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-autoprocess.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-autoprocess.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить systemd unit aw-hayabusa-drop.service
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-hayabusa-drop.service"
+            dest: /etc/systemd/system/aw-hayabusa-drop.service
+            owner: root
+            group: root
+            mode: "0644"
+          notify: Перезагрузить systemd
+
+        - name: Установить systemd unit aw-hayabusa-drop.path
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-hayabusa-drop.path"
+            dest: /etc/systemd/system/aw-hayabusa-drop.path
+            owner: root
+            group: root
+            mode: "0644"
+          notify: Перезагрузить systemd
+
+        - name: Включить и запустить aw-hayabusa-drop.path
+          ansible.builtin.systemd:
+            name: aw-hayabusa-drop.path
+            enabled: true
+            state: started
+            daemon_reload: true
+
         - name: Проверить server-side runner через doctor
           ansible.builtin.command:
             cmd: /usr/local/bin/aw-hayabusa doctor

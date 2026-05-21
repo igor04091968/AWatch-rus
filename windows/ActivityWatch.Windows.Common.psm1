@@ -400,6 +400,7 @@ function Copy-ActivityWatchCollectorAssets {
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScriptSource,
         [string]$EvtxExportScriptSource,
+        [string]$HayabusaUploadScriptSource,
         [string]$EmailCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
@@ -419,6 +420,7 @@ function Copy-ActivityWatchCollectorAssets {
     $fileCollectorTarget = Join-Path $StateRoot 'file-operations-collector.ps1'
     $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
     $evtxExportTarget = Join-Path $StateRoot 'export-evtx-for-hayabusa.ps1'
+    $hayabusaUploadTarget = Join-Path $StateRoot 'export-upload-hayabusa-to-aw-server.ps1'
     $emailCollectorTarget = Join-Path $StateRoot 'email-outbound-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
@@ -434,6 +436,9 @@ function Copy-ActivityWatchCollectorAssets {
     Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
     if ($EvtxExportScriptSource -and (Test-Path -LiteralPath $EvtxExportScriptSource)) {
         Copy-Item -LiteralPath $EvtxExportScriptSource -Destination $evtxExportTarget -Force
+    }
+    if ($HayabusaUploadScriptSource -and (Test-Path -LiteralPath $HayabusaUploadScriptSource)) {
+        Copy-Item -LiteralPath $HayabusaUploadScriptSource -Destination $hayabusaUploadTarget -Force
     }
     if ($EmailCollectorScriptSource -and (Test-Path -LiteralPath $EmailCollectorScriptSource)) {
         Copy-Item -LiteralPath $EmailCollectorScriptSource -Destination $emailCollectorTarget -Force
@@ -464,6 +469,7 @@ function Copy-ActivityWatchCollectorAssets {
         FileCollectorScript     = $fileCollectorTarget
         SessionCollectorScript  = $sessionCollectorTarget
         EvtxExportScript        = $evtxExportTarget
+        HayabusaUploadScript    = $hayabusaUploadTarget
         EmailCollectorScript    = $emailCollectorTarget
         ExampleRules            = $exampleRulesTarget
         ActiveRules             = $rulesTarget

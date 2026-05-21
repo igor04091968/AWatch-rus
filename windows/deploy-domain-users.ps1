@@ -64,6 +64,7 @@ $emailCollectorSource = Join-Path $PSScriptRoot 'email-outbound-collector.ps1'
 $fileCollectorSource = Join-Path $PSScriptRoot 'file-operations-collector.ps1'
 $sessionCollectorSource = Join-Path $PSScriptRoot 'worktime-session-collector.ps1'
 $evtxExportScriptSource = Join-Path $PSScriptRoot 'export-evtx-for-hayabusa.ps1'
+$hayabusaUploadScriptSource = Join-Path $PSScriptRoot 'export-upload-hayabusa-to-aw-server.ps1'
 $exampleRulesSource = Join-Path $PSScriptRoot 'web-category-rules.example.json'
 $examplePolicySource = Join-Path $PSScriptRoot 'dlp-policy.example.json'
 
@@ -83,6 +84,7 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -FileCollectorScriptSource $fileCollectorSource `
     -SessionCollectorScriptSource $sessionCollectorSource `
     -EvtxExportScriptSource $evtxExportScriptSource `
+    -HayabusaUploadScriptSource $hayabusaUploadScriptSource `
     -ExampleRulesSource $exampleRulesSource `
     -ExamplePolicySource $examplePolicySource `
     -StateRoot $StateRoot `
