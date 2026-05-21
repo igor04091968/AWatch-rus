@@ -5,6 +5,7 @@ HAYA_ROOT="${AW_HAYABUSA_ROOT:-/opt/hayabusa}"
 HAYA_CURRENT="${HAYA_ROOT}/current"
 HAYA_BIN="${HAYA_CURRENT}/hayabusa"
 HAYA_RULES="${HAYA_CURRENT}/rules"
+HAYA_RULES_CONFIG="${HAYA_RULES}/config"
 HAYA_CONFIG="${HAYA_CURRENT}/config"
 HAYA_REPORTS_ROOT="${AW_HAYABUSA_REPORTS_ROOT:-${HAYA_ROOT}/reports}"
 HAYA_STATE_ROOT="${AW_HAYABUSA_STATE_ROOT:-${HAYA_ROOT}/state}"
@@ -46,6 +47,7 @@ ensure_layout() {
   [ -x "${HAYA_BIN}" ] || fail "Hayabusa binary not found at ${HAYA_BIN}"
   [ -d "${HAYA_RULES}" ] || fail "Hayabusa rules directory not found at ${HAYA_RULES}"
   [ -d "${HAYA_CONFIG}" ] || fail "Hayabusa config directory not found at ${HAYA_CONFIG}"
+  [ -d "${HAYA_RULES_CONFIG}" ] || fail "Hayabusa rules config directory not found at ${HAYA_RULES_CONFIG}"
   mkdir -p \
     "${HAYA_REPORTS_ROOT}" \
     "${HAYA_STATE_ROOT}" \
@@ -223,7 +225,7 @@ run_mode() {
   local timeline_file=""
   local output_format=""
   local -a input_args=()
-  local -a common_args=("-w" "-q" "-C" "-r" "${HAYA_RULES}" "-c" "${HAYA_CONFIG}" "-O")
+  local -a common_args=("-w" "-q" "-C" "-r" "${HAYA_RULES}" "-O")
   local -a mode_args=()
   local -a command=()
   local -a logon_command=()
@@ -244,19 +246,19 @@ run_mode() {
       timeline_file="${report_dir}/timeline.csv"
       output_format="csv"
       mode_args=("-E" "-P" "-m" "medium" "-o" "${timeline_file}" "-H" "${html_file}")
-      command=("${HAYA_BIN}" "csv-timeline" "${input_args[@]}" "${common_args[@]}" "${mode_args[@]}")
+      command=("${HAYA_BIN}" "csv-timeline" "${input_args[@]}" "${common_args[@]}" "-c" "${HAYA_RULES_CONFIG}" "${mode_args[@]}")
       ;;
     incident)
       timeline_file="${report_dir}/timeline.jsonl"
       output_format="jsonl"
       mode_args=("-L" "-m" "low" "-o" "${timeline_file}" "-H" "${html_file}")
-      command=("${HAYA_BIN}" "json-timeline" "${input_args[@]}" "${common_args[@]}" "${mode_args[@]}")
+      command=("${HAYA_BIN}" "json-timeline" "${input_args[@]}" "${common_args[@]}" "-c" "${HAYA_RULES_CONFIG}" "${mode_args[@]}")
       ;;
     full)
       timeline_file="${report_dir}/timeline.jsonl"
       output_format="jsonl"
       mode_args=("-L" "-A" "-D" "-n" "-u" "-m" "informational" "-o" "${timeline_file}" "-H" "${html_file}")
-      command=("${HAYA_BIN}" "json-timeline" "${input_args[@]}" "${common_args[@]}" "${mode_args[@]}")
+      command=("${HAYA_BIN}" "json-timeline" "${input_args[@]}" "${common_args[@]}" "-c" "${HAYA_RULES_CONFIG}" "${mode_args[@]}")
       ;;
     *)
       fail "Unsupported mode: ${mode}"
@@ -378,7 +380,14 @@ process_one_package() {
   mkdir -p "${stage_dir}"
 
   package_sha256="$(sha256sum "${package_path}" | awk '{print $1}')"
+  local unzip_rc=0
+  set +e
   unzip -q -o "${package_path}" -d "${stage_dir}"
+  unzip_rc=$?
+  set -e
+  if [ "${unzip_rc}" -gt 1 ]; then
+    fail "unzip failed for ${package_path} with rc=${unzip_rc}"
+  fi
 
   local manifest_path host evtx_root archive_pkg_dir archive_pkg_path archive_extract_dir status report_dir
   manifest_path="$(find_manifest_path "${stage_dir}")"
@@ -476,6 +485,7 @@ main() {
       echo "binary=${HAYA_BIN}"
       echo "rules=${HAYA_RULES}"
       echo "config=${HAYA_CONFIG}"
+      echo "rules_config=${HAYA_RULES_CONFIG}"
       echo "reports=${HAYA_REPORTS_ROOT}"
       echo "state=${HAYA_STATE_ROOT}"
       echo "incoming=${HAYA_INCOMING_DIR}"

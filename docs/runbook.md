@@ -203,6 +203,30 @@ Acceptance для этого сценария:
 - артефакты трассируются от `HOST` до `report_dir`;
 - follow-up не тащит сырые forensic данные в обычные AW buckets.
 
+Known-good live proof `2026-05-21`:
+
+- `host=SHARKON2025`
+- `case_id=30`
+- `intake_id=20260521T125653Z_SHARKON2025-phase17-rerun3`
+- `sha256=e86b9abbfc1d706ac706c6c8a89509ab17023344c50880641e9175f73f1198d4`
+- `report_dir=/opt/hayabusa/reports/SHARKON2025/20260521T125654Z_incident_20260521T125653Z_SHARKON2025-phase17-rerun3`
+- `latest-intake.json` status: `ok`
+- AW-rus case linkage stored under `forensics.hayabusa`
+
+Что реально нашли в production validation:
+
+- Windows zip с backslash path separators давал `unzip` warning rc=1; wrapper не должен валить intake на таком предупреждении.
+- timeline режимы должны использовать `rules/config`, а не корень rules directory.
+
+После live proof держать как regression checks:
+
+```bash
+aw-hayabusa doctor
+aw-hayabusa inventory
+cat /opt/hayabusa/state/latest-intake.json
+readlink -f /opt/hayabusa/state/latest-run
+```
+
 ### DLP не виден в вебе
 
 Быстрый чек сервера:
