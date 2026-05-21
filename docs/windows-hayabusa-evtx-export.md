@@ -70,9 +70,22 @@ Example with custom window:
 powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-evtx-for-hayabusa.ps1 -DaysBack 1
 ```
 
+Current production path:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-upload-hayabusa-to-aw-server.ps1 -HoursBack 6 -CaseId 30
+```
+
+This wrapper:
+
+- builds the EVTX package;
+- uploads `.caseid` if provided;
+- uploads `.meta.json`;
+- uploads the `zip` to the AW-server drop directory.
+
 ## Boundaries
 
 - output stays outside standard AW buckets
 - output stays outside normal DLP screenshot artifacts
-- this phase only defines and validates Windows export
-- transfer to `10.10.10.13` and Hayabusa execution belong to later phases
+- server-side Hayabusa execution happens later on `10.10.10.13`
+- only bounded Hayabusa metadata returns into the case layer

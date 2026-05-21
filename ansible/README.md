@@ -122,6 +122,7 @@ Playbook:
 - выполняет API smoke-check bucket `aw-watcher-window_<COMPUTERNAME>` и ожидает свежие события (по умолчанию включено);
 - запускает `validate-deployment.ps1`;
 - забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation-<USER>` по умолчанию).
+- настраивает scheduled task `ActivityWatch Hayabusa Upload` с периодом и lookback по vars.
 
 Дополнительные флаги:
 
@@ -144,6 +145,38 @@ Playbook:
 - `aw_windows_api_smoke_check_min_events: 1` — минимум событий, ожидаемых в smoke-check;
 - `aw_windows_fail_on_validation_error: true` — завершать playbook ошибкой, если `validate-deployment.ps1` возвращает `overallOk=false`;
 - `aw_windows_skip_hardening: true` — пропустить `hardening-recovery.ps1` внутри ensemble-скрипта.
+- `aw_windows_hayabusa_auto_upload_enabled: true` — включить авто-upload EVTX на AW-server;
+- `aw_windows_hayabusa_auto_upload_interval_hours: 6` — период scheduled task;
+- `aw_windows_hayabusa_auto_upload_hours_back: 6` — lookback для каждого запуска;
+- `aw_windows_hayabusa_auto_upload_mode: "incident"` — mode для server-side processing;
+- `aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"` — имя scheduled task.
+
+## Server-side Hayabusa auto-case и Telegram alerting
+
+На стороне `deploy_aw_server.yml` теперь есть server-side контур:
+
+- `aw-hayabusa-drop.path`
+- `aw-hayabusa-drop.service`
+- `aw-hayabusa-autoprocess`
+- `aw-hayabusa-case-alert`
+
+Что делает контур:
+
+- автоматически подхватывает `zip` из `/opt/activitywatch/aw-rus-ops/drop`;
+- запускает `aw-hayabusa`;
+- считает severity/score по `timeline.jsonl`;
+- создаёт или обновляет case;
+- пишет bounded metadata в `forensics.hayabusa`;
+- отправляет Telegram alert.
+
+Основные vars:
+
+- `aw_hayabusa_auto_case_enabled: true`
+- `aw_hayabusa_auto_case_min_severity: "medium"`
+- `aw_hayabusa_telegram_enabled: true`
+- `aw_hayabusa_telegram_min_severity: "high"`
+- `aw_hayabusa_telegram_bot_token`
+- `aw_hayabusa_telegram_chat_ids`
 
 ## Развёртывание pfSense poller
 

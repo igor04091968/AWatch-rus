@@ -1,0 +1,5 @@
+# every 6 hours: load exports, rebuild timeline, refresh cases
+0 */6 * * * cd /opt/aw-rus/clickhouse-1c && . .venv/bin/activate && python etl/load_1c_exports.py --config etl/config.yml >> /var/log/aw-rus-1c-etl.log 2>&1
+10 */6 * * * clickhouse-client --queries-file /opt/aw-rus/clickhouse-1c/detections/build_entity_timeline.sql >> /var/log/aw-rus-1c-timeline.log 2>&1
+15 */6 * * * clickhouse-client --queries-file /opt/aw-rus/clickhouse-1c/detections/insert_detections.sql >> /var/log/aw-rus-1c-detections.log 2>&1
+20 */6 * * * clickhouse-client --queries-file /opt/aw-rus/clickhouse-1c/detections/open_cases_from_detections.sql >> /var/log/aw-rus-1c-cases.log 2>&1

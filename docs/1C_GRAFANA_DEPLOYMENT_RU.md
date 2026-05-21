@@ -2,6 +2,12 @@
 
 Документ описывает внедрение контура мониторинга 1С в Grafana через Prometheus и SQL Exporter.
 
+> Важно: этот документ относится к сценарию, где 1С удобно читается через SQL/read-only views.
+> Для **файловой 1С** теперь есть отдельный контур:
+>
+> - `docs/1C_FILE_ANALYTICS_STACK_RU.md`
+> - `clickhouse-1c/README.md`
+
 ## 1. Целевая схема
 
 1. База 1С (PostgreSQL или MS SQL) содержит KPI views.

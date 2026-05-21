@@ -1,0 +1,61 @@
+rules:
+  - id: after_hours_login
+    severity: medium
+    score: 35
+    source: reglog_events
+    summary: "Вход пользователя вне рабочего времени"
+  - id: failed_login_burst
+    severity: high
+    score: 65
+    source: reglog_events
+    summary: "Всплеск ошибок входа за короткое окно"
+  - id: mass_reposting
+    severity: high
+    score: 70
+    source: audit_events
+    summary: "Массовое перепроведение документов"
+  - id: critical_object_change
+    severity: high
+    score: 75
+    source: audit_events
+    summary: "Изменение критичного объекта 1С"
+  - id: manual_adjustment_spike
+    severity: medium
+    score: 45
+    source: documents
+    summary: "Аномальный рост ручных корректировок"
+  - id: returns_spike
+    severity: medium
+    score: 40
+    source: documents
+    summary: "Аномальный рост возвратов"
+  - id: overdue_receivables_growth
+    severity: high
+    score: 55
+    source: documents
+    summary: "Резкий рост просроченной дебиторки"
+  - id: long_running_operation
+    severity: medium
+    score: 30
+    source: reglog_events
+    summary: "Длительная операция в журнале регистрации"
+  - id: exchange_failure_burst
+    severity: high
+    score: 60
+    source: reglog_events
+    summary: "Всплеск ошибок обмена"
+  - id: disk_latency_high
+    severity: high
+    score: 65
+    source: host_events
+    summary: "Высокая задержка диска на файловом сервере 1С"
+  - id: backup_stale
+    severity: critical
+    score: 90
+    source: host_events
+    summary: "Бэкап файловой 1С устарел или не подтвержден"
+  - id: unusual_account_postings
+    severity: medium
+    score: 35
+    source: postings
+    summary: "Нетипичные проводки по счетам"

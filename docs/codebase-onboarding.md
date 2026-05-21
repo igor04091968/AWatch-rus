@@ -26,7 +26,7 @@
 - `runbook.md` — быстрые операционные действия и проверки.
 - `operations.md` — сопровождение, бэкапы, rollback.
 - `windows/*` — отдельная ветка документации по Windows-оркестрации.
-- `1C_GRAFANA_DEPLOYMENT_RU.md`, `pfsense.md`, `linux-client.md` — специализированные подсистемы.
+- `1C_GRAFANA_DEPLOYMENT_RU.md`, `1C_FILE_ANALYTICS_STACK_RU.md`, `pfsense.md`, `linux-client.md` — специализированные подсистемы.
 
 ### `proxmox/`
 Скрипты ранней инфраструктурной фазы:
@@ -65,6 +65,15 @@ PowerShell toolkit для клиентской стороны:
 ### `grafana-1c/`
 Набор для SQL exporter + Prometheus + Grafana дашбордов по 1C метрикам.
 
+### `clickhouse-1c/`
+Новый stack именно для **файловой 1С**:
+
+- ETL выгрузок `CSV/JSON`,
+- ClickHouse schema,
+- rule-based detections,
+- Grafana dashboard catalog,
+- AI Investigator contract.
+
 ### `scripts/`
 Утилиты и quality gates:
 
@@ -84,7 +93,7 @@ PowerShell toolkit для клиентской стороны:
 4. Включение автозапуска и проверка (`systemd` + `docs/runbook.md`).
 5. Rollout клиентов (обычно `windows/`, иногда `scripts/install_aw_linux_client.sh`).
 6. Эксплуатация и изменения через `docs/operations.md`.
-7. При необходимости — расширение мониторинга (`grafana-1c/`, `pfsense/`).
+7. При необходимости — расширение мониторинга (`grafana-1c/`, `clickhouse-1c/`, `pfsense/`).
 
 ## 4) Что важно понять в первую очередь
 
@@ -120,7 +129,7 @@ PowerShell toolkit для клиентской стороны:
 
 - Если интересует эксплуатация и инциденты: `docs/runbook.md`, `docs/operations.md`, `docs/windows/troubleshooting.md`.
 - Если интересует автодеплой: `ansible/provision_proxmox_ct_and_deploy_aw.yml` и `ansible/tasks/`.
-- Если интересует наблюдаемость: `grafana-1c/` + `pfsense/` + `prometheus`/`alerts` конфиги.
+- Если интересует наблюдаемость: `grafana-1c/`, `clickhouse-1c/` + `pfsense/` + `prometheus`/`alerts` конфиги.
 - Если интересует hardening и DLP: `windows/hardening-recovery.ps1`, `docs/dlp-gap-analysis.md`.
 
 ---

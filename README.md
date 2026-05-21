@@ -8,9 +8,11 @@
 - `docs/codebase-onboarding.md` — обзор структуры репозитория и маршрут изучения для новичка.
 - `docs/deployment.md` — пошаговый деплой LXC и ActivityWatch Server.
 - `docs/runbook.md` — быстрый runbook для оператора.
+- `docs/security-analytics-stack-v1.md` — текущий security analytics контур: Hayabusa, auto-case, scoring и Telegram alerts.
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
 - `docs/GRAFANA_DASHBOARDS_RU.md` — импорт и сопровождение Grafana dashboard'ов через Ansible API playbook.
 - `docs/PRESENTATION_RU.md` — презентационные экраны Grafana и AW-rus со скриншотами.
+- `docs/1C_FILE_ANALYTICS_STACK_RU.md` — новый ClickHouse/Grafana/AI Investigator контур для файловой 1С.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
 - `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.
@@ -23,6 +25,7 @@
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `grafana/` — version-controlled Grafana dashboard JSON для RDP/worktime, DLP/ИБ и overview-экранов.
+- `clickhouse-1c/` — отдельный analytics stack для **файловой 1С**: ETL, ClickHouse schema, detections, Grafana catalog и AI Investigator contract.
 - `pfsense/` — внешний poller для pfSense API и systemd unit под Debian/Ubuntu utility VM.
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, Windows/RDP DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`) и session-level presence для удалённых Windows/RDP пользователей (`aw-worktime-sessions_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
@@ -44,6 +47,30 @@
 8. Развернуть Windows-клиентов через `windows/deploy-ensemble.ps1`.
 9. Проверить итог через `windows/validate-deployment.ps1`.
 
+## Текущий security analytics контур
+
+Сейчас в `AW-rus` уже есть замкнутый forensic-контур:
+
+- Windows-хост раз в `6` часов делает `EVTX export + upload`;
+- `aw-hayabusa-drop.path` автоматически подхватывает новый пакет;
+- `aw-hayabusa` строит forensic-отчёт;
+- `aw-hayabusa-case-alert` считает severity и score;
+- при уровне от `medium` создаётся или обновляется case;
+- при уровне от `high` уходит Telegram alert;
+- в case пишется только bounded metadata, без сырых EVTX и полного timeline body.
+
+Практический операторский вход:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-upload-hayabusa-to-aw-server.ps1 -HoursBack 6 -CaseId 30
+```
+
+Подробности:
+
+- `docs/security-analytics-stack-v1.md`
+- `docs/runbook.md`
+- `docs/hayabusa-operator-ib-guide-2026-05-14.md`
+
 Для полного Ansible-сценария “с нуля” в Proxmox используйте:
 
 - `ansible/provision_proxmox_ct_and_deploy_aw.yml`
@@ -61,6 +88,7 @@
 
 - `ansible/deploy_grafana_dashboards.yml`
 - `docs/GRAFANA_DASHBOARDS_RU.md`
+- `docs/1C_FILE_ANALYTICS_STACK_RU.md`
 
 Для Linux desktop/admin host, который должен слать watcher'ы на удалённый AW server:
 

@@ -82,7 +82,42 @@ Playbook вычисляет `durationDefault` автоматически (вкл
 
 ## Типовые инциденты
 
-### Hayabusa: production validation end-to-end
+### Hayabusa: операторский сценарий по умолчанию
+
+Текущий production-сценарий уже не требует ручного `accept/process-inbox`.
+
+Нормальный путь для оператора:
+
+1. На Windows-хосте запустить:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-upload-hayabusa-to-aw-server.ps1 -HoursBack 6 -CaseId 30
+```
+
+2. Сервер `10.10.10.13` сам:
+
+- примет `zip` и `.meta.json` в `/opt/activitywatch/aw-rus-ops/drop`;
+- запустит `aw-hayabusa`;
+- посчитает severity/score;
+- создаст case при уровне от `medium`;
+- отправит Telegram alert при уровне от `high`.
+
+3. Проверить результат:
+
+```bash
+cat /opt/hayabusa/state/latest-intake.json
+journalctl -u aw-hayabusa-drop.service -n 80 --no-pager
+curl -fsS http://127.0.0.1:5602/api/0/dlp/cases/30
+```
+
+Ожидаемо:
+
+- `latest-intake.json` имеет `status=ok`;
+- `drop` после обработки пустой;
+- в case есть `forensics.hayabusa`;
+- Telegram alert уже уходит в операторский чат.
+
+### Hayabusa: manual fallback / production validation end-to-end
 
 Цель: подтвердить один реальный путь
 
@@ -93,6 +128,12 @@ Playbook вычисляет `durationDefault` автоматически (вкл
 - привязка bounded metadata к операторскому follow-up
 
 Минимальный production-proven сценарий:
+
+Этот путь нужен только если:
+
+- надо руками прогнать старый пакет;
+- надо повторно разобрать archived zip;
+- надо отладить сам `aw-hayabusa` без drop-автоматики.
 
 1. На Windows-хосте сделать экспорт:
 
