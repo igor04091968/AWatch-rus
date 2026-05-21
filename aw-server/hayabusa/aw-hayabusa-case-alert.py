@@ -243,18 +243,45 @@ def send_telegram(bot_token: str, chat_ids: list[str], text: str) -> list[dict[s
 
 
 def build_telegram_text(case_id: int | None, intake: dict[str, Any], summary: dict[str, Any]) -> str:
-    top = ", ".join(f"{item['title']} ({item['count']})" for item in summary.get("top_rules", [])[:3]) or "n/a"
-    case_part = f"\nCase: {case_id}" if case_id is not None else ""
-    return (
-        f"Hayabusa {summary['severity'].upper()} alert\n"
-        f"Host: {intake['host']}{case_part}\n"
-        f"Intake: {intake['intake_id']}\n"
-        f"Score: {summary['score']}\n"
-        f"Events: {summary['events_total']}, failed_logons={summary['failed_logon_rows']}, "
-        f"suspicious_pwsh={summary['suspicious_pwsh']}\n"
-        f"Top rules: {top}\n"
-        f"Report: {intake['report_dir']}"
+    severity_label = {
+        "critical": "критичное событие",
+        "high": "опасное событие",
+        "medium": "подозрительное событие",
+        "low": "слабый сигнал",
+    }.get(summary["severity"], summary["severity"])
+    top_rules = summary.get("top_rules", [])
+    top_rule = top_rules[0]["title"] if top_rules else "нет явного доминирующего правила"
+    lines = [
+        f"Hayabusa: {severity_label}",
+        "",
+        f"Хост: {intake['host']}",
+    ]
+    if case_id is not None:
+        lines.append(f"Кейс: {case_id}")
+    lines.extend(
+        [
+            f"Уровень: {summary['severity']}",
+            "",
+            "Что найдено:",
+            f"- {top_rule}: {top_rules[0]['count'] if top_rules else 0}",
+            f"- подозрительный PowerShell: {summary['suspicious_pwsh']}",
+            f"- ошибок входа: {summary['logon_failure_events']}",
+            f"- событий по учётным данным: {summary['credential_events']}",
+        ]
     )
+    if summary.get("timestomp_events", 0) > 0:
+        lines.append(f"- timestomp-подобных событий: {summary['timestomp_events']}")
+    lines.extend(
+        [
+            "",
+            "Главный риск:",
+            "возможная активность вокруг учётных данных и PowerShell",
+            "",
+            "Отчёт:",
+            f"{intake['report_dir']}",
+        ]
+    )
+    return "\n".join(lines)
 
 
 def main() -> int:

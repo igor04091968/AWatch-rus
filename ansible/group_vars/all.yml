@@ -31,7 +31,7 @@ aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
 aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
 aw_hayabusa_auto_case_enabled: true
 aw_hayabusa_auto_case_min_severity: "medium"
-aw_hayabusa_telegram_enabled: false
+aw_hayabusa_telegram_enabled: true
 aw_hayabusa_telegram_min_severity: "high"
 aw_hayabusa_telegram_bot_token: ""
 aw_hayabusa_telegram_chat_ids: ""
