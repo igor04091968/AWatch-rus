@@ -26,7 +26,7 @@ param(
     [string]$LogPath,
     [int]$PollSeconds,
     [ValidateSet('outlook', 'smtp', 'both')]
-    [string]$Mode = 'both'
+    [string]$Mode = 'smtp'
 )
 
 Set-StrictMode -Version Latest
@@ -322,8 +322,23 @@ function Invoke-EmailEnforcement {
 # ---------------------------------------------------------------------------
 
 function Initialize-OutlookCom {
+    if ($script:OutlookDisabled) {
+        return $false
+    }
+
+    if (-not (Test-OutlookProfileConfigured)) {
+        Write-CollectorLog "Outlook profile not configured for current user, Outlook mode disabled"
+        $script:OutlookDisabled = $true
+        return $false
+    }
+
+    if (-not (Get-Process -Name OUTLOOK -ErrorAction SilentlyContinue | Select-Object -First 1)) {
+        Write-CollectorLog "Outlook process not running, skipping COM initialization"
+        return $false
+    }
+
     try {
-        $script:OutlookApp = New-Object -ComObject Outlook.Application
+        $script:OutlookApp = [Runtime.InteropServices.Marshal]::GetActiveObject('Outlook.Application')
         $script:OutlookNamespace = $script:OutlookApp.GetNamespace('MAPI')
         $script:SentFolder = $script:OutlookNamespace.GetDefaultFolder(5) # olFolderSentMail
         Write-CollectorLog "Outlook COM initialized, Sent Items folder opened"
@@ -333,6 +348,32 @@ function Initialize-OutlookCom {
         Write-CollectorLog ("Outlook COM init failed: {0}" -f $_.Exception.Message)
         return $false
     }
+}
+
+function Test-OutlookProfileConfigured {
+    [OutputType([bool])]
+    $officeRoots = @(
+        'HKCU:\Software\Microsoft\Office',
+        'HKCU:\Software\WOW6432Node\Microsoft\Office'
+    )
+
+    foreach ($root in $officeRoots) {
+        if (-not (Test-Path -LiteralPath $root)) { continue }
+        $versions = Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue |
+            Where-Object { $_.PSChildName -match '^\d+\.\d+$' } |
+            Sort-Object { [version]$_.PSChildName } -Descending
+        foreach ($ver in $versions) {
+            $profilesPath = Join-Path $ver.PSPath 'Outlook\Profiles'
+            if (Test-Path -LiteralPath $profilesPath) {
+                $profiles = Get-ChildItem -LiteralPath $profilesPath -ErrorAction SilentlyContinue
+                if ($profiles -and $profiles.Count -gt 0) {
+                    return $true
+                }
+            }
+        }
+    }
+
+    return $false
 }
 
 function Get-OutlookSentItems {
@@ -521,6 +562,7 @@ $script:OutlookApp = $null
 $script:OutlookNamespace = $null
 $script:SentFolder = $null
 $script:OutlookLastPoll = (Get-Date).AddMinutes(-5)
+$script:OutlookDisabled = $false
 
 Load-EmailPolicy -Path $resolvedPolicyPath
 Write-CollectorLog ("email collector started mode={0} against {1}" -f $Mode, $script:ApiBase)

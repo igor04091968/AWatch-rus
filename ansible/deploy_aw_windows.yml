@@ -107,6 +107,7 @@
         - deploy-ensemble.ps1
         - hardening-recovery.ps1
         - rebuild-worktime-tasks.ps1
+        - audit-cryptopro.ps1
         - validate-deployment.ps1
         - web-category-rules.example.json
         - dlp-policy.example.json

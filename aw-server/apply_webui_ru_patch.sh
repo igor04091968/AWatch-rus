@@ -122,15 +122,15 @@ content = re.sub(
 )
 content = content.replace(
     "</head>",
-    f'<script src="/js/sw-cleanup.js?v={sw_hash}"></script></head>',
+    (
+        f'<script src="/js/sw-cleanup.js?v={sw_hash}"></script>'
+        f'<script src="/js/ru-patch-v5.js?v={patch_hash}"></script></head>'
+    ),
     1,
 )
 content = content.replace(
     "</body>",
-    (
-        f'<script defer="defer" src="/js/ru-patch-v5.js?v={patch_hash}"></script>'
-        f'<script defer="defer" src="/js/aw-worktime-panel.js?v={panel_hash}"></script></body>'
-    ),
+    f'<script defer="defer" src="/js/aw-worktime-panel.js?v={panel_hash}"></script></body>',
     1,
 )
 if 'id="aw-report-links"' not in content:

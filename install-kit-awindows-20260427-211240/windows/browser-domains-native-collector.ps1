@@ -62,13 +62,14 @@ $resolvedIncidentLogPath = if ($IncidentLogPath) { $IncidentLogPath } else { Joi
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
 $resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
+$resolvedHostname = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$deploymentConfig.awHostname)) { [string]$deploymentConfig.awHostname } else { [string]$env:COMPUTERNAME }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
 }
 
 $script:ApiBase = '{0}://{1}:{2}/api/0' -f $resolvedServerScheme, $resolvedServerHost, $resolvedServerPort
-$script:Hostname = $env:COMPUTERNAME
+$script:Hostname = $resolvedHostname
 $script:SessionId = (Get-Process -Id $PID).SessionId
 $script:KnownBuckets = @{}
 $script:LocalAgentLogsEnabled = $resolvedLocalAgentLogsEnabled
@@ -541,7 +542,7 @@ function Send-DlpIncidentHeartbeat {
         } + $captureData
     } | ConvertTo-Json -Depth 5 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
 }
 
 function Get-FileSha256Hex {
@@ -701,13 +702,26 @@ function Ensure-Bucket {
         return
     }
 
+    try {
+        Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
+        $script:KnownBuckets[$BucketId] = $true
+        return
+    }
+    catch {
+    }
+
     $body = @{
         client   = $ClientName
         type     = $BucketType
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId" -ContentType 'application/json' -Body $body | Out-Null
+    try {
+        Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
+    }
+    catch {
+        Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
+    }
     $script:KnownBuckets[$BucketId] = $true
 }
 
@@ -733,7 +747,7 @@ function Send-Heartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
 }
 
 function Send-CategoryHeartbeat {
@@ -770,7 +784,7 @@ function Send-CategoryHeartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event | Out-Null
+    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
 }
 
 Load-CustomCategoryRules -Path $resolvedRulesPath

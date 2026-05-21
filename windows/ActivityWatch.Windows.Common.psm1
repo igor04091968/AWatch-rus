@@ -749,6 +749,33 @@ function New-LaunchLock {
     return `$lockPath
 }
 
+function Get-SessionMarkerToken {
+    param([int]`$SessionId)
+
+    try {
+        `$explorer = Get-Process -Name 'explorer' -ErrorAction SilentlyContinue |
+            Where-Object { `$_.SessionId -eq `$SessionId } |
+            Sort-Object StartTime |
+            Select-Object -First 1
+        if (`$explorer -and `$explorer.StartTime) {
+            return `$explorer.StartTime.ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+        }
+    }
+    catch {
+    }
+
+    try {
+        `$currentProcess = Get-Process -Id `$PID -ErrorAction Stop
+        if (`$currentProcess.StartTime) {
+            return `$currentProcess.StartTime.ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+        }
+    }
+    catch {
+    }
+
+    return [string]`$SessionId
+}
+
 function Invoke-AwJsonPost {
     param(
         [Parameter(Mandatory = `$true)][string]`$Uri,
@@ -864,7 +891,8 @@ function Send-LogonMarkerIfNeeded {
         return
     }
 
-    `$markerFile = Join-Path `$markerDir ("logon-{0}-{1}.marker" -f `$env:USERNAME, `$SessionId)
+    `$sessionMarkerToken = Get-SessionMarkerToken -SessionId `$SessionId
+    `$markerFile = Join-Path `$markerDir ("logon-{0}-{1}-{2}.marker" -f `$env:USERNAME, `$SessionId, `$sessionMarkerToken)
     if (Test-Path -LiteralPath `$markerFile) {
         return
     }

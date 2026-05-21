@@ -1,6 +1,10 @@
 (function () {
-  window.__awRuPatchVersion = "template-v12-activity-heading-ru";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v12-activity-heading-ru");
+  if (window.__awRuPatchBootstrapped) {
+    return;
+  }
+  window.__awRuPatchBootstrapped = true;
+  window.__awRuPatchVersion = "template-v13-category-builder-early-fix";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v13-category-builder-early-fix");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -370,25 +374,43 @@
     return /^pve[-_]/i.test(String(host || ""));
   }
 
+  function isLikelyClientHost(host) {
+    const value = String(host || "").trim();
+    if (!value) return false;
+    if (/^(?:unknown|undefined|null)$/i.test(value)) return false;
+    if (/^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|::1)$/i.test(value)) return false;
+    if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(value)) return false;
+    if (value.indexOf(":") !== -1 && /^[0-9a-f:\[\]]+$/i.test(value)) return false;
+    return true;
+  }
+
   function enforceSafeActivityViewForPveHost() {
     const hash = window.location.hash || "";
-    const match = hash.match(/^#\/activity\/([^/]+)\/day\/([^/]+)\/view\/([^/?#]+)/i);
+    const match = hash.match(/^#\/activity\/([^/]+)(?:\/day\/([^/]+))?\/view\/([^/?#]+)/i);
     if (!match) return;
     const host = decodeURIComponent(match[1] || "");
-    const day = decodeURIComponent(match[2] || "");
+    const day = match[2] ? decodeURIComponent(match[2]) : "";
     const viewId = decodeURIComponent(match[3] || "");
-    if (!isPveLikeHost(host)) return;
-    const safeHash = "#/activity/" + encodeURIComponent(host) + "/day/" + encodeURIComponent(day) + "/view/" + encodeURIComponent("pve_audit");
-    if (safeHash !== hash && !/^pve_audit$/i.test(viewId)) {
-      window.location.replace(safeHash);
+    const prefix = day
+      ? "#/activity/" + encodeURIComponent(host) + "/day/" + encodeURIComponent(day) + "/view/"
+      : "#/activity/" + encodeURIComponent(host) + "/view/";
+    if (isPveLikeHost(host)) {
+      const safeHash = prefix + encodeURIComponent("pve_audit");
+      if (safeHash !== hash && !/^pve_audit$/i.test(viewId)) {
+        window.location.replace(safeHash);
+      }
+      return;
+    }
+    if (/^pve_audit$/i.test(viewId)) {
+      window.location.replace(prefix + encodeURIComponent("summary"));
     }
   }
 
   function getDlpHostFromSettings(settings) {
     const routeHost = getCurrentHostFromHash();
-    if (routeHost) return routeHost;
+    if (isLikelyClientHost(routeHost)) return routeHost;
     const bucketHost = getDlpHostFromBucketId(getDlpBucketIdFromHash());
-    if (bucketHost) return bucketHost;
+    if (isLikelyClientHost(bucketHost)) return bucketHost;
     return getTrendsHostFromSettings(settings);
   }
 
@@ -681,6 +703,19 @@
           ]
         },
         {
+          id: "linux-remote",
+          name: "Linux remote workers",
+          description: "Linux-хосты удалённых сотрудников: GUI активность, SSH/console и browser admin UI.",
+          patterns: ["^(LINUX-WS|LINUX-DESKTOP|LX-|DESKTOP-|ADMIN-|WORKSTATION-|DEVBOX-)"],
+          links: [
+            { label: "Активность", type: "activity" },
+            { label: "SSH сессии", type: "bucket", bucket_prefix: "aw-ssh-sessions_" },
+            { label: "Команды shell", type: "bucket", bucket_prefix: "aw-console-commands_" },
+            { label: "Web категории", type: "bucket", bucket_prefix: "aw-detmir-web-category_" },
+            { label: "Все бакеты", type: "buckets" }
+          ]
+        },
+        {
           id: "virtual-infra",
           name: "Virtual servers + Proxmox",
           description: "Инфраструктурные VM, Proxmox и сетевые узлы.",
@@ -740,7 +775,15 @@
     const prefixes = [
       "aw-watcher-window_",
       "aw-watcher-afk_",
+      "aw-console-commands_",
+      "aw-ssh-sessions_",
+      "aw-linux-web-context_",
+      "aw-detmir-web-category_",
       "aw-dlp-endpoint-signals_",
+      "aw-session-events_",
+      "aw-worktime-sessions_",
+      "aw-pve-webadmin-events_",
+      "aw-pve-task-events_",
       "aw-dlp-incidents_",
       "aw-pfsense-health_",
       "aw-pfsense-gateways_",
@@ -770,7 +813,27 @@
     return result;
   }
 
-  function matchHostGroup(host, groups) {
+  function hostHasBucketPrefix(hostBuckets, prefix) {
+    return (hostBuckets || []).some(function (bucketId) {
+      return String(bucketId || "").indexOf(prefix) === 0;
+    });
+  }
+
+  function matchHostGroup(host, groups, hostBuckets) {
+    const bucketList = hostBuckets || [];
+    if (hostHasBucketPrefix(bucketList, "aw-dlp-endpoint-signals_") || hostHasBucketPrefix(bucketList, "aw-session-events_")) {
+      return "windows-rdp";
+    }
+    if (
+      hostHasBucketPrefix(bucketList, "aw-console-commands_") ||
+      hostHasBucketPrefix(bucketList, "aw-ssh-sessions_") ||
+      hostHasBucketPrefix(bucketList, "aw-linux-web-context_") ||
+      hostHasBucketPrefix(bucketList, "aw-detmir-web-category_")
+    ) {
+      if (!hostHasBucketPrefix(bucketList, "aw-pve-webadmin-events_") && !hostHasBucketPrefix(bucketList, "aw-pve-task-events_")) {
+        return "linux-remote";
+      }
+    }
     for (const group of groups) {
       const patterns = Array.isArray(group.patterns) ? group.patterns : [];
       for (const pattern of patterns) {
@@ -813,7 +876,7 @@
     grouped.set("__ungrouped__", []);
 
     Array.from(hostBuckets.keys()).sort().forEach(function (host) {
-      const groupId = matchHostGroup(host, groups) || "__ungrouped__";
+      const groupId = matchHostGroup(host, groups, hostBuckets.get(host) || []) || "__ungrouped__";
       grouped.get(groupId).push(host);
     });
 
@@ -869,7 +932,7 @@
       center.setAttribute("data-aw-ru-host-groups", "1");
       center.innerHTML =
         '<h4>Разделы хостов</h4>' +
-        '<p>Здесь хосты разделены на пользовательские Windows RDP и инфраструктурные виртуальные серверы/Proxmox.</p>' +
+        '<p>Здесь хосты разделены на Windows RDP, Linux remote workers и инфраструктурные узлы.</p>' +
         '<div class="aw-ru-host-groups-grid" data-aw-ru-host-groups-grid><section class="aw-ru-host-group-card"><p>Загрузка...</p></section></div>';
       heading.parentElement.insertBefore(center, heading.nextSibling);
     }
@@ -885,9 +948,10 @@
     const hideSuppressed = center.querySelector("[data-aw-ru-hide-suppressed]") && center.querySelector("[data-aw-ru-hide-suppressed]").checked;
     const rows = [];
     for (const event of state.events) {
+      const data = event.data || {};
+      if (String(data.signalType || "").toLowerCase() === "self_test") continue;
       const matchedRule = state.activeRules.find(function (rule) { return ruleMatchesEvent(rule, event); }) || null;
       if (hideSuppressed && matchedRule) continue;
-      const data = event.data || {};
       const eventKey = buildDlpKey(event);
       rows.push(
         '<tr class="aw-ru-dlp-row' + (matchedRule ? ' aw-ru-dlp-muted' : '') + '" data-aw-ru-dlp-key="' + escapeHtml(eventKey) + '">' +
@@ -907,6 +971,7 @@
           '<td class="aw-ru-dlp-actions">' +
             '<button type="button" data-aw-ru-save-review>Сохранить</button>' +
             '<button type="button" data-aw-ru-save-rule>Правило</button>' +
+            '<button type="button" data-aw-ru-create-case>Кейс</button>' +
           "</td>" +
         "</tr>"
       );
@@ -977,6 +1042,58 @@
     }, 1);
   }
 
+  function getCaseApiBase() {
+    if (window.__awCaseApiBase && typeof window.__awCaseApiBase === "string") {
+      return window.__awCaseApiBase.replace(/\/+$/, "");
+    }
+    try {
+      const origin = window.location.origin || "";
+      if (/:\d+$/.test(origin)) return origin.replace(/:\d+$/, ":5602");
+      return origin + ":5602";
+    } catch (error) {
+      return "http://127.0.0.1:5602";
+    }
+  }
+
+  async function caseApi(path, init) {
+    const response = await fetch(getCaseApiBase() + path, Object.assign({ credentials: "omit" }, init || {}));
+    if (!response.ok) throw new Error("Case API HTTP " + response.status);
+    if (response.status === 204) return null;
+    return response.json();
+  }
+
+  async function createCaseFromEvent(host, event, row) {
+    const data = event.data || {};
+    if (String(data.signalType || "").toLowerCase() === "self_test") {
+      throw new Error("self_test не должен превращаться в кейс");
+    }
+    const verdict = row.querySelector("[data-aw-ru-dlp-verdict]").value;
+    const category = row.querySelector("[data-aw-ru-dlp-category]").value.trim();
+    const comment = row.querySelector("[data-aw-ru-dlp-comment]").value.trim();
+    const incidentId = buildDlpKey(event);
+    const title = "DLP " + (data.signalType || "incident") + " · " + (data.username || data.owner || host || "unknown");
+    return caseApi("/api/0/dlp/cases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        incident_id: incidentId,
+        host: host,
+        title: title,
+        severity: verdict === "incident" ? "high" : "medium",
+        source_bucket: getDlpBucketIdFromHash(),
+        source_event_ts: event.timestamp,
+        evidence: {
+          signalType: data.signalType || "",
+          username: data.username || data.owner || "",
+          documentName: data.documentName || "",
+          printerName: data.printerName || "",
+          category: category,
+          comment: comment
+        }
+      })
+    });
+  }
+
   async function saveDlpRule(host, event, row) {
     const bucketId = "aw-dlp-rules_" + host;
     await ensureAwBucket(bucketId, "aw-dlp-rules", "aw.dlp.rule", host);
@@ -1030,7 +1147,55 @@
           message.textContent = "Ошибка сохранения правила: " + error.message;
         }
       });
+      row.querySelector("[data-aw-ru-create-case]").addEventListener("click", async function () {
+        const message = center.querySelector("[data-aw-ru-dlp-message]");
+        try {
+          const created = await createCaseFromEvent(host, event, row);
+          await renderCaseManager(center, host);
+          message.textContent = "Кейс создан: #" + (created && created.id ? created.id : "?");
+        } catch (error) {
+          message.textContent = "Ошибка создания кейса: " + error.message;
+        }
+      });
     });
+  }
+
+  async function renderCaseManager(center, host) {
+    const tbody = center.querySelector("[data-aw-ru-dlp-cases]");
+    if (!tbody) return;
+    try {
+      const cases = await caseApi("/api/0/dlp/cases?host=" + encodeURIComponent(host) + "&limit=100", { method: "GET" });
+      function renderCaseDfir(c) {
+        const hayabusa = c && c.forensics && c.forensics.hayabusa;
+        if (!hayabusa) return "";
+        const status = String(hayabusa.status || "");
+        const mode = String(hayabusa.mode || "");
+        const reportDir = String(hayabusa.report_dir || "");
+        const title = reportDir ? ' title="' + escapeHtml(reportDir) + '"' : "";
+        return '<span' + title + '>Hayabusa ' + escapeHtml(status) + (mode ? " · " + escapeHtml(mode) : "") + '</span>';
+      }
+      const rows = (cases || []).map(function (c) {
+        return (
+          "<tr>" +
+          "<td>" + escapeHtml(String(c.id || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.status || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.severity || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.title || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.assignee || "")) + "</td>" +
+          "<td>" + escapeHtml(String(c.incident_id || "")) + "</td>" +
+          "<td>" + renderCaseDfir(c) + "</td>" +
+          "<td>" + escapeHtml(String(c.updated_at || c.created_at || "")) + "</td>" +
+          "</tr>"
+        );
+      });
+      tbody.innerHTML = rows.length ? rows.join("") : '<tr><td colspan="8">Кейсов нет.</td></tr>';
+      const status = center.querySelector("[data-aw-ru-dlp-cases-status]");
+      if (status) status.textContent = "Кейсов: " + (cases || []).length;
+    } catch (error) {
+      tbody.innerHTML = '<tr><td colspan="8">Ошибка загрузки кейсов: ' + escapeHtml(error.message) + '</td></tr>';
+      const status = center.querySelector("[data-aw-ru-dlp-cases-status]");
+      if (status) status.textContent = "Кейсы недоступны";
+    }
   }
 
   async function setDlpRuleEnabled(host, ruleEvent, enabled) {
@@ -1187,6 +1352,7 @@
         state.reviews = [];
       }
       renderDlpTableRows(center, host);
+      await renderCaseManager(center, host);
       center.querySelector("[data-aw-ru-dlp-message]").textContent = "DLP review центр обновлен.";
     } catch (error) {
       center.querySelector("[data-aw-ru-dlp-message]").textContent = "Ошибка загрузки DLP-событий: " + error.message;
@@ -1240,6 +1406,16 @@
           '<table class="aw-ru-dlp-table">' +
             '<thead><tr><th>Время</th><th>Статус</th><th>Вердикт</th><th>Категория</th><th>Комментарий</th><th>Источник</th><th>Управление</th></tr></thead>' +
             '<tbody data-aw-ru-dlp-reviews><tr><td colspan="7">Загрузка...</td></tr></tbody>' +
+          '</table>' +
+        '</div>' +
+        '<div class="aw-ru-dlp-section">' +
+          '<div class="aw-ru-dlp-toolbar">' +
+            '<h5>Case Management</h5>' +
+            '<div class="aw-ru-dlp-status" data-aw-ru-dlp-cases-status>Кейсов: 0</div>' +
+          '</div>' +
+          '<table class="aw-ru-dlp-table">' +
+            '<thead><tr><th>ID</th><th>Статус</th><th>Severity</th><th>Заголовок</th><th>Исполнитель</th><th>Incident ID</th><th>DFIR</th><th>Обновлено</th></tr></thead>' +
+            '<tbody data-aw-ru-dlp-cases><tr><td colspan="8">Загрузка...</td></tr></tbody>' +
           '</table>' +
         '</div>' +
         '<div class="aw-ru-dlp-message" data-aw-ru-dlp-message></div>';
@@ -1378,6 +1554,16 @@
     }
   }
 
+  function hidePveAuditTabForRegularHost(root) {
+    const hash = window.location.hash || "";
+    const match = hash.match(/^#\/activity\/([^/]+)/i);
+    const host = match && match[1] ? decodeURIComponent(match[1]) : "";
+    if (!host || isPveLikeHost(host)) return;
+    Array.from(root.querySelectorAll('a[href*="/view/pve_audit"]')).forEach(function (link) {
+      link.style.display = "none";
+    });
+  }
+
   function injectDlpAlertsCenter(root) {
     if (!isAlertsRoute()) return;
     const host = window.__awRuPatchSettingsHost || getCurrentHostFromHash();
@@ -1414,18 +1600,27 @@
       center.setAttribute("data-aw-ru-loaded", "1");
       refreshDlpAlertsCenter(center, host);
     }
+    Array.from(heading.parentElement.children).forEach(function (child) {
+      if (child === heading || child === center) return;
+      child.style.display = "none";
+    });
   }
 
   let trendsRedirectInFlight = false;
   let settingsHostFetchInFlight = false;
   let applyPatchScheduled = false;
   let networkPatchesInstalled = false;
+  let dlpOverlayFailureCount = 0;
+  let applyPatchInFlight = false;
+  let observerAttached = false;
+  let staticPatchRouteKey = "";
 
   function getTrendsHostFromSettings(settings) {
     if (!settings || typeof settings !== "object") return "";
     const landingpage = typeof settings.landingpage === "string" ? settings.landingpage : "";
     const match = landingpage.match(/\/activity\/([^/]+)/);
-    return match && match[1] ? match[1] : "";
+    const host = match && match[1] ? decodeURIComponent(match[1]) : "";
+    return isLikelyClientHost(host) ? host : "";
   }
 
   function getTrendsPath(hash) {
@@ -1477,6 +1672,9 @@
       .finally(function () {
         settingsHostFetchInFlight = false;
         injectDlpNavigation(document.body);
+        if (isAlertsRoute()) {
+          scheduleApplyPatch();
+        }
       });
   }
 
@@ -1492,14 +1690,25 @@
       .map(function (bucketId) { return bucketId.replace(/^aw-watcher-window_/i, ""); })
       .filter(Boolean)
       .filter(function (host) { return !/^unknown$/i.test(host); });
-    if (settingsHost && hosts.indexOf(settingsHost) >= 0) return settingsHost;
-    if (settingsHost) return settingsHost;
+    if (isLikelyClientHost(settingsHost) && hosts.indexOf(settingsHost) >= 0) return settingsHost;
+    if (isLikelyClientHost(settingsHost) && !hosts.length) return settingsHost;
     hosts.sort();
     return hosts[0] || "";
   }
 
   function rewriteUnknownCategoryBuilderQueryBody(body) {
     if (typeof body !== "string") return body;
+    function stripUnknownBucketTokens(raw) {
+      return raw
+        .replace(/aw-watcher-window_unknown/gi, "__AW_RU_UNKNOWN_WINDOW__")
+        .replace(/aw-watcher-afk_unknown/gi, "__AW_RU_UNKNOWN_AFK__")
+        .replace(/find_bucket\((\\?["'])__AW_RU_UNKNOWN_WINDOW__(\\?["'])\)/gi, "[]")
+        .replace(/find_bucket\((\\?["'])__AW_RU_UNKNOWN_AFK__(\\?["'])\)/gi, "[]")
+        .replace(/query_bucket\((\\?["'])__AW_RU_UNKNOWN_WINDOW__(\\?["'])\)/gi, "[]")
+        .replace(/query_bucket\((\\?["'])__AW_RU_UNKNOWN_AFK__(\\?["'])\)/gi, "[]")
+        .replace(/__AW_RU_UNKNOWN_WINDOW__/g, "")
+        .replace(/__AW_RU_UNKNOWN_AFK__/g, "");
+    }
     function stripUnknownBucketQueries(raw) {
       return raw
         .replace(/flood\(query_bucket\(find_bucket\(\\"aw-watcher-window_unknown\\"\)\)\)/g, '[]')
@@ -1534,6 +1743,10 @@
         body = stripUnknownBucketQueries(body);
       }
     }
+    if (body.indexOf("aw-watcher-window_unknown") !== -1 || body.indexOf("aw-watcher-afk_unknown") !== -1) {
+      body = stripUnknownBucketQueries(body);
+      body = stripUnknownBucketTokens(body);
+    }
     return body;
   }
 
@@ -1541,20 +1754,25 @@
     if (networkPatchesInstalled) return;
     networkPatchesInstalled = true;
 
-    const originalFetch = window.fetch ? window.fetch.bind(window) : null;
-    if (originalFetch) {
-      window.fetch = function (input, init) {
+    const originalFetch = window.fetch;
+    if (typeof originalFetch === "function" && !originalFetch.__awRuCategoryBuilderPatched) {
+      const patchedFetch = function (input, init) {
+        let nextInput = input;
+        let nextInit = init;
         try {
-          const url = typeof input === "string" ? input : String(input && input.url || "");
-          if (/\/api\/0\/query\/?$/i.test(url) && init && typeof init.body === "string") {
-            init = Object.assign({}, init, {
-              body: rewriteUnknownCategoryBuilderQueryBody(init.body)
+          const url = typeof nextInput === "string" ? nextInput : String(nextInput && nextInput.url || "");
+          if (/\/api\/0\/query\/?$/i.test(url) && nextInit && typeof nextInit.body === "string") {
+            nextInit = Object.assign({}, nextInit, {
+              body: rewriteUnknownCategoryBuilderQueryBody(nextInit.body)
             });
           }
         } catch (error) {
         }
-        return originalFetch(input, init);
+        return originalFetch.call(this, nextInput, nextInit);
       };
+      patchedFetch.__awRuCategoryBuilderPatched = true;
+      patchedFetch.__awRuOriginalFetch = originalFetch;
+      window.fetch = patchedFetch;
     }
 
     if (window.XMLHttpRequest && window.XMLHttpRequest.prototype) {
@@ -1599,6 +1817,45 @@
     });
   }
 
+  function normalizeCategoryBuilderUnknownHostRefs() {
+    const hash = window.location.hash || "";
+    if (!/^#\/settings\/category-builder(?:[/?#]|$)/i.test(hash)) return;
+    const preferredHost = getPreferredWindowHostFromBuckets();
+    if (!preferredHost) return;
+
+    const nextHash = hash
+      .replace(/aw-watcher-window_unknown/gi, "aw-watcher-window_" + preferredHost)
+      .replace(/aw-watcher-afk_unknown/gi, "aw-watcher-afk_" + preferredHost);
+    if (nextHash !== hash) {
+      window.location.replace(nextHash);
+      return;
+    }
+
+    try {
+      for (let i = 0; i < window.localStorage.length; i += 1) {
+        const key = window.localStorage.key(i);
+        if (!key) continue;
+        const value = window.localStorage.getItem(key);
+        if (!value || (value.indexOf("aw-watcher-window_unknown") === -1 && value.indexOf("aw-watcher-afk_unknown") === -1)) continue;
+        window.localStorage.setItem(
+          key,
+          value
+            .replace(/aw-watcher-window_unknown/gi, "aw-watcher-window_" + preferredHost)
+            .replace(/aw-watcher-afk_unknown/gi, "aw-watcher-afk_" + preferredHost)
+        );
+      }
+    } catch (error) {
+    }
+  }
+
+  function primeCategoryBuilderEarlyFix() {
+    const hash = window.location.hash || "";
+    if (!/^#\/settings\/category-builder(?:[/?#]|$)/i.test(hash)) return;
+    ensureSettingsHost();
+    ensureHostGroupsData().catch(function () {});
+    normalizeCategoryBuilderUnknownHostRefs();
+  }
+
   function patchActivityHeading(root) {
     const heading = root.querySelector("h3");
     if (!heading) return;
@@ -1611,27 +1868,64 @@
     });
   }
 
+  function detachObserver() {
+    if (!observerAttached) return;
+    observer.disconnect();
+    observerAttached = false;
+  }
+
+  function attachObserver() {
+    if (observerAttached || !document.body) return;
+    observer.observe(document.body, { childList: true, subtree: true });
+    observerAttached = true;
+  }
+
   function applyPatch() {
-    enforceSafeActivityViewForPveHost();
-    ensureSettingsHost();
-    ensureHostGroupsData().catch(function () {});
-    installCategoryBuilderNetworkPatch();
-    injectStyles();
-    walk(document.body);
-    translateAttributes(document.body);
-    hideNoiseNavigation(document.body);
-    patchActivityHeading(document.body);
-    patchCategoryBuilderHostLabel(document.body);
-    injectPveAuditCenter(document.body);
-    injectDlpNavigation(document.body);
-    injectDlpReviewCenter(document.body);
-    injectDlpAlertsCenter(document.body);
-    injectHostGroupsCenter(document.body).catch(function () {});
-    redirectBareTrendsRoute();
+    if (applyPatchInFlight || !document.body) return;
+    applyPatchInFlight = true;
+    detachObserver();
+    try {
+      const routeKey = window.location.hash || "#";
+      const routeChanged = routeKey !== staticPatchRouteKey;
+      enforceSafeActivityViewForPveHost();
+      ensureSettingsHost();
+      ensureHostGroupsData().catch(function () {});
+      normalizeCategoryBuilderUnknownHostRefs();
+      installCategoryBuilderNetworkPatch();
+      injectStyles();
+      if (routeChanged) {
+        walk(document.body);
+        translateAttributes(document.body);
+        hideNoiseNavigation(document.body);
+        hidePveAuditTabForRegularHost(document.body);
+        patchActivityHeading(document.body);
+        patchCategoryBuilderHostLabel(document.body);
+        staticPatchRouteKey = routeKey;
+      }
+      injectPveAuditCenter(document.body);
+      injectDlpNavigation(document.body);
+      if (isDlpSignalBucketRoute() && dlpOverlayFailureCount === 0) {
+        try {
+          injectDlpReviewCenter(document.body);
+        } catch (error) {
+          dlpOverlayFailureCount += 1;
+          const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
+          if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+        }
+      } else if (!isDlpSignalBucketRoute()) {
+        injectDlpReviewCenter(document.body);
+      }
+      injectDlpAlertsCenter(document.body);
+      injectHostGroupsCenter(document.body).catch(function () {});
+      redirectBareTrendsRoute();
+    } finally {
+      applyPatchInFlight = false;
+      attachObserver();
+    }
   }
 
   function scheduleApplyPatch() {
-    if (applyPatchScheduled) return;
+    if (applyPatchScheduled || applyPatchInFlight) return;
     applyPatchScheduled = true;
     window.setTimeout(function () {
       applyPatchScheduled = false;
@@ -1640,15 +1934,20 @@
   }
 
   const observer = new MutationObserver(function () {
+    if (applyPatchInFlight) return;
     scheduleApplyPatch();
   });
 
+  installCategoryBuilderNetworkPatch();
+  primeCategoryBuilderEarlyFix();
+
   window.addEventListener("load", function () {
     applyPatch();
-    observer.observe(document.body, { childList: true, subtree: true });
+    attachObserver();
   });
   window.addEventListener("hashchange", function () {
     redirectBareTrendsRoute();
+    staticPatchRouteKey = "";
     scheduleApplyPatch();
   });
 })();

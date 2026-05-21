@@ -1,6 +1,10 @@
 (function () {
-  window.__awRuPatchVersion = "template-v12-activity-heading-ru";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v12-activity-heading-ru");
+  if (window.__awRuPatchBootstrapped) {
+    return;
+  }
+  window.__awRuPatchBootstrapped = true;
+  window.__awRuPatchVersion = "template-v13-category-builder-early-fix";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v13-category-builder-early-fix");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -1687,6 +1691,7 @@
       .filter(Boolean)
       .filter(function (host) { return !/^unknown$/i.test(host); });
     if (isLikelyClientHost(settingsHost) && hosts.indexOf(settingsHost) >= 0) return settingsHost;
+    if (isLikelyClientHost(settingsHost) && !hosts.length) return settingsHost;
     hosts.sort();
     return hosts[0] || "";
   }
@@ -1749,20 +1754,25 @@
     if (networkPatchesInstalled) return;
     networkPatchesInstalled = true;
 
-    const originalFetch = window.fetch ? window.fetch.bind(window) : null;
-    if (originalFetch) {
-      window.fetch = function (input, init) {
+    const originalFetch = window.fetch;
+    if (typeof originalFetch === "function" && !originalFetch.__awRuCategoryBuilderPatched) {
+      const patchedFetch = function (input, init) {
+        let nextInput = input;
+        let nextInit = init;
         try {
-          const url = typeof input === "string" ? input : String(input && input.url || "");
-          if (/\/api\/0\/query\/?$/i.test(url) && init && typeof init.body === "string") {
-            init = Object.assign({}, init, {
-              body: rewriteUnknownCategoryBuilderQueryBody(init.body)
+          const url = typeof nextInput === "string" ? nextInput : String(nextInput && nextInput.url || "");
+          if (/\/api\/0\/query\/?$/i.test(url) && nextInit && typeof nextInit.body === "string") {
+            nextInit = Object.assign({}, nextInit, {
+              body: rewriteUnknownCategoryBuilderQueryBody(nextInit.body)
             });
           }
         } catch (error) {
         }
-        return originalFetch(input, init);
+        return originalFetch.call(this, nextInput, nextInit);
       };
+      patchedFetch.__awRuCategoryBuilderPatched = true;
+      patchedFetch.__awRuOriginalFetch = originalFetch;
+      window.fetch = patchedFetch;
     }
 
     if (window.XMLHttpRequest && window.XMLHttpRequest.prototype) {
@@ -1836,6 +1846,14 @@
       }
     } catch (error) {
     }
+  }
+
+  function primeCategoryBuilderEarlyFix() {
+    const hash = window.location.hash || "";
+    if (!/^#\/settings\/category-builder(?:[/?#]|$)/i.test(hash)) return;
+    ensureSettingsHost();
+    ensureHostGroupsData().catch(function () {});
+    normalizeCategoryBuilderUnknownHostRefs();
   }
 
   function patchActivityHeading(root) {
@@ -1919,6 +1937,9 @@
     if (applyPatchInFlight) return;
     scheduleApplyPatch();
   });
+
+  installCategoryBuilderNetworkPatch();
+  primeCategoryBuilderEarlyFix();
 
   window.addEventListener("load", function () {
     applyPatch();

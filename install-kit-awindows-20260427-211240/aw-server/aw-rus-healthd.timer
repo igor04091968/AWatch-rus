@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW-RUS unified health orchestrator every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Unit=aw-rus-healthd.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

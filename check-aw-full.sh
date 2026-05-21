@@ -1,11 +1,11 @@
 #!/bin/bash
 # check-aw-full.sh - Полная проверка ActivityWatch: сервер + RDP-хост
 # Сервер: 10.10.10.13:5600
-# RDP-хост: 192.168.100.21 (SHARKON2025)
+# RDP-хост: 192.168.100.18 (SHARKON2025)
 
 SERVER="http://10.10.10.13:5600"
 HOSTNAME_FILTER="SHARKON2025"
-RDP_HOST="192.168.100.21"
+RDP_HOST="192.168.100.18"
 NOW=$(date -u +%s)
 
 # Цвета

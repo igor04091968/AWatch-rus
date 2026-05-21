@@ -106,7 +106,7 @@ curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/even
 
 Цель: подтвердить, что при недоступности AW API события не теряются, а буферизуются в локальной очереди и автоматически отправляются после восстановления связи.
 
-На RDP-хосте (`192.168.100.21`) в PowerShell под администратором:
+На RDP-хосте (`192.168.100.18`) в PowerShell под администратором:
 
 1) Проверить/обнулить очереди:
 
@@ -207,14 +207,14 @@ chmod 600 /tmp/sharkon_ru.auth
 3. Запустить recovery task:
 
 ```sh
-wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.21 \
+wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.18 \
   "powershell -NoProfile -Command \"Start-ScheduledTask -TaskName 'ActivityWatch Recovery'\""
 ```
 
 4. Запустить все launch tasks:
 
 ```sh
-wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.21 \
+wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.18 \
   "powershell -NoProfile -Command \"Get-ScheduledTask | Where-Object TaskName -like 'ActivityWatch Launch *' | ForEach-Object { Start-ScheduledTask -TaskName \$_.TaskName }\""
 ```
 
@@ -284,3 +284,30 @@ systemctl restart activitywatch-server.service
 - UI открывается;
 - русификация присутствует;
 - rollback-путь понятен оператору.
+
+## Аудит CryptoPro и готовности подписантов
+
+Для повторяемой проверки сертификатов подписантов и встроенных лицензий CryptoPro:
+
+```bash
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible
+ansible-playbook -i inventory.ini audit_cryptopro_windows.yml
+```
+
+Итоговый JSON-отчёт сохраняется локально в:
+
+```text
+/tmp/aw-rus-cryptopro-audit-<user>/rdp-prod-cryptopro-audit.json
+```
+
+Отчёт содержит матрицу по профилям:
+
+- `requestedUser`
+- `profileUser`
+- `thumbprint`
+- `subject`
+- `hasPrivateKey`
+- `embeddedLicenseOk`
+- `embeddedLicenseStatus`
+- `container` если виден
+- `actionNeeded`

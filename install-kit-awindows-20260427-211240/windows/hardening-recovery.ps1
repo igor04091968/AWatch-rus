@@ -20,9 +20,22 @@ param(
     [bool]$IncidentCaptureEnabled,
     [bool]$IncidentScreenshotEnabled,
     [string]$IncidentArtifactsRoot,
+    [string]$EvtxExportRoot,
+    [int]$EvtxRetentionDays,
+    [string[]]$EvtxChannels,
     [bool]$LogonMarkerEnabled,
+    [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
+    [ValidateSet('local', 'server')]
+    [string]$PolicyMode,
+    [bool]$PolicyEngineEnabled,
+    [string]$PolicyEngineHost,
+    [int]$PolicyEnginePort,
+    [ValidateSet('http', 'https')]
+    [string]$PolicyEngineScheme,
+    [int]$PolicyRefreshSeconds,
+    [string]$PolicyCachePath,
     [switch]$RepairPackage,
     [string]$Version,
     [string]$PackageUrl,
@@ -56,8 +69,10 @@ $effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-coll
 $effectiveEndpointCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$existingConfig.paths.endpointCollectorScript } else { Join-Path $effectiveStateRoot 'dlp-endpoint-signals-collector.ps1' }
 $effectiveFileCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$existingConfig.paths.fileCollectorScript } else { Join-Path $effectiveStateRoot 'file-operations-collector.ps1' }
 $effectiveSessionCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$existingConfig.paths.sessionCollectorScript } else { Join-Path $effectiveStateRoot 'worktime-session-collector.ps1' }
+$effectiveEvtxExportScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'evtxExportScript') { [string]$existingConfig.paths.evtxExportScript } else { Join-Path $effectiveStateRoot 'export-evtx-for-hayabusa.ps1' }
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
+$effectivePolicyClientScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$existingConfig.paths.policyClientScript } else { Join-Path $effectiveStateRoot 'dlp-policy-client.ps1' }
 
 $effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
 $effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
@@ -72,8 +87,19 @@ $effectiveLocalAgentLogsEnabled = if ($PSBoundParameters.ContainsKey('LocalAgent
 $effectiveIncidentCaptureEnabled = if ($PSBoundParameters.ContainsKey('IncidentCaptureEnabled')) { [bool]$IncidentCaptureEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.incidentCapture.enabled } else { $true }
 $effectiveIncidentScreenshotEnabled = if ($PSBoundParameters.ContainsKey('IncidentScreenshotEnabled')) { [bool]$IncidentScreenshotEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$existingConfig.incidentCapture.screenshotEnabled } else { $true }
 $effectiveIncidentArtifactsRoot = if ($PSBoundParameters.ContainsKey('IncidentArtifactsRoot') -and $IncidentArtifactsRoot) { $IncidentArtifactsRoot } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $existingConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$existingConfig.incidentCapture.artifactsRoot } else { Join-Path $effectiveStateRoot 'incident-artifacts' }
+$effectiveEvtxExportRoot = if ($PSBoundParameters.ContainsKey('EvtxExportRoot') -and $EvtxExportRoot) { $EvtxExportRoot } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'evtxExportRoot') { [string]$existingConfig.forensics.evtxExportRoot } else { Join-Path $effectiveStateRoot 'forensics\evtx-exports' }
+$effectiveEvtxRetentionDays = if ($PSBoundParameters.ContainsKey('EvtxRetentionDays')) { [int]$EvtxRetentionDays } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'retentionDays') { [int]$existingConfig.forensics.retentionDays } else { 14 }
+$effectiveEvtxChannels = if ($PSBoundParameters.ContainsKey('EvtxChannels')) { @($EvtxChannels) } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'evtxChannels') { @($existingConfig.forensics.evtxChannels) } else { @() }
 $effectiveLogonMarkerEnabled = if ($PSBoundParameters.ContainsKey('LogonMarkerEnabled')) { [bool]$LogonMarkerEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$existingConfig.sessionEvents.logonEnabled } else { $true }
+$effectiveAwHostname = if ($PSBoundParameters.ContainsKey('AwHostname') -and -not [string]::IsNullOrWhiteSpace($AwHostname)) { [string]$AwHostname } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.awHostname)) { [string]$existingConfig.awHostname } else { [string]$env:COMPUTERNAME }
 $effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
+$effectivePolicyMode = if ($PSBoundParameters.ContainsKey('PolicyMode') -and $PolicyMode) { [string]$PolicyMode } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'mode') { [string]$existingConfig.policyEngine.mode } else { 'local' }
+$effectivePolicyEngineEnabled = if ($PSBoundParameters.ContainsKey('PolicyEngineEnabled')) { [bool]$PolicyEngineEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.policyEngine.enabled } else { $false }
+$effectivePolicyEngineHost = if ($PSBoundParameters.ContainsKey('PolicyEngineHost') -and -not [string]::IsNullOrWhiteSpace($PolicyEngineHost)) { [string]$PolicyEngineHost } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'host') { [string]$existingConfig.policyEngine.host } else { [string]$effectiveServerHost }
+$effectivePolicyEnginePort = if ($PSBoundParameters.ContainsKey('PolicyEnginePort')) { [int]$PolicyEnginePort } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'port') { [int]$existingConfig.policyEngine.port } else { 5601 }
+$effectivePolicyEngineScheme = if ($PSBoundParameters.ContainsKey('PolicyEngineScheme') -and $PolicyEngineScheme) { [string]$PolicyEngineScheme } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'scheme') { [string]$existingConfig.policyEngine.scheme } else { 'http' }
+$effectivePolicyRefreshSeconds = if ($PSBoundParameters.ContainsKey('PolicyRefreshSeconds')) { [int]$PolicyRefreshSeconds } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'refreshSeconds') { [int]$existingConfig.policyEngine.refreshSeconds } else { 300 }
+$effectivePolicyCachePath = if ($PSBoundParameters.ContainsKey('PolicyCachePath') -and $PolicyCachePath) { [string]$PolicyCachePath } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'cachePath') { [string]$existingConfig.policyEngine.cachePath } else { Join-Path $effectiveStateRoot 'dlp-policy-cache.json' }
 
 $effectiveUsers = if ($Users -or $UserListPath) {
     Normalize-ActivityWatchUsers -Users $Users -UserListPath $UserListPath -Domain $Domain
@@ -104,6 +130,7 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -EmailCollectorScriptSource (Join-Path $PSScriptRoot 'email-outbound-collector.ps1') `
     -FileCollectorScriptSource (Join-Path $PSScriptRoot 'file-operations-collector.ps1') `
     -SessionCollectorScriptSource (Join-Path $PSScriptRoot 'worktime-session-collector.ps1') `
+    -EvtxExportScriptSource (Join-Path $PSScriptRoot 'export-evtx-for-hayabusa.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
     -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
@@ -123,9 +150,11 @@ $config = New-ActivityWatchDeploymentConfig `
     -LogsRoot $effectiveLogsRoot `
     -CollectorScript $effectiveCollector `
     -EndpointCollectorScript $effectiveEndpointCollector `
+    -PolicyClientScript $effectivePolicyClientScript `
     -EmailCollectorScript $assetResult.EmailCollectorScript `
     -FileCollectorScript $effectiveFileCollector `
     -SessionCollectorScript $effectiveSessionCollector `
+    -EvtxExportScript $effectiveEvtxExportScript `
     -RulesPath $effectiveRules `
     -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `
@@ -138,7 +167,18 @@ $config = New-ActivityWatchDeploymentConfig `
     -IncidentCaptureEnabled $effectiveIncidentCaptureEnabled `
     -IncidentScreenshotEnabled $effectiveIncidentScreenshotEnabled `
     -IncidentArtifactsRoot $effectiveIncidentArtifactsRoot `
+    -EvtxExportRoot $effectiveEvtxExportRoot `
+    -EvtxRetentionDays $effectiveEvtxRetentionDays `
+    -EvtxChannels $effectiveEvtxChannels `
     -LogonMarkerEnabled $effectiveLogonMarkerEnabled `
+    -AwHostname $effectiveAwHostname `
+    -PolicyMode $effectivePolicyMode `
+    -PolicyEngineEnabled $effectivePolicyEngineEnabled `
+    -PolicyEngineHost $effectivePolicyEngineHost `
+    -PolicyEnginePort $effectivePolicyEnginePort `
+    -PolicyEngineScheme $effectivePolicyEngineScheme `
+    -PolicyRefreshSeconds $effectivePolicyRefreshSeconds `
+    -PolicyCachePath $effectivePolicyCachePath `
     -LaunchScriptPath $effectiveLaunchScript `
     -RecoveryScriptPath $effectiveRecoveryScript `
     -UserTasks $taskDefinitions `

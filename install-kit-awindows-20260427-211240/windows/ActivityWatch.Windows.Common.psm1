@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Assert-Administrator {
@@ -83,6 +83,41 @@ function Get-ActivityWatchPackageRoot {
     return (Split-Path -Path (Split-Path -Path $afkBinary.FullName -Parent) -Parent)
 }
 
+function Expand-ActivityWatchArchiveSafe {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArchivePath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath,
+        [int]$Attempts = 3
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        try {
+            if (Test-Path -LiteralPath $DestinationPath) {
+                Remove-Item -LiteralPath $DestinationPath -Recurse -Force -ErrorAction SilentlyContinue
+            }
+            New-ActivityWatchDirectory -Path $DestinationPath
+            Expand-Archive -Path $ArchivePath -DestinationPath $DestinationPath -Force -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -lt $Attempts) {
+                Start-Sleep -Milliseconds (500 * $attempt)
+                continue
+            }
+        }
+    }
+
+    # Fallback for intermittent Expand-Archive issues in Windows PowerShell.
+    if (Test-Path -LiteralPath $DestinationPath) {
+        Remove-Item -LiteralPath $DestinationPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    New-ActivityWatchDirectory -Path $DestinationPath
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($ArchivePath, $DestinationPath)
+}
+
 function Install-ActivityWatchPackage {
     param(
         [Parameter(Mandatory = $true)]
@@ -97,6 +132,13 @@ function Install-ActivityWatchPackage {
 
     New-ActivityWatchDirectory -Path $WorkingRoot
     New-ActivityWatchDirectory -Path $BackupRoot
+
+    # Cleanup stale extraction directories from previous failed deployments.
+    Get-ChildItem -LiteralPath $WorkingRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'extract-*' } |
+        ForEach-Object {
+            try { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+        }
 
     # Ensure nothing is holding locks inside InstallRoot during upgrade.
     foreach ($procName in @('aw-watcher-afk', 'aw-watcher-window', 'aw-server', 'aw-qt')) {
@@ -114,7 +156,17 @@ function Install-ActivityWatchPackage {
     }
     New-ActivityWatchDirectory -Path $extractRoot
 
-    Expand-Archive -Path $ArchivePath -DestinationPath $extractRoot -Force
+    $archiveSize = (Get-Item -LiteralPath $ArchivePath -ErrorAction Stop).Length
+    $workDrive = (Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($WorkingRoot).TrimEnd('\').TrimEnd(':')) -ErrorAction SilentlyContinue)
+    if ($workDrive) {
+        # Require at least ~2.5x archive size to handle extraction + copy safely.
+        $required = [int64]([Math]::Ceiling($archiveSize * 2.5))
+        if ([int64]$workDrive.Free -lt $required) {
+            throw ("Недостаточно свободного места на {0}: free={1} bytes, required>={2} bytes" -f $workDrive.Name, $workDrive.Free, $required)
+        }
+    }
+
+    Expand-ActivityWatchArchiveSafe -ArchivePath $ArchivePath -DestinationPath $extractRoot
     $packageRoot = Get-ActivityWatchPackageRoot -ExpandedRoot $extractRoot
 
     if (Test-Path -LiteralPath $InstallRoot) {
@@ -181,7 +233,7 @@ function Normalize-ActivityWatchUsers {
         $resolved = Resolve-Path -LiteralPath $UserListPath -ErrorAction Stop
         $extension = [IO.Path]::GetExtension($resolved.Path)
         if ($extension -ieq '.csv') {
-            $rows = Import-Csv -LiteralPath $resolved.Path
+            $rows = Import-Csv -LiteralPath $resolved.Path -Encoding UTF8
             foreach ($row in $rows) {
                 foreach ($column in 'User', 'Username', 'SamAccountName', 'Login') {
                     if ($row.PSObject.Properties.Name -contains $column) {
@@ -195,7 +247,7 @@ function Normalize-ActivityWatchUsers {
             }
         }
         else {
-            Get-Content -LiteralPath $resolved.Path | ForEach-Object {
+            Get-Content -LiteralPath $resolved.Path -Encoding UTF8 | ForEach-Object {
                 $line = $_.Trim()
                 if ($line -and -not $line.StartsWith('#')) {
                     $collected.Add($line)
@@ -259,16 +311,95 @@ function New-ActivityWatchUserTaskDefinitions {
     return @($result)
 }
 
+function Get-ActivityWatchLoggedOnUsers {
+    $users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    try {
+        $lines = & quser.exe 2>$null
+        foreach ($line in @($lines)) {
+            $normalized = [string]$line
+            if ([string]::IsNullOrWhiteSpace($normalized)) {
+                continue
+            }
+
+            $normalized = $normalized.TrimStart(' ', '>')
+            if ([string]::IsNullOrWhiteSpace($normalized)) {
+                continue
+            }
+
+            if ($normalized -match '^(USERNAME|ПОЛЬЗОВАТЕЛЬ)\s+') {
+                continue
+            }
+
+            $parts = $normalized -split '\s+'
+            if ($parts.Count -lt 1) {
+                continue
+            }
+
+            $user = [string]$parts[0]
+            if ([string]::IsNullOrWhiteSpace($user)) {
+                continue
+            }
+
+            [void]$users.Add($user)
+            [void]$users.Add(('{0}\{1}' -f $env:COMPUTERNAME, $user))
+            if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
+                [void]$users.Add(('{0}\{1}' -f $env:USERDOMAIN, $user))
+            }
+        }
+    }
+    catch {
+    }
+
+    return @($users)
+}
+
+function Test-ActivityWatchUserHasSession {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserId,
+        [string[]]$LoggedOnUsers
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserId)) {
+        return $false
+    }
+
+    $candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    [void]$candidateIds.Add($UserId)
+
+    $leafUser = $UserId
+    if ($leafUser -match '^[^\\]+\\(.+)$') {
+        $leafUser = $Matches[1]
+        [void]$candidateIds.Add($leafUser)
+    }
+
+    [void]$candidateIds.Add(('{0}\{1}' -f $env:COMPUTERNAME, $leafUser))
+    if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
+        [void]$candidateIds.Add(('{0}\{1}' -f $env:USERDOMAIN, $leafUser))
+    }
+
+    foreach ($candidate in @($candidateIds)) {
+        if ($LoggedOnUsers -contains $candidate) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
 function Copy-ActivityWatchCollectorAssets {
     param(
         [Parameter(Mandatory = $true)]
         [string]$CollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScriptSource,
+        [string]$PolicyClientScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$FileCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScriptSource,
+        [string]$EvtxExportScriptSource,
         [string]$EmailCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
@@ -284,8 +415,10 @@ function Copy-ActivityWatchCollectorAssets {
 
     $collectorTarget = Join-Path $StateRoot 'browser-domains-native-collector.ps1'
     $endpointCollectorTarget = Join-Path $StateRoot 'dlp-endpoint-signals-collector.ps1'
+    $policyClientTarget = Join-Path $StateRoot 'dlp-policy-client.ps1'
     $fileCollectorTarget = Join-Path $StateRoot 'file-operations-collector.ps1'
     $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
+    $evtxExportTarget = Join-Path $StateRoot 'export-evtx-for-hayabusa.ps1'
     $emailCollectorTarget = Join-Path $StateRoot 'email-outbound-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
@@ -294,8 +427,14 @@ function Copy-ActivityWatchCollectorAssets {
 
     Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
     Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
+    if ($PolicyClientScriptSource -and (Test-Path -LiteralPath $PolicyClientScriptSource)) {
+        Copy-Item -LiteralPath $PolicyClientScriptSource -Destination $policyClientTarget -Force
+    }
     Copy-Item -LiteralPath $FileCollectorScriptSource -Destination $fileCollectorTarget -Force
     Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
+    if ($EvtxExportScriptSource -and (Test-Path -LiteralPath $EvtxExportScriptSource)) {
+        Copy-Item -LiteralPath $EvtxExportScriptSource -Destination $evtxExportTarget -Force
+    }
     if ($EmailCollectorScriptSource -and (Test-Path -LiteralPath $EmailCollectorScriptSource)) {
         Copy-Item -LiteralPath $EmailCollectorScriptSource -Destination $emailCollectorTarget -Force
     }
@@ -305,6 +444,9 @@ function Copy-ActivityWatchCollectorAssets {
     if ($CustomRulesSource) {
         $resolvedRules = Resolve-Path -LiteralPath $CustomRulesSource -ErrorAction Stop
         Copy-Item -LiteralPath $resolvedRules.Path -Destination $rulesTarget -Force
+    }
+    else {
+        Copy-Item -LiteralPath $exampleRulesTarget -Destination $rulesTarget -Force
     }
 
     if ($CustomPolicySource) {
@@ -318,8 +460,10 @@ function Copy-ActivityWatchCollectorAssets {
     return [pscustomobject]@{
         CollectorScript         = $collectorTarget
         EndpointCollectorScript = $endpointCollectorTarget
+        PolicyClientScript      = $policyClientTarget
         FileCollectorScript     = $fileCollectorTarget
         SessionCollectorScript  = $sessionCollectorTarget
+        EvtxExportScript        = $evtxExportTarget
         EmailCollectorScript    = $emailCollectorTarget
         ExampleRules            = $exampleRulesTarget
         ActiveRules             = $rulesTarget
@@ -346,10 +490,12 @@ function New-ActivityWatchDeploymentConfig {
         [string]$CollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$EndpointCollectorScript,
+        [string]$PolicyClientScript,
         [Parameter(Mandatory = $true)]
         [string]$FileCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScript,
+        [string]$EvtxExportScript,
         [string]$EmailCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
@@ -368,21 +514,51 @@ function New-ActivityWatchDeploymentConfig {
         [bool]$IncidentCaptureEnabled = $true,
         [bool]$IncidentScreenshotEnabled = $true,
         [string]$IncidentArtifactsRoot,
+        [string]$EvtxExportRoot,
+        [int]$EvtxRetentionDays = 14,
+        [string[]]$EvtxChannels = @(),
         [bool]$LogonMarkerEnabled = $true,
         [Parameter(Mandatory = $true)]
         [string]$LaunchScriptPath,
         [Parameter(Mandatory = $true)]
         [string]$RecoveryScriptPath,
+        [string]$AwHostname,
+        [ValidateSet('local', 'server')]
+        [string]$PolicyMode = 'local',
+        [bool]$PolicyEngineEnabled = $false,
+        [string]$PolicyEngineHost,
+        [int]$PolicyEnginePort = 5601,
+        [ValidateSet('http', 'https')]
+        [string]$PolicyEngineScheme = 'http',
+        [int]$PolicyRefreshSeconds = 300,
+        [string]$PolicyCachePath,
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$UserTasks,
-        [string]$PackageVersion = 'v0.13.2'
+        [string]$PackageVersion = 'v0.13.2',
+        [switch]$IntegrationTestEnabled
     )
 
     $effectiveIncidentArtifactsRoot = if ($IncidentArtifactsRoot) { $IncidentArtifactsRoot } else { Join-Path $StateRoot 'incident-artifacts' }
+    $effectiveEvtxExportRoot = if ($EvtxExportRoot) { $EvtxExportRoot } else { Join-Path $StateRoot 'forensics\evtx-exports' }
+    $effectiveEvtxChannels = if ($EvtxChannels -and $EvtxChannels.Count -gt 0) {
+        @($EvtxChannels)
+    } else {
+        @(
+            'Security',
+            'System',
+            'Application',
+            'Microsoft-Windows-PowerShell/Operational',
+            'Microsoft-Windows-TerminalServices-LocalSessionManager/Operational',
+            'Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational'
+        )
+    }
+    $effectivePolicyEngineHost = if ([string]::IsNullOrWhiteSpace($PolicyEngineHost)) { $ServerHost } else { $PolicyEngineHost }
+    $effectivePolicyCachePath = if ([string]::IsNullOrWhiteSpace($PolicyCachePath)) { Join-Path $StateRoot 'dlp-policy-cache.json' } else { $PolicyCachePath }
 
     return [pscustomobject]@{
         version  = 1
         generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')
+        awHostname = if ([string]::IsNullOrWhiteSpace($AwHostname)) { [string]$env:COMPUTERNAME } else { [string]$AwHostname }
         server   = [pscustomobject]@{
             host   = $ServerHost
             port   = $ServerPort
@@ -394,9 +570,11 @@ function New-ActivityWatchDeploymentConfig {
             logsRoot       = $LogsRoot
             collectorScript = $CollectorScript
             endpointCollectorScript = $EndpointCollectorScript
+            policyClientScript = $PolicyClientScript
             emailCollectorScript = $EmailCollectorScript
             fileCollectorScript = $FileCollectorScript
             sessionCollectorScript = $SessionCollectorScript
+            evtxExportScript = $EvtxExportScript
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -410,7 +588,7 @@ function New-ActivityWatchDeploymentConfig {
             afkEnabled   = $AfkEnabled
             windowEnabled = $WindowEnabled
             fileOpsEnabled = $FileOpsEnabled
-            emailEnabled = ($null -ne $EmailCollectorScript -and $EmailCollectorScript -ne '')
+            emailEnabled = $false
         }
         logging = [pscustomobject]@{
             localAgentLogsEnabled = $LocalAgentLogsEnabled
@@ -419,6 +597,11 @@ function New-ActivityWatchDeploymentConfig {
             enabled           = $IncidentCaptureEnabled
             screenshotEnabled = $IncidentScreenshotEnabled
             artifactsRoot     = $effectiveIncidentArtifactsRoot
+        }
+        forensics = [pscustomobject]@{
+            evtxExportRoot = $effectiveEvtxExportRoot
+            retentionDays  = $EvtxRetentionDays
+            evtxChannels   = @($effectiveEvtxChannels)
         }
         sessionEvents = [pscustomobject]@{
             logonEnabled = $LogonMarkerEnabled
@@ -432,10 +615,20 @@ function New-ActivityWatchDeploymentConfig {
             incidentBucketPrefix = 'aw-dlp-incidents'
             enabled              = $true
         }
+        policyEngine = [pscustomobject]@{
+            enabled        = $PolicyEngineEnabled
+            mode           = $PolicyMode
+            host           = $effectivePolicyEngineHost
+            port           = $PolicyEnginePort
+            scheme         = $PolicyEngineScheme
+            refreshSeconds = $PolicyRefreshSeconds
+            cachePath      = $effectivePolicyCachePath
+        }
         package = [pscustomobject]@{
             version = $PackageVersion
         }
         userTasks = @($UserTasks)
+        integrationTestEnabled = [bool]$IntegrationTestEnabled
     }
 }
 
@@ -534,11 +727,7 @@ function Get-CollectorPowerShellProcessCount {
 function New-LaunchLock {
     param([string]`$StateRoot, [int]`$SessionId)
 
-    if (-not (Test-Path -LiteralPath `$StateRoot)) {
-        New-Item -Path `$StateRoot -ItemType Directory -Force | Out-Null
-    }
-
-    `$lockPath = Join-Path `$StateRoot ("launch-watchers-session-{0}.lock" -f `$SessionId)
+    `$lockPath = Join-Path `$env:TEMP ("launch-watchers-session-{0}.lock" -f `$SessionId)
     if (Test-Path -LiteralPath `$lockPath) {
         try {
             `$lockData = Get-Content -LiteralPath `$lockPath -Raw | ConvertFrom-Json
@@ -558,6 +747,33 @@ function New-LaunchLock {
     } | ConvertTo-Json -Compress
     Set-Content -LiteralPath `$lockPath -Value `$payload -Encoding UTF8
     return `$lockPath
+}
+
+function Get-SessionMarkerToken {
+    param([int]`$SessionId)
+
+    try {
+        `$explorer = Get-Process -Name 'explorer' -ErrorAction SilentlyContinue |
+            Where-Object { `$_.SessionId -eq `$SessionId } |
+            Sort-Object StartTime |
+            Select-Object -First 1
+        if (`$explorer -and `$explorer.StartTime) {
+            return `$explorer.StartTime.ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+        }
+    }
+    catch {
+    }
+
+    try {
+        `$currentProcess = Get-Process -Id `$PID -ErrorAction Stop
+        if (`$currentProcess.StartTime) {
+            return `$currentProcess.StartTime.ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+        }
+    }
+    catch {
+    }
+
+    return [string]`$SessionId
 }
 
 function Invoke-AwJsonPost {
@@ -675,7 +891,8 @@ function Send-LogonMarkerIfNeeded {
         return
     }
 
-    `$markerFile = Join-Path `$markerDir ("logon-{0}-{1}.marker" -f `$env:USERNAME, `$SessionId)
+    `$sessionMarkerToken = Get-SessionMarkerToken -SessionId `$SessionId
+    `$markerFile = Join-Path `$markerDir ("logon-{0}-{1}-{2}.marker" -f `$env:USERNAME, `$SessionId, `$sessionMarkerToken)
     if (Test-Path -LiteralPath `$markerFile) {
         return
     }
@@ -731,13 +948,11 @@ function Start-CollectorScriptIfNeeded {
         return
     }
 
-    Start-Process -FilePath `$PowerShellExe -ArgumentList @(
-        '-NoProfile',
-        '-WindowStyle', 'Hidden',
-        '-ExecutionPolicy', 'Bypass',
-        '-File', `$ScriptPath,
-        '-ConfigPath', `$ConfigPath
-    ) -WindowStyle Hidden
+    `$staParam = if (`$ScriptPath -like "*endpoint-signals*") { "-STA" } else { `$null }
+    `$argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass')
+    if (`$staParam) { `$argumentList += `$staParam }
+    `$argumentList += @('-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
+    Start-Process -FilePath `$PowerShellExe -ArgumentList `$argumentList -WindowStyle Hidden
 }
 
 `$config = Get-DeploymentConfig -Path `$ConfigPath
@@ -745,7 +960,7 @@ function Start-CollectorScriptIfNeeded {
 `$installRoot = [string]`$config.paths.installRoot
 `$stateRoot = [string]`$config.paths.stateRoot
 `$script:ApiBase = '{0}://{1}:{2}/api/0' -f [string]`$config.server.scheme, [string]`$config.server.host, [string]`$config.server.port
-`$script:Hostname = `$env:COMPUTERNAME
+`$script:Hostname = if (`$config.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]`$config.awHostname)) { [string]`$config.awHostname } else { `$env:COMPUTERNAME }
 `$script:KnownBuckets = @{}
 `$collectorScript = [string]`$config.paths.collectorScript
 `$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { Join-Path `$stateRoot 'dlp-endpoint-signals-collector.ps1' }
@@ -792,7 +1007,6 @@ try {
     if (`$fileOpsEnabled) {
         Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     }
-    Start-CollectorScriptIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     if (`$emailEnabled -and (Test-Path -LiteralPath `$emailCollectorScript)) {
         Start-CollectorScriptIfNeeded -ScriptPath `$emailCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     }
@@ -859,17 +1073,21 @@ function Get-RecoveryConfigPaths {
     return @(`$paths | Sort-Object -Unique)
 }
 
-function Get-RecoveryTaskNames {
+function Get-RecoveryTaskDefinitions {
     param([string[]]`$ConfigPaths)
 
-    `$taskNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    `$taskMap = [ordered]@{}
     foreach (`$candidatePath in @(`$ConfigPaths)) {
         try {
             `$config = Get-DeploymentConfig -Path `$candidatePath
             foreach (`$task in @(`$config.userTasks)) {
                 `$taskName = [string]`$task.launchTaskName
-                if (-not [string]::IsNullOrWhiteSpace(`$taskName)) {
-                    [void]`$taskNames.Add(`$taskName)
+                `$userId = [string]`$task.userId
+                if (-not [string]::IsNullOrWhiteSpace(`$taskName) -and -not `$taskMap.Contains(`$taskName)) {
+                    `$taskMap[`$taskName] = [pscustomobject]@{
+                        taskName = `$taskName
+                        userId   = `$userId
+                    }
                 }
             }
         }
@@ -877,7 +1095,7 @@ function Get-RecoveryTaskNames {
         }
     }
 
-    return @(`$taskNames)
+    return @(`$taskMap.Values)
 }
 
 function New-RecoveryLock {
@@ -910,8 +1128,20 @@ function New-RecoveryLock {
 }
 
 function Start-TaskIfNotRunning {
-    param([string]`$TaskName)
+    param(
+        [string]`$TaskName,
+        [string]`$UserId,
+        [string[]]`$LoggedOnUsers
+    )
     if ([string]::IsNullOrWhiteSpace(`$TaskName)) {
+        return
+    }
+
+    if ([string]::IsNullOrWhiteSpace(`$UserId)) {
+        return
+    }
+
+    if (-not (Test-UserHasSession -UserId `$UserId -LoggedOnUsers `$LoggedOnUsers)) {
         return
     }
 
@@ -929,6 +1159,120 @@ function Start-TaskIfNotRunning {
     }
 }
 
+function Get-LoggedOnUsers {
+    `$users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    try {
+        `$lines = & quser.exe 2>`$null
+        foreach (`$line in @(`$lines)) {
+            `$normalized = [string]`$line
+            if ([string]::IsNullOrWhiteSpace(`$normalized)) {
+                continue
+            }
+
+            `$normalized = `$normalized.TrimStart(' ', '>')
+            if ([string]::IsNullOrWhiteSpace(`$normalized)) {
+                continue
+            }
+
+            if (`$normalized -match '^(USERNAME|ПОЛЬЗОВАТЕЛЬ)\s+') {
+                continue
+            }
+
+            `$parts = `$normalized -split '\s+'
+            if (`$parts.Count -lt 1) {
+                continue
+            }
+
+            `$user = [string]`$parts[0]
+            if ([string]::IsNullOrWhiteSpace(`$user)) {
+                continue
+            }
+
+            [void]`$users.Add(`$user)
+            [void]`$users.Add(('{0}\{1}' -f `$env:COMPUTERNAME, `$user))
+            if (-not [string]::IsNullOrWhiteSpace(`$env:USERDOMAIN)) {
+                [void]`$users.Add(('{0}\{1}' -f `$env:USERDOMAIN, `$user))
+            }
+        }
+    }
+    catch {
+    }
+
+    return @(`$users)
+}
+
+function Test-UserHasSession {
+    param(
+        [string]`$UserId,
+        [string[]]`$LoggedOnUsers
+    )
+
+    if ([string]::IsNullOrWhiteSpace(`$UserId)) {
+        return `$false
+    }
+
+    `$candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    [void]`$candidateIds.Add(`$UserId)
+
+    `$leafUser = `$UserId
+    if (`$leafUser -match '^[^\\]+\\(.+)$') {
+        `$leafUser = `$Matches[1]
+        [void]`$candidateIds.Add(`$leafUser)
+    }
+
+    [void]`$candidateIds.Add(('{0}\{1}' -f `$env:COMPUTERNAME, `$leafUser))
+    if (-not [string]::IsNullOrWhiteSpace(`$env:USERDOMAIN)) {
+        [void]`$candidateIds.Add(('{0}\{1}' -f `$env:USERDOMAIN, `$leafUser))
+    }
+
+    foreach (`$candidate in @(`$candidateIds)) {
+        if (`$LoggedOnUsers -contains `$candidate) {
+            return `$true
+        }
+    }
+
+    return `$false
+}
+
+function Test-CollectorRunningGlobal {
+    param([string]`$ScriptPath)
+    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
+        return `$false
+    }
+
+    return [bool]@(
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                (`$_.Name -ieq 'powershell.exe' -or `$_.Name -ieq 'pwsh.exe') -and
+                `$_.CommandLine -match [Regex]::Escape(`$ScriptPath)
+            }
+    ).Count
+}
+
+function Start-CollectorScriptGlobalIfNeeded {
+    param(
+        [string]`$ScriptPath,
+        [string]`$ConfigPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath `$ScriptPath)) {
+        return
+    }
+
+    if (Test-CollectorRunningGlobal -ScriptPath `$ScriptPath) {
+        return
+    }
+
+    `$powershellExe = Join-Path `$env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    `$argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
+    Start-Process -FilePath `$powershellExe -ArgumentList `$argumentList -WindowStyle Hidden
+}
+
 `$recoveryLockPath = New-RecoveryLock -PrimaryConfigPath `$ConfigPath
 if (-not `$recoveryLockPath) {
     return
@@ -939,11 +1283,15 @@ try {
         `$sleepSeconds = 180
         try {
             `$configPaths = Get-RecoveryConfigPaths -PrimaryConfigPath `$ConfigPath
-            foreach (`$taskName in Get-RecoveryTaskNames -ConfigPaths `$configPaths) {
-                Start-TaskIfNotRunning -TaskName `$taskName
+            `$config = Get-DeploymentConfig -Path `$ConfigPath
+            `$loggedOnUsers = Get-LoggedOnUsers
+            `$stateRoot = [string]`$config.paths.stateRoot
+            `$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { Join-Path `$stateRoot 'worktime-session-collector.ps1' }
+            Start-CollectorScriptGlobalIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath
+            foreach (`$taskDef in Get-RecoveryTaskDefinitions -ConfigPaths `$configPaths) {
+                Start-TaskIfNotRunning -TaskName `$taskDef.taskName -UserId `$taskDef.userId -LoggedOnUsers `$loggedOnUsers
             }
 
-            `$config = Get-DeploymentConfig -Path `$ConfigPath
             if (`$config -and `$config.recovery -and `$config.recovery.intervalSeconds) {
                 `$sleepSeconds = [Math]::Max([int]`$config.recovery.intervalSeconds, 30)
             }
@@ -1049,10 +1397,24 @@ function Set-ActivityWatchScheduledTaskAction {
         [string]$Arguments
     )
 
-    $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
-    & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "schtasks.exe /Change завершился с ошибкой для $TaskName"
+    $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+        return $false
+    }
+
+    $newAction = New-ScheduledTaskAction -Execute $Execute -Argument $Arguments
+    try {
+        # Non-interactive update path. Avoids schtasks.exe /Change password prompt for user-bound tasks.
+        Set-ScheduledTask -TaskName $TaskName -Action $newAction -ErrorAction Stop | Out-Null
+        return $true
+    }
+    catch {
+        $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
+        & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
+        if ($LASTEXITCODE -ne 0) {
+            throw "Не удалось обновить action задачи ${TaskName}: $($_.Exception.Message)"
+        }
+        return $true
     }
 }
 
@@ -1137,8 +1499,10 @@ function Register-ActivityWatchUserTasks {
         $existingTask = Get-ActivityWatchScheduledTaskByCommand -TaskName $definition.LaunchTaskName -CommandMatch $ConfigPath
 
         if ($existingTask) {
-            Set-ActivityWatchScheduledTaskAction -TaskName $existingTask.TaskName -Execute $wscriptExe -Arguments $action.Arguments
-            continue
+            $updated = Set-ActivityWatchScheduledTaskAction -TaskName $existingTask.TaskName -Execute $wscriptExe -Arguments $action.Arguments
+            if ($updated) {
+                continue
+            }
         }
 
         Remove-ActivityWatchScheduledTask -TaskName $definition.LaunchTaskName
@@ -1206,8 +1570,12 @@ function Start-ActivityWatchTasks {
         [string]$RecoveryTaskName = 'ActivityWatch Recovery'
     )
 
+    $loggedOnUsers = Get-ActivityWatchLoggedOnUsers
+
     foreach ($definition in $TaskDefinitions) {
-        Start-ScheduledTask -TaskName $definition.LaunchTaskName -ErrorAction SilentlyContinue
+        if (Test-ActivityWatchUserHasSession -UserId $definition.UserId -LoggedOnUsers $loggedOnUsers) {
+            Start-ScheduledTask -TaskName $definition.LaunchTaskName -ErrorAction SilentlyContinue
+        }
     }
 
     Start-ScheduledTask -TaskName $RecoveryTaskName -ErrorAction SilentlyContinue

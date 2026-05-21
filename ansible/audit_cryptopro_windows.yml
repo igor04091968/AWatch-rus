@@ -1,0 +1,71 @@
+---
+- name: Audit CryptoPro signer readiness on Windows/RDP host
+  hosts: aw_windows
+  gather_facts: false
+
+  vars:
+    aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
+    aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
+    aw_windows_cryptopro_audit_remote_path: "{{ aw_windows_state_root }}\\cryptopro_audit_ansible.json"
+    aw_windows_cryptopro_audit_local_dir: "/tmp/aw-rus-cryptopro-audit-{{ lookup('env','USER') | default('ansible', true) }}"
+    aw_windows_expected_signers:
+      - Администратор
+      - user1
+      - user2
+      - user3
+      - user4
+      - user5
+
+  tasks:
+    - name: Создать каталог toolkit на Windows host
+      ansible.windows.win_file:
+        path: "{{ aw_windows_deploy_root }}\\windows"
+        state: directory
+
+    - name: Загрузить CryptoPro audit script
+      ansible.windows.win_copy:
+        src: "{{ playbook_dir | dirname }}/windows/audit-cryptopro.ps1"
+        dest: "{{ aw_windows_deploy_root }}\\windows\\audit-cryptopro.ps1"
+
+    - name: Нормализовать кодировку PowerShell audit script
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $path = "{{ aw_windows_deploy_root }}\windows\audit-cryptopro.ps1"
+          $encIn = New-Object System.Text.UTF8Encoding($false)
+          $encOut = New-Object System.Text.UTF8Encoding($true)
+          $text = [System.IO.File]::ReadAllText($path, $encIn)
+          [System.IO.File]::WriteAllText($path, $text, $encOut)
+
+    - name: Выполнить CryptoPro audit и сохранить JSON report
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $expected = @(
+          {% for user in aw_windows_expected_signers %}
+            "{{ user }}"{% if not loop.last %},{% endif %}
+          {% endfor %}
+          )
+          $report = & "{{ aw_windows_deploy_root }}\windows\audit-cryptopro.ps1" `
+            -ExpectedUsers $expected `
+            -IncludeUnexpectedProfiles
+          $report | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_cryptopro_audit_remote_path }}" -Encoding utf8
+
+    - name: Создать локальный каталог для CryptoPro audit reports
+      ansible.builtin.file:
+        path: "{{ aw_windows_cryptopro_audit_local_dir }}"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Забрать CryptoPro audit report
+      ansible.builtin.fetch:
+        src: "{{ aw_windows_cryptopro_audit_remote_path }}"
+        dest: "{{ aw_windows_cryptopro_audit_local_dir }}/{{ inventory_hostname }}-cryptopro-audit.json"
+        flat: true
+
+    - name: Показать путь к CryptoPro audit report
+      ansible.builtin.debug:
+        msg:
+          - "CryptoPro audit completed on {{ inventory_hostname }}."
+          - "Report: {{ aw_windows_cryptopro_audit_local_dir }}/{{ inventory_hostname }}-cryptopro-audit.json"

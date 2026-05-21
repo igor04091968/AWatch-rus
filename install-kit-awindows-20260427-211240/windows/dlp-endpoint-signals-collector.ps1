@@ -1,17 +1,55 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
     [string]$ServerHost,
     [int]$ServerPort,
     [ValidateSet('http', 'https')]
     [string]$ServerScheme,
+    [string]$PolicyEngineHost,
+    [int]$PolicyEnginePort,
+    [ValidateSet('http', 'https')]
+    [string]$PolicyEngineScheme,
     [string]$PolicyPath,
+    [ValidateSet('local', 'server')]
+    [string]$PolicyMode,
+    [int]$PolicyRefreshSeconds,
+    [string]$PolicyCachePath,
     [string]$LogPath,
     [int]$PollSeconds
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+# Ensure HttpClient is available (Windows PowerShell 5 may not auto-load it)
+try {
+    Add-Type -AssemblyName System.Net.Http
+}
+catch {
+}
+
+$script:TransportQueuePath = $null
+$script:TransportQueueLockPath = $null
+$script:TransportMetrics = @{
+    eventsEnqueued = 0
+    eventsFlushed  = 0
+    sendFailures   = 0
+    queueDepth     = 0
+}
+
+$policyClientModulePath = Join-Path $PSScriptRoot 'dlp-policy-client.ps1'
+if (Test-Path -LiteralPath $policyClientModulePath) {
+    try {
+        Import-Module $policyClientModulePath -Force -DisableNameChecking
+        $script:PolicyClientAvailable = $true
+    }
+    catch {
+        $script:PolicyClientAvailable = $false
+    }
+}
+else {
+    $script:PolicyClientAvailable = $false
+}
 
 function Get-DeploymentConfig {
     param([string]$Path)
@@ -39,8 +77,146 @@ function Invoke-AwJsonPost {
         [Parameter(Mandatory = $true)][string]$Json
     )
 
-    $bytes = [Text.Encoding]::UTF8.GetBytes($Json)
-    Invoke-RestMethod -Method Post -Uri $Uri -ContentType 'application/json; charset=utf-8' -Body $bytes | Out-Null
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Json)
+        $req = [System.Net.HttpWebRequest]::Create($Uri)
+        $req.Method = 'POST'
+        $req.ContentType = 'application/json'
+        $req.Accept = 'application/json'
+        $req.KeepAlive = $false
+        $req.Timeout = 15000
+        $req.ReadWriteTimeout = 15000
+        $req.ContentLength = $bytes.Length
+
+        $stream = $req.GetRequestStream()
+        try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Close() }
+
+        $resp = $req.GetResponse()
+        try {
+            # read body for debugging, but discard on success
+            $rs = $resp.GetResponseStream()
+            if ($rs) { $sr = New-Object System.IO.StreamReader($rs); $null = $sr.ReadToEnd(); $sr.Close() }
+        } finally {
+            $resp.Close()
+        }
+        return
+    }
+    catch [System.Net.WebException] {
+        $status = $null
+        $body = ''
+        try {
+            if ($_.Exception.Response) {
+                try { $status = [int]$_.Exception.Response.StatusCode } catch {}
+                $rs = $_.Exception.Response.GetResponseStream()
+                if ($rs) { $sr = New-Object System.IO.StreamReader($rs); $body = $sr.ReadToEnd(); $sr.Close() }
+            }
+        } catch {}
+
+        # aw-server-rust may return 304 for idempotent bucket create. Treat it as OK.
+        if ($status -eq 304) {
+            Write-EndpointLog ("POST bucket exists (304): uri={0}" -f $Uri)
+            return
+        }
+
+        Write-EndpointLog ("POST failed: uri={0} status={1} err={2} body={3}" -f $Uri, $status, $_.Exception.Message, $body)
+        throw
+    }
+    catch {
+        Write-EndpointLog ("POST error: uri={0} err={1}" -f $Uri, $_.Exception.Message)
+        throw
+    }
+}
+
+function Initialize-TransportQueue {
+    param([Parameter(Mandatory = $true)][string]$StateRoot)
+    $script:TransportQueuePath = Join-Path $StateRoot 'dlp-endpoint-signals-queue.jsonl'
+    $script:TransportQueueLockPath = Join-Path $StateRoot 'dlp-endpoint-signals-queue.lock'
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) {
+        New-Item -Path $script:TransportQueuePath -ItemType File -Force | Out-Null
+    }
+}
+
+function Get-TransportQueueLock {
+    $tries = 0
+    while ($tries -lt 50) {
+        try {
+            return [System.IO.File]::Open($script:TransportQueueLockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+        }
+        catch {
+            Start-Sleep -Milliseconds 50
+            $tries++
+        }
+    }
+    throw "Failed to acquire transport queue lock: $script:TransportQueueLockPath"
+}
+
+function Add-TransportQueueItem {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Payload,
+        [string]$Kind = 'endpoint'
+    )
+    $lock = Get-TransportQueueLock
+    try {
+        $line = @{
+            ts      = (Get-Date).ToUniversalTime().ToString('o')
+            uri     = $Uri
+            payload = $Payload
+            kind    = $Kind
+        } | ConvertTo-Json -Compress
+        Add-Content -LiteralPath $script:TransportQueuePath -Value $line -Encoding UTF8
+        $script:TransportMetrics.eventsEnqueued++
+    }
+    finally {
+        $lock.Dispose()
+    }
+}
+
+function Read-TransportQueueItems {
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return @() }
+    $items = @()
+    foreach ($line in @(Get-Content -LiteralPath $script:TransportQueuePath -ErrorAction SilentlyContinue)) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        try { $items += ($line | ConvertFrom-Json) } catch {}
+    }
+    return $items
+}
+
+function Flush-TransportQueue {
+    param([int]$MaxItems = 200)
+    if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return }
+    $lock = Get-TransportQueueLock
+    try {
+        $items = Read-TransportQueueItems
+        $script:TransportMetrics.queueDepth = $items.Count
+        if ($items.Count -eq 0) { return }
+        $left = New-Object System.Collections.Generic.List[object]
+        $sent = 0
+        foreach ($item in $items) {
+            if ($sent -ge $MaxItems) {
+                $left.Add($item)
+                continue
+            }
+            try {
+                Invoke-AwJsonPost -Uri ([string]$item.uri) -Json ([string]$item.payload)
+                $sent++
+                $script:TransportMetrics.eventsFlushed++
+            }
+            catch {
+                $script:TransportMetrics.sendFailures++
+                $left.Add($item)
+            }
+        }
+        foreach ($item in $items | Select-Object -Skip ($sent + $left.Count)) {
+            $left.Add($item)
+        }
+        $lines = @($left | ForEach-Object { $_ | ConvertTo-Json -Compress })
+        Set-Content -LiteralPath $script:TransportQueuePath -Value $lines -Encoding UTF8
+        $script:TransportMetrics.queueDepth = $left.Count
+    }
+    finally {
+        $lock.Dispose()
+    }
 }
 
 function Ensure-Bucket {
@@ -54,13 +230,39 @@ function Ensure-Bucket {
         return
     }
 
+    if ($script:KnownBuckets.ContainsKey($BucketId)) {
+        return
+    }
+
+    # Fast-path: if bucket already exists, don't POST.
+    try {
+        Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" -TimeoutSec 10 -DisableKeepAlive -ErrorAction Stop | Out-Null
+        Write-EndpointLog ("bucket ok (GET): {0}" -f $BucketId)
+        $script:KnownBuckets[$BucketId] = $true
+        return
+    }
+    catch {
+        Write-EndpointLog ("bucket GET failed: {0} err={1}" -f $BucketId, $_.Exception.Message)
+    }
+
     $body = @{
         client   = $ClientName
         type     = $BucketType
         hostname = $script:Hostname
     } | ConvertTo-Json -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
+    try {
+        Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
+    }
+    catch {
+        # If create failed (race), verify it exists now.
+        try {
+            Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" -TimeoutSec 10 -DisableKeepAlive | Out-Null
+        }
+        catch {
+            throw
+        }
+    }
     $script:KnownBuckets[$BucketId] = $true
 }
 
@@ -85,7 +287,8 @@ function Send-EndpointSignalHeartbeat {
         } + $Data
     } | ConvertTo-Json -Depth 6 -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
+    Add-TransportQueueItem -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Payload $payload -Kind 'endpoint_signal'
+    Flush-TransportQueue -MaxItems 50
 }
 
 function Send-DlpIncidentHeartbeat {
@@ -126,7 +329,8 @@ function Send-DlpIncidentHeartbeat {
         } + $Data + $captureData
     } | ConvertTo-Json -Depth 7 -Compress
 
-    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Json $payload
+    Add-TransportQueueItem -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$script:PulseSeconds" -Payload $payload -Kind 'dlp_incident'
+    Flush-TransportQueue -MaxItems 100
 }
 
 function Get-FileSha256Hex {
@@ -321,6 +525,53 @@ function Get-StringHash {
     }
 }
 
+function Get-ClipboardTextSafe {
+    [OutputType([string])]
+    param()
+
+    try {
+        $v = Get-Clipboard -Raw -ErrorAction Stop
+        if ($null -ne $v) { return [string]$v }
+    }
+    catch {
+        Write-EndpointLog ("clipboard direct read failed: {0}" -f $_.Exception.Message)
+    }
+
+    # Clipboard is not reliably accessible from Session 0 (SYSTEM). Avoid noisy thread hacks there.
+    if ($script:SessionId -eq 0) {
+        return $null
+    }
+
+    # Fallback: read clipboard in a dedicated STA thread for RDP/user-session edge cases.
+    try {
+        Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue | Out-Null
+        $result = [string]::Empty
+        $script:__aw_clip = $null
+        $threadStart = [System.Threading.ThreadStart]{
+            try {
+                $script:__aw_clip = [System.Windows.Forms.Clipboard]::GetText()
+            }
+            catch {
+                $script:__aw_clip = $null
+            }
+        }
+        $thread = New-Object System.Threading.Thread($threadStart)
+        $thread.SetApartmentState([System.Threading.ApartmentState]::STA)
+        $thread.Start()
+        $thread.Join(3000) | Out-Null
+        if ($thread.IsAlive) {
+            try { $thread.Abort() } catch {}
+        }
+        $result = [string]$script:__aw_clip
+        Remove-Variable -Name __aw_clip -Scope Script -ErrorAction SilentlyContinue
+        return $result
+    }
+    catch {
+        Write-EndpointLog ("clipboard STA read failed: {0}" -f $_.Exception.Message)
+        return $null
+    }
+}
+
 function Load-DlpPolicy {
     param([string]$Path)
 
@@ -336,7 +587,16 @@ function Load-DlpPolicy {
             usb = @()
             print = @()
         }
+        contentAnalysis = [ordered]@{
+            dictionaryPack = $null
+            regexPack = $null
+            ocrEnabled = $false
+        }
     }
+
+    $script:PolicySource = 'defaults'
+    $script:PolicyVersion = $null
+    $script:PolicyChecksum = $null
 
     if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
         Write-EndpointLog ("policy not found, using defaults: {0}" -f $Path)
@@ -353,14 +613,238 @@ function Load-DlpPolicy {
         }
 
         if ($raw.endpoint) {
-            if ($raw.endpoint.clipboard) { $script:Policy.endpoint.clipboard = @($raw.endpoint.clipboard) }
-            if ($raw.endpoint.usb) { $script:Policy.endpoint.usb = @($raw.endpoint.usb) }
-            if ($raw.endpoint.print) { $script:Policy.endpoint.print = @($raw.endpoint.print) }
+            $props = @()
+            try { $props = @($raw.endpoint.PSObject.Properties.Name) } catch { $props = @() }
+            if ($props -contains 'clipboard' -and $raw.endpoint.clipboard) { $script:Policy.endpoint.clipboard = @($raw.endpoint.clipboard) }
+            if ($props -contains 'usb' -and $raw.endpoint.usb) { $script:Policy.endpoint.usb = @($raw.endpoint.usb) }
+            if ($props -contains 'print' -and $raw.endpoint.print) { $script:Policy.endpoint.print = @($raw.endpoint.print) }
         }
+
+        if ($raw.contentAnalysis) {
+            if ($raw.contentAnalysis.PSObject.Properties.Name -contains 'dictionaryPack' -and $raw.contentAnalysis.dictionaryPack) {
+                $script:Policy.contentAnalysis.dictionaryPack = [string]$raw.contentAnalysis.dictionaryPack
+            }
+            if ($raw.contentAnalysis.PSObject.Properties.Name -contains 'regexPack' -and $raw.contentAnalysis.regexPack) {
+                $script:Policy.contentAnalysis.regexPack = [string]$raw.contentAnalysis.regexPack
+            }
+            if ($raw.contentAnalysis.PSObject.Properties.Name -contains 'ocrEnabled') {
+                $script:Policy.contentAnalysis.ocrEnabled = [bool]$raw.contentAnalysis.ocrEnabled
+            }
+        }
+        $script:PolicySource = 'local'
     }
     catch {
         Write-EndpointLog ("policy parse failed: {0}" -f $_.Exception.Message)
     }
+}
+
+function Test-ValidInn {
+    param([string]$Value)
+    $digits = ($Value -replace '\D', '')
+    if ($digits.Length -eq 10) {
+        $coef = @(2, 4, 10, 3, 5, 9, 4, 6, 8)
+        $sum = 0
+        for ($i = 0; $i -lt 9; $i++) { $sum += ([int][string]$digits[$i]) * $coef[$i] }
+        $chk = ($sum % 11) % 10
+        return $chk -eq ([int][string]$digits[9])
+    }
+    if ($digits.Length -eq 12) {
+        $c11 = @(7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
+        $c12 = @(3, 7, 2, 4, 10, 3, 5, 9, 4, 6, 8)
+        $sum11 = 0
+        for ($i = 0; $i -lt 10; $i++) { $sum11 += ([int][string]$digits[$i]) * $c11[$i] }
+        $sum12 = 0
+        for ($i = 0; $i -lt 11; $i++) { $sum12 += ([int][string]$digits[$i]) * $c12[$i] }
+        return ((($sum11 % 11) % 10) -eq ([int][string]$digits[10])) -and ((($sum12 % 11) % 10) -eq ([int][string]$digits[11]))
+    }
+    return $false
+}
+
+function Test-ValidSnils {
+    param([string]$Value)
+    $digits = ($Value -replace '\D', '')
+    if ($digits.Length -ne 11) { return $false }
+    $num = $digits.Substring(0, 9)
+    $checksum = [int]$digits.Substring(9, 2)
+    $sum = 0
+    for ($i = 0; $i -lt 9; $i++) { $sum += ([int][string]$num[$i]) * (9 - $i) }
+    if ($sum -lt 100) { $expected = $sum }
+    elseif ($sum -eq 100 -or $sum -eq 101) { $expected = 0 }
+    else {
+        $expected = $sum % 101
+        if ($expected -eq 100) { $expected = 0 }
+    }
+    return $checksum -eq $expected
+}
+
+function Test-ValidPassport {
+    param([string]$Value)
+    $digits = ($Value -replace '\D', '')
+    if ($digits.Length -ne 10) { return $false }
+    if ($digits -eq '0000000000') { return $false }
+    return ($digits.ToCharArray() | Select-Object -Unique).Count -gt 1
+}
+
+function Get-AdvancedContentMatches {
+    param(
+        [string]$Text,
+        [string]$DictionaryPack,
+        [string]$RegexPack
+    )
+
+    $result = @{
+        dictionaryMatches = @()
+        regexMatches = @()
+    }
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $result }
+
+    if ($DictionaryPack -eq '152-fz-pdn') {
+        $m = [regex]::Matches($Text, '\b\d{10}\b|\b\d{12}\b')
+        foreach ($item in $m) {
+            if (Test-ValidInn -Value $item.Value) {
+                $result.dictionaryMatches += @{ name = 'inn'; value = $item.Value; severity = 'high' }
+            }
+        }
+        $m = [regex]::Matches($Text, '\b\d{3}-\d{3}-\d{3}\s?\d{2}\b')
+        foreach ($item in $m) {
+            if (Test-ValidSnils -Value $item.Value) {
+                $result.dictionaryMatches += @{ name = 'snils'; value = $item.Value; severity = 'high' }
+            }
+        }
+        $m = [regex]::Matches($Text, '\b\d{4}\s?\d{6}\b')
+        foreach ($item in $m) {
+            if (Test-ValidPassport -Value $item.Value) {
+                $result.dictionaryMatches += @{ name = 'passport'; value = $item.Value; severity = 'high' }
+            }
+        }
+    }
+
+    $regexRules = @()
+    switch ($RegexPack) {
+        'financial' {
+            $regexRules = @(
+                @{ id = 'card-pan'; regex = '\b(?:\d[ -]*?){13,19}\b'; severity = 'high' },
+                @{ id = 'iban'; regex = '\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b'; severity = 'medium' }
+            )
+        }
+        'contacts' {
+            $regexRules = @(
+                @{ id = 'email'; regex = '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'; severity = 'low' },
+                @{ id = 'phone-ru'; regex = '(?:\+7|8)\s*\(?\d{3}\)?\s*\d{3}[- ]?\d{2}[- ]?\d{2}'; severity = 'low' }
+            )
+        }
+        'secrets' {
+            $regexRules = @(
+                @{ id = 'aws-access-key'; regex = 'AKIA[0-9A-Z]{16}'; severity = 'high' },
+                @{ id = 'generic-password'; regex = '(?i)(password|пароль)\s*[:=]\s*\S{6,}'; severity = 'medium' }
+            )
+        }
+    }
+    foreach ($rule in $regexRules) {
+        $m = [regex]::Matches($Text, [string]$rule.regex)
+        foreach ($item in $m) {
+            $result.regexMatches += @{ name = [string]$rule.id; value = $item.Value; severity = [string]$rule.severity }
+        }
+    }
+
+    return $result
+}
+
+function Apply-PolicyFromBundle {
+    param(
+        [Parameter(Mandatory = $true)]$Bundle,
+        [Parameter(Mandatory = $true)][string]$Source
+    )
+
+    if (-not $Bundle.policy) {
+        throw 'Policy bundle has no policy payload.'
+    }
+
+    $tempPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $Bundle.policy | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $tempPath -Encoding UTF8
+        Load-DlpPolicy -Path $tempPath
+        $script:PolicySource = $Source
+        $script:PolicyVersion = if ($Bundle.PSObject.Properties.Name -contains 'version') { [string]$Bundle.version } else { $null }
+        $script:PolicyChecksum = if ($Bundle.PSObject.Properties.Name -contains 'checksum') { [string]$Bundle.checksum } else { $null }
+    }
+    finally {
+        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Refresh-DlpPolicyFromServer {
+    if (-not $script:PolicyEngineEnabled) {
+        return $false
+    }
+    if (-not $script:PolicyClientAvailable) {
+        Write-EndpointLog 'policy client module unavailable, cannot use server mode'
+        return $false
+    }
+
+    try {
+        $bundle = Get-RemoteDlpPolicyBundle -ApiBase $script:PolicyApiBase -TimeoutSec 10
+        Save-CachedDlpPolicyBundle -Bundle $bundle -CachePath $script:PolicyCachePath
+        Apply-PolicyFromBundle -Bundle $bundle -Source 'server'
+        $script:LastPolicyRefreshAt = (Get-Date).ToUniversalTime()
+        Write-EndpointLog ("policy refreshed from server version={0} checksum={1}" -f $script:PolicyVersion, $script:PolicyChecksum)
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("policy refresh failed: {0}" -f $_.Exception.Message)
+        return $false
+    }
+}
+
+function Sync-DlpPolicyDesiredState {
+    if (-not $script:PolicyEngineEnabled -or -not $script:PolicyClientAvailable) {
+        return $false
+    }
+    if (-not $script:PolicyAgentId) {
+        return $false
+    }
+
+    try {
+        [void](Send-DlpPolicyAgentHeartbeat -ApiBase $script:PolicyApiBase -AgentId $script:PolicyAgentId -Hostname $script:Hostname -Version $script:PolicyVersion -Checksum $script:PolicyChecksum -TimeoutSec 10)
+        $desired = Get-RemoteDlpPolicyDesired -ApiBase $script:PolicyApiBase -AgentId $script:PolicyAgentId -TimeoutSec 10
+        if ($desired -and $desired.refreshNow -eq $true) {
+            Write-EndpointLog ("policy desired refresh requested: reason={0}" -f $desired.reason)
+            return (Refresh-DlpPolicyFromServer)
+        }
+        return $true
+    }
+    catch {
+        Write-EndpointLog ("policy desired sync failed: {0}" -f $_.Exception.Message)
+        return $false
+    }
+}
+
+function Initialize-DlpPolicy {
+    if ($script:PolicyMode -eq 'server') {
+        if (Refresh-DlpPolicyFromServer) {
+            return
+        }
+
+        if ($script:PolicyClientAvailable) {
+            $cached = Read-CachedDlpPolicyBundle -CachePath $script:PolicyCachePath
+            if ($cached) {
+                try {
+                    Apply-PolicyFromBundle -Bundle $cached -Source 'cache'
+                    Write-EndpointLog ("policy loaded from cache version={0} checksum={1}" -f $script:PolicyVersion, $script:PolicyChecksum)
+                    return
+                }
+                catch {
+                    Write-EndpointLog ("cached policy load failed: {0}" -f $_.Exception.Message)
+                }
+            }
+        }
+
+        Load-DlpPolicy -Path $script:LocalPolicyPath
+        $script:PolicySource = 'local-fallback'
+        return
+    }
+
+    Load-DlpPolicy -Path $script:LocalPolicyPath
 }
 
 function Should-EmitByCooldown {
@@ -394,6 +878,9 @@ function Evaluate-ClipboardRules {
         if (-not $ruleId) { continue }
         $minLength = if ($rule.minLength) { [int]$rule.minLength } else { 0 }
         $regexPatterns = if ($rule.regexPatterns) { @($rule.regexPatterns) } else { @() }
+        $dictionaryPack = if ($rule.dictionaryPack) { [string]$rule.dictionaryPack } elseif ($script:Policy.contentAnalysis.dictionaryPack) { [string]$script:Policy.contentAnalysis.dictionaryPack } else { $null }
+        $regexPack = if ($rule.regexPack) { [string]$rule.regexPack } elseif ($script:Policy.contentAnalysis.regexPack) { [string]$script:Policy.contentAnalysis.regexPack } else { $null }
+        $ocrEnabled = if ($rule.PSObject.Properties.Name -contains 'ocrEnabled') { [bool]$rule.ocrEnabled } else { [bool]$script:Policy.contentAnalysis.ocrEnabled }
         if ($ClipboardText.Length -lt $minLength) { continue }
 
         $matched = $false
@@ -403,6 +890,9 @@ function Evaluate-ClipboardRules {
                 break
             }
         }
+        $advanced = Get-AdvancedContentMatches -Text $ClipboardText -DictionaryPack $dictionaryPack -RegexPack $regexPack
+        $advancedMatched = (@($advanced.dictionaryMatches).Count -gt 0) -or (@($advanced.regexMatches).Count -gt 0)
+        if ($advancedMatched) { $matched = $true }
 
         if (-not $matched) { continue }
 
@@ -424,6 +914,11 @@ function Evaluate-ClipboardRules {
             clipboardHash = $ClipboardHash
             clipboardLength = $ClipboardText.Length
             enforced = $enforced
+            dictionaryPack = $dictionaryPack
+            regexPack = $regexPack
+            dictionaryMatches = @($advanced.dictionaryMatches)
+            regexMatches = @($advanced.regexMatches)
+            ocrRequested = $ocrEnabled
         }
         Write-EndpointLog ("incident clipboard rule={0} action={1} severity={2} enforced={3}" -f $ruleId, $action, $severity, $enforced)
     }
@@ -484,6 +979,12 @@ function Evaluate-PrintRules {
         if ($rule.documentRegex) {
             $match = $match -and ($DocumentName -match [string]$rule.documentRegex)
         }
+        $dictionaryPack = if ($rule.dictionaryPack) { [string]$rule.dictionaryPack } elseif ($script:Policy.contentAnalysis.dictionaryPack) { [string]$script:Policy.contentAnalysis.dictionaryPack } else { $null }
+        $regexPack = if ($rule.regexPack) { [string]$rule.regexPack } elseif ($script:Policy.contentAnalysis.regexPack) { [string]$script:Policy.contentAnalysis.regexPack } else { $null }
+        $ocrEnabled = if ($rule.PSObject.Properties.Name -contains 'ocrEnabled') { [bool]$rule.ocrEnabled } else { [bool]$script:Policy.contentAnalysis.ocrEnabled }
+        $advanced = Get-AdvancedContentMatches -Text $DocumentName -DictionaryPack $dictionaryPack -RegexPack $regexPack
+        $advancedMatched = (@($advanced.dictionaryMatches).Count -gt 0) -or (@($advanced.regexMatches).Count -gt 0)
+        if ($advancedMatched) { $match = $true }
         if (-not $match) { continue }
 
         $cooldown = if ($rule.cooldownSeconds) { [int]$rule.cooldownSeconds } else { [int]$script:Policy.defaults.cooldownSeconds }
@@ -505,6 +1006,11 @@ function Evaluate-PrintRules {
             documentName = $DocumentName
             owner        = $Owner
             enforced = $enforced
+            dictionaryPack = $dictionaryPack
+            regexPack = $regexPack
+            dictionaryMatches = @($advanced.dictionaryMatches)
+            regexMatches = @($advanced.regexMatches)
+            ocrRequested = $ocrEnabled
         }
         Write-EndpointLog ("incident print rule={0} action={1} severity={2} printer={3} enforced={4}" -f $ruleId, $action, $severity, $PrinterName, $enforced)
     }
@@ -734,19 +1240,29 @@ $resolvedServerHost = if ($ServerHost) { $ServerHost } elseif ($deploymentConfig
 $resolvedServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($deploymentConfig) { [int]$deploymentConfig.server.port } else { 5600 }
 $resolvedServerScheme = if ($ServerScheme) { $ServerScheme } elseif ($deploymentConfig) { [string]$deploymentConfig.server.scheme } else { 'http' }
 $resolvedPolicyPath = if ($PolicyPath) { $PolicyPath } elseif ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$deploymentConfig.paths.policyPath } else { 'C:\ProgramData\AWatch-rus\dlp-policy.json' }
+$resolvedStateRoot = if ($deploymentConfig -and $deploymentConfig.paths.PSObject.Properties.Name -contains 'stateRoot') { [string]$deploymentConfig.paths.stateRoot } else { Split-Path -Path $resolvedPolicyPath -Parent }
 $resolvedPollSeconds = if ($PSBoundParameters.ContainsKey('PollSeconds')) { $PollSeconds } elseif ($deploymentConfig) { [int]$deploymentConfig.collector.pollSeconds } else { 5 }
 $resolvedLogsRoot = if ($deploymentConfig) { [string]$deploymentConfig.paths.logsRoot } else { 'C:\ProgramData\AWatch-rus\logs' }
 $resolvedLogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("endpoint-signals-{0}.log" -f $env:USERNAME) }
 $resolvedLocalAgentLogsEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'logging' -and $deploymentConfig.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$deploymentConfig.logging.localAgentLogsEnabled } else { $true }
 $resolvedIncidentArtifactsRoot = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'artifactsRoot') { [string]$deploymentConfig.incidentCapture.artifactsRoot } else { Join-Path $env:LOCALAPPDATA 'AWatch-rus\\incident-artifacts' }
 $resolvedIncidentScreenshotEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'incidentCapture' -and $deploymentConfig.incidentCapture.PSObject.Properties.Name -contains 'screenshotEnabled') { [bool]$deploymentConfig.incidentCapture.screenshotEnabled } else { $true }
+$resolvedHostname = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$deploymentConfig.awHostname)) { [string]$deploymentConfig.awHostname } else { [string]$env:COMPUTERNAME }
+$resolvedPolicyMode = if ($PolicyMode) { [string]$PolicyMode } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'mode') { [string]$deploymentConfig.policyEngine.mode } else { 'local' }
+$resolvedPolicyEngineEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'enabled') { [bool]$deploymentConfig.policyEngine.enabled } else { $false }
+$resolvedPolicyEngineHost = if ($PolicyEngineHost) { [string]$PolicyEngineHost } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'host') { [string]$deploymentConfig.policyEngine.host } else { $resolvedServerHost }
+$resolvedPolicyEnginePort = if ($PSBoundParameters.ContainsKey('PolicyEnginePort')) { $PolicyEnginePort } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'port') { [int]$deploymentConfig.policyEngine.port } else { $resolvedServerPort }
+$resolvedPolicyEngineScheme = if ($PolicyEngineScheme) { [string]$PolicyEngineScheme } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'scheme') { [string]$deploymentConfig.policyEngine.scheme } else { $resolvedServerScheme }
+$resolvedPolicyRefreshSeconds = if ($PSBoundParameters.ContainsKey('PolicyRefreshSeconds')) { $PolicyRefreshSeconds } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'refreshSeconds') { [int]$deploymentConfig.policyEngine.refreshSeconds } else { 300 }
+$resolvedPolicyCachePath = if ($PolicyCachePath) { [string]$PolicyCachePath } elseif ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'policyEngine' -and $deploymentConfig.policyEngine.PSObject.Properties.Name -contains 'cachePath') { [string]$deploymentConfig.policyEngine.cachePath } else { Join-Path $resolvedStateRoot 'dlp-policy-cache.json' }
 
 if ($resolvedLocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
     New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
 }
 
 $script:ApiBase = '{0}://{1}:{2}/api/0' -f $resolvedServerScheme, $resolvedServerHost, $resolvedServerPort
-$script:Hostname = $env:COMPUTERNAME
+$script:PolicyApiBase = '{0}://{1}:{2}/api/0' -f $resolvedPolicyEngineScheme, $resolvedPolicyEngineHost, $resolvedPolicyEnginePort
+$script:Hostname = $resolvedHostname
 $script:SessionId = (Get-Process -Id $PID).SessionId
 $script:KnownBuckets = @{}
 $script:Cooldown = @{}
@@ -762,17 +1278,59 @@ $script:LogPath = $resolvedLogPath
 $script:IncidentArtifactsRoot = $resolvedIncidentArtifactsRoot
 $script:IncidentScreenshotEnabled = $resolvedIncidentScreenshotEnabled
 $script:ScreenshotTypesLoaded = $false
+$script:PolicyMode = $resolvedPolicyMode
+$script:PolicyEngineEnabled = $resolvedPolicyEngineEnabled
+$script:PolicyRefreshSeconds = [Math]::Max($resolvedPolicyRefreshSeconds, 60)
+$script:PolicyCachePath = $resolvedPolicyCachePath
+$script:LocalPolicyPath = $resolvedPolicyPath
+$script:LastPolicyRefreshAt = [datetime]::MinValue
+$script:PolicyAgentId = $resolvedHostname
+$script:TransportBackoffSeconds = 1
+# Integration test flag (backward compatible - defaults to false)
+$script:IntegrationTestEnabled = if ($deploymentConfig -and $deploymentConfig.PSObject.Properties.Name -contains 'integrationTestEnabled') { [bool]$deploymentConfig.integrationTestEnabled } else { $false }
 
-Load-DlpPolicy -Path $resolvedPolicyPath
+# Integration metadata tracking (backward compatible)
+$script:TotalEventsProcessed = 0
+$script:LastEventTime = $null
+
+Initialize-TransportQueue -StateRoot $resolvedStateRoot
+Initialize-DlpPolicy
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
 
 while ($true) {
     try {
+        try {
+            Flush-TransportQueue -MaxItems 200
+            $script:TransportBackoffSeconds = 1
+        }
+        catch {
+            $script:TransportBackoffSeconds = [Math]::Min($script:TransportBackoffSeconds * 2, 60)
+            Write-EndpointLog ("transport flush failed, backoff={0}s err={1}" -f $script:TransportBackoffSeconds, $_.Exception.Message)
+        }
+
+        if ($script:PolicyMode -eq 'server') {
+            $policyAge = ((Get-Date).ToUniversalTime() - $script:LastPolicyRefreshAt).TotalSeconds
+            if ($policyAge -ge $script:PolicyRefreshSeconds) {
+                [void](Refresh-DlpPolicyFromServer)
+            }
+            else {
+                [void](Sync-DlpPolicyDesiredState)
+            }
+        }
+
         $nowUtc = (Get-Date).ToUniversalTime()
         if (($nowUtc - $script:LastSelfTestAt).TotalSeconds -ge $script:SelfTestIntervalSeconds) {
             Send-EndpointSignalHeartbeat -SignalType 'self_test' -Data @{
                 collector = 'dlp-endpoint-signals'
                 policyEnabled = [bool]$script:Policy.defaults.enabled
+                policyMode = $script:PolicyMode
+                policySource = $script:PolicySource
+                policyVersion = $script:PolicyVersion
+                policyChecksum = $script:PolicyChecksum
+                queueDepth = [int]$script:TransportMetrics.queueDepth
+                eventsEnqueued = [int]$script:TransportMetrics.eventsEnqueued
+                eventsFlushed = [int]$script:TransportMetrics.eventsFlushed
+                sendFailures = [int]$script:TransportMetrics.sendFailures
             }
             $script:LastSelfTestAt = $nowUtc
         }
@@ -783,7 +1341,7 @@ while ($true) {
         }
 
         try {
-            $clipboardText = Get-Clipboard -Raw -ErrorAction SilentlyContinue
+            $clipboardText = Get-ClipboardTextSafe
             if ($clipboardText) {
                 $clipboardHash = Get-StringHash -Value $clipboardText
                 if ($clipboardHash -and $clipboardHash -ne $script:LastClipboardHash) {
@@ -792,6 +1350,8 @@ while ($true) {
                         clipboardHash = $clipboardHash
                         clipboardLength = $clipboardText.Length
                     }
+                    $script:TotalEventsProcessed++
+                    $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                     Evaluate-ClipboardRules -ClipboardText $clipboardText -ClipboardHash $clipboardHash
                 }
             }
@@ -813,6 +1373,8 @@ while ($true) {
                         driveLetter = $deviceId
                         volumeName  = $volumeName
                     }
+                    $script:TotalEventsProcessed++
+                    $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                     Evaluate-UsbRules -DriveLetter $deviceId -VolumeName $volumeName
                 }
             }
@@ -852,6 +1414,8 @@ while ($true) {
                     documentNameOriginal = $documentNameOriginal
                     owner        = $owner
                 }
+                $script:TotalEventsProcessed++
+                $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName $documentName -Owner $owner
             }
 
@@ -899,6 +1463,8 @@ while ($true) {
                     eventRecordId = $recordId
                     eventSource = 'printservice-307'
                 }
+                $script:TotalEventsProcessed++
+                $script:LastEventTime = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
                 Evaluate-PrintRules -PrinterName $printerName -DocumentName (if ($resolvedDocument) { $resolvedDocument } else { $documentName }) -Owner $owner
             }
 
@@ -917,5 +1483,35 @@ while ($true) {
         Write-EndpointLog ("collector error: {0}" -f $_.Exception.Message)
     }
 
-    Start-Sleep -Seconds $resolvedPollSeconds
+    # Integration metadata self-test (backward compatible)
+    if ($script:IntegrationTestEnabled -and (Get-Date).Minute -eq 0) {
+        try {
+            $testMetadata = @{
+                timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+                collector = 'dlp-endpoint-signals'
+                version = '1.0.0'
+                hostname = $env:COMPUTERNAME
+                username = $env:USERNAME
+                status = 'healthy'
+                checks = @{
+                    eventsProcessed = $script:TotalEventsProcessed
+                    lastEventTime = $script:LastEventTime
+                    iocRulesLoaded = if ($script:IocRules) { @($script:IocRules).Count } else { 0 }
+                    policyRulesLoaded = if ($script:Policy -and $script:Policy.endpoint) { (@($script:Policy.endpoint.clipboard).Count + @($script:Policy.endpoint.usb).Count + @($script:Policy.endpoint.print).Count) } else { 0 }
+                }
+            }
+            Send-EndpointSignalHeartbeat -SignalType 'integration_test' -Data $testMetadata
+            Write-EndpointLog "Integration metadata test sent"
+        }
+        catch {
+            Write-EndpointLog "Integration test failed: $($_.Exception.Message)"
+        }
+    }
+
+    if ($script:TransportBackoffSeconds -gt $resolvedPollSeconds) {
+        Start-Sleep -Seconds $script:TransportBackoffSeconds
+    }
+    else {
+        Start-Sleep -Seconds $resolvedPollSeconds
+    }
 }

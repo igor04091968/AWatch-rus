@@ -11,6 +11,8 @@ source "$ENV_FILE"
 
 WEBUI_DIR="${AW_SERVER_WEBUI_DIR:-${AW_WEBUI_DIR:-/opt/activitywatch/webui-ru}}"
 REPORT_BASE="${AW_WORKTIME_REPORT_BASE:-http://10.10.10.13:5610}"
+CASE_PORT="${AW_DLP_CASE_PORT:-5602}"
+CASE_BASE="${AW_DLP_CASE_PUBLIC_BASE:-}"
 PATCH_JS_SRC="/root/bootstrap/aw-ru-patch.js"
 SW_CLEANUP_SRC="/root/bootstrap/aw-sw-cleanup.js"
 WORKTIME_PANEL_SRC="/root/bootstrap/aw-worktime-panel.js"
@@ -35,6 +37,17 @@ CATEGORY_HELPER_REPLACEMENT='hostname:t.hostnameChoices.filter((function(t){retu
 [[ -f "$HOST_GROUPS_SRC" ]] || { echo "missing $HOST_GROUPS_SRC" >&2; exit 1; }
 [[ -f "$INDEX_HTML" ]] || { echo "missing $INDEX_HTML" >&2; exit 1; }
 
+if [[ ! -s "$INDEX_HTML" ]]; then
+  latest_nonempty_backup="$(find "$WEBUI_DIR" -maxdepth 1 -type f -name 'index.html.bak.*' -size +0c | sort | tail -n 1 || true)"
+  if [[ -n "$latest_nonempty_backup" ]]; then
+    cp "$latest_nonempty_backup" "$INDEX_HTML"
+    echo "restored empty index.html from backup: $latest_nonempty_backup"
+  else
+    echo "index.html is empty and no non-empty backup exists: $INDEX_HTML" >&2
+    exit 1
+  fi
+fi
+
 install -d "$WEBUI_DIR/js"
 install -m 0644 "$PATCH_JS_SRC" "$PATCH_TARGET"
 install -m 0644 "$SW_CLEANUP_SRC" "$SW_TARGET"
@@ -45,6 +58,21 @@ cp "$INDEX_HTML" "$INDEX_HTML.bak.$TS"
 patch_hash="$(sha1sum "$PATCH_TARGET" | awk '{print substr($1,1,12)}')"
 sw_hash="$(sha1sum "$SW_TARGET" | awk '{print substr($1,1,12)}')"
 worktime_panel_hash="$(sha1sum "$WORKTIME_PANEL_TARGET" | awk '{print substr($1,1,12)}')"
+
+if [[ -z "$CASE_BASE" ]]; then
+  CASE_BASE="$(python3 - "$REPORT_BASE" "$CASE_PORT" <<'PY'
+from urllib.parse import urlsplit, urlunsplit
+import sys
+
+report_base = sys.argv[1]
+case_port = sys.argv[2]
+parts = urlsplit(report_base)
+hostname = parts.hostname or "10.10.10.13"
+scheme = parts.scheme or "http"
+print(urlunsplit((scheme, f"{hostname}:{case_port}", "", "", "")))
+PY
+)"
+fi
 
 python3 - "$WORKTIME_PANEL_TARGET" "$REPORT_BASE" <<'PY'
 from pathlib import Path
@@ -57,16 +85,18 @@ text = text.replace("__AW_WORKTIME_REPORT_BASE__", report_base)
 path.write_text(text)
 PY
 
-python3 - "$INDEX_HTML" "$sw_hash" "$patch_hash" "$worktime_panel_hash" "$REPORT_BASE" <<'PY'
+python3 - "$INDEX_HTML" "$sw_hash" "$patch_hash" "$worktime_panel_hash" "$REPORT_BASE" "$CASE_BASE" <<'PY'
 from pathlib import Path
 import re
 import sys
+from urllib.parse import urlsplit
 
 path = Path(sys.argv[1])
 sw_hash = sys.argv[2]
 patch_hash = sys.argv[3]
 panel_hash = sys.argv[4]
 report_base = sys.argv[5]
+case_base = sys.argv[6]
 content = path.read_text()
 
 content = re.sub(
@@ -74,23 +104,33 @@ content = re.sub(
     '',
     content,
 )
-content = re.sub(r"; frame-src 'self' [^\";>]*", "", content)
-content = content.replace(
-    "script-src 'self' 'unsafe-eval'",
-    f"script-src 'self' 'unsafe-eval'; frame-src 'self' {report_base}",
-    1,
+content = re.sub(r";\s*frame-src 'self' [^\";>]*", "", content)
+content = re.sub(r";\s*connect-src 'self' [^\";>]*", "", content)
+report_origin = urlsplit(report_base)
+case_origin = urlsplit(case_base)
+connect_targets = " ".join(
+    [
+        f"{report_origin.scheme}://{report_origin.netloc}",
+        f"{case_origin.scheme}://{case_origin.netloc}",
+    ]
+)
+content = re.sub(
+    r"script-src 'self' 'unsafe-eval'(?:;\s*connect-src 'self' [^\";>]*)?(?:;\s*frame-src 'self' [^\";>]*)?",
+    f"script-src 'self' 'unsafe-eval'; connect-src 'self' {connect_targets}; frame-src 'self' {report_base}",
+    content,
+    count=1,
 )
 content = content.replace(
     "</head>",
-    f'<script src="/js/sw-cleanup.js?v={sw_hash}"></script></head>',
+    (
+        f'<script src="/js/sw-cleanup.js?v={sw_hash}"></script>'
+        f'<script src="/js/ru-patch-v5.js?v={patch_hash}"></script></head>'
+    ),
     1,
 )
 content = content.replace(
     "</body>",
-    (
-        f'<script defer="defer" src="/js/ru-patch-v5.js?v={patch_hash}"></script>'
-        f'<script defer="defer" src="/js/aw-worktime-panel.js?v={panel_hash}"></script></body>'
-    ),
+    f'<script defer="defer" src="/js/aw-worktime-panel.js?v={panel_hash}"></script></body>',
     1,
 )
 if 'id="aw-report-links"' not in content:
@@ -102,6 +142,11 @@ if 'id="aw-report-links"' not in content:
 path.write_text(content)
 PY
 cp "$SW_CLEANUP_SRC" "$SERVICE_WORKER"
+
+if [[ ! -s "$INDEX_HTML" ]]; then
+  echo "index.html became empty after RU patch: $INDEX_HTML" >&2
+  exit 1
+fi
 
 trends_chunk="$(grep -Rsl "$TRENDS_NEEDLE" "$WEBUI_DIR/js"/*.js 2>/dev/null | head -n 1 || true)"
 if [[ -n "$trends_chunk" ]]; then

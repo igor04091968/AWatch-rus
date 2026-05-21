@@ -8,6 +8,7 @@ aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases
 aw_windows_package_zip_path: ""
 aw_windows_domain: "SHARKON2025"
 aw_windows_users:
+  - Администратор
   - user1
   - user2
   - user3
@@ -21,12 +22,23 @@ aw_windows_extra_users: []
 # Единые Windows/RDP пути: те же, что использует InnoSetup.
 aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
 aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
+aw_windows_hostname_override: ""  # Например: SHARKON2025
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
+aw_windows_file_ops_enabled: true
 aw_windows_local_agent_logs_enabled: false
 aw_windows_incident_capture_enabled: true
 aw_windows_incident_screenshot_enabled: true
 aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
+aw_windows_forensics_root: "{{ aw_windows_state_root }}\\forensics\\evtx-exports"
+aw_windows_evtx_retention_days: 14
+aw_windows_evtx_channels:
+  - Security
+  - System
+  - Application
+  - Microsoft-Windows-PowerShell/Operational
+  - Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
+  - Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational
 aw_windows_logon_marker_enabled: true
 aw_windows_skip_hardening: false
 
@@ -34,7 +46,7 @@ aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rule
 aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
 
 aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
-aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
 aw_windows_fail_on_validation_error: true
 
 # Безопасная миграция текущего прода со старых путей в единый профиль AWatch-rus.

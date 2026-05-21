@@ -26,6 +26,12 @@ VIEWS_JSON="$BOOTSTRAP_DIR/settings/views-default.json"
 CLASSES_JSON="$BOOTSTRAP_DIR/settings/classes-worktime.json"
 WORKTIME_API_SRC="$BOOTSTRAP_DIR/aw-worktime-api.py"
 WORKTIME_API_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-api.service"
+WORKTIME_UI_BRIDGE_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.py"
+WORKTIME_UI_BRIDGE_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.service"
+WORKTIME_UI_BRIDGE_TIMER_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.timer"
+HEALTHD_SRC="$BOOTSTRAP_DIR/aw-rus-healthd.py"
+HEALTHD_SERVICE_SRC="$BOOTSTRAP_DIR/aw-rus-healthd.service"
+HEALTHD_TIMER_SRC="$BOOTSTRAP_DIR/aw-rus-healthd.timer"
 
 for var_name in "${required_vars[@]}"; do
   if [[ -z "${!var_name:-}" ]]; then
@@ -51,6 +57,7 @@ install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" /opt/activitywatch/release
 install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$AW_SERVER_WEBUI_DIR"
 install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$AW_SERVER_DATA_DIR"
 install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$AW_SERVER_LOG_DIR"
+install -d -o "$AW_SERVER_USER" -g "$AW_SERVER_GROUP" "$AW_SERVER_DATA_DIR/health/windows-validation"
 
 tmp_dir=$(mktemp -d)
 trap 'rm -rf "$tmp_dir"' EXIT
@@ -101,6 +108,41 @@ if [[ -f "$WORKTIME_API_SERVICE_SRC" ]]; then
   systemctl enable aw-worktime-api.service
   systemctl restart aw-worktime-api.service
   systemctl --no-pager --full status aw-worktime-api.service || true
+fi
+
+if [[ -f "$WORKTIME_UI_BRIDGE_SRC" ]]; then
+  install -m 0755 "$WORKTIME_UI_BRIDGE_SRC" /usr/local/bin/aw-worktime-ui-bridge.py
+fi
+
+if [[ -f "$WORKTIME_UI_BRIDGE_SERVICE_SRC" ]]; then
+  install -m 0644 "$WORKTIME_UI_BRIDGE_SERVICE_SRC" /etc/systemd/system/aw-worktime-ui-bridge.service
+fi
+
+if [[ -f "$WORKTIME_UI_BRIDGE_TIMER_SRC" ]]; then
+  install -m 0644 "$WORKTIME_UI_BRIDGE_TIMER_SRC" /etc/systemd/system/aw-worktime-ui-bridge.timer
+  systemctl daemon-reload
+  systemctl disable --now aw-worktime-afk-bridge.timer >/dev/null 2>&1 || true
+  systemctl enable aw-worktime-ui-bridge.timer
+  systemctl restart aw-worktime-ui-bridge.timer
+  systemctl start aw-worktime-ui-bridge.service || true
+  systemctl --no-pager --full status aw-worktime-ui-bridge.timer || true
+fi
+
+if [[ -f "$HEALTHD_SRC" ]]; then
+  install -m 0755 "$HEALTHD_SRC" /usr/local/bin/aw-rus-healthd.py
+fi
+
+if [[ -f "$HEALTHD_SERVICE_SRC" ]]; then
+  install -m 0644 "$HEALTHD_SERVICE_SRC" /etc/systemd/system/aw-rus-healthd.service
+fi
+
+if [[ -f "$HEALTHD_TIMER_SRC" ]]; then
+  install -m 0644 "$HEALTHD_TIMER_SRC" /etc/systemd/system/aw-rus-healthd.timer
+  systemctl daemon-reload
+  systemctl enable aw-rus-healthd.timer
+  systemctl restart aw-rus-healthd.timer
+  systemctl start aw-rus-healthd.service || true
+  systemctl --no-pager --full status aw-rus-healthd.timer || true
 fi
 
 for _ in $(seq 1 20); do

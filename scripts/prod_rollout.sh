@@ -52,7 +52,7 @@ fi
 
 if [[ -t 0 ]]; then
   prompt_secret AW_SSH_PASSWORD "Enter SSH password for aw_server (root@10.10.10.13)"
-  prompt_secret AW_WINRM_PASSWORD "Enter WinRM password for aw_windows (192.168.100.21)"
+  prompt_secret AW_WINRM_PASSWORD "Enter WinRM password for aw_windows (192.168.100.18)"
 fi
 
 if [[ -z "${AW_SSH_PASSWORD:-}" || -z "${AW_WINRM_PASSWORD:-}" ]]; then

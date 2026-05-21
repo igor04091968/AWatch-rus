@@ -4,23 +4,69 @@ aw_server_bind_host: "0.0.0.0"
 aw_server_port: 5600
 aw_server_webui_dir: "/opt/activitywatch/webui-ru"
 aw_server_data_dir: "/var/lib/activitywatch"
+aw_server_db_path: "/var/lib/activitywatch/.local/share/activitywatch/aw-server-rust/sqlite.db"
 aw_server_log_dir: "/var/log/activitywatch"
 aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
 aw_worktime_report_base: "http://10.10.10.13:5610"
 aw_worktime_timezone: "Europe/Moscow"
+aw_worktime_influx_enabled: false
+aw_worktime_influx_url: "http://10.10.10.10:8086"
+aw_worktime_influx_org: "proxmox"
+aw_worktime_influx_bucket: "aw_metrics"
+aw_worktime_influx_hosts: "SHARKON2025"
+aw_worktime_influx_days: "today,yesterday"
+aw_worktime_influx_token: ""
+aw_dlp_influx_enabled: false
+aw_dlp_influx_url: "http://10.10.10.10:8086"
+aw_dlp_influx_org: "proxmox"
+aw_dlp_influx_bucket: "aw_metrics"
+aw_dlp_influx_hosts: "SHARKON2025"
+aw_dlp_influx_lookback_days: 30
+aw_dlp_influx_event_limit: 2000
+aw_dlp_influx_token: ""
+aw_monitored_windows_host: "192.168.100.18"
+aw_monitored_windows_hostname: "SHARKON2025"
+aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
+aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
 
 aw_repo_root: "{{ playbook_dir | dirname }}"
 
-# Опционально: применить базовые категории и views для рабочего времени через AW settings API.
-# Внимание: это перезаписывает существующие server-side settings/classes/views.
-aw_apply_worktime_settings: false
+# Применить базовые категории и views для рабочего времени через AW settings API.
+# При прод-обновлениях это нужно оставлять включённым, иначе UI остаётся без views/classes.
+aw_apply_worktime_settings: true
+
+# Дополнительные origin для aw-server-rust CORS.
+# Обязательно включите тот origin, с которого реально открывается Web UI.
+aw_server_cors_origins:
+  - "http://127.0.0.1:5600"
+  - "http://localhost:5600"
+  - "http://10.10.10.13:5600"
+  - "http://aw-server:5600"
 
 # Опциональные значения периода рабочего времени в Web UI.
 # startOfDay задаёт границу дня и стартовое время окна отчёта.
 # durationDefault задаёт диапазон по умолчанию в секундах.
 #
 # Рекомендуется явно задать рабочий интервал и дать playbook вычислить duration.
-aw_worktime_from: "08:00"
+aw_worktime_from: "00:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
+aw_server_always_active_pattern: "aw-watcher-window"
+aw_server_landingpage: "/activity/SHARKON2025/view/"
+aw_health_strict_fileops: 0
+
+aw_dlp_policy_engine_enabled: true
+aw_dlp_policy_engine_bind_host: "0.0.0.0"
+aw_dlp_policy_engine_port: 5601
+aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
+aw_dlp_content_analysis_enabled: true
+aw_dlp_integrations_enabled: true
+aw_dlp_case_management_enabled: true
+aw_dlp_case_bind_host: "0.0.0.0"
+aw_dlp_case_port: 5602
+aw_dlp_case_db_path: "/opt/activitywatch/dlp-case-management/cases.db"
+aw_dlp_compliance_enabled: true
+aw_dlp_compliance_report_dir: "/opt/activitywatch/dlp-compliance/reports"
+aw_dlp_compliance_template_path: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html"
+aw_server_post_deploy_health_check_enabled: true

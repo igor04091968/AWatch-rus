@@ -14,7 +14,7 @@ required_files=(
   "$KIT_DIR/README-INSTALL-KIT.txt"
   "$KIT_DIR/windows/deploy-ensemble.ps1"
   "$KIT_DIR/windows/validate-deployment.ps1"
-  "$KIT_DIR/ansible/deploy_aw_windows_phase2.yml"
+  "$KIT_DIR/ansible/deploy_aw_windows.yml"
   "$KIT_DIR/aw-server/install_aw_server.sh"
 )
 
@@ -27,7 +27,7 @@ echo "[2/4] Manifest checksum verification"
 sha256sum -c "$MANIFEST" >/dev/null
 
 echo "[3/4] Manifest completeness"
-python - <<'PY'
+python3 - <<'PY'
 from pathlib import Path
 import sys
 kit=Path('install-kit-awindows-20260427-211240')
@@ -54,7 +54,7 @@ print(f'MANIFEST complete: {len(actual_set)} files tracked')
 PY
 
 echo "[4/4] Archive composition check"
-python - <<'PY'
+python3 - <<'PY'
 from pathlib import Path
 import tarfile, zipfile, sys
 kit_prefix='install-kit-awindows-20260427-211240/'

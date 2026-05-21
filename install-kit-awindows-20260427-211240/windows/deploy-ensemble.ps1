@@ -23,12 +23,26 @@ param(
     [bool]$IncidentCaptureEnabled = $true,
     [bool]$IncidentScreenshotEnabled = $true,
     [string]$IncidentArtifactsRoot,
+    [string]$EvtxExportRoot,
+    [int]$EvtxRetentionDays = 14,
+    [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
+    [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
+    [ValidateSet('local', 'server')]
+    [string]$PolicyMode = 'local',
+    [bool]$PolicyEngineEnabled = $false,
+    [string]$PolicyEngineHost,
+    [int]$PolicyEnginePort = 5601,
+    [ValidateSet('http', 'https')]
+    [string]$PolicyEngineScheme = 'http',
+    [int]$PolicyRefreshSeconds = 300,
+    [string]$PolicyCachePath,
     [string]$ReportPath,
     [switch]$SkipHardening,
-    [switch]$ValidateAfterDeploy
+    [switch]$ValidateAfterDeploy,
+    [switch]$IntegrationTestEnabled
 )
 
 Set-StrictMode -Version Latest
@@ -70,9 +84,21 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -IncidentCaptureEnabled $IncidentCaptureEnabled `
     -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
     -IncidentArtifactsRoot $IncidentArtifactsRoot `
+    -EvtxExportRoot $EvtxExportRoot `
+    -EvtxRetentionDays $EvtxRetentionDays `
+    -EvtxChannels $EvtxChannels `
     -LogonMarkerEnabled $LogonMarkerEnabled `
+    -AwHostname $AwHostname `
     -CustomRulesPath $CustomRulesPath `
-    -CustomPolicyPath $CustomPolicyPath
+    -CustomPolicyPath $CustomPolicyPath `
+    -PolicyMode $PolicyMode `
+    -PolicyEngineEnabled $PolicyEngineEnabled `
+    -PolicyEngineHost $PolicyEngineHost `
+    -PolicyEnginePort $PolicyEnginePort `
+    -PolicyEngineScheme $PolicyEngineScheme `
+    -PolicyRefreshSeconds $PolicyRefreshSeconds `
+    -PolicyCachePath $PolicyCachePath `
+    -IntegrationTestEnabled:$IntegrationTestEnabled
 
 if (-not $SkipHardening) {
     & $hardeningScript `
@@ -93,9 +119,20 @@ if (-not $SkipHardening) {
         -IncidentCaptureEnabled $IncidentCaptureEnabled `
         -IncidentScreenshotEnabled $IncidentScreenshotEnabled `
         -IncidentArtifactsRoot $IncidentArtifactsRoot `
+        -EvtxExportRoot $EvtxExportRoot `
+        -EvtxRetentionDays $EvtxRetentionDays `
+        -EvtxChannels $EvtxChannels `
         -LogonMarkerEnabled $LogonMarkerEnabled `
+        -AwHostname $AwHostname `
         -CustomRulesPath $CustomRulesPath `
-        -CustomPolicyPath $CustomPolicyPath
+        -CustomPolicyPath $CustomPolicyPath `
+        -PolicyMode $PolicyMode `
+        -PolicyEngineEnabled $PolicyEngineEnabled `
+        -PolicyEngineHost $PolicyEngineHost `
+        -PolicyEnginePort $PolicyEnginePort `
+        -PolicyEngineScheme $PolicyEngineScheme `
+        -PolicyRefreshSeconds $PolicyRefreshSeconds `
+        -PolicyCachePath $PolicyCachePath
 }
 
 $report = [ordered]@{

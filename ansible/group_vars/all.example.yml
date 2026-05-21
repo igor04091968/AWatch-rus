@@ -25,6 +25,10 @@ aw_dlp_influx_hosts: "SHARKON2025"
 aw_dlp_influx_lookback_days: 30
 aw_dlp_influx_event_limit: 2000
 aw_dlp_influx_token: ""
+aw_monitored_windows_host: "192.168.100.18"
+aw_monitored_windows_hostname: "SHARKON2025"
+aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
+aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
 
 aw_repo_root: "{{ playbook_dir | dirname }}"
 

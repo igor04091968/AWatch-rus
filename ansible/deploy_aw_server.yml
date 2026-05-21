@@ -63,6 +63,8 @@
         - "{{ aw_server_data_dir }}/.config/activitywatch"
         - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
         - "{{ aw_server_data_dir }}/backups"
+        - "{{ aw_rus_health_state_dir }}"
+        - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
         - /etc/activitywatch
         - "{{ aw_bootstrap_dir }}"
@@ -88,6 +90,8 @@
         - "{{ aw_server_data_dir }}/.config/activitywatch"
         - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
         - "{{ aw_server_data_dir }}/backups"
+        - "{{ aw_rus_health_state_dir }}"
+        - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
 
     - name: (Check mode) Пропустить установку релиза ActivityWatch
@@ -334,6 +338,10 @@
               AW_EXPECT_ALWAYS_ACTIVE_PATTERN={{ aw_server_always_active_pattern | default('') }}
               AW_EXPECT_LANDINGPAGE={{ aw_server_landingpage | default('') }}
               AW_HEALTH_STRICT_FILEOPS={{ aw_health_strict_fileops | default(0) }}
+              AW_MONITORED_WINDOWS_HOST={{ aw_monitored_windows_host }}
+              AW_MONITORED_WINDOWS_HOSTNAME={{ aw_monitored_windows_hostname }}
+              AW_RUS_HEALTH_STATE_DIR={{ aw_rus_health_state_dir }}
+              AW_RUS_HEALTH_VALIDATION_DIR={{ aw_rus_health_validation_dir }}
 
         - name: Создать каталог DLP policy engine
           ansible.builtin.file:
@@ -707,6 +715,14 @@
             group: root
             mode: "0755"
 
+        - name: Установить скрипт aw-rus-healthd
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-rus-healthd.py"
+            dest: /usr/local/bin/aw-rus-healthd.py
+            owner: root
+            group: root
+            mode: "0755"
+
         - name: Установить systemd unit AW worktime UI bridge
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-ui-bridge.service"
@@ -735,6 +751,22 @@
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-autoheal.timer"
             dest: /etc/systemd/system/aw-worktime-autoheal.timer
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить systemd unit AW-RUS healthd
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-rus-healthd.service"
+            dest: /etc/systemd/system/aw-rus-healthd.service
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить systemd timer AW-RUS healthd
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-rus-healthd.timer"
+            dest: /etc/systemd/system/aw-rus-healthd.timer
             owner: root
             group: root
             mode: "0644"
@@ -778,6 +810,12 @@
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
             daemon_reload: true
+
+        - name: Включить таймер AW-RUS healthd
+          ansible.builtin.systemd:
+            name: aw-rus-healthd.timer
+            enabled: true
+            state: started
 
         - name: Включить и перезапустить DLP policy engine
           ansible.builtin.systemd:
@@ -1524,30 +1562,20 @@
             executable: /bin/bash
           changed_when: false
 
-    - name: Post-deploy health gate (aw-health-check)
+    - name: Post-deploy health gate (aw-rus-healthd)
       when:
         - not ansible_check_mode
         - aw_server_post_deploy_health_check_enabled | default(true) | bool
       block:
-        - name: Запустить /usr/local/bin/aw-health-check
+        - name: Запустить /usr/local/bin/aw-rus-healthd.py --json
           ansible.builtin.command:
-            cmd: /usr/local/bin/aw-health-check
+            cmd: /usr/local/bin/aw-rus-healthd.py --json
           register: aw_post_deploy_health
           changed_when: false
 
-        - name: Показать результат aw-health-check
+        - name: Показать результат aw-rus-healthd
           ansible.builtin.debug:
             msg: "{{ aw_post_deploy_health.stdout }}"
-
-        - name: Запустить /usr/local/bin/dlp-health-check --json
-          ansible.builtin.command:
-            cmd: /usr/local/bin/dlp-health-check --json
-          register: dlp_post_deploy_health
-          changed_when: false
-
-        - name: Показать результат dlp-health-check
-          ansible.builtin.debug:
-            msg: "{{ dlp_post_deploy_health.stdout }}"
 
   handlers:
     - name: Перезагрузить systemd

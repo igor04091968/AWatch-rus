@@ -1,7 +1,7 @@
 #!/bin/bash
 # check-aw-data.sh - Проверка сбора данных ActivityWatch с RDP-сервера SHARKON2025
 # Сервер: 10.10.10.13:5600
-# Хост-источник: 192.168.100.21 (SHARKON2025)
+# Хост-источник: 192.168.100.18 (SHARKON2025)
 
 SERVER="http://10.10.10.13:5600"
 HOSTNAME_FILTER="SHARKON2025"

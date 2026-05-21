@@ -2,15 +2,20 @@
 Description=AW Worktime Report API
 After=network.target activitywatch-server.service
 Wants=activitywatch-server.service
+StartLimitBurst=3
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
 EnvironmentFile=/etc/activitywatch/aw-server.env
 ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-api.py
-Restart=always
-RestartSec=2
+Restart=on-failure
+RestartSec=5
 User=activitywatch
 Group=activitywatch
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-worktime-api
 
 [Install]
 WantedBy=multi-user.target

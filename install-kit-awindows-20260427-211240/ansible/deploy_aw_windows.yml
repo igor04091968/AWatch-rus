@@ -4,6 +4,8 @@
   gather_facts: false
 
   vars:
+    ansible_winrm_operation_timeout_sec: 120
+    ansible_winrm_read_timeout_sec: 180
     aw_windows_repo_root: "{{ playbook_dir | dirname }}"
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
     aw_windows_server_scheme: "http"
@@ -14,6 +16,7 @@
     aw_windows_package_zip_path: ""
     aw_windows_domain: "SHARKON2025"
     aw_windows_users:
+      - Администратор
       - user1
       - user2
       - user3
@@ -23,24 +26,35 @@
     aw_windows_users_effective: "{{ (aw_windows_users + aw_windows_extra_users) | unique }}"
     aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
     aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
-    aw_windows_afk_enabled: true
-    aw_windows_window_enabled: true
+    aw_windows_policy_mode: "server"
+    aw_windows_policy_refresh_seconds: 300
+    aw_windows_policy_engine_enabled: true
+    aw_windows_policy_engine_host: "{{ aw_windows_server_host }}"
+    aw_windows_policy_engine_port: 5601
+    aw_windows_policy_engine_scheme: "http"
+    aw_windows_afk_enabled_default: true
+    aw_windows_window_enabled_default: true
+    aw_windows_file_ops_enabled: true
     aw_windows_local_agent_logs_enabled: false
     aw_windows_incident_capture_enabled: true
     aw_windows_incident_screenshot_enabled: true
     aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
+    aw_windows_forensics_root: "{{ aw_windows_state_root }}\\forensics\\evtx-exports"
     aw_windows_logon_marker_enabled: true
     aw_windows_skip_hardening: false
     aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
     aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
     aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
-    aw_windows_validation_local_dir: "/tmp/aw-rus-validation"
+    aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
     aw_windows_launch_task_pattern: "ActivityWatch Launch *"
     aw_windows_recovery_task_name: "ActivityWatch Recovery"
     aw_windows_force_task_restart: true
     aw_windows_api_smoke_check_enabled: true
     aw_windows_api_smoke_check_bucket: ""
     aw_windows_api_smoke_check_limit: 10
+    aw_windows_api_smoke_check_window_enabled_default: true
+    aw_windows_api_smoke_check_window_bucket: ""
+    aw_windows_api_smoke_check_min_events: 1
     aw_windows_fail_on_validation_error: true
     aw_windows_migration_enabled: true
     aw_windows_legacy_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
@@ -60,6 +74,12 @@
           - aw_windows_state_root is defined
         fail_msg: "Не заданы обязательные переменные Windows-развёртывания."
 
+    - name: Нормализовать effective флаги collector'ов и smoke-check
+      ansible.builtin.set_fact:
+        aw_windows_afk_enabled_effective: "{{ (aw_windows_afk_enabled | default(aw_windows_afk_enabled_default)) | bool }}"
+        aw_windows_window_enabled_effective: "{{ (aw_windows_window_enabled | default(aw_windows_window_enabled_default)) | bool }}"
+        aw_windows_api_smoke_check_window_enabled_effective: "{{ (aw_windows_api_smoke_check_window_enabled | default(aw_windows_api_smoke_check_window_enabled_default)) | bool }}"
+
     - name: Создать каталоги развёртывания
       ansible.windows.win_file:
         path: "{{ item }}"
@@ -77,15 +97,31 @@
         - ActivityWatch.Windows.Common.psm1
         - browser-domains-native-collector.ps1
         - dlp-endpoint-signals-collector.ps1
+        - dlp-policy-client.ps1
         - email-outbound-collector.ps1
+        - file-operations-collector.ps1
         - worktime-session-collector.ps1
+        - export-evtx-for-hayabusa.ps1
         - migrate-awatch-rus-paths.ps1
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1
         - hardening-recovery.ps1
+        - rebuild-worktime-tasks.ps1
         - validate-deployment.ps1
         - web-category-rules.example.json
         - dlp-policy.example.json
+
+    - name: Нормализовать кодировку PowerShell файлов (UTF-8 BOM для Windows PowerShell)
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $toolkitDir = "{{ aw_windows_deploy_root }}\windows"
+          $encIn = New-Object System.Text.UTF8Encoding($false)
+          $encOut = New-Object System.Text.UTF8Encoding($true)
+          Get-ChildItem -LiteralPath $toolkitDir -File -Include *.ps1,*.psm1,*.psd1 | ForEach-Object {
+            $text = [System.IO.File]::ReadAllText($_.FullName, $encIn)
+            [System.IO.File]::WriteAllText($_.FullName, $text, $encOut)
+          }
 
     - name: Загрузить список пользователей для доменного развёртывания
       ansible.windows.win_copy:
@@ -129,13 +165,22 @@
             UserListPath = "{{ aw_windows_deploy_root }}\windows\users.txt"
             InstallRoot = "{{ aw_windows_install_root }}"
             StateRoot = "{{ aw_windows_state_root }}"
-            AfkEnabled = {{ '$true' if (aw_windows_afk_enabled | bool) else '$false' }}
-            WindowEnabled = {{ '$true' if (aw_windows_window_enabled | bool) else '$false' }}
+            AfkEnabled = {{ '$true' if (aw_windows_afk_enabled_effective | bool) else '$false' }}
+            WindowEnabled = {{ '$true' if (aw_windows_window_enabled_effective | bool) else '$false' }}
+            FileOpsEnabled = {{ '$true' if (aw_windows_file_ops_enabled | bool) else '$false' }}
             LocalAgentLogsEnabled = {{ '$true' if (aw_windows_local_agent_logs_enabled | bool) else '$false' }}
             IncidentCaptureEnabled = {{ '$true' if (aw_windows_incident_capture_enabled | bool) else '$false' }}
             IncidentScreenshotEnabled = {{ '$true' if (aw_windows_incident_screenshot_enabled | bool) else '$false' }}
             IncidentArtifactsRoot = "{{ aw_windows_incident_artifacts_root }}"
+            EvtxExportRoot = "{{ aw_windows_forensics_root }}"
+            EvtxRetentionDays = {{ aw_windows_evtx_retention_days | int }}
             LogonMarkerEnabled = {{ '$true' if (aw_windows_logon_marker_enabled | bool) else '$false' }}
+            PolicyMode = "{{ aw_windows_policy_mode }}"
+            PolicyEngineEnabled = {{ '$true' if (aw_windows_policy_engine_enabled | bool) else '$false' }}
+            PolicyEngineHost = "{{ aw_windows_policy_engine_host }}"
+            PolicyEnginePort = {{ aw_windows_policy_engine_port }}
+            PolicyEngineScheme = "{{ aw_windows_policy_engine_scheme }}"
+            PolicyRefreshSeconds = {{ aw_windows_policy_refresh_seconds }}
             CustomRulesPath = "{{ aw_windows_rules_path }}"
             CustomPolicyPath = "{{ aw_windows_policy_path }}"
           }
@@ -145,89 +190,230 @@
           {% if (aw_windows_package_zip_path | default('') | string | length) > 0 %}
           $params.PackageZipPath = "{{ aw_windows_package_zip_path }}"
           {% endif %}
+          {% if (aw_windows_evtx_channels | default([]) | length) > 0 %}
+          $params.EvtxChannels = @(
+          {% for channel in aw_windows_evtx_channels %}
+            "{{ channel }}"{% if not loop.last %},{% endif %}
+          {% endfor %}
+          )
+          {% endif %}
+          {% if (aw_windows_hostname_override | default('') | string | length) > 0 %}
+          $params.AwHostname = "{{ aw_windows_hostname_override }}"
+          {% endif %}
           {% if aw_windows_skip_hardening | bool %}
           $params.SkipHardening = $true
           {% endif %}
+          {% if aw_windows_integration_test_enabled | bool %}
+          $params.IntegrationTestEnabled = $true
+          {% endif %}
           & "{{ aw_windows_deploy_root }}\windows\deploy-ensemble.ps1" @params
+
+    - name: Удалить лишние ActivityWatch Launch tasks вне текущего deployment-config
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $config = Get-Content -Raw -LiteralPath "{{ aw_windows_state_root }}\deployment-config.json" | ConvertFrom-Json
+          $desired = @($config.userTasks | ForEach-Object { [string]$_.LaunchTaskName })
+          foreach ($task in @(Get-ScheduledTask | Where-Object { $_.TaskName -like 'ActivityWatch Launch *' })) {
+            if ($desired -notcontains [string]$task.TaskName) {
+              Unregister-ScheduledTask -TaskName $task.TaskName -Confirm:$false -ErrorAction SilentlyContinue
+              & cmd.exe /c "schtasks /Delete /TN `"$($task.TaskName)`" /F >nul 2>&1" | Out-Null
+            }
+          }
 
     - name: Принудительно запустить ActivityWatch recovery и launch tasks
       when: aw_windows_force_task_restart | bool
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
-          Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
-          Get-ScheduledTask |
-            Where-Object TaskName -like "{{ aw_windows_launch_task_pattern }}" |
-            ForEach-Object { Start-ScheduledTask -TaskName $_.TaskName }
+
+          function Get-CollectorKey {
+            param([string]$CommandLine)
+            if (-not $CommandLine) { return $null }
+            $cl = $CommandLine.ToLowerInvariant()
+            if ($cl -like '*browser-domains-native-collector.ps1*') { return 'browser' }
+            if ($cl -like '*file-operations-collector.ps1*') { return 'fileops' }
+            if ($cl -like '*dlp-endpoint-signals-collector.ps1*') { return 'endpoint' }
+            if ($cl -like '*email-outbound-collector.ps1*') { return 'email' }
+            if ($cl -like '*worktime-session-collector.ps1*') { return 'worktime' }
+            return $null
+          }
+
+          $collectorProcs = Get-CimInstance Win32_Process |
+            Where-Object { $_.Name -eq 'powershell.exe' -and $_.CommandLine } |
+            ForEach-Object {
+              $key = Get-CollectorKey -CommandLine $_.CommandLine
+              if ($key) {
+                $groupKey = if ($key -eq 'worktime') { 'worktime::global' } else { '{0}::{1}' -f $key, ([int]$_.SessionId) }
+                [pscustomobject]@{
+                  ProcessId    = [int]$_.ProcessId
+                  SessionId    = [int]$_.SessionId
+                  CreationDate = $_.CreationDate
+                  CollectorKey = $key
+                  GroupKey     = $groupKey
+                }
+              }
+            } |
+            Where-Object { $_ -ne $null }
+
+          # Keep only one process per collector scope: worktime collector is global, others stay per-session.
+          foreach ($group in ($collectorProcs | Group-Object GroupKey)) {
+            $ordered = @($group.Group | Sort-Object CreationDate -Descending)
+            if ($ordered.Count -le 1) { continue }
+            foreach ($dup in $ordered | Select-Object -Skip 1) {
+              Stop-Process -Id $dup.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+          }
+
+          # Force managed collectors/watchers to reload the freshly deployed scripts.
+          Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+              (
+                ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and
+                $_.CommandLine -match 'C:\\ProgramData\\AWatch-rus\\' -and
+                $_.CommandLine -match '(collector|launch-watchers|recovery-loop)\.ps1'
+              ) -or
+              ($_.Name -ieq 'aw-watcher-afk.exe') -or
+              ($_.Name -ieq 'aw-watcher-window.exe')
+            } |
+            ForEach-Object {
+              Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+            }
+
+          Start-Sleep -Seconds 2
+
+          # Ensure tasks are enabled (some environments keep them disabled, causing "0s" in WebUI).
+          try {
+            Enable-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}" -ErrorAction SilentlyContinue | Out-Null
+          } catch {}
+
+          $config = Get-Content -Raw -LiteralPath "{{ aw_windows_state_root }}\deployment-config.json" | ConvertFrom-Json
+          foreach ($taskDef in @($config.userTasks)) {
+            try { Enable-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue | Out-Null } catch {}
+          }
+
+          $recoveryTask = Get-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}" -ErrorAction SilentlyContinue
+          if ($recoveryTask -and $recoveryTask.State -notin @('Running', 'Queued')) {
+            Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
+          }
+          foreach ($taskDef in @($config.userTasks)) {
+            $launchTask = Get-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
+            if ($launchTask -and $launchTask.State -notin @('Running', 'Queued')) {
+              Start-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
+            }
+          }
 
     - name: Получить Windows hostname для AW smoke-check bucket
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_afk_enabled | bool
       ansible.windows.win_command: powershell.exe -NoProfile -Command "$env:COMPUTERNAME"
       register: aw_windows_hostname_result
       changed_when: false
 
-    - name: Вычислить AW AFK smoke-check bucket
+    - name: Вычислить AW worktime smoke-check bucket
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_afk_enabled | bool
+        - aw_windows_hostname_result.stdout is defined
       ansible.builtin.set_fact:
         aw_windows_api_smoke_check_bucket_effective: >-
           {{
             aw_windows_api_smoke_check_bucket
             if (aw_windows_api_smoke_check_bucket | default('') | string | length) > 0
-            else 'aw-watcher-afk_' ~ (aw_windows_hostname_result.stdout | trim)
+            else 'aw-worktime-sessions_' ~ (aw_windows_hostname_result.stdout | trim)
           }}
 
-    - name: Дождаться свежих AFK событий на AW server
+    - name: Вычислить AW Window smoke-check bucket
       when:
         - aw_windows_api_smoke_check_enabled | bool
-        - aw_windows_afk_enabled | bool
-      delegate_to: localhost
+        - aw_windows_api_smoke_check_window_enabled_effective | bool
+        - aw_windows_window_enabled_effective | bool
+        - aw_windows_hostname_result.stdout is defined
+      ansible.builtin.set_fact:
+        aw_windows_api_smoke_check_window_bucket_effective: >-
+          {{
+            aw_windows_api_smoke_check_window_bucket
+            if (aw_windows_api_smoke_check_window_bucket | default('') | string | length) > 0
+            else 'aw-watcher-window_' ~ (aw_windows_hostname_result.stdout | trim)
+          }}
+
+    - name: Выполнить AW API smoke-check (worktime bucket должен получать события)
+      when:
+        - aw_windows_api_smoke_check_enabled | bool
       ansible.builtin.uri:
         url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
+        status_code: 200
         return_content: true
-      register: aw_windows_api_smoke
-      until: >
-        aw_windows_api_smoke.status == 200 and
-        (aw_windows_api_smoke.json | length) > 0 and
-        (
-          aw_windows_api_smoke.json
-          | selectattr('data.status', 'equalto', 'not-afk')
+      register: aw_windows_api_smoke_result
+      failed_when: false
+      until: >-
+        (aw_windows_api_smoke_result.status | default(0)) == 200
+        and ((aw_windows_api_smoke_result.json | default([])) | length) >= aw_windows_api_smoke_check_min_events
+        and (
+          (aw_windows_api_smoke_result.json | default([]))
+          | selectattr('data.source', 'equalto', 'worktime-session-collector')
           | list
           | length
         ) > 0
-      retries: 10
-      delay: 6
+      retries: 12
+      delay: 5
+      ignore_errors: "{{ (not aw_windows_fail_on_validation_error | bool) }}"
+      delegate_to: localhost
+      changed_when: false
 
-    - name: Выполнить валидацию и сохранить отчёт на целевом Windows host
+    - name: Выполнить AW API smoke-check (Window bucket должен получать события)
+      when:
+        - aw_windows_api_smoke_check_enabled | bool
+        - aw_windows_api_smoke_check_window_enabled_effective | bool
+        - aw_windows_window_enabled_effective | bool
+      ansible.builtin.uri:
+        url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_window_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: aw_windows_api_smoke_window_result
+      failed_when: false
+      until: >-
+        (aw_windows_api_smoke_window_result.status | default(0)) == 200
+        and ((aw_windows_api_smoke_window_result.json | default([])) | length) >= aw_windows_api_smoke_check_min_events
+      retries: 12
+      delay: 5
+      ignore_errors: "{{ (not aw_windows_fail_on_validation_error | bool) }}"
+      delegate_to: localhost
+      changed_when: false
+
+    - name: Валидировать развёртывание на эндпоинте
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
-          $report = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
+          $result = & "{{ aw_windows_deploy_root }}\windows\validate-deployment.ps1" `
             -ConfigPath "{{ aw_windows_state_root }}\deployment-config.json"
-          $report | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
-          if ({{ '$true' if (aw_windows_fail_on_validation_error | bool) else '$false' }} -and -not [bool]$report.overallOk) {
-            throw "Проверка развёртывания ActivityWatch завершилась ошибкой. Отчёт: {{ aw_windows_validation_remote_path }}"
-          }
+          $result | ConvertTo-Json -Depth 12 | Out-File -FilePath "{{ aw_windows_validation_remote_path }}" -Encoding utf8
+          return $result
 
-    - name: Создать локальный каталог для validation reports
+    - name: Создать локальную директорию для отчётов валидации
       ansible.builtin.file:
         path: "{{ aw_windows_validation_local_dir }}"
         state: directory
         mode: "0755"
       delegate_to: localhost
 
-    - name: Забрать validation report
+    - name: Стянуть отчёт валидации с эндпоинта
       ansible.builtin.fetch:
         src: "{{ aw_windows_validation_remote_path }}"
         dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
         flat: true
 
-    - name: Показать путь к отчёту
-      ansible.builtin.debug:
-        msg:
-          - "Windows/RDP развёртывание завершено на {{ inventory_hostname }}."
-          - "Отчёт проверки: {{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
+    - name: Проверить статус валидации
+      ansible.builtin.shell: |
+        python3 - <<'PY'
+        import json, sys
+        with open('{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json', 'r', encoding='utf-8-sig') as f:
+            data = json.load(f)
+        if not data.get('overallOk', False):
+            failed = ", ".join(data.get("summary", {}).get("failedSections", [])) or "unknown"
+            print(f"Validation failed for {{ inventory_hostname }}: {failed}")
+            sys.exit(1)
+        PY
+      delegate_to: localhost
+      when: aw_windows_fail_on_validation_error | bool

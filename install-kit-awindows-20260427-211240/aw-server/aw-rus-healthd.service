@@ -1,0 +1,14 @@
+[Unit]
+Description=AW-RUS unified health orchestrator
+After=network-online.target activitywatch-server.service aw-worktime-api.service
+Wants=network-online.target activitywatch-server.service aw-worktime-api.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/activitywatch/aw-server.env
+ExecStart=/usr/bin/python3 /usr/local/bin/aw-rus-healthd.py
+User=root
+Group=root
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-rus-healthd

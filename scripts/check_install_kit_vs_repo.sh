@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 KIT_DIR="install-kit-awindows-20260427-211240"
 
-python - <<'PY'
+python3 - <<'PY'
 from pathlib import Path
 import hashlib
 
@@ -21,11 +21,16 @@ def sha(path: Path) -> str:
 all_compared=[]
 mismatches=[]
 missing_in_repo=[]
+allowed_kit_only_prefixes=('server-configs-' ,)
+allowed_kit_only_files={'README-INSTALL-KIT.txt'}
 
 for kp in sorted(p for p in kit.rglob('*') if p.is_file() and p.name!='MANIFEST.txt'):
     rel=kp.relative_to(kit)
     rp=root/rel
     if not rp.exists():
+        rel_str=str(rel)
+        if rel_str in allowed_kit_only_files or rel_str.startswith(allowed_kit_only_prefixes):
+            continue
         missing_in_repo.append(str(rel))
         continue
     all_compared.append(str(rel))

@@ -14,6 +14,8 @@
 - `ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` — массовый полный playbook (несколько CT).
 - `ansible/deploy_aw_windows.yml` — WinRM playbook для развёртывания Windows/RDP collector'ов.
 - `ansible/deploy_aw_pfsense_poller.yml` — развёртывание pfSense poller'а.
+- `ansible/deploy_grafana_dashboards.yml` — импорт version-controlled Grafana dashboard'ов через HTTP API.
+- `ansible/deploy_tsj_guardian_bot_proxmox.yml` — развёртывание TSJ Guardian Telegram Bot на Proxmox host.
 - `ansible/install_full_stack.yml` — полный установочный playbook (оркестратор всех этапов).
 - `ansible/inventory.example.ini` — шаблон inventory.
 - `ansible/group_vars/*.example.yml` — шаблоны переменных.
@@ -31,6 +33,15 @@ cd ansible
 ansible-playbook -i inventory.ini deploy_aw_server.yml
 ```
 
+## Секреты (пароли) безопасно
+
+Рекомендуемый способ не хранить пароли в репозитории — перед запуском экспортировать их в переменные окружения:
+
+- Linux `aw_server` (SSH пароль root): `AW_SSH_PASSWORD`
+- Windows `aw_windows` (WinRM пароль): `AW_WINRM_PASSWORD`
+
+В `group_vars/aw_server.yml` и `group_vars/windows.yml` они читаются через `lookup('env', ...)`.
+
 ## Полный установочный playbook (всё за один запуск)
 
 Если нужно прогнать полный цикл одной командой:
@@ -45,7 +56,8 @@ ansible-playbook -i inventory.ini install_full_stack.yml
 - `provision_proxmox_ct_and_deploy_aw.yml` (если есть хосты в группе `[proxmox]`);
 - `deploy_aw_server.yml` (группа `[aw_server]`);
 - `deploy_aw_windows.yml` (группа `[aw_windows]`);
-- `deploy_aw_pfsense_poller.yml` (группа `[aw_pfsense_pollers]`).
+- `deploy_aw_pfsense_poller.yml` (группа `[aw_pfsense_pollers]`);
+- `deploy_grafana_dashboards.yml` (группа `[grafana]`).
 
 Пустые группы в `inventory.ini` безопасны: соответствующий play будет пропущен.
 
@@ -87,8 +99,17 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 
 ```bash
 cd ansible
-ansible-playbook -i inventory.ini deploy_aw_windows.yml
+AW_WINRM_PASSWORD='...' bash ./run_deploy_aw_windows.sh
 ```
+
+`run_deploy_aw_windows.sh` автоматически:
+- очищает proxy env (`http_proxy/https_proxy/...`), чтобы WinRM не уходил в локальный прокси;
+- включает OpenSSL legacy provider, если на хосте отключён `MD4` (нужно для NTLM в pywinrm).
+- перезапускает `ansible-playbook` при временных WinRM/NTLM сбоях (по умолчанию 5 попыток, пауза 30 сек).
+
+Параметры retry:
+- `AW_DEPLOY_RETRIES` (по умолчанию `5`);
+- `AW_DEPLOY_RETRY_DELAY_SEC` (по умолчанию `30`).
 
 Playbook:
 
@@ -96,9 +117,11 @@ Playbook:
 - если найден legacy config `C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`, выполняет безопасную миграцию через `migrate-awatch-rus-paths.ps1`: backup, остановка задач, перенос данных, переписывание путей, пересоздание scheduled tasks и validation;
 - выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с policy/rules из AWatch-rus toolkit;
 - после deploy принудительно запускает `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи;
-- выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие `not-afk` события;
+- включает (`Enable-ScheduledTask`) `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи перед запуском (иначе WebUI может показывать `Active time: 0s`);
+- выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие события;
+- выполняет API smoke-check bucket `aw-watcher-window_<COMPUTERNAME>` и ожидает свежие события (по умолчанию включено);
 - запускает `validate-deployment.ps1`;
-- забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation` по умолчанию).
+- забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation-<USER>` по умолчанию).
 
 Дополнительные флаги:
 
@@ -116,6 +139,9 @@ Playbook:
 - `aw_windows_migration_report_remote_path` — JSON-отчёт о миграции на Windows-хосте;
 - `aw_windows_package_version`, `aw_windows_package_url`, `aw_windows_package_zip_path` — версия и источник Windows-пакета ActivityWatch;
 - `aw_windows_api_smoke_check_bucket: ""` — автоматически использовать `aw-watcher-afk_<COMPUTERNAME>`;
+- `aw_windows_api_smoke_check_window_enabled: true` — включить дополнительный smoke-check `aw-watcher-window_<COMPUTERNAME>`;
+- `aw_windows_api_smoke_check_window_bucket: ""` — переопределить bucket для window smoke-check;
+- `aw_windows_api_smoke_check_min_events: 1` — минимум событий, ожидаемых в smoke-check;
 - `aw_windows_fail_on_validation_error: true` — завершать playbook ошибкой, если `validate-deployment.ps1` возвращает `overallOk=false`;
 - `aw_windows_skip_hardening: true` — пропустить `hardening-recovery.ps1` внутри ensemble-скрипта.
 
@@ -138,6 +164,68 @@ Playbook:
 - пишет `/etc/aw-pfsense/poller.json`;
 - поднимает `aw-pfsense-poller.service`.
 
+## Импорт Grafana dashboard'ов
+
+1. Подготовьте inventory и vars:
+   - `cp ansible/inventory.example.ini ansible/inventory.ini`
+   - `cp ansible/group_vars/grafana.example.yml ansible/group_vars/grafana.yml`
+2. Укажите в inventory группу `[grafana]` и переменную `grafana_url`.
+3. Экспортируйте пароль Grafana API:
+
+```bash
+export GRAFANA_ADMIN_PASSWORD='...'
+```
+
+4. Запустите:
+
+```bash
+cd ansible
+ansible-playbook -i inventory.ini deploy_grafana_dashboards.yml
+```
+
+Playbook:
+
+- проверяет `GET /api/health`;
+- создает или актуализирует folder `AWatch-rus` в Grafana;
+- импортирует dashboard JSON из каталога `grafana/`;
+- верифицирует доступность dashboard'ов по `uid` через Grafana API.
+
+По умолчанию импортируются:
+
+- `DetMir: Работа пользователей в RDP`
+- `DetMir: DLP и ИБ обзор`
+- `DetMir: ИБ сводка для руководства`
+- `AW-rus: DLP обзор`
+
+Подробная документация: `docs/GRAFANA_DASHBOARDS_RU.md`
+
+## Развёртывание TSJ Guardian Bot на Proxmox
+
+1. Подготовьте vars:
+   - `cp ansible/group_vars/proxmox-bot.example.yml ansible/group_vars/proxmox-bot.yml`
+2. Заполните минимум:
+   - `telegram_bot_token`
+   - `telegram_allowed_chat_ids`
+   - `tsj_bot_source_local_path`
+3. Убедитесь, что в inventory есть группа `[proxmox]`.
+   Для текущего контура AW-Rus bot ожидает Proxmox host `10.10.10.2`.
+   Рабочая модель для этого контура: `igor` + `sudo`, а не обязательный `root` login.
+4. При необходимости задайте recovery-команды для AW-Rus:
+   - `tsj_bot_aw_rus_worktime_heal_cmd`
+   - `tsj_bot_aw_rus_dlp_heal_cmd`
+5. Запустите:
+
+```bash
+cd ansible
+ansible-playbook -i inventory.ini deploy_tsj_guardian_bot_proxmox.yml
+```
+
+После актуального production hardening:
+
+- bot различает `worktime idle` и реальную деградацию;
+- bot поддерживает отдельный `AW_RUS_DLP_HEAL_CMD`;
+- redeploy не должен терять runtime env-ключи, связанные с proxy, FS checks и AI escalation.
+
 ## Результат
 
 - Установлен ActivityWatch Server.
@@ -149,3 +237,13 @@ Playbook:
 - Для полного сценария CT создаётся автоматически через `pct create`.
 - На Windows/RDP host развёрнуты AFK/window watchers, browser domain collector, DLP endpoint collector и worktime session collector.
 - Проверочный JSON-отчёт Windows playbook должен иметь `overallOk=true`.
+
+## Prod rollout одной командой
+
+Для ручного запуска с dry-run и логированием используйте:
+
+```bash
+bash scripts/prod_rollout.sh
+```
+
+Скрипт попросит `AW_SSH_PASSWORD` и `AW_WINRM_PASSWORD` интерактивно (ввод скрыт) и сложит логи в `.rollout-logs/`.
