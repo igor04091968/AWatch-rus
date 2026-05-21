@@ -1,10 +1,11 @@
 [Unit]
 Description=AW-RUS Hayabusa auto-process dropped packages
-After=network-online.target activitywatch-server.service
-Wants=network-online.target activitywatch-server.service
+After=network-online.target activitywatch-server.service aw-dlp-case-management.service
+Wants=network-online.target activitywatch-server.service aw-dlp-case-management.service
 
 [Service]
 Type=oneshot
+EnvironmentFile=-/etc/activitywatch/aw-server.env
 ExecStart=/usr/bin/python3 /usr/local/bin/aw-hayabusa-autoprocess
 User=root
 Group=root

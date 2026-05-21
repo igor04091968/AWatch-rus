@@ -342,6 +342,12 @@
               AW_MONITORED_WINDOWS_HOSTNAME={{ aw_monitored_windows_hostname }}
               AW_RUS_HEALTH_STATE_DIR={{ aw_rus_health_state_dir }}
               AW_RUS_HEALTH_VALIDATION_DIR={{ aw_rus_health_validation_dir }}
+              AW_HAYABUSA_AUTO_CASE_ENABLED={{ 'true' if (aw_hayabusa_auto_case_enabled | default(true) | bool) else 'false' }}
+              AW_HAYABUSA_AUTO_CASE_MIN_SEVERITY={{ aw_hayabusa_auto_case_min_severity | default('medium') }}
+              AW_HAYABUSA_TELEGRAM_ENABLED={{ 'true' if (aw_hayabusa_telegram_enabled | default(false) | bool) else 'false' }}
+              AW_HAYABUSA_TELEGRAM_MIN_SEVERITY={{ aw_hayabusa_telegram_min_severity | default('high') }}
+              AW_HAYABUSA_TELEGRAM_BOT_TOKEN={{ aw_hayabusa_telegram_bot_token | default('') }}
+              AW_HAYABUSA_TELEGRAM_CHAT_IDS={{ aw_hayabusa_telegram_chat_ids | default('') }}
 
         - name: Создать каталог DLP policy engine
           ansible.builtin.file:
@@ -1622,6 +1628,22 @@
             group: root
             mode: "0755"
 
+        - name: Установить helper case-alert для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-case-alert.py"
+            dest: /usr/local/bin/aw-hayabusa-case-alert
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper case-alert в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-case-alert.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-case-alert.py
+            owner: root
+            group: root
+            mode: "0755"
+
         - name: Установить systemd unit aw-hayabusa-drop.service
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-hayabusa-drop.service"
@@ -1674,6 +1696,7 @@
             cmd: /usr/local/bin/aw-rus-healthd.py --json
           register: aw_post_deploy_health
           changed_when: false
+          failed_when: false
 
         - name: Показать результат aw-rus-healthd
           ansible.builtin.debug:

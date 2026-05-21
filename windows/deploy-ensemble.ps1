@@ -40,6 +40,11 @@ param(
     [int]$PolicyRefreshSeconds = 300,
     [string]$PolicyCachePath,
     [string]$ReportPath,
+    [bool]$HayabusaAutoUploadEnabled = $true,
+    [int]$HayabusaAutoUploadIntervalHours = 6,
+    [int]$HayabusaAutoUploadHoursBack = 6,
+    [string]$HayabusaAutoUploadMode = 'incident',
+    [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
     [switch]$SkipHardening,
     [switch]$ValidateAfterDeploy,
     [switch]$IntegrationTestEnabled
@@ -98,6 +103,11 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -PolicyEngineScheme $PolicyEngineScheme `
     -PolicyRefreshSeconds $PolicyRefreshSeconds `
     -PolicyCachePath $PolicyCachePath `
+    -HayabusaAutoUploadEnabled $HayabusaAutoUploadEnabled `
+    -HayabusaAutoUploadIntervalHours $HayabusaAutoUploadIntervalHours `
+    -HayabusaAutoUploadHoursBack $HayabusaAutoUploadHoursBack `
+    -HayabusaAutoUploadMode $HayabusaAutoUploadMode `
+    -HayabusaAutoUploadTaskName $HayabusaAutoUploadTaskName `
     -IntegrationTestEnabled:$IntegrationTestEnabled
 
 if (-not $SkipHardening) {

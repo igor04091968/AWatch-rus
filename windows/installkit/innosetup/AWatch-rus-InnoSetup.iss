@@ -2,9 +2,9 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "AWatch-rus"
 
-#define AwDefaultServerHost "10.10.10.13"
+#define AwDefaultServerHost "aw-server"
 #define AwDefaultServerPort "5600"
-#define AwDefaultWorktimeReportBase "http://10.10.10.13:5610"
+#define AwDefaultWorktimeReportBase "http://aw-server:5610"
 #define AwDefaultWorktimeHost "SHARKON2025"
 #define AwDefaultUsers "user1,user2,user3,user4,user5"
 #define AwDefaultInstallRoot "C:\\Program Files\\AWatch-rus\\bin"

@@ -12,11 +12,17 @@ DROP_DIR = pathlib.Path('/opt/activitywatch/aw-rus-ops/drop')
 LOCK_PATH = pathlib.Path('/opt/hayabusa/state/aw-hayabusa-autoprocess.lock')
 WRAPPER = pathlib.Path('/usr/local/bin/aw-hayabusa')
 LINKER = pathlib.Path('/usr/local/bin/aw-hayabusa-link-case')
+CASE_ALERT = pathlib.Path('/usr/local/bin/aw-hayabusa-case-alert')
 
 
 def run(cmd):
     print('RUN', ' '.join(str(x) for x in cmd), flush=True)
     subprocess.run(cmd, check=True)
+
+
+def run_capture(cmd):
+    print('RUN', ' '.join(str(x) for x in cmd), flush=True)
+    return subprocess.run(cmd, check=False, text=True, capture_output=True)
 
 
 def read_latest_intake():
@@ -83,11 +89,22 @@ def process_one(zip_path: pathlib.Path):
     run([str(WRAPPER), 'process-inbox', '--mode', mode, '--limit', '1'])
     latest = read_latest_intake()
     report_dir = pathlib.Path(latest['report_dir'])
+    case_alert = None
+    if CASE_ALERT.is_file():
+        alert_cmd = [str(CASE_ALERT), '--mode', mode, '--link-source', sidecars['link_source']]
+        if sidecars['case_id'] is not None:
+            alert_cmd += ['--case-id', str(sidecars['case_id'])]
+        result = run_capture(alert_cmd)
+        case_alert = {
+            'returncode': result.returncode,
+            'stdout': result.stdout.strip(),
+            'stderr': result.stderr.strip(),
+        }
     archive_sidecars(report_dir, sidecars)
     archive_drop_package(report_dir, zip_path)
-    if sidecars['case_id'] is not None:
+    if sidecars['case_id'] is not None and not CASE_ALERT.is_file():
         run([str(LINKER), '--case-id', str(sidecars['case_id']), '--mode', mode, '--link-source', sidecars['link_source']])
-    return latest
+    return {'latest_intake': latest, 'case_alert': case_alert}
 
 
 def main():
@@ -110,8 +127,8 @@ def main():
             print('no zip packages in drop dir')
             return 0
         for zip_path in zips:
-            latest = process_one(zip_path)
-            print(json.dumps({'processed': str(zip_path), 'latest_intake': latest}, ensure_ascii=False, indent=2))
+            result = process_one(zip_path)
+            print(json.dumps({'processed': str(zip_path), **result}, ensure_ascii=False, indent=2))
     return 0
 
 

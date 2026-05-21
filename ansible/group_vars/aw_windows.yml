@@ -6,7 +6,8 @@ ansible_password: "{{ lookup('env', 'AW_WINRM_PASSWORD') }}"
 aw_windows_repo_root: "{{ playbook_dir | dirname }}"
 aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
 aw_windows_server_scheme: "http"
-aw_windows_server_host: "10.10.10.13"
+# Leave empty to derive from the first host in [aw_server] inventory.
+aw_windows_server_host: ""
 aw_windows_server_port: 5600
 
 aw_windows_package_version: "v0.13.2"
@@ -32,6 +33,11 @@ aw_windows_policy_engine_enabled: true
 aw_windows_policy_engine_host: "{{ aw_windows_server_host }}"
 aw_windows_policy_engine_port: 5601
 aw_windows_policy_engine_scheme: "http"
+aw_windows_hayabusa_auto_upload_enabled: true
+aw_windows_hayabusa_auto_upload_interval_hours: 6
+aw_windows_hayabusa_auto_upload_hours_back: 6
+aw_windows_hayabusa_auto_upload_mode: "incident"
+aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"
 
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true

@@ -39,6 +39,11 @@ param(
     [string]$PolicyEngineScheme = 'http',
     [int]$PolicyRefreshSeconds = 300,
     [string]$PolicyCachePath,
+    [bool]$HayabusaAutoUploadEnabled = $true,
+    [int]$HayabusaAutoUploadIntervalHours = 6,
+    [int]$HayabusaAutoUploadHoursBack = 6,
+    [string]$HayabusaAutoUploadMode = 'incident',
+    [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
     [switch]$IntegrationTestEnabled
 )
 
@@ -109,6 +114,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -FileCollectorScript $assetResult.FileCollectorScript `
     -SessionCollectorScript $assetResult.SessionCollectorScript `
     -EvtxExportScript $assetResult.EvtxExportScript `
+    -HayabusaUploadScript $assetResult.HayabusaUploadScript `
     -RulesPath $assetResult.ActiveRules `
     -PolicyPath $assetResult.ActivePolicy `
     -PollSeconds $PollSeconds `
@@ -133,6 +139,11 @@ $config = New-ActivityWatchDeploymentConfig `
     -PolicyEngineScheme $PolicyEngineScheme `
     -PolicyRefreshSeconds $PolicyRefreshSeconds `
     -PolicyCachePath $PolicyCachePath `
+    -HayabusaAutoUploadEnabled $HayabusaAutoUploadEnabled `
+    -HayabusaAutoUploadIntervalHours $HayabusaAutoUploadIntervalHours `
+    -HayabusaAutoUploadHoursBack $HayabusaAutoUploadHoursBack `
+    -HayabusaAutoUploadMode $HayabusaAutoUploadMode `
+    -HayabusaAutoUploadTaskName $HayabusaAutoUploadTaskName `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `
     -UserTasks $taskDefinitions `
@@ -144,6 +155,7 @@ Remove-LegacyActivityWatchEntries
 Set-ActivityWatchAcl -InstallRoot $InstallRoot -StateRoot $StateRoot -LogsRoot $logsRoot
 Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptPath $launchScriptPath -ConfigPath $configPath
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $recoveryScriptPath -ConfigPath $configPath
+Register-ActivityWatchHayabusaAutoUploadTask -ConfigPath $configPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
 Write-Host 'ActivityWatch развёрнут для пользователей:'

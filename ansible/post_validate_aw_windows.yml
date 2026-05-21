@@ -9,7 +9,6 @@
     aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
     aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
     aw_windows_server_scheme: "http"
-    aw_windows_server_host: "10.10.10.13"
     aw_windows_server_port: 5600
     aw_windows_fail_on_validation_error: true
     aw_windows_launch_task_pattern: "ActivityWatch Launch *"
@@ -21,6 +20,26 @@
     aw_windows_api_smoke_check_wait_seconds: 20
 
   tasks:
+    - name: Вычислить inventory host AW server по умолчанию
+      ansible.builtin.set_fact:
+        aw_server_inventory_host_effective: "{{ (groups['aw_server'] | default([]) | first) | default('', true) }}"
+
+    - name: Вычислить effective host для AW server
+      ansible.builtin.set_fact:
+        aw_windows_server_host_effective: >-
+          {{
+            aw_windows_server_host
+            | default(
+                (
+                  hostvars[aw_server_inventory_host_effective].ansible_host
+                  | default(aw_server_inventory_host_effective, true)
+                )
+                if (aw_server_inventory_host_effective | length) > 0
+                else '',
+                true
+              )
+          }}
+
     - name: Аккуратно запустить ActivityWatch recovery и launch tasks, если они не в Running
       when: aw_windows_force_task_restart | bool
       ansible.windows.win_powershell:
@@ -60,7 +79,7 @@
       when: aw_windows_api_smoke_check_enabled | bool
       delegate_to: localhost
       ansible.builtin.uri:
-        url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
+        url: "{{ aw_windows_server_scheme }}://{{ aw_windows_server_host_effective }}:{{ aw_windows_server_port }}/api/0/buckets/{{ aw_windows_api_smoke_check_bucket_effective }}/events?limit={{ aw_windows_api_smoke_check_limit }}"
         method: GET
         status_code: 200
         return_content: true

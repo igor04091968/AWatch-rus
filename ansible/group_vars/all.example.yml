@@ -8,7 +8,9 @@ aw_server_db_path: "/var/lib/activitywatch/.local/share/activitywatch/aw-server-
 aw_server_log_dir: "/var/log/activitywatch"
 aw_server_user: "activitywatch"
 aw_server_group: "activitywatch"
-aw_worktime_report_base: "http://10.10.10.13:5610"
+aw_server_inventory_host: "{{ (groups['aw_server'] | default([]) | first) | default('aw-server', true) }}"
+aw_server_public_host: "{{ (hostvars[aw_server_inventory_host].ansible_host | default(aw_server_inventory_host, true)) if (aw_server_inventory_host | length) > 0 else 'aw-server' }}"
+aw_worktime_report_base: "http://{{ aw_server_public_host }}:5610"
 aw_worktime_timezone: "Europe/Moscow"
 aw_worktime_influx_enabled: false
 aw_worktime_influx_url: "http://10.10.10.10:8086"
@@ -29,6 +31,12 @@ aw_monitored_windows_host: "192.168.100.18"
 aw_monitored_windows_hostname: "SHARKON2025"
 aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
 aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
+aw_hayabusa_auto_case_enabled: true
+aw_hayabusa_auto_case_min_severity: "medium"
+aw_hayabusa_telegram_enabled: false
+aw_hayabusa_telegram_min_severity: "high"
+aw_hayabusa_telegram_bot_token: ""
+aw_hayabusa_telegram_chat_ids: ""
 
 aw_repo_root: "{{ playbook_dir | dirname }}"
 
@@ -41,7 +49,7 @@ aw_apply_worktime_settings: true
 aw_server_cors_origins:
   - "http://127.0.0.1:5600"
   - "http://localhost:5600"
-  - "http://10.10.10.13:5600"
+  - "http://{{ aw_server_public_host }}:5600"
   - "http://aw-server:5600"
 
 # Опциональные значения периода рабочего времени в Web UI.

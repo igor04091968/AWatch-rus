@@ -4,6 +4,7 @@ param(
     [string]$OutputRoot,
     [int]$RetentionDays,
     [string[]]$Channels,
+    [Nullable[int]]$HoursBack,
     [int]$DaysBack = 3,
     [switch]$NoZip
 )
@@ -78,8 +79,12 @@ $zipPath = Join-Path $effectiveOutputRoot "$hostName-$timestamp.zip"
 New-Directory -Path $batchRoot
 New-Directory -Path $evtxRoot
 
-$daysBackMs = [int64]$DaysBack * 24 * 60 * 60 * 1000
-$query = "*[System[TimeCreated[timediff(@SystemTime) <= $daysBackMs]]]"
+$lookbackMs = if ($null -ne $HoursBack) {
+    [int64]$HoursBack * 60 * 60 * 1000
+} else {
+    [int64]$DaysBack * 24 * 60 * 60 * 1000
+}
+$query = "*[System[TimeCreated[timediff(@SystemTime) <= $lookbackMs]]]"
 $results = @()
 
 foreach ($channel in @($effectiveChannels | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })) {
@@ -117,6 +122,7 @@ $manifest = [ordered]@{
     batchRoot = $batchRoot
     zipPath = if ($NoZip) { $null } else { $zipPath }
     daysBack = $DaysBack
+    hoursBack = if ($null -ne $HoursBack) { [int]$HoursBack } else { $null }
     retentionDays = $effectiveRetentionDays
     channels = @($effectiveChannels)
     exports = @($results)

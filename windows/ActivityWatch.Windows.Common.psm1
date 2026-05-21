@@ -502,6 +502,7 @@ function New-ActivityWatchDeploymentConfig {
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScript,
         [string]$EvtxExportScript,
+        [string]$HayabusaUploadScript,
         [string]$EmailCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
@@ -541,6 +542,11 @@ function New-ActivityWatchDeploymentConfig {
         [Parameter(Mandatory = $true)]
         [pscustomobject[]]$UserTasks,
         [string]$PackageVersion = 'v0.13.2',
+        [bool]$HayabusaAutoUploadEnabled = $true,
+        [int]$HayabusaAutoUploadIntervalHours = 6,
+        [int]$HayabusaAutoUploadHoursBack = 6,
+        [string]$HayabusaAutoUploadMode = 'incident',
+        [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
         [switch]$IntegrationTestEnabled
     )
 
@@ -581,6 +587,7 @@ function New-ActivityWatchDeploymentConfig {
             fileCollectorScript = $FileCollectorScript
             sessionCollectorScript = $SessionCollectorScript
             evtxExportScript = $EvtxExportScript
+            hayabusaUploadScript = $HayabusaUploadScript
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -608,6 +615,13 @@ function New-ActivityWatchDeploymentConfig {
             evtxExportRoot = $effectiveEvtxExportRoot
             retentionDays  = $EvtxRetentionDays
             evtxChannels   = @($effectiveEvtxChannels)
+            hayabusaAutomation = [pscustomobject]@{
+                enabled = [bool]$HayabusaAutoUploadEnabled
+                intervalHours = $HayabusaAutoUploadIntervalHours
+                hoursBack = $HayabusaAutoUploadHoursBack
+                mode = $HayabusaAutoUploadMode
+                taskName = $HayabusaAutoUploadTaskName
+            }
         }
         sessionEvents = [pscustomobject]@{
             logonEnabled = $LogonMarkerEnabled
@@ -1537,6 +1551,48 @@ function Register-ActivityWatchRecoveryTask {
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -Hidden -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 
     Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+}
+
+function Register-ActivityWatchHayabusaAutoUploadTask {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigPath
+    )
+
+    $config = Read-ActivityWatchDeploymentConfig -Path $ConfigPath
+    $forensics = $config.forensics
+    if ($null -eq $forensics -or $forensics.PSObject.Properties.Name -notcontains 'hayabusaAutomation') {
+        return
+    }
+
+    $automation = $forensics.hayabusaAutomation
+    $taskName = if ($automation.PSObject.Properties.Name -contains 'taskName' -and -not [string]::IsNullOrWhiteSpace([string]$automation.taskName)) {
+        [string]$automation.taskName
+    } else {
+        'ActivityWatch Hayabusa Upload'
+    }
+
+    if (-not [bool]$automation.enabled) {
+        Remove-ActivityWatchScheduledTask -TaskName $taskName
+        return
+    }
+
+    $uploadScript = if ($config.paths.PSObject.Properties.Name -contains 'hayabusaUploadScript') { [string]$config.paths.hayabusaUploadScript } else { Join-Path $config.paths.stateRoot 'export-upload-hayabusa-to-aw-server.ps1' }
+    if (-not (Test-Path -LiteralPath $uploadScript)) {
+        throw "Не найден скрипт Hayabusa upload: $uploadScript"
+    }
+
+    $intervalHours = [Math]::Max(1, [int]$automation.intervalHours)
+    $hoursBack = [Math]::Max(1, [int]$automation.hoursBack)
+    $mode = if ($automation.PSObject.Properties.Name -contains 'mode' -and -not [string]::IsNullOrWhiteSpace([string]$automation.mode)) { [string]$automation.mode } else { 'incident' }
+    $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`" -HoursBack $hoursBack -Mode `"$mode`""
+
+    Remove-ActivityWatchScheduledTask -TaskName $taskName
+    & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Не удалось создать scheduled task $taskName через schtasks.exe"
+    }
 }
 
 function Set-ActivityWatchAcl {

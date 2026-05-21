@@ -38,6 +38,8 @@ $fileOpsExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -
 
 function Get-LoggedOnUsers {
     $users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $activeStates = @('Active', 'Активно')
+    $inactiveStates = @('Disc', 'Disconnected', 'Idle', 'Listen', 'Диск', 'Откл', 'Отключен')
     try {
         $lines = & quser.exe 2>$null
         foreach ($line in @($lines)) {
@@ -50,6 +52,16 @@ function Get-LoggedOnUsers {
             if ($parts.Count -lt 1) { continue }
             $user = [string]$parts[0]
             if ([string]::IsNullOrWhiteSpace($user)) { continue }
+            $state = $null
+            foreach ($part in @($parts | Select-Object -Skip 1)) {
+                $token = [string]$part
+                if ([string]::IsNullOrWhiteSpace($token)) { continue }
+                if ($activeStates -contains $token -or $inactiveStates -contains $token) {
+                    $state = $token
+                    break
+                }
+            }
+            if ($null -ne $state -and $activeStates -notcontains $state) { continue }
             [void]$users.Add($user)
             [void]$users.Add(('{0}\{1}' -f $env:COMPUTERNAME, $user))
             if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {

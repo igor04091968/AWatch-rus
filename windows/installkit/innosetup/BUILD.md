@@ -29,7 +29,7 @@ The resulting installer `AWatch-rus-InstallKit.exe` is written to the same direc
 
 The installer wizard asks only for:
 
-- `ServerHost` / `ServerPort` (defaults to `10.10.10.13:5600`)
+- `ServerHost` / `ServerPort` (defaults to `aw-server:5600`)
 
 All other values are taken from defaults embedded in installer scripts.
 
