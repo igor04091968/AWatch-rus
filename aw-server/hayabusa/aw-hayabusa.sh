@@ -121,6 +121,39 @@ detect_host_from_manifest() {
   printf '%s' "${host}"
 }
 
+extract_zip_normalized() {
+  local package_path="$1"
+  local dest_dir="$2"
+  python3 - "${package_path}" "${dest_dir}" <<'PY'
+import pathlib
+import shutil
+import sys
+import zipfile
+
+zip_path = pathlib.Path(sys.argv[1])
+dest_dir = pathlib.Path(sys.argv[2])
+dest_dir.mkdir(parents=True, exist_ok=True)
+
+with zipfile.ZipFile(zip_path) as zf:
+    for info in zf.infolist():
+        raw_name = info.filename.replace('\\', '/')
+        normalized = pathlib.PurePosixPath(raw_name)
+        parts = [part for part in normalized.parts if part not in ('', '.')]
+        if any(part == '..' for part in parts):
+            raise SystemExit(f'unsafe zip entry: {info.filename}')
+        if not parts:
+            continue
+        target = dest_dir.joinpath(*parts)
+        is_dir = info.is_dir() or raw_name.endswith('/')
+        if is_dir:
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with zf.open(info) as src, target.open('wb') as dst:
+            shutil.copyfileobj(src, dst)
+PY
+}
+
 write_package_manifest() {
   local manifest_path="$1"
   local package_path="$2"
@@ -380,13 +413,8 @@ process_one_package() {
   mkdir -p "${stage_dir}"
 
   package_sha256="$(sha256sum "${package_path}" | awk '{print $1}')"
-  local unzip_rc=0
-  set +e
-  unzip -q -o "${package_path}" -d "${stage_dir}"
-  unzip_rc=$?
-  set -e
-  if [ "${unzip_rc}" -gt 1 ]; then
-    fail "unzip failed for ${package_path} with rc=${unzip_rc}"
+  if ! extract_zip_normalized "${package_path}" "${stage_dir}"; then
+    fail "normalized zip extraction failed for ${package_path}"
   fi
 
   local manifest_path host evtx_root archive_pkg_dir archive_pkg_path archive_extract_dir status report_dir
