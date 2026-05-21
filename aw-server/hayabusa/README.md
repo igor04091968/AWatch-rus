@@ -93,11 +93,13 @@ powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-up
 2. The script will:
 
 - run `C:\ProgramData\AWatch-rus\export-evtx-for-hayabusa.ps1`
+- upload matching `.caseid` first when `-CaseId` is specified
 - upload the newest zip to `/opt/activitywatch/aw-rus-ops/drop`
-- upload matching `.caseid` when `-CaseId` is specified
 - let `aw-hayabusa-drop.path` process the package automatically on `10.10.10.13`
 
-One-time SSH prerequisite on the server for user `awops`:
+This path was validated live against case `30` after the `awops` SSH authorization was installed on `10.10.10.13`.
+
+Server-side prerequisite for user `awops`:
 
 ```bash
 printf '%s\n' 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILoFWQmgoUJj1P7mp1/fB5aBkI3fVgjPme9jmK8Gh9jr igor@snb-live' | sudo tee /var/lib/awops/.ssh/authorized_keys >/dev/null
