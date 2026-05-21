@@ -11,8 +11,8 @@ services:
       - "${CLICKHOUSE_PORT}:8123"
       - "${CLICKHOUSE_NATIVE_PORT}:9000"
     volumes:
-      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
       - clickhouse_1c_data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
 
   grafana:
     image: grafana/grafana:11.2.2

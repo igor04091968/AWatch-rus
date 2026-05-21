@@ -1,0 +1,337 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "CPU / RAM",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT ts AS time, cpu_pct AS cpu, ram_pct AS ram FROM analytics_1c.host_events WHERE $__timeFilter(ts) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Disk latency",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT ts AS time, disk_latency_ms AS value FROM analytics_1c.host_events WHERE $__timeFilter(ts) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Последнее состояние хоста",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT host, anyLast(cpu_pct) AS cpu_pct, anyLast(ram_pct) AS ram_pct, anyLast(disk_free_gb) AS disk_free_gb, anyLast(disk_latency_ms) AS disk_latency_ms, anyLast(backup_ok) AS backup_ok FROM analytics_1c.host_events GROUP BY host ORDER BY host",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ts",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Ошибки журнала регистрации",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT ts, infobase, user, event_name, level, message FROM analytics_1c.reglog_events WHERE level IN ('error','warn') AND $__timeFilter(ts) ORDER BY ts DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ts",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Длительные операции",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 24,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT ts, infobase, user, event_name, duration_ms, message FROM analytics_1c.reglog_events WHERE duration_ms > 3000 AND $__timeFilter(ts) ORDER BY duration_ms DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ts",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "1c",
+    "ops",
+    "clickhouse"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "infobase",
+        "label": "Infobase",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-1c"
+        },
+        "refresh": 1,
+        "definition": "SELECT DISTINCT infobase FROM analytics_1c.documents ORDER BY infobase",
+        "query": "SELECT DISTINCT infobase FROM analytics_1c.documents ORDER BY infobase",
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "severity",
+        "label": "Severity",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-1c"
+        },
+        "refresh": 1,
+        "definition": "SELECT arrayJoin(['low','medium','high','critical'])",
+        "query": "SELECT arrayJoin(['low','medium','high','critical'])",
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "host",
+        "label": "Host",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-1c"
+        },
+        "refresh": 1,
+        "definition": "SELECT DISTINCT host FROM analytics_1c.host_events ORDER BY host",
+        "query": "SELECT DISTINCT host FROM analytics_1c.host_events ORDER BY host",
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "user",
+        "label": "User",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-1c"
+        },
+        "refresh": 1,
+        "definition": "SELECT DISTINCT user FROM analytics_1c.reglog_events ORDER BY user",
+        "query": "SELECT DISTINCT user FROM analytics_1c.reglog_events ORDER BY user",
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "1C File - Operations Health",
+  "uid": "1c-file-ops",
+  "version": 1,
+  "weekStart": ""
+}
