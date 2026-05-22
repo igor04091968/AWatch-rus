@@ -587,7 +587,13 @@ def problematic_companies(days: int = 7, limit: int = 50) -> list[dict[str, Any]
     ORDER BY r.max_score DESC, r.signals_total DESC, p.amount_30d DESC, p.counterparty
     LIMIT {int(limit)}
     """
-    return rows_to_dict(client.query(sql))
+    items = rows_to_dict(client.query(sql))
+    for item in items:
+        if "infobase" not in item and "p.infobase" in item:
+            item["infobase"] = item["p.infobase"]
+        if "counterparty" not in item and "p.counterparty" in item:
+            item["counterparty"] = item["p.counterparty"]
+    return items
 
 
 def render_brief_history_html(items: list[dict[str, Any]]) -> str:
