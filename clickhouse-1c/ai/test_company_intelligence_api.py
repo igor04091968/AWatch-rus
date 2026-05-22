@@ -148,6 +148,63 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         self.assertIn("Ключевые изменения", html_page)
         self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
 
+    def test_build_weekly_trend_report_and_render(self) -> None:
+        payloads = [
+            {
+                "generated_at": "2026-05-21T12:00:00+00:00",
+                "context": {
+                    "portfolio_summary": {
+                        "companies_total": 41,
+                        "critical_total": 39,
+                        "high_total": 2,
+                        "busy_total": 40,
+                        "open_cases_total": 100,
+                        "detections_total": 100,
+                        "activity_30d_total": 1000.0,
+                        "activity_forecast_30d_total": 2000.0,
+                    },
+                    "delta": {"top_changes": []},
+                },
+            },
+            {
+                "generated_at": "2026-05-22T12:00:00+00:00",
+                "context": {
+                    "portfolio_summary": {
+                        "companies_total": 41,
+                        "critical_total": 41,
+                        "high_total": 0,
+                        "busy_total": 41,
+                        "open_cases_total": 135,
+                        "detections_total": 130,
+                        "activity_30d_total": 1200.0,
+                        "activity_forecast_30d_total": 2500.0,
+                    },
+                    "delta": {
+                        "top_changes": [
+                            {
+                                "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                                "company": "ФЕЛИЦТ ГРУПП 2026",
+                                "change_type": "cases_up",
+                                "open_cases_delta": 5,
+                                "active_locks_delta": 2,
+                                "forecast_delta": -20.0,
+                                "priority_score": 180,
+                                "priority_tier": "critical",
+                                "priority_reason": "рост кейсов +5, рост блокировок +2",
+                            }
+                        ]
+                    },
+                },
+            },
+        ]
+        report = api.build_weekly_trend_report(payloads, days=7)
+        self.assertEqual(len(report["daily"]), 2)
+        self.assertEqual(report["top_weekly_changes"][0]["company"], "ФЕЛИЦТ ГРУПП 2026")
+        html_page = api.render_weekly_trend_html(report)
+        self.assertIn("Недельный тренд портфеля", html_page)
+        self.assertIn("Недельный рейтинг приоритетов", html_page)
+        self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
+
 
 if __name__ == "__main__":
     unittest.main()

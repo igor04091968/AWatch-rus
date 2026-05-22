@@ -133,6 +133,8 @@ class ManagerBriefTests(unittest.TestCase):
         self.assertEqual(delta["summary"]["critical_total_delta"], 2)
         self.assertIn("ФЕЛИЦТ ГРУПП 2026", delta["new_critical"])
         self.assertEqual(delta["top_changes"][0]["change_type"], "severity_up")
+        self.assertIn("priority_score", delta["top_changes"][0])
+        self.assertIn("priority_tier", delta["top_changes"][0])
 
 
 if __name__ == "__main__":

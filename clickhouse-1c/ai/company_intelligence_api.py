@@ -88,6 +88,18 @@ def load_brief_history_records(limit: int = 20) -> list[dict[str, Any]]:
     return items
 
 
+def load_brief_history_payloads(limit: int = 200) -> list[dict[str, Any]]:
+    history_dir = manager_brief_state_dir() / "history"
+    if not history_dir.exists():
+        return []
+    items: list[dict[str, Any]] = []
+    for path in sorted(history_dir.glob("*.json"), reverse=True)[:limit]:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload["_path"] = path.name
+        items.append(payload)
+    return items
+
+
 def load_brief_history_record(name: str) -> dict[str, Any]:
     safe_name = Path(name).name
     if not safe_name.endswith(".json"):
@@ -103,6 +115,110 @@ def extract_delta(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(delta, dict):
         return delta
     return {"available": False, "reason": "delta not present in artifact"}
+
+
+def priority_score_for_change(item: dict[str, Any]) -> float:
+    if item.get("priority_score") is not None:
+        try:
+            return float(item.get("priority_score"))
+        except (TypeError, ValueError):
+            return 0.0
+    score = 0.0
+    score += max(float(item.get("significance") or 0), 0)
+    score += max(float(item.get("score_delta") or 0), 0) * 0.8
+    score += max(float(item.get("open_cases_delta") or 0), 0) * 8
+    score += max(float(item.get("detections_delta") or 0), 0) * 5
+    score += max(float(item.get("active_locks_delta") or 0), 0) * 10
+    return round(score, 2)
+
+
+def build_weekly_trend_report(payloads: list[dict[str, Any]], days: int = 7) -> dict[str, Any]:
+    now = datetime.now(UTC)
+    period_start = now.date().toordinal() - max(days - 1, 0)
+    filtered: list[dict[str, Any]] = []
+    for payload in payloads:
+        generated_at_raw = payload.get("generated_at")
+        if not generated_at_raw:
+            continue
+        try:
+            generated_at = datetime.fromisoformat(str(generated_at_raw))
+        except ValueError:
+            continue
+        if generated_at.tzinfo is None:
+            generated_at = generated_at.replace(tzinfo=UTC)
+        if generated_at.date().toordinal() < period_start:
+            continue
+        payload["_generated_dt"] = generated_at
+        filtered.append(payload)
+
+    by_day: dict[str, dict[str, Any]] = {}
+    for payload in filtered:
+        key = payload["_generated_dt"].date().isoformat()
+        previous = by_day.get(key)
+        if previous is None or payload["_generated_dt"] > previous["_generated_dt"]:
+            by_day[key] = payload
+
+    daily_rows: list[dict[str, Any]] = []
+    previous_summary: dict[str, Any] | None = None
+    for key in sorted(by_day.keys()):
+        payload = by_day[key]
+        summary = payload.get("context", {}).get("portfolio_summary", {})
+        row = {
+            "date": key,
+            "generated_at": payload.get("generated_at"),
+            "companies_total": int(summary.get("companies_total", 0) or 0),
+            "critical_total": int(summary.get("critical_total", 0) or 0),
+            "high_total": int(summary.get("high_total", 0) or 0),
+            "busy_total": int(summary.get("busy_total", 0) or 0),
+            "open_cases_total": int(summary.get("open_cases_total", 0) or 0),
+            "detections_total": int(summary.get("detections_total", 0) or 0),
+            "activity_30d_total": float(summary.get("activity_30d_total", 0) or 0),
+            "activity_forecast_30d_total": float(summary.get("activity_forecast_30d_total", 0) or 0),
+        }
+        if previous_summary:
+            row["critical_delta_vs_prev_day"] = row["critical_total"] - int(previous_summary.get("critical_total", 0) or 0)
+            row["busy_delta_vs_prev_day"] = row["busy_total"] - int(previous_summary.get("busy_total", 0) or 0)
+            row["open_cases_delta_vs_prev_day"] = row["open_cases_total"] - int(previous_summary.get("open_cases_total", 0) or 0)
+            row["detections_delta_vs_prev_day"] = row["detections_total"] - int(previous_summary.get("detections_total", 0) or 0)
+        else:
+            row["critical_delta_vs_prev_day"] = 0
+            row["busy_delta_vs_prev_day"] = 0
+            row["open_cases_delta_vs_prev_day"] = 0
+            row["detections_delta_vs_prev_day"] = 0
+        daily_rows.append(row)
+        previous_summary = summary
+
+    weekly_changes: dict[tuple[str, str], dict[str, Any]] = {}
+    for payload in filtered:
+        delta = extract_delta(payload)
+        for item in delta.get("top_changes", []):
+            key = (str(item.get("infobase") or ""), str(item.get("company") or ""))
+            candidate = dict(item)
+            candidate["generated_at"] = payload.get("generated_at")
+            candidate["priority_score"] = priority_score_for_change(candidate)
+            existing = weekly_changes.get(key)
+            if existing is None or float(candidate["priority_score"]) > float(existing.get("priority_score") or 0):
+                weekly_changes[key] = candidate
+
+    weekly_top_changes = sorted(
+        weekly_changes.values(),
+        key=lambda item: (
+            float(item.get("priority_score") or 0),
+            float(item.get("significance") or 0),
+            int(item.get("open_cases_delta") or 0),
+        ),
+        reverse=True,
+    )[:20]
+
+    latest = daily_rows[-1] if daily_rows else None
+    return {
+        "days": days,
+        "period_start": datetime.fromordinal(period_start).date().isoformat(),
+        "period_end": now.date().isoformat(),
+        "daily": daily_rows,
+        "latest": latest,
+        "top_weekly_changes": weekly_top_changes,
+    }
 
 
 def grafana_company_dashboard_url() -> str:
@@ -159,6 +275,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     history_url = "/api/1/analytics-1c/manager/brief/history"
     history_html_url = "/manager/briefs"
     delta_html_url = "/manager/changes"
+    weekly_html_url = "/manager/trends/weekly"
     problematic_1d_url = "/manager/problematic?days=1"
     problematic_7d_url = "/manager/problematic?days=7"
     json_url = "/api/1/analytics-1c/manager/brief/latest"
@@ -457,6 +574,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
           <a href="{html.escape(md_url)}">Markdown</a>
           <a href="{html.escape(history_html_url)}">История brief</a>
           <a href="{html.escape(delta_html_url)}">Что изменилось</a>
+          <a href="{html.escape(weekly_html_url)}">Неделя</a>
           <a href="{html.escape(problematic_1d_url)}">Проблемные 1д</a>
           <a href="{html.escape(problematic_7d_url)}">Проблемные 7д</a>
           <a href="{html.escape(history_url)}">History API</a>
@@ -651,6 +769,7 @@ def render_brief_history_html(items: list[dict[str, Any]]) -> str:
       <div class="hero-links">
         <a href="/manager/brief">Текущий brief</a>
         <a href="/manager/changes">Что изменилось</a>
+        <a href="/manager/trends/weekly">Неделя</a>
         <a href="/manager/problematic?days=1">Проблемные 1д</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
       </div>
@@ -739,6 +858,7 @@ def render_problematic_companies_html(items: list[dict[str, Any]], days: int) ->
       <div class="hero-links">
         <a href="/manager/brief">Текущий brief</a>
         <a href="/manager/briefs">История brief</a>
+        <a href="/manager/trends/weekly">Неделя</a>
         <a href="/manager/problematic?days=1">Срез 1д</a>
         <a href="/manager/problematic?days=7">Срез 7д</a>
       </div>
@@ -808,20 +928,30 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
         f"<div class=\"stat\"><div class=\"stat-label\">{html.escape(label)}</div><div class=\"stat-value\">{html.escape(value)}</div></div>"
         for label, value in stat_cards
     )
+    tier_labels = {
+        "critical": "Критический",
+        "high": "Высокий",
+        "medium": "Средний",
+        "low": "Низкий",
+    }
 
     rows = []
     for item in top_changes:
         infobase = item.get("infobase")
         counterparty = item.get("company")
+        priority_tier = str(item.get("priority_tier") or "low")
         rows.append(
             "<tr>"
             f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(counterparty), str(infobase) if infobase else None)}\">{html.escape(str(counterparty or '-'))}</a></td>"
+            f"<td>{html.escape(tier_labels.get(priority_tier, priority_tier))}</td>"
+            f"<td>{delta_value(item.get('priority_score', 0))}</td>"
             f"<td>{html.escape(str(item.get('change_type') or '-'))}</td>"
             f"<td>{html.escape(str(item.get('severity_before') or '-'))} -> {html.escape(str(item.get('severity_after') or '-'))}</td>"
             f"<td>{delta_value(item.get('score_delta', 0))}</td>"
             f"<td>{delta_value(item.get('open_cases_delta', 0))}</td>"
             f"<td>{delta_value(item.get('active_locks_delta', 0))}</td>"
             f"<td>{delta_value(item.get('forecast_delta', 0))}</td>"
+            f"<td>{html.escape(str(item.get('priority_reason') or '-'))}</td>"
             f"<td>{html.escape(str(item.get('summary') or '-'))}</td>"
             "</tr>"
         )
@@ -873,6 +1003,7 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
       <div class="hero-links">
         <a href="/manager/brief">Текущий brief</a>
         <a href="/manager/briefs">История brief</a>
+        <a href="/manager/trends/weekly">Неделя</a>
         <a href="/manager/problematic?days=1">Проблемные 1д</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
       </div>
@@ -910,20 +1041,172 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
           <thead>
             <tr>
               <th>Компания</th>
+              <th>Приоритет</th>
+              <th>Score</th>
               <th>Тип</th>
               <th>Severity</th>
               <th>Score Δ</th>
               <th>Cases Δ</th>
               <th>Locks Δ</th>
               <th>Forecast Δ</th>
+              <th>Причина приоритета</th>
               <th>Комментарий</th>
             </tr>
           </thead>
           <tbody>
-            {''.join(rows) or '<tr><td colspan="8">Нет выраженных изменений.</td></tr>'}
+            {''.join(rows) or '<tr><td colspan="11">Нет выраженных изменений.</td></tr>'}
           </tbody>
         </table>
       </article>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def render_weekly_trend_html(report: dict[str, Any]) -> str:
+    daily = report.get("daily", [])
+    latest = report.get("latest") or {}
+    top_weekly_changes = report.get("top_weekly_changes", [])
+
+    def value(v: Any) -> str:
+        return fmt_number(v)
+
+    trend_rows = []
+    for item in daily:
+        trend_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(item.get('date', '-')))}</td>"
+            f"<td>{value(item.get('companies_total'))}</td>"
+            f"<td>{value(item.get('critical_total'))}</td>"
+            f"<td>{value(item.get('busy_total'))}</td>"
+            f"<td>{value(item.get('open_cases_total'))}</td>"
+            f"<td>{value(item.get('detections_total'))}</td>"
+            f"<td>{value(item.get('activity_30d_total'))}</td>"
+            f"<td>{value(item.get('activity_forecast_30d_total'))}</td>"
+            f"<td>{value(item.get('critical_delta_vs_prev_day'))}</td>"
+            f"<td>{value(item.get('open_cases_delta_vs_prev_day'))}</td>"
+            "</tr>"
+        )
+
+    change_rows = []
+    for item in top_weekly_changes:
+        infobase = item.get("infobase")
+        company = item.get("company")
+        change_rows.append(
+            "<tr>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(company), str(infobase) if infobase else None)}\">{html.escape(str(company or '-'))}</a></td>"
+            f"<td>{html.escape(str(item.get('priority_tier') or '-'))}</td>"
+            f"<td>{value(item.get('priority_score'))}</td>"
+            f"<td>{html.escape(str(item.get('change_type') or '-'))}</td>"
+            f"<td>{value(item.get('open_cases_delta'))}</td>"
+            f"<td>{value(item.get('active_locks_delta'))}</td>"
+            f"<td>{value(item.get('forecast_delta'))}</td>"
+            f"<td>{html.escape(str(item.get('priority_reason') or '-'))}</td>"
+            "</tr>"
+        )
+
+    stat_cards = [
+        ("Компаний", value(latest.get("companies_total"))),
+        ("Critical", value(latest.get("critical_total"))),
+        ("Busy", value(latest.get("busy_total"))),
+        ("Кейсы", value(latest.get("open_cases_total"))),
+        ("Detections", value(latest.get("detections_total"))),
+        ("Прогноз 30д", value(latest.get("activity_forecast_30d_total"))),
+    ]
+    stat_html = "".join(
+        f"<div class=\"stat\"><div class=\"stat-label\">{html.escape(label)}</div><div class=\"stat-value\">{html.escape(val)}</div></div>"
+        for label, val in stat_cards
+    )
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Weekly Trends</title>
+  <style>
+    :root {{ --bg:#f4f1ea; --paper:#fffdf8; --ink:#1c1a17; --muted:#6b655c; --line:#d8d0c4; --accent:#005f73; --shadow:0 14px 40px rgba(28,26,23,.08); }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; color:var(--ink); background:linear-gradient(180deg,#faf7f2 0%,var(--bg) 100%); }}
+    .shell {{ max-width:1480px; margin:0 auto; padding:28px 22px 60px; }}
+    .hero {{ background:linear-gradient(135deg,rgba(0,95,115,.94),rgba(10,77,104,.92)); color:#f8fbfc; border-radius:24px; padding:28px 30px; box-shadow:var(--shadow); }}
+    .hero h1 {{ margin:0 0 10px; font-size:clamp(28px,4vw,42px); }}
+    .hero p {{ margin:0 0 14px; color:rgba(248,251,252,.88); line-height:1.5; }}
+    .hero-links {{ display:flex; gap:10px; flex-wrap:wrap; }}
+    .hero-links a {{ text-decoration:none; color:#f8fbfc; border:1px solid rgba(248,251,252,.28); padding:9px 12px; border-radius:999px; font-size:14px; }}
+    .panel {{ margin-top:22px; background:var(--paper); border:1px solid var(--line); border-radius:22px; padding:22px; box-shadow:var(--shadow); }}
+    .stats {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }}
+    .stat {{ padding:16px; border-radius:18px; background:linear-gradient(180deg,#fff 0%,#f7f4ee 100%); border:1px solid var(--line); }}
+    .stat-label {{ color:var(--muted); font-size:13px; margin-bottom:8px; }}
+    .stat-value {{ font-size:24px; font-weight:700; letter-spacing:-.03em; }}
+    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    th,td {{ text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }}
+    th {{ color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }}
+    .inline-link {{ color:var(--accent); text-decoration:none; font-weight:600; }}
+    .inline-link:hover {{ text-decoration:underline; }}
+    @media (max-width:1100px) {{ .stats {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
+    @media (max-width:640px) {{ .shell {{ padding:16px 14px 40px; }} .hero {{ padding:22px 18px; }} .stats {{ grid-template-columns:1fr; }} }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>Недельный тренд портфеля</h1>
+      <p>Период: {html.escape(str(report.get('period_start', '-')))} -> {html.escape(str(report.get('period_end', '-')))}. Страница показывает тренд по истории executive brief и недельный рейтинг проблемных компаний.</p>
+      <div class="hero-links">
+        <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/changes">Что изменилось</a>
+        <a href="/manager/briefs">История brief</a>
+        <a href="/manager/problematic?days=7">Проблемные 7д</a>
+      </div>
+    </section>
+    <section class="panel">
+      <h2>Текущее состояние по последнему дневному срезу</h2>
+      <div class="stats">{stat_html}</div>
+    </section>
+    <section class="panel">
+      <h2>Дневной тренд</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Дата</th>
+            <th>Компаний</th>
+            <th>Critical</th>
+            <th>Busy</th>
+            <th>Кейсы</th>
+            <th>Detections</th>
+            <th>Активность 30д</th>
+            <th>Прогноз 30д</th>
+            <th>Critical Δ</th>
+            <th>Cases Δ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(trend_rows) or '<tr><td colspan="10">Недостаточно истории для недельного тренда.</td></tr>'}
+        </tbody>
+      </table>
+    </section>
+    <section class="panel">
+      <h2>Недельный рейтинг приоритетов</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Компания</th>
+            <th>Приоритет</th>
+            <th>Priority score</th>
+            <th>Тип</th>
+            <th>Cases Δ</th>
+            <th>Locks Δ</th>
+            <th>Forecast Δ</th>
+            <th>Причина</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(change_rows) or '<tr><td colspan="8">За выбранный период заметных изменений нет.</td></tr>'}
+        </tbody>
+      </table>
     </section>
   </main>
 </body>
@@ -1151,6 +1434,11 @@ def manager_brief_delta_latest() -> dict[str, Any]:
     }
 
 
+@app.get("/api/1/analytics-1c/manager/trends/weekly")
+def manager_weekly_trends(days: int = Query(default=7, ge=2, le=30)) -> dict[str, Any]:
+    return build_weekly_trend_report(load_brief_history_payloads(limit=400), days=days)
+
+
 @app.get("/api/1/analytics-1c/companies/problematic")
 def problematic_companies_api(
     days: int = Query(default=7, ge=1, le=30),
@@ -1168,6 +1456,11 @@ def manager_brief_view() -> str:
 @app.get("/manager/changes", response_class=HTMLResponse)
 def manager_brief_delta_view() -> str:
     return render_brief_delta_html(load_latest_manager_brief())
+
+
+@app.get("/manager/trends/weekly", response_class=HTMLResponse)
+def manager_weekly_trends_view(days: int = Query(default=7, ge=2, le=30)) -> str:
+    return render_weekly_trend_html(build_weekly_trend_report(load_brief_history_payloads(limit=400), days=days))
 
 
 @app.get("/manager/briefs", response_class=HTMLResponse)
@@ -1384,6 +1677,7 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
         <nav class="hero-links">
           <a href="/manager/brief">К портфелю</a>
           <a href="/manager/changes">Что изменилось</a>
+          <a href="/manager/trends/weekly">Неделя</a>
           <a href="/manager/briefs">История brief</a>
           <a href="/manager/problematic?days=7">Проблемные компании</a>
           <a href="{html.escape(summary_url)}">JSON summary</a>

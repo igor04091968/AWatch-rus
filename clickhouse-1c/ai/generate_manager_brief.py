@@ -117,6 +117,60 @@ def severity_rank(value: str | None) -> int:
     }.get((value or "none").lower(), 0)
 
 
+def rank_top_change(change: dict[str, Any]) -> dict[str, Any]:
+    severity_after = str(change.get("severity_after") or "none")
+    severity_before = str(change.get("severity_before") or "none")
+    severity_delta = max(severity_rank(severity_after) - severity_rank(severity_before), 0)
+    cases_delta = max(int(change.get("open_cases_delta") or 0), 0)
+    detections_delta = max(int(change.get("detections_delta") or 0), 0)
+    locks_delta = max(int(change.get("active_locks_delta") or 0), 0)
+    score_delta = max(int(change.get("score_delta") or 0), 0)
+    forecast_before = float(change.get("forecast_before") or 0)
+    forecast_delta = float(change.get("forecast_delta") or 0)
+    forecast_drop_pct = 0.0
+    if forecast_delta < 0:
+        forecast_drop_pct = abs(forecast_delta) / max(abs(forecast_before), 1.0) * 100.0
+
+    priority_score = round(
+        float(change.get("significance") or 0)
+        + severity_delta * 24
+        + cases_delta * 8
+        + detections_delta * 5
+        + locks_delta * 10
+        + score_delta * 0.8
+        + forecast_drop_pct * 0.6,
+        2,
+    )
+
+    reasons: list[str] = []
+    if severity_delta > 0:
+        reasons.append("рост severity")
+    if cases_delta > 0:
+        reasons.append(f"рост кейсов +{cases_delta}")
+    if detections_delta > 0:
+        reasons.append(f"рост detections +{detections_delta}")
+    if locks_delta > 0:
+        reasons.append(f"рост блокировок +{locks_delta}")
+    if forecast_drop_pct >= 10:
+        reasons.append(f"просадка прогноза {round(forecast_drop_pct, 1)}%")
+    if change.get("registry_match_mode") == "manual":
+        reasons.append("manual match")
+
+    if priority_score >= 140:
+        priority_tier = "critical"
+    elif priority_score >= 85:
+        priority_tier = "high"
+    elif priority_score >= 40:
+        priority_tier = "medium"
+    else:
+        priority_tier = "low"
+
+    change["priority_score"] = priority_score
+    change["priority_tier"] = priority_tier
+    change["priority_reason"] = ", ".join(reasons[:4]) if reasons else "слабый сдвиг без явного триггера"
+    return change
+
+
 def load_previous_artifact(state_dir: Path) -> dict[str, Any] | None:
     latest_path = state_dir / "latest.json"
     if not latest_path.exists():
@@ -473,7 +527,8 @@ def compute_delta_context(current: dict[str, Any], previous_artifact: dict[str, 
             continue
 
         top_changes.append(
-            {
+            rank_top_change(
+                {
                 "infobase": current_item.get("infobase"),
                 "company": current_item.get("counterparty"),
                 "normalized_counterparty": current_item.get("normalized_counterparty"),
@@ -498,7 +553,8 @@ def compute_delta_context(current: dict[str, Any], previous_artifact: dict[str, 
                 "forecast_after": round(forecast_after, 2),
                 "forecast_delta": forecast_delta,
                 "significance": round(significance, 2),
-            }
+                }
+            )
         )
 
     entered_watchlist = sorted(
@@ -510,6 +566,7 @@ def compute_delta_context(current: dict[str, Any], previous_artifact: dict[str, 
 
     top_changes.sort(
         key=lambda item: (
+            float(item.get("priority_score") or 0),
             float(item.get("significance") or 0),
             int(item.get("score_after") or 0),
             int(item.get("open_cases_after") or 0),
