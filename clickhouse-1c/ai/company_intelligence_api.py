@@ -122,7 +122,7 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
     SELECT *
     FROM analytics_1c.v_company_portfolio_overview
     WHERE {' AND '.join(filters)}
-    ORDER BY amount_30d DESC
+    ORDER BY last_company_snapshot_at DESC, amount_30d DESC
     LIMIT 1
     """
     rows = rows_to_dict(client.query(sql))
@@ -144,10 +144,11 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
     ORDER BY score DESC, generated_at DESC
     """
     timeline_sql = f"""
-    SELECT ts, infobase, company_name, owner_user, current_status, db_size_bytes, reglog_size_bytes, active_locks, current_activity_score
+    SELECT last_company_snapshot_at AS ts, infobase, company_name, owner_user, current_status, db_size_bytes, reglog_size_bytes, active_locks, current_activity_score
     FROM analytics_1c.v_company_portfolio_overview
     WHERE counterparty = {q(counterparty)}
     {"AND infobase = " + q(infobase) if infobase else ""}
+    ORDER BY ts DESC
     LIMIT 1
     """
     forecasts = rows_to_dict(client.query(forecast_sql))

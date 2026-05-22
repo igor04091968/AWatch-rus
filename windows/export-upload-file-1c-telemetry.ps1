@@ -57,7 +57,10 @@ function Get-1CFileInfobases {
         Where-Object { Test-Path -LiteralPath $_ }
 
     foreach ($file in $launcherFiles) {
-        $userName = Split-Path -Leaf (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $file))))
+        $userName = 'unknown'
+        if ([string]$file -match '^[A-Za-z]:\\Users\\([^\\]+)\\') {
+            $userName = [string]$Matches[1]
+        }
         $currentName = $null
         $currentId = $null
         foreach ($lineRaw in Get-Content -LiteralPath $file -Encoding UTF8) {

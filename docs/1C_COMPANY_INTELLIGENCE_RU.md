@@ -12,7 +12,19 @@
 ## Что считается компанией
 
 В file-based Detmir контуре компания = `documents.counterparty`, но это поле
-заполняется **не из бухгалтерских проводок**, а из read-only file-base telemetry:
+заполняется **не из бухгалтерских проводок**, а из read-only file-base telemetry.
+
+Сейчас есть два связанных слоя:
+
+- `documents`
+  - событийный слой;
+  - содержит `CompanyActivitySnapshot`;
+- `companies`
+  - отдельная read-only business-like таблица по каждой файловой базе;
+  - хранит `owner_user`, `base_path`, `db_size_bytes`, `reglog_size_bytes`,
+    `active_locks`, `temp_db_present`, `scheduler_touched`, `activity_score`.
+
+Для `documents` действует telemetry-модель:
 
 - `counterparty = infobase`;
 - `doc_type = CompanyActivitySnapshot`;
@@ -32,6 +44,7 @@
 
 Создаёт:
 
+- `v_companies_current`
 - `company_forecasts`
 - `company_health_signals`
 - `v_counterparty_daily`
@@ -49,12 +62,15 @@
 Что делает:
 
 - строит daily series по `counterparty`;
+- учитывает текущее состояние файловой базы из `companies`;
 - считает базовую линию и линейный тренд;
 - материализует прогнозы на `7` и `30` дней;
 - создаёт health-signals:
   - `inactive_company`
   - `amount_drop`
   - `docs_stopped`
+  - `base_busy`
+  - `scheduler_activity`
   - `open_cases`
   - `open_detections`
 
@@ -135,6 +151,20 @@ clickhouse-client --queries-file clickhouse/init/04_company_intelligence.sql
 - `AW_1C_COMPANY_LOOKBACK_DAYS`
 - `AW_1C_COMPANY_MIN_DAYS`
 - `AW_1C_COMPANY_HORIZONS`
+
+## Что уже есть в live payload
+
+В live `overview/summary` теперь идут не только прогнозы, но и текущее
+состояние файловой базы компании:
+
+- `company_name`
+- `owner_user`
+- `base_path`
+- `current_status`
+- `db_size_bytes`
+- `reglog_size_bytes`
+- `active_locks`
+- `current_activity_score`
 
 ## Что прогноз реально означает
 

@@ -131,12 +131,25 @@ python ai/company_intelligence_api.py --host 127.0.0.1 --port 8710
 
 - выгрузки 1С по документам;
 - выгрузки движений/проводок;
+- read-only `companies` snapshot по файловым базам;
 - журнал регистрации 1С;
 - audit/export критичных изменений;
 - host telemetry с Windows/RDP host.
 - для company intelligence в file-based Detmir контуре `counterparty`
   наполняется read-only telemetry слоем как `counterparty = infobase`, а
   `amount` используется как интегральный `activity score`.
+
+Отдельно:
+
+- `companies` хранит текущую карту файловых баз:
+  - `owner_user`
+  - `base_path`
+  - `db_size_bytes`
+  - `reglog_size_bytes`
+  - `active_locks`
+  - `temp_db_present`
+  - `scheduler_touched`
+  - `activity_score`
 
 ## Границы
 

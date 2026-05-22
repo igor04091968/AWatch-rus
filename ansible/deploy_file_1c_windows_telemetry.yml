@@ -108,7 +108,11 @@
           $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
           if ($existingTask) {
             $action = New-ScheduledTaskAction -Execute $powerShellExe -Argument "-NoProfile -ExecutionPolicy Bypass -File `"{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1`" -ConfigPath `"{{ aw_windows_state_root }}\deployment-config.json`""
-            Set-ScheduledTask -TaskName $taskName -Action $action | Out-Null
+            try {
+              Set-ScheduledTask -TaskName $taskName -Action $action -ErrorAction Stop | Out-Null
+            } catch {
+              Write-Host "skip task action update for $taskName because the existing principal requires stored credentials: $($_.Exception.Message)"
+            }
           } else {
             & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO {{ aw_windows_file_1c_auto_upload_interval_hours | int }} /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
             if ($LASTEXITCODE -ne 0) {
