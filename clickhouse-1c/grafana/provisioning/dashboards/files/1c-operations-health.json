@@ -190,7 +190,7 @@
     },
     {
       "id": 5,
-      "title": "Длительные операции",
+      "title": "События занятости файловой базы",
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -213,7 +213,7 @@
           "format": 1,
           "pluginVersion": "11.2.2",
           "queryType": "table",
-          "rawSql": "SELECT ts, infobase, user, event_name, duration_ms, message FROM analytics_1c.reglog_events WHERE duration_ms > 3000 AND $__timeFilter(ts) ORDER BY duration_ms DESC LIMIT 50",
+          "rawSql": "SELECT ts, infobase, user, event_name, level, message FROM analytics_1c.reglog_events WHERE event_name = 'FileBaseBusy' AND $__timeFilter(ts) ORDER BY ts DESC LIMIT 50",
           "refId": "A"
         }
       ],
@@ -332,6 +332,6 @@
   "timezone": "browser",
   "title": "1C File - Operations Health",
   "uid": "1c-file-ops",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
