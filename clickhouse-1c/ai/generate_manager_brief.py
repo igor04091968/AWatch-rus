@@ -127,6 +127,25 @@ def load_previous_artifact(state_dir: Path) -> dict[str, Any] | None:
         return None
 
 
+def snapshot_from_context(context: dict[str, Any]) -> dict[tuple[Any, Any], dict[str, Any]]:
+    snapshot_items = context.get("portfolio_snapshot") or []
+    if snapshot_items:
+        return {
+            (item.get("infobase"), item.get("counterparty")): item
+            for item in snapshot_items
+        }
+
+    merged: dict[tuple[Any, Any], dict[str, Any]] = {}
+    for source_name in ("top_risks", "top_forecasts", "watchlist", "busy_bases"):
+        for item in context.get(source_name, []):
+            key = (item.get("infobase"), item.get("counterparty"))
+            if key not in merged:
+                merged[key] = dict(item)
+            else:
+                merged[key].update({k: v for k, v in item.items() if v not in (None, "")})
+    return merged
+
+
 def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any]:
     now = datetime.now(UTC)
 
@@ -353,14 +372,8 @@ def compute_delta_context(current: dict[str, Any], previous_artifact: dict[str, 
     previous_summary = previous.get("portfolio_summary", {})
     current_watchlist = {(item.get("infobase"), item.get("counterparty")) for item in current.get("watchlist", [])}
     previous_watchlist = {(item.get("infobase"), item.get("counterparty")) for item in previous.get("watchlist", [])}
-    current_snapshot = {
-        (item.get("infobase"), item.get("counterparty")): item
-        for item in current.get("portfolio_snapshot", [])
-    }
-    previous_snapshot = {
-        (item.get("infobase"), item.get("counterparty")): item
-        for item in previous.get("portfolio_snapshot", [])
-    }
+    current_snapshot = snapshot_from_context(current)
+    previous_snapshot = snapshot_from_context(previous)
 
     delta_summary = {
         "companies_total_delta": current_summary.get("companies_total", 0) - previous_summary.get("companies_total", 0),
