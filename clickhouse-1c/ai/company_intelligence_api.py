@@ -69,6 +69,14 @@ def weekly_digest_state_dir() -> Path:
     return root / "state" / "weekly-digest"
 
 
+def recovery_brief_state_dir() -> Path:
+    root = Path(os.getenv("AW_1C_ROOT", "/opt/activitywatch/clickhouse-1c"))
+    configured = os.getenv("AW_1C_RECOVERY_BRIEF_STATE_DIR")
+    if configured:
+        return Path(configured)
+    return root / "state" / "recovery-brief"
+
+
 def load_latest_manager_brief() -> dict[str, Any]:
     latest_path = manager_brief_state_dir() / "latest.json"
     if not latest_path.exists():
@@ -80,6 +88,13 @@ def load_latest_weekly_digest() -> dict[str, Any]:
     latest_path = weekly_digest_state_dir() / "latest.json"
     if not latest_path.exists():
         raise HTTPException(status_code=404, detail="weekly digest not generated yet")
+    return json.loads(latest_path.read_text(encoding="utf-8"))
+
+
+def load_latest_recovery_brief() -> dict[str, Any]:
+    latest_path = recovery_brief_state_dir() / "latest.json"
+    if not latest_path.exists():
+        raise HTTPException(status_code=404, detail="recovery brief not generated yet")
     return json.loads(latest_path.read_text(encoding="utf-8"))
 
 
@@ -366,6 +381,81 @@ def build_company_priority_context(summary_payload: dict[str, Any], infobase: st
     }
 
 
+def find_recovery_incident_for_company(
+    items: list[dict[str, Any]],
+    counterparty: str,
+    infobase: str | None = None,
+) -> dict[str, Any] | None:
+    fallback: dict[str, Any] | None = None
+    for item in items:
+        if str(item.get("company") or "") != counterparty:
+            continue
+        if infobase and str(item.get("infobase") or "") == infobase:
+            return item
+        if fallback is None:
+            fallback = item
+    return fallback
+
+
+def build_company_recovery_context(summary_payload: dict[str, Any], infobase: str | None = None) -> dict[str, Any]:
+    card = summary_payload.get("card") or {}
+    priority_context = summary_payload.get("priority_context") or build_company_priority_context(summary_payload, infobase)
+    counterparty = str(card.get("counterparty") or "")
+    matched_incident = None
+    recovery_generated_at = None
+
+    try:
+        recovery_payload = load_latest_recovery_brief()
+        matched_incident = find_recovery_incident_for_company(
+            recovery_payload.get("recovery", {}).get("top_incidents", []),
+            counterparty,
+            infobase or str(card.get("infobase") or "") or None,
+        )
+        recovery_generated_at = recovery_payload.get("generated_at")
+    except HTTPException:
+        recovery_payload = None
+
+    if matched_incident:
+        diagnosis = str(matched_incident.get("diagnosis") or priority_context.get("current_priority_reason") or "-")
+        actions = [str(item) for item in matched_incident.get("actions", []) if str(item).strip()]
+        stop_doing = str(matched_incident.get("stop_doing") or "")
+        target_state = str(matched_incident.get("target_state_24h") or "")
+        confidence = "recovery-brief/codex"
+    else:
+        diagnosis_parts = [str(priority_context.get("current_priority_reason") or "").strip()]
+        if int(card.get("open_cases_total") or 0) > 0:
+            diagnosis_parts.append(f"открытых кейсов {int(card.get('open_cases_total') or 0)}")
+        if int(card.get("active_locks") or 0) > 0:
+            diagnosis_parts.append(f"активных блокировок {int(card.get('active_locks') or 0)}")
+        if int(card.get("detections_total") or 0) > 0:
+            diagnosis_parts.append(f"detections {int(card.get('detections_total') or 0)}")
+        diagnosis = "; ".join(part for part in diagnosis_parts if part) or "явного recovery-диагноза пока нет"
+        actions = list(priority_context.get("actions", []))
+        if int(card.get("open_cases_total") or 0) > 0 and "Назначить владельца на закрытие открытых кейсов в течение 24 часов." not in actions:
+            actions.insert(0, "Назначить владельца на закрытие открытых кейсов в течение 24 часов.")
+        if int(card.get("active_locks") or 0) > 0 and "Снять busy/lock-контур прежде чем обсуждать долгосрочный прогноз." not in actions:
+            actions.append("Снять busy/lock-контур прежде чем обсуждать долгосрочный прогноз.")
+        if card.get("registry_match_mode") == "manual" and "Проверить корректность manual-сопоставления до жёстких управленческих выводов." not in actions:
+            actions.append("Проверить корректность manual-сопоставления до жёстких управленческих выводов.")
+        stop_doing = "Не проводить общие обсуждения без владельца, срока и числовой цели на день."
+        target_cases = max(int(card.get("open_cases_total") or 0) - 3, 0)
+        target_state = (
+            f"Снизить открытые кейсы ниже {target_cases}, "
+            f"снять новый прирост и подтвердить отсутствие лишних блокировок по следующему запуску."
+        )
+        confidence = "deterministic-fallback"
+
+    return {
+        "generated_at": recovery_generated_at,
+        "confidence": confidence,
+        "diagnosis": diagnosis,
+        "actions": actions[:5],
+        "stop_doing": stop_doing,
+        "target_state_24h": target_state,
+        "source_incident": matched_incident,
+    }
+
+
 def grafana_company_dashboard_url() -> str:
     return os.getenv(
         "AW_1C_MANAGER_BRIEF_GRAFANA_URL",
@@ -422,6 +512,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     delta_html_url = "/manager/changes"
     weekly_html_url = "/manager/trends/weekly"
     weekly_digest_url = "/manager/digest/weekly"
+    recovery_html_url = "/manager/recovery"
     problematic_1d_url = "/manager/problematic?days=1"
     problematic_7d_url = "/manager/problematic?days=7"
     json_url = "/api/1/analytics-1c/manager/brief/latest"
@@ -749,6 +840,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
           <a href="{html.escape(delta_html_url)}">Что изменилось</a>
           <a href="{html.escape(weekly_html_url)}">Неделя</a>
           <a href="{html.escape(weekly_digest_url)}">Weekly digest</a>
+          <a href="{html.escape(recovery_html_url)}">AI recovery</a>
           <a href="{html.escape(problematic_1d_url)}">Проблемные 1д</a>
           <a href="{html.escape(problematic_7d_url)}">Проблемные 7д</a>
           <a href="{html.escape(history_url)}">History API</a>
@@ -965,6 +1057,7 @@ def render_brief_history_html(items: list[dict[str, Any]]) -> str:
         <a href="/manager/brief">Текущий brief</a>
         <a href="/manager/changes">Что изменилось</a>
         <a href="/manager/trends/weekly">Неделя</a>
+        <a href="/manager/recovery">AI recovery</a>
         <a href="/manager/problematic?days=1">Проблемные 1д</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
       </div>
@@ -1054,6 +1147,7 @@ def render_problematic_companies_html(items: list[dict[str, Any]], days: int) ->
         <a href="/manager/brief">Текущий brief</a>
         <a href="/manager/briefs">История brief</a>
         <a href="/manager/trends/weekly">Неделя</a>
+        <a href="/manager/recovery">AI recovery</a>
         <a href="/manager/problematic?days=1">Срез 1д</a>
         <a href="/manager/problematic?days=7">Срез 7д</a>
       </div>
@@ -1200,6 +1294,7 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
         <a href="/manager/briefs">История brief</a>
         <a href="/manager/trends/weekly">Неделя</a>
         <a href="/manager/digest/weekly">Weekly digest</a>
+        <a href="/manager/recovery">AI recovery</a>
         <a href="/manager/problematic?days=1">Проблемные 1д</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
       </div>
@@ -1356,6 +1451,7 @@ def render_weekly_trend_html(report: dict[str, Any]) -> str:
         <a href="/manager/changes">Что изменилось</a>
         <a href="/manager/briefs">История brief</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
+        <a href="/manager/recovery">AI recovery</a>
         <a href="/manager/digest/weekly">Weekly digest</a>
       </div>
     </section>
@@ -1513,6 +1609,7 @@ def render_weekly_digest_html(payload: dict[str, Any]) -> str:
         <a href="/manager/changes">Что изменилось</a>
         <a href="/manager/trends/weekly">Неделя</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
+        <a href="/manager/recovery">AI recovery</a>
         <a href="/api/1/analytics-1c/manager/digest/weekly/latest">JSON</a>
         <a href="/api/1/analytics-1c/manager/digest/weekly/latest.md">Markdown</a>
       </div>
@@ -1553,6 +1650,101 @@ def render_weekly_digest_html(payload: dict[str, Any]) -> str:
       <article class="panel span-12">
         <h2>Ограничения интерпретации</h2>
         <ul>{caveat_items}</ul>
+      </article>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def render_recovery_brief_html(payload: dict[str, Any]) -> str:
+    recovery = payload.get("recovery", {})
+    generated_at = payload.get("generated_at", "")
+    render_mode = payload.get("render_mode", "unknown")
+    situation_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in recovery.get("situation", []))
+    action_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in recovery.get("portfolio_actions", []))
+    caveat_items = "".join(f"<li>{html.escape(str(item))}</li>" for item in recovery.get("caveats", []))
+    incident_cards = []
+    for item in recovery.get("top_incidents", []):
+        company = str(item.get("company") or "-")
+        actions = "".join(f"<li>{html.escape(str(action))}</li>" for action in item.get("actions", []))
+        incident_cards.append(
+            "<article class=\"stack-card\">"
+            f"<div class=\"stack-card-head\"><h3>{html.escape(company)}</h3>{severity_badge(str(item.get('severity') or 'critical'))}</div>"
+            f"<p class=\"stack-card-body\"><strong>Диагноз:</strong> {html.escape(str(item.get('diagnosis') or '-'))}</p>"
+            f"<p class=\"stack-card-body\"><strong>Что не делать:</strong> {html.escape(str(item.get('stop_doing') or '-'))}</p>"
+            f"<p class=\"stack-card-body\"><strong>Цель 24ч:</strong> {html.escape(str(item.get('target_state_24h') or '-'))}</p>"
+            f"<ul class=\"meta-list\">{actions or '<li>Нет действий.</li>'}</ul>"
+            f"<p class=\"stack-card-action\"><a class=\"inline-link\" href=\"{company_detail_url(company)}\">Карточка компании</a></p>"
+            "</article>"
+        )
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Recovery Brief</title>
+  <style>
+    :root {{
+      --bg:#f4f1ea; --paper:#fffdf8; --ink:#1c1a17; --muted:#6b655c; --line:#d8d0c4; --accent:#005f73;
+      --critical:#9b2226; --high:#bb3e03; --medium:#ca6702; --low:#4d7c0f; --none:#687076; --shadow:0 14px 40px rgba(28,26,23,.08);
+    }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; color:var(--ink); background:linear-gradient(180deg,#faf7f2 0%,var(--bg) 100%); }}
+    .shell {{ max-width:1380px; margin:0 auto; padding:28px 22px 60px; }}
+    .hero {{ background:linear-gradient(135deg,rgba(116,0,0,.92),rgba(155,34,38,.92)); color:#fff9f9; border-radius:24px; padding:28px 30px; box-shadow:var(--shadow); }}
+    .hero h1 {{ margin:0 0 12px; font-size:clamp(28px,4vw,42px); line-height:1.05; }}
+    .hero-meta {{ color:rgba(255,249,249,.82); font-size:14px; }}
+    .hero-links {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }}
+    .hero-links a {{ text-decoration:none; color:#fff9f9; border:1px solid rgba(255,249,249,.28); padding:9px 12px; border-radius:999px; font-size:14px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:18px; margin-top:22px; }}
+    .panel {{ background:var(--paper); border:1px solid var(--line); border-radius:22px; padding:22px; box-shadow:var(--shadow); }}
+    .span-12 {{ grid-column:span 12; }} .span-6 {{ grid-column:span 6; }}
+    .stack {{ display:grid; gap:14px; }}
+    .stack-card {{ border:1px solid var(--line); border-radius:18px; padding:16px 18px; background:#fffdfa; }}
+    .stack-card-head {{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }}
+    .stack-card-body,.stack-card-action {{ margin:0 0 10px; line-height:1.55; }}
+    .badge {{ display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#fff; }}
+    .badge-critical {{ background:var(--critical); }} .badge-high {{ background:var(--high); }} .badge-medium {{ background:var(--medium); }} .badge-low {{ background:var(--low); }} .badge-none {{ background:var(--none); }}
+    .inline-link {{ color:var(--accent); text-decoration:none; font-weight:600; }} .inline-link:hover {{ text-decoration:underline; }}
+    .meta-list {{ margin:0; padding-left:18px; line-height:1.55; }}
+    @media (max-width:1100px) {{ .span-6 {{ grid-column:span 12; }} }}
+    @media (max-width:640px) {{ .shell {{ padding:16px 14px 40px; }} .hero {{ padding:22px 18px; }} }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-meta">AW-rus · AI Recovery Brief · render mode: {html.escape(str(render_mode))}</div>
+      <h1>{html.escape(str(recovery.get('headline') or 'Recovery brief недоступен'))}</h1>
+      <div class="hero-meta">Сформировано: {html.escape(str(generated_at or '-'))}</div>
+      <nav class="hero-links">
+        <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/changes">Что изменилось</a>
+        <a href="/manager/trends/weekly">Неделя</a>
+        <a href="/manager/digest/weekly">Weekly digest</a>
+        <a href="/manager/problematic?days=7">Проблемные 7д</a>
+        <a href="/api/1/analytics-1c/manager/recovery/latest">JSON</a>
+        <a href="/api/1/analytics-1c/manager/recovery/latest.md">Markdown</a>
+      </nav>
+    </section>
+    <section class="grid">
+      <article class="panel span-6">
+        <h2>Ситуация</h2>
+        <ul class="meta-list">{situation_items or '<li>Нет данных.</li>'}</ul>
+      </article>
+      <article class="panel span-6">
+        <h2>Что делать по портфелю</h2>
+        <ul class="meta-list">{action_items or '<li>Нет данных.</li>'}</ul>
+      </article>
+      <article class="panel span-12">
+        <h2>Компании первой очереди для recovery</h2>
+        <div class="stack">{''.join(incident_cards) or '<p>Нет recovery-инцидентов.</p>'}</div>
+      </article>
+      <article class="panel span-12">
+        <h2>Ограничения интерпретации</h2>
+        <ul class="meta-list">{caveat_items or '<li>Нет данных.</li>'}</ul>
       </article>
     </section>
   </main>
@@ -1702,6 +1894,7 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
         "recent_documents": timeline,
     }
     payload["priority_context"] = build_company_priority_context(payload, infobase)
+    payload["recovery_context"] = build_company_recovery_context(payload, infobase)
     return payload
 
 
@@ -1801,6 +1994,19 @@ def manager_weekly_digest_latest_markdown() -> str:
     return latest_md.read_text(encoding="utf-8")
 
 
+@app.get("/api/1/analytics-1c/manager/recovery/latest")
+def manager_recovery_latest() -> dict[str, Any]:
+    return load_latest_recovery_brief()
+
+
+@app.get("/api/1/analytics-1c/manager/recovery/latest.md", response_class=PlainTextResponse)
+def manager_recovery_latest_markdown() -> str:
+    latest_md = recovery_brief_state_dir() / "latest.md"
+    if not latest_md.exists():
+        raise HTTPException(status_code=404, detail="recovery brief markdown not generated yet")
+    return latest_md.read_text(encoding="utf-8")
+
+
 @app.get("/api/1/analytics-1c/companies/problematic")
 def problematic_companies_api(
     days: int = Query(default=7, ge=1, le=30),
@@ -1828,6 +2034,11 @@ def manager_weekly_trends_view(days: int = Query(default=7, ge=2, le=30)) -> str
 @app.get("/manager/digest/weekly", response_class=HTMLResponse)
 def manager_weekly_digest_view() -> str:
     return render_weekly_digest_html(load_latest_weekly_digest())
+
+
+@app.get("/manager/recovery", response_class=HTMLResponse)
+def manager_recovery_view() -> str:
+    return render_recovery_brief_html(load_latest_recovery_brief())
 
 
 @app.get("/manager/briefs", response_class=HTMLResponse)
@@ -1860,6 +2071,7 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
     signals = summary_payload.get("signals") or []
     recent_documents = summary_payload.get("recent_documents") or []
     priority_context = summary_payload.get("priority_context") or build_company_priority_context(summary_payload, infobase)
+    recovery_context = summary_payload.get("recovery_context") or build_company_recovery_context(summary_payload, infobase)
 
     title = card.get("counterparty", "Карточка компании")
     subtitle = summary_payload.get("essence", "")
@@ -1903,6 +2115,10 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
     action_items = "".join(
         f"<li>{html.escape(str(item))}</li>"
         for item in priority_context.get("actions", [])
+    )
+    recovery_action_items = "".join(
+        f"<li>{html.escape(str(item))}</li>"
+        for item in recovery_context.get("actions", [])
     )
 
     forecast_rows = []
@@ -2060,6 +2276,7 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
           <a href="/manager/changes">Что изменилось</a>
           <a href="/manager/trends/weekly">Неделя</a>
           <a href="/manager/digest/weekly">Weekly digest</a>
+          <a href="/manager/recovery">AI recovery</a>
           <a href="/manager/briefs">История brief</a>
           <a href="/manager/problematic?days=7">Проблемные компании</a>
           <a href="{html.escape(summary_url)}">JSON summary</a>
@@ -2101,6 +2318,18 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
       <article class="panel span-4">
         <h2>Что проверить первым действием</h2>
         <ul class="meta-list">{action_items}</ul>
+      </article>
+
+      <article class="panel span-12">
+        <h2>AI-план снятия проблемы</h2>
+        <div class="summary-box summary-box-priority">
+          <p><strong>Диагноз:</strong> {html.escape(str(recovery_context.get("diagnosis") or "-"))}</p>
+          <p><strong>Что не делать:</strong> {html.escape(str(recovery_context.get("stop_doing") or "-"))}</p>
+          <p><strong>Цель 24ч:</strong> {html.escape(str(recovery_context.get("target_state_24h") or "-"))}</p>
+          <p><strong>Источник:</strong> {html.escape(str(recovery_context.get("confidence") or "-"))}
+          {f" · сформировано {html.escape(str(recovery_context.get('generated_at')))}" if recovery_context.get("generated_at") else ""}</p>
+          <ul class="meta-list">{recovery_action_items or '<li>Нет действий.</li>'}</ul>
+        </div>
       </article>
 
       <article class="panel span-6">

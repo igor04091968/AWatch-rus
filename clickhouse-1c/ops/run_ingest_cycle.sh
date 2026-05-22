@@ -8,6 +8,7 @@ CONFIG="${ROOT}/etl/config.yml"
 CH_CONTAINER="${AW_1C_CLICKHOUSE_CONTAINER:-aw-rus-1c-clickhouse}"
 LOCK_FILE="${ROOT}/.ingest.lock"
 RUN_MANAGER_BRIEF_AFTER_INGEST="${AW_1C_MANAGER_BRIEF_RUN_AFTER_INGEST:-1}"
+RUN_RECOVERY_BRIEF_AFTER_INGEST="${AW_1C_RECOVERY_BRIEF_RUN_AFTER_INGEST:-1}"
 RUN_PROOFCHECK_AFTER_INGEST="${AW_1C_PROOFCHECK_RUN_AFTER_INGEST:-1}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
@@ -71,6 +72,12 @@ docker exec -i "${CH_CONTAINER}" clickhouse-client \
 if [[ "${RUN_MANAGER_BRIEF_AFTER_INGEST}" == "1" ]]; then
   if ! "${ROOT}/ops/run_manager_brief.sh"; then
     echo "warning: manager brief refresh failed after ingest" >&2
+  fi
+fi
+
+if [[ "${RUN_RECOVERY_BRIEF_AFTER_INGEST}" == "1" ]]; then
+  if ! "${ROOT}/ops/run_recovery_brief.sh"; then
+    echo "warning: recovery brief refresh failed after ingest" >&2
   fi
 fi
 

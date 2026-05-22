@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW-rus 1C recovery brief every 6 hours
+
+[Timer]
+OnBootSec=45min
+OnUnitActiveSec=6h
+Unit=aw-1c-recovery-brief.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

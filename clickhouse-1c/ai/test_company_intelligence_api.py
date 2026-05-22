@@ -352,6 +352,139 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         self.assertIn("Компании первой очереди", html_page)
         self.assertIn("Что улучшилось за неделю", html_page)
 
+    def test_build_company_recovery_context_from_latest_recovery(self) -> None:
+        recovery_payload = {
+            "generated_at": "2026-05-22T13:00:00+00:00",
+            "render_mode": "codex",
+            "recovery": {
+                "headline": "Recovery test",
+                "top_incidents": [
+                    {
+                        "company": "ФЕЛИЦТ ГРУПП 2026",
+                        "severity": "critical",
+                        "diagnosis": "Открытые кейсы 6, detections 9, блокировки 2.",
+                        "actions": ["Закрыть минимум 3 кейса.", "Проверить lock-контур."],
+                        "stop_doing": "Не тянуть хвост без владельца.",
+                        "target_state_24h": "Кейсы <= 3 и нет нового прироста.",
+                    }
+                ],
+            },
+        }
+        summary_payload = {
+            "card": {
+                "counterparty": "ФЕЛИЦТ ГРУПП 2026",
+                "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                "signal_severity": "critical",
+                "signal_score": 95,
+                "open_cases_total": 6,
+                "detections_total": 9,
+                "active_locks": 2,
+                "registry_match_mode": "manual",
+            },
+            "priority_context": {
+                "current_priority_tier": "critical",
+                "current_priority_score": 190,
+                "current_priority_reason": "рост кейсов +5",
+                "actions": ["Разобрать кейсы."],
+            },
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp)
+            (state_dir / "latest.json").write_text(json.dumps(recovery_payload), encoding="utf-8")
+            old = os.environ.get("AW_1C_RECOVERY_BRIEF_STATE_DIR")
+            os.environ["AW_1C_RECOVERY_BRIEF_STATE_DIR"] = str(state_dir)
+            try:
+                context = api.build_company_recovery_context(summary_payload, "ФЕЛИЦТ ГРУПП 2026")
+                self.assertEqual(context["confidence"], "recovery-brief/codex")
+                self.assertIn("Открытые кейсы 6", context["diagnosis"])
+                self.assertIn("Закрыть минимум 3 кейса.", context["actions"])
+            finally:
+                if old is None:
+                    os.environ.pop("AW_1C_RECOVERY_BRIEF_STATE_DIR", None)
+                else:
+                    os.environ["AW_1C_RECOVERY_BRIEF_STATE_DIR"] = old
+
+    def test_render_recovery_brief_html_and_company_page_block(self) -> None:
+        recovery_payload = {
+            "generated_at": "2026-05-22T13:00:00+00:00",
+            "render_mode": "codex",
+            "recovery": {
+                "headline": "Recovery-контур под давлением.",
+                "situation": ["Кейсы растут.", "Нужен triage."],
+                "portfolio_actions": ["Сжать фокус до 5 компаний."],
+                "top_incidents": [
+                    {
+                        "company": "ФЕЛИЦТ ГРУПП 2026",
+                        "severity": "critical",
+                        "diagnosis": "Открытые кейсы 6.",
+                        "actions": ["Закрыть минимум 3 кейса."],
+                        "stop_doing": "Не тянуть хвост без владельца.",
+                        "target_state_24h": "Кейсы <= 3.",
+                    }
+                ],
+                "caveats": ["Operational severity не равна финансам."],
+            },
+        }
+        html_page = api.render_recovery_brief_html(recovery_payload)
+        self.assertIn("Recovery-контур под давлением", html_page)
+        self.assertIn("Компании первой очереди для recovery", html_page)
+        self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
+
+        company_html = api.render_company_detail_html(
+            {
+                "essence": "test",
+                "card": {
+                    "counterparty": "ФЕЛИЦТ ГРУПП 2026",
+                    "company_name": "ФЕЛИЦТ ГРУПП 2026",
+                    "normalized_counterparty": "ФЕЛИЦТ ГРУПП",
+                    "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                    "signal_severity": "critical",
+                    "signal_score": 95,
+                    "amount_7d": 10.0,
+                    "amount_30d": 20.0,
+                    "amount_forecast_30d": 30.0,
+                    "docs_30d": 6,
+                    "open_cases_total": 6,
+                    "detections_total": 9,
+                    "current_status": "busy",
+                    "active_locks": 2,
+                    "days_since_last_activity": 0,
+                    "registry_match_mode": "manual",
+                    "registry_assignee_name": "Иванов",
+                    "registry_inn": "123",
+                    "registry_kpp": "456",
+                    "base_path": "C:/1C",
+                },
+                "company_state": {
+                    "current_status": "busy",
+                    "active_locks": 2,
+                    "current_activity_score": 45.0,
+                    "ts": "2026-05-22T13:00:00+00:00",
+                },
+                "forecasts": [],
+                "signals": [],
+                "recent_documents": [],
+                "priority_context": {
+                    "current_priority_tier": "critical",
+                    "current_priority_score": 190,
+                    "current_priority_reason": "рост кейсов +5",
+                    "verdict": "Приоритет высокий.",
+                    "evidence": ["Кейсы растут."],
+                    "actions": ["Разобрать кейсы."],
+                },
+                "recovery_context": {
+                    "generated_at": "2026-05-22T13:00:00+00:00",
+                    "confidence": "recovery-brief/codex",
+                    "diagnosis": "Открытые кейсы 6.",
+                    "actions": ["Закрыть минимум 3 кейса."],
+                    "stop_doing": "Не тянуть хвост без владельца.",
+                    "target_state_24h": "Кейсы <= 3.",
+                },
+            }
+        )
+        self.assertIn("AI-план снятия проблемы", company_html)
+        self.assertIn("Закрыть минимум 3 кейса.", company_html)
+
 
 if __name__ == "__main__":
     unittest.main()

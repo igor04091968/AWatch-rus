@@ -1,0 +1,13 @@
+[Unit]
+Description=AW-rus 1C Recovery Brief
+After=network-online.target aw-1c-manager-brief.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=AW_1C_ROOT=/opt/activitywatch/clickhouse-1c
+ExecStart=/opt/activitywatch/clickhouse-1c/ops/run_recovery_brief.sh
+TimeoutStartSec=45min
+
+[Install]
+WantedBy=multi-user.target
