@@ -96,6 +96,13 @@ def severity_badge(severity: str) -> str:
     return f'<span class="badge badge-{tone}">{html.escape(severity or "none")}</span>'
 
 
+def company_detail_url(counterparty: str, infobase: str | None = None) -> str:
+    base = f"/manager/company/{quote(counterparty)}"
+    if infobase:
+        return f"{base}?infobase={quote(infobase)}"
+    return base
+
+
 def render_manager_brief_html(payload: dict[str, Any]) -> str:
     brief = payload.get("brief", {})
     context = payload.get("context", {})
@@ -131,6 +138,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
             f"<div class=\"stack-card-head\"><h3>{html.escape(item.get('company', '-'))}</h3>{severity_badge(item.get('severity', ''))}</div>"
             f"<p class=\"stack-card-body\">{html.escape(item.get('reason', '-'))}</p>"
             f"<p class=\"stack-card-action\"><strong>Действие:</strong> {html.escape(item.get('recommended_action', '-'))}</p>"
+            f"<p class=\"stack-card-action\"><a class=\"inline-link\" href=\"{company_detail_url(item.get('company', '-'))}\">Открыть карточку компании</a></p>"
             "</article>"
         )
 
@@ -142,7 +150,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
             f"<div class=\"stack-card-head\"><h3>{html.escape(company)}</h3></div>"
             f"<p class=\"metric-line\"><strong>Прогноз 30д:</strong> {html.escape(item.get('forecast_30d', '-'))}</p>"
             f"<p class=\"stack-card-body\">{html.escape(item.get('interpretation', '-'))}</p>"
-            f"<a class=\"inline-link\" href=\"/api/1/analytics-1c/companies/{quote(company)}/summary\">Карточка компании</a>"
+            f"<a class=\"inline-link\" href=\"{company_detail_url(company)}\">Карточка компании</a>"
             "</article>"
         )
 
@@ -708,6 +716,312 @@ def manager_brief_history(limit: int = Query(default=20, ge=1, le=200)) -> dict[
 @app.get("/manager/brief", response_class=HTMLResponse)
 def manager_brief_view() -> str:
     return render_manager_brief_html(load_latest_manager_brief())
+
+
+def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | None = None) -> str:
+    card = summary_payload["card"]
+    company_state = summary_payload.get("company_state") or {}
+    forecasts = summary_payload.get("forecasts") or []
+    signals = summary_payload.get("signals") or []
+    recent_documents = summary_payload.get("recent_documents") or []
+
+    title = card.get("counterparty", "Карточка компании")
+    subtitle = summary_payload.get("essence", "")
+    grafana_url = grafana_company_dashboard_url()
+    summary_url = f"/api/1/analytics-1c/companies/{quote(card['counterparty'])}/summary"
+    if infobase:
+        summary_url += f"?infobase={quote(infobase)}"
+    timeline_url = f"/api/1/analytics-1c/companies/{quote(card['counterparty'])}/timeline"
+    if infobase:
+        timeline_url += f"?infobase={quote(infobase)}"
+    forecast_url = f"/api/1/analytics-1c/companies/{quote(card['counterparty'])}/forecast"
+    if infobase:
+        forecast_url += f"?infobase={quote(infobase)}"
+
+    if card.get("signal_severity") == "critical":
+        manager_comment = "Компания требует немедленного внимания: контур считает её operational-critical."
+    elif card.get("signal_severity") == "high":
+        manager_comment = "Компания в зоне повышенного внимания: нужен короткий управленческий разбор причин сигнала."
+    elif card.get("signal_severity") == "medium":
+        manager_comment = "Компания не аварийная, но требует точечной проверки причин отклонения."
+    else:
+        manager_comment = "По компании нет выраженного аварийного сигнала; смотреть контекст и тренд активности."
+
+    metrics = [
+        ("Активность 7д", fmt_number(card.get("amount_7d"))),
+        ("Активность 30д", fmt_number(card.get("amount_30d"))),
+        ("Прогноз 30д", fmt_number(card.get("amount_forecast_30d"))),
+        ("Документы 30д", fmt_number(card.get("docs_30d"))),
+        ("Кейсы", fmt_number(card.get("open_cases_total"))),
+        ("Detections", fmt_number(card.get("detections_total"))),
+    ]
+    metric_cards = "".join(
+        f"<div class=\"stat\"><div class=\"stat-label\">{html.escape(label)}</div><div class=\"stat-value\">{html.escape(value)}</div></div>"
+        for label, value in metrics
+    )
+
+    forecast_rows = []
+    for item in forecasts:
+        forecast_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(item.get('metric', '-')))}</td>"
+            f"<td>{fmt_number(item.get('horizon_days'))}</td>"
+            f"<td>{fmt_number(item.get('baseline_daily'))}</td>"
+            f"<td>{fmt_number(item.get('predicted_total'))}</td>"
+            f"<td>{fmt_number(item.get('confidence'))}</td>"
+            f"<td>{html.escape(str(item.get('note', '-')))}</td>"
+            "</tr>"
+        )
+
+    signal_rows = []
+    for item in signals[:12]:
+        signal_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(item.get('generated_at', '-')))}</td>"
+            f"<td>{severity_badge(str(item.get('severity', 'none')))}</td>"
+            f"<td>{fmt_number(item.get('score'))}</td>"
+            f"<td>{html.escape(str(item.get('signal_type', '-')))}</td>"
+            f"<td>{html.escape(str(item.get('summary', '-')))}</td>"
+            "</tr>"
+        )
+
+    document_rows = []
+    for item in recent_documents[:20]:
+        document_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(item.get('ts', '-')))}</td>"
+            f"<td>{html.escape(str(item.get('doc_type', '-')))}</td>"
+            f"<td>{html.escape(str(item.get('operation_type', '-')))}</td>"
+            f"<td>{fmt_number(item.get('amount'))}</td>"
+            f"<td>{html.escape(str(item.get('status', '-')))}</td>"
+            f"<td>{html.escape(str(item.get('author', '-')))}</td>"
+            "</tr>"
+        )
+
+    registry_comment = (
+        f"Сопоставление с реестром: {card.get('registry_match_mode', 'none')}. "
+        f"Ответственный: {card.get('registry_assignee_name') or 'не указан'}."
+    )
+    if card.get("registry_match_mode") == "manual":
+        registry_comment += " Требуется осторожность: запись заведена через manual override."
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>{html.escape(title)} · 1C Company Brief</title>
+  <style>
+    :root {{
+      --bg: #f4f1ea;
+      --paper: #fffdf8;
+      --ink: #1c1a17;
+      --muted: #6b655c;
+      --line: #d8d0c4;
+      --accent: #005f73;
+      --critical: #9b2226;
+      --high: #bb3e03;
+      --medium: #ca6702;
+      --low: #4d7c0f;
+      --none: #687076;
+      --shadow: 0 14px 40px rgba(28, 26, 23, 0.08);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(0, 95, 115, 0.08), transparent 28%),
+        linear-gradient(180deg, #faf7f2 0%, var(--bg) 100%);
+    }}
+    .shell {{ max-width: 1380px; margin: 0 auto; padding: 28px 22px 60px; }}
+    .hero {{
+      background: linear-gradient(135deg, rgba(0,95,115,0.94), rgba(10,77,104,0.92));
+      color: #f8fbfc;
+      border-radius: 24px;
+      padding: 28px 30px;
+      box-shadow: var(--shadow);
+    }}
+    .hero-top {{
+      display: flex; justify-content: space-between; gap: 20px; align-items: flex-start; flex-wrap: wrap;
+    }}
+    .hero h1 {{ margin: 0 0 12px; font-size: clamp(28px, 4vw, 42px); line-height: 1.05; }}
+    .hero-meta {{ color: rgba(248, 251, 252, 0.82); font-size: 14px; }}
+    .hero-links {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+    .hero-links a {{
+      text-decoration: none; color: #f8fbfc; border: 1px solid rgba(248, 251, 252, 0.28);
+      padding: 9px 12px; border-radius: 999px; font-size: 14px;
+    }}
+    .hero-links a:hover {{ background: rgba(248, 251, 252, 0.12); }}
+    .grid {{ display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px; margin-top: 22px; }}
+    .panel {{ background: var(--paper); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow); }}
+    .panel h2 {{ margin: 0 0 14px; font-size: 21px; line-height: 1.1; }}
+    .span-12 {{ grid-column: span 12; }}
+    .span-8 {{ grid-column: span 8; }}
+    .span-6 {{ grid-column: span 6; }}
+    .span-4 {{ grid-column: span 4; }}
+    .summary-box {{
+      border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 18px; padding: 16px 18px;
+      background: #fffdfa; line-height: 1.55;
+    }}
+    .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }}
+    .stat {{ padding: 16px; border-radius: 18px; background: linear-gradient(180deg, #fff 0%, #f7f4ee 100%); border: 1px solid var(--line); }}
+    .stat-label {{ color: var(--muted); font-size: 13px; margin-bottom: 8px; }}
+    .stat-value {{ font-size: 24px; font-weight: 700; letter-spacing: -0.03em; }}
+    .badge {{
+      display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px;
+      border-radius: 999px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #fff;
+    }}
+    .badge-critical {{ background: var(--critical); }}
+    .badge-high {{ background: var(--high); }}
+    .badge-medium {{ background: var(--medium); }}
+    .badge-low {{ background: var(--low); }}
+    .badge-none {{ background: var(--none); }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+    th, td {{ text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }}
+    th {{ color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }}
+    .inline-link {{ color: var(--accent); text-decoration: none; font-weight: 600; }}
+    .inline-link:hover {{ text-decoration: underline; }}
+    .meta-list {{ margin: 0; padding-left: 18px; line-height: 1.55; }}
+    @media (max-width: 1100px) {{
+      .span-8, .span-6, .span-4 {{ grid-column: span 12; }}
+      .stats {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    }}
+    @media (max-width: 640px) {{
+      .shell {{ padding: 16px 14px 40px; }}
+      .hero {{ padding: 22px 18px; }}
+      .stats {{ grid-template-columns: 1fr; }}
+      th:nth-child(2), td:nth-child(2) {{ display: none; }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-top">
+        <div>
+          <div class="hero-meta">AW-rus · Company Brief · {severity_badge(str(card.get("signal_severity", "none")))}</div>
+          <h1>{html.escape(title)}</h1>
+          <div class="hero-meta">{html.escape(subtitle)}</div>
+        </div>
+        <nav class="hero-links">
+          <a href="/manager/brief">К портфелю</a>
+          <a href="{html.escape(summary_url)}">JSON summary</a>
+          <a href="{html.escape(forecast_url)}">JSON forecast</a>
+          <a href="{html.escape(timeline_url)}">JSON timeline</a>
+          <a href="{html.escape(grafana_url)}">Grafana</a>
+        </nav>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel span-8">
+        <h2>Управленческий комментарий</h2>
+        <div class="summary-box">
+          <p><strong>{html.escape(manager_comment)}</strong></p>
+          <p>{html.escape(registry_comment)}</p>
+          <p>Сейчас база в состоянии <strong>{html.escape(str(card.get("current_status", "-")))}</strong>, активных блокировок: <strong>{fmt_number(card.get("active_locks"))}</strong>, дней с последней активности: <strong>{fmt_number(card.get("days_since_last_activity"))}</strong>.</p>
+        </div>
+      </article>
+
+      <article class="panel span-4">
+        <h2>Ключевые метрики</h2>
+        <div class="stats">
+          {metric_cards}
+        </div>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Карточка компании</h2>
+        <ul class="meta-list">
+          <li><strong>Компания:</strong> {html.escape(str(card.get("company_name") or card.get("counterparty") or "-"))}</li>
+          <li><strong>Нормализованное имя:</strong> {html.escape(str(card.get("normalized_counterparty") or "-"))}</li>
+          <li><strong>Инфобаза:</strong> {html.escape(str(card.get("infobase") or "-"))}</li>
+          <li><strong>Ответственный:</strong> {html.escape(str(card.get("registry_assignee_name") or card.get("owner_user") or "-"))}</li>
+          <li><strong>Match mode:</strong> {html.escape(str(card.get("registry_match_mode") or "-"))}</li>
+          <li><strong>ИНН / КПП:</strong> {html.escape(str(card.get("registry_inn") or "-"))} / {html.escape(str(card.get("registry_kpp") or "-"))}</li>
+          <li><strong>Путь базы:</strong> {html.escape(str(card.get("base_path") or "-"))}</li>
+        </ul>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Состояние файловой базы</h2>
+        <ul class="meta-list">
+          <li><strong>Статус:</strong> {html.escape(str(company_state.get("current_status") or card.get("current_status") or "-"))}</li>
+          <li><strong>Размер базы:</strong> {fmt_number(company_state.get("db_size_bytes") or card.get("db_size_bytes"))}</li>
+          <li><strong>Размер reglog:</strong> {fmt_number(company_state.get("reglog_size_bytes") or card.get("reglog_size_bytes"))}</li>
+          <li><strong>Активные блокировки:</strong> {fmt_number(company_state.get("active_locks") or card.get("active_locks"))}</li>
+          <li><strong>Текущий activity score:</strong> {fmt_number(company_state.get("current_activity_score") or card.get("current_activity_score"))}</li>
+          <li><strong>Последний snapshot:</strong> {html.escape(str(company_state.get("ts") or card.get("last_company_snapshot_at") or "-"))}</li>
+        </ul>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Прогнозы</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Метрика</th>
+              <th>Горизонт, д</th>
+              <th>Baseline</th>
+              <th>Прогноз total</th>
+              <th>Confidence</th>
+              <th>Примечание</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(forecast_rows) or '<tr><td colspan="6">Нет данных.</td></tr>'}
+          </tbody>
+        </table>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Сигналы</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Severity</th>
+              <th>Score</th>
+              <th>Тип</th>
+              <th>Комментарий</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(signal_rows) or '<tr><td colspan="5">Нет данных.</td></tr>'}
+          </tbody>
+        </table>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Последние события</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Время</th>
+              <th>Тип</th>
+              <th>Операция</th>
+              <th>Активность</th>
+              <th>Статус</th>
+              <th>Автор</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(document_rows) or '<tr><td colspan="6">Нет данных.</td></tr>'}
+          </tbody>
+        </table>
+      </article>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+@app.get("/manager/company/{counterparty}", response_class=HTMLResponse)
+def manager_company_view(counterparty: str, infobase: str | None = None) -> str:
+    return render_company_detail_html(company_summary(counterparty, infobase), infobase)
 
 
 if __name__ == "__main__":
