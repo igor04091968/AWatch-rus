@@ -1,0 +1,10 @@
+[Unit]
+Description=Run AW-rus 1C weekly digest every Monday morning
+
+[Timer]
+OnCalendar=Mon *-*-* 08:20:00
+Unit=aw-1c-weekly-digest.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=AW-rus 1C Weekly Executive Digest
+After=network-online.target aw-1c-manager-brief.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=AW_1C_ROOT=/opt/activitywatch/clickhouse-1c
+ExecStart=/opt/activitywatch/clickhouse-1c/ops/run_weekly_digest.sh
+
+[Install]
+WantedBy=multi-user.target

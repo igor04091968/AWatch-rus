@@ -61,10 +61,25 @@ def manager_brief_state_dir() -> Path:
     return root / "state" / "manager-brief"
 
 
+def weekly_digest_state_dir() -> Path:
+    root = Path(os.getenv("AW_1C_ROOT", "/opt/activitywatch/clickhouse-1c"))
+    configured = os.getenv("AW_1C_WEEKLY_DIGEST_STATE_DIR")
+    if configured:
+        return Path(configured)
+    return root / "state" / "weekly-digest"
+
+
 def load_latest_manager_brief() -> dict[str, Any]:
     latest_path = manager_brief_state_dir() / "latest.json"
     if not latest_path.exists():
         raise HTTPException(status_code=404, detail="manager brief not generated yet")
+    return json.loads(latest_path.read_text(encoding="utf-8"))
+
+
+def load_latest_weekly_digest() -> dict[str, Any]:
+    latest_path = weekly_digest_state_dir() / "latest.json"
+    if not latest_path.exists():
+        raise HTTPException(status_code=404, detail="weekly digest not generated yet")
     return json.loads(latest_path.read_text(encoding="utf-8"))
 
 
@@ -221,6 +236,136 @@ def build_weekly_trend_report(payloads: list[dict[str, Any]], days: int = 7) -> 
     }
 
 
+def tier_rank(value: str | None) -> int:
+    return {
+        "low": 1,
+        "medium": 2,
+        "high": 3,
+        "critical": 4,
+    }.get((value or "low").lower(), 1)
+
+
+def find_change_for_company(
+    items: list[dict[str, Any]],
+    counterparty: str,
+    infobase: str | None = None,
+) -> dict[str, Any] | None:
+    fallback: dict[str, Any] | None = None
+    for item in items:
+        if str(item.get("company") or "") != counterparty:
+            continue
+        if infobase and str(item.get("infobase") or "") == infobase:
+            return item
+        if fallback is None:
+            fallback = item
+    return fallback
+
+
+def build_company_priority_context(summary_payload: dict[str, Any], infobase: str | None = None) -> dict[str, Any]:
+    card = summary_payload.get("card") or {}
+    counterparty = str(card.get("counterparty") or "")
+    current_infobase = infobase or str(card.get("infobase") or "")
+    latest_change = None
+    weekly_change = None
+    weekly_report = {"top_weekly_changes": []}
+
+    try:
+        latest_brief = load_latest_manager_brief()
+        latest_change = find_change_for_company(
+            extract_delta(latest_brief).get("top_changes", []),
+            counterparty,
+            current_infobase or None,
+        )
+    except HTTPException:
+        latest_brief = None
+
+    try:
+        weekly_report = build_weekly_trend_report(load_brief_history_payloads(limit=400), days=7)
+        weekly_change = find_change_for_company(
+            weekly_report.get("top_weekly_changes", []),
+            counterparty,
+            current_infobase or None,
+        )
+    except Exception:
+        weekly_report = {"top_weekly_changes": []}
+
+    current_tier = "low"
+    current_score = 0.0
+    current_reason = "сильных weekly/delta-триггеров не видно"
+    if latest_change:
+        current_tier = str(latest_change.get("priority_tier") or "low")
+        current_score = float(latest_change.get("priority_score") or 0)
+        current_reason = str(latest_change.get("priority_reason") or latest_change.get("summary") or current_reason)
+    elif weekly_change:
+        current_tier = str(weekly_change.get("priority_tier") or "low")
+        current_score = float(weekly_change.get("priority_score") or 0)
+        current_reason = str(weekly_change.get("priority_reason") or weekly_change.get("summary") or current_reason)
+    else:
+        severity = str(card.get("signal_severity") or "low")
+        current_tier = severity if severity in {"critical", "high", "medium", "low"} else "low"
+        current_score = float(card.get("signal_score") or 0)
+        if int(card.get("open_cases_total") or 0) > 0 or int(card.get("active_locks") or 0) > 0:
+            current_reason = "у компании уже есть operational pressure: кейсы/блокировки/сигналы"
+
+    evidence: list[str] = []
+    actions: list[str] = []
+    if latest_change:
+        evidence.append(f"Последний запуск: {latest_change.get('summary') or current_reason}")
+        if int(latest_change.get("open_cases_delta") or 0) > 0:
+            evidence.append(f"Кейсы выросли на +{int(latest_change.get('open_cases_delta') or 0)}.")
+            actions.append("Сразу разобрать новые открытые кейсы по компании.")
+        if int(latest_change.get("detections_delta") or 0) > 0:
+            evidence.append(f"Detections выросли на +{int(latest_change.get('detections_delta') or 0)}.")
+        if int(latest_change.get("active_locks_delta") or 0) > 0:
+            evidence.append(f"Блокировки выросли на +{int(latest_change.get('active_locks_delta') or 0)}.")
+            actions.append("Проверить, не застряла ли файловая база в busy/lock-контуре.")
+        if float(latest_change.get("forecast_delta") or 0) < 0:
+            evidence.append(f"Прогноз 30д просел на {fmt_number(latest_change.get('forecast_delta'))}.")
+    if weekly_change and weekly_change is not latest_change:
+        evidence.append(f"За неделю компания вошла в top changes: {weekly_change.get('priority_reason') or weekly_change.get('summary')}.")
+    if str(card.get("signal_severity") or "none") in {"critical", "high"}:
+        evidence.append(f"Текущая severity {card.get('signal_severity')} при score {fmt_number(card.get('signal_score'))}.")
+    if card.get("registry_match_mode") == "manual":
+        evidence.append("Привязка к реестру manual: интерпретацию владельца и юр. соответствия проверять отдельно.")
+    if int(card.get("open_cases_total") or 0) > 0:
+        evidence.append(f"Сейчас открытых кейсов {int(card.get('open_cases_total') or 0)}.")
+    if int(card.get("detections_total") or 0) > 0:
+        evidence.append(f"Сейчас active detections {int(card.get('detections_total') or 0)}.")
+    if int(card.get("active_locks") or 0) > 0:
+        evidence.append(f"Сейчас активных блокировок {int(card.get('active_locks') or 0)}.")
+    if int(card.get("days_since_last_activity") or 0) >= 7:
+        evidence.append(f"Компания молчит уже {int(card.get('days_since_last_activity') or 0)} дн.")
+        actions.append("Подтвердить, это плановая бизнес-пауза или выпадение из операционного ритма.")
+    if not actions:
+        actions.append("Сначала проверить последние сигналы и timeline компании, затем подтверждать бизнес-выводы.")
+    if int(card.get("open_cases_total") or 0) > 0 and "Сразу разобрать новые открытые кейсы по компании." not in actions:
+        actions.append("Разобрать открытые кейсы до обсуждения прогноза.")
+    if int(card.get("active_locks") or 0) > 0 and "Проверить, не застряла ли файловая база в busy/lock-контуре." not in actions:
+        actions.append("Проверить busy/lock-контур файловой базы.")
+
+    if tier_rank(current_tier) >= tier_rank("high"):
+        verdict = (
+            "Приоритет действительно высокий не из-за общей красноты портфеля, а из-за конкретных operational-сдвигов по этой компании."
+        )
+    elif tier_rank(current_tier) == tier_rank("medium"):
+        verdict = "Приоритет средний: явный сдвиг есть, но он ещё не выглядит аварийным."
+    else:
+        verdict = "Приоритет низкий: компания видна в портфеле, но жёсткого триггера на разбор первой очереди нет."
+
+    return {
+        "current_priority_tier": current_tier,
+        "current_priority_score": round(current_score, 2),
+        "current_priority_reason": current_reason,
+        "latest_change": latest_change,
+        "weekly_change": weekly_change,
+        "weekly_period_start": weekly_report.get("period_start"),
+        "weekly_period_end": weekly_report.get("period_end"),
+        "verdict": verdict,
+        "evidence": evidence[:8],
+        "actions": actions[:5],
+    }
+
+
 def grafana_company_dashboard_url() -> str:
     return os.getenv(
         "AW_1C_MANAGER_BRIEF_GRAFANA_URL",
@@ -276,6 +421,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     history_html_url = "/manager/briefs"
     delta_html_url = "/manager/changes"
     weekly_html_url = "/manager/trends/weekly"
+    weekly_digest_url = "/manager/digest/weekly"
     problematic_1d_url = "/manager/problematic?days=1"
     problematic_7d_url = "/manager/problematic?days=7"
     json_url = "/api/1/analytics-1c/manager/brief/latest"
@@ -575,6 +721,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
           <a href="{html.escape(history_html_url)}">История brief</a>
           <a href="{html.escape(delta_html_url)}">Что изменилось</a>
           <a href="{html.escape(weekly_html_url)}">Неделя</a>
+          <a href="{html.escape(weekly_digest_url)}">Weekly digest</a>
           <a href="{html.escape(problematic_1d_url)}">Проблемные 1д</a>
           <a href="{html.escape(problematic_7d_url)}">Проблемные 7д</a>
           <a href="{html.escape(history_url)}">History API</a>
@@ -1004,6 +1151,7 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
         <a href="/manager/brief">Текущий brief</a>
         <a href="/manager/briefs">История brief</a>
         <a href="/manager/trends/weekly">Неделя</a>
+        <a href="/manager/digest/weekly">Weekly digest</a>
         <a href="/manager/problematic?days=1">Проблемные 1д</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
       </div>
@@ -1160,6 +1308,7 @@ def render_weekly_trend_html(report: dict[str, Any]) -> str:
         <a href="/manager/changes">Что изменилось</a>
         <a href="/manager/briefs">История brief</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
+        <a href="/manager/digest/weekly">Weekly digest</a>
       </div>
     </section>
     <section class="panel">
@@ -1207,6 +1356,156 @@ def render_weekly_trend_html(report: dict[str, Any]) -> str:
           {''.join(change_rows) or '<tr><td colspan="8">За выбранный период заметных изменений нет.</td></tr>'}
         </tbody>
       </table>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def render_weekly_digest_html(payload: dict[str, Any]) -> str:
+    digest = payload.get("digest", {})
+    context = payload.get("context", {})
+    latest = context.get("latest_summary", {})
+    top_priorities = digest.get("top_priorities", [])
+    improvements = digest.get("improvements", [])
+    actions = digest.get("actions", [])
+    caveats = digest.get("caveats", [])
+    summary = digest.get("summary", [])
+    generated_at = payload.get("generated_at", "")
+
+    stat_cards = [
+        ("Компаний", fmt_number(latest.get("companies_total"))),
+        ("Critical", fmt_number(latest.get("critical_total"))),
+        ("Busy", fmt_number(latest.get("busy_total"))),
+        ("Кейсы", fmt_number(latest.get("open_cases_total"))),
+        ("Detections", fmt_number(latest.get("detections_total"))),
+        ("Прогноз 30д", fmt_number(latest.get("activity_forecast_30d_total"))),
+    ]
+    stat_html = "".join(
+        f"<div class=\"stat\"><div class=\"stat-label\">{html.escape(label)}</div><div class=\"stat-value\">{html.escape(value)}</div></div>"
+        for label, value in stat_cards
+    )
+
+    priority_cards = []
+    for item in top_priorities:
+        company = str(item.get("company") or "-")
+        priority_cards.append(
+            "<article class=\"stack-card\">"
+            f"<div class=\"stack-card-head\"><h3>{html.escape(company)}</h3>{severity_badge(str(item.get('priority') or 'low'))}</div>"
+            f"<p class=\"stack-card-body\">{html.escape(str(item.get('reason') or '-'))}</p>"
+            f"<p class=\"stack-card-action\"><strong>Действие:</strong> {html.escape(str(item.get('recommended_action') or '-'))}</p>"
+            f"<p class=\"stack-card-action\"><a class=\"inline-link\" href=\"{company_detail_url(company)}\">Карточка компании</a></p>"
+            "</article>"
+        )
+
+    improvement_rows = []
+    for item in improvements:
+        improvement_rows.append(
+            "<tr>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company') or '-'), str(item.get('infobase') or '') or None)}\">{html.escape(str(item.get('company') or '-'))}</a></td>"
+            f"<td>{html.escape(str(item.get('signal') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('meaning') or '-'))}</td>"
+            "</tr>"
+        )
+
+    summary_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in summary)
+    action_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in actions)
+    caveat_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in caveats)
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Weekly Digest</title>
+  <style>
+    :root {{
+      --bg:#f4f1ea; --paper:#fffdf8; --ink:#1c1a17; --muted:#6b655c; --line:#d8d0c4; --accent:#005f73;
+      --critical:#9b2226; --high:#bb3e03; --medium:#ca6702; --low:#4d7c0f; --none:#687076; --shadow:0 14px 40px rgba(28,26,23,.08);
+    }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; color:var(--ink); background:linear-gradient(180deg,#faf7f2 0%,var(--bg) 100%); }}
+    .shell {{ max-width:1480px; margin:0 auto; padding:28px 22px 60px; }}
+    .hero {{ background:linear-gradient(135deg,rgba(0,95,115,.94),rgba(10,77,104,.92)); color:#f8fbfc; border-radius:24px; padding:28px 30px; box-shadow:var(--shadow); }}
+    .hero h1 {{ margin:0 0 10px; font-size:clamp(28px,4vw,42px); }}
+    .hero p {{ margin:0 0 14px; color:rgba(248,251,252,.88); line-height:1.5; }}
+    .hero-links {{ display:flex; gap:10px; flex-wrap:wrap; }}
+    .hero-links a {{ text-decoration:none; color:#f8fbfc; border:1px solid rgba(248,251,252,.28); padding:9px 12px; border-radius:999px; font-size:14px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:18px; margin-top:22px; }}
+    .panel {{ background:var(--paper); border:1px solid var(--line); border-radius:22px; padding:22px; box-shadow:var(--shadow); }}
+    .span-12 {{ grid-column:span 12; }} .span-8 {{ grid-column:span 8; }} .span-6 {{ grid-column:span 6; }} .span-4 {{ grid-column:span 4; }}
+    .stats {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }}
+    .stat {{ padding:16px; border-radius:18px; background:linear-gradient(180deg,#fff 0%,#f7f4ee 100%); border:1px solid var(--line); }}
+    .stat-label {{ color:var(--muted); font-size:13px; margin-bottom:8px; }}
+    .stat-value {{ font-size:24px; font-weight:700; letter-spacing:-.03em; }}
+    .stack {{ display:grid; gap:14px; }}
+    .stack-card {{ border:1px solid var(--line); border-radius:18px; padding:16px 18px; background:#fffdfa; }}
+    .stack-card-head {{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }}
+    .stack-card-body,.stack-card-action {{ margin:0; line-height:1.5; }}
+    .stack-card-action {{ margin-top:10px; color:var(--muted); }}
+    .badge {{ display:inline-flex; align-items:center; justify-content:center; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:#fff; }}
+    .badge-critical {{ background:var(--critical); }} .badge-high {{ background:var(--high); }} .badge-medium {{ background:var(--medium); }} .badge-low {{ background:var(--low); }} .badge-none {{ background:var(--none); }}
+    .inline-link {{ color:var(--accent); text-decoration:none; font-weight:600; }} .inline-link:hover {{ text-decoration:underline; }}
+    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    th,td {{ text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }}
+    th {{ color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }}
+    ul {{ margin:0; padding-left:20px; line-height:1.55; }}
+    @media (max-width:1100px) {{ .span-8,.span-6,.span-4 {{ grid-column:span 12; }} .stats {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
+    @media (max-width:640px) {{ .shell {{ padding:16px 14px 40px; }} .hero {{ padding:22px 18px; }} .stats {{ grid-template-columns:1fr; }} }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>{html.escape(str(digest.get('headline') or 'Weekly digest'))}</h1>
+      <p>Период: {html.escape(str(context.get('period_start') or '-'))} -> {html.escape(str(context.get('period_end') or '-'))}. Сформировано: {html.escape(str(generated_at or '-'))}.</p>
+      <div class="hero-links">
+        <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/changes">Что изменилось</a>
+        <a href="/manager/trends/weekly">Неделя</a>
+        <a href="/manager/problematic?days=7">Проблемные 7д</a>
+        <a href="/api/1/analytics-1c/manager/digest/weekly/latest">JSON</a>
+        <a href="/api/1/analytics-1c/manager/digest/weekly/latest.md">Markdown</a>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel span-8">
+        <h2>Кратко для руководителя</h2>
+        <ul>{summary_items}</ul>
+      </article>
+      <article class="panel span-4">
+        <h2>Срез недели</h2>
+        <div class="stats">{stat_html}</div>
+      </article>
+
+      <article class="panel span-8">
+        <h2>Компании первой очереди</h2>
+        <div class="stack">{''.join(priority_cards) or '<p>Нет weekly priorities.</p>'}</div>
+      </article>
+
+      <article class="panel span-4">
+        <h2>Что делать</h2>
+        <ul>{action_items}</ul>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Что улучшилось за неделю</h2>
+        <table>
+          <thead>
+            <tr><th>Компания</th><th>Сигнал</th><th>Что это значит</th></tr>
+          </thead>
+          <tbody>
+            {''.join(improvement_rows) or '<tr><td colspan="3">Явных улучшений за неделю не зафиксировано.</td></tr>'}
+          </tbody>
+        </table>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Ограничения интерпретации</h2>
+        <ul>{caveat_items}</ul>
+      </article>
     </section>
   </main>
 </body>
@@ -1346,7 +1645,7 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
         f"Компания {counterparty}: за 30 дней событий {card['docs_30d']}, суммарная активность {card['amount_30d']}, "
         f"прогноз активности на 30 дней {card['amount_forecast_30d']}, риск {card['signal_severity']}."
     )
-    return {
+    payload = {
         "essence": essence,
         "card": card,
         "company_state": company_state[0] if company_state else None,
@@ -1354,6 +1653,8 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
         "signals": signals,
         "recent_documents": timeline,
     }
+    payload["priority_context"] = build_company_priority_context(payload, infobase)
+    return payload
 
 
 @app.get("/api/1/analytics-1c/companies/{counterparty}/forecast")
@@ -1439,6 +1740,19 @@ def manager_weekly_trends(days: int = Query(default=7, ge=2, le=30)) -> dict[str
     return build_weekly_trend_report(load_brief_history_payloads(limit=400), days=days)
 
 
+@app.get("/api/1/analytics-1c/manager/digest/weekly/latest")
+def manager_weekly_digest_latest() -> dict[str, Any]:
+    return load_latest_weekly_digest()
+
+
+@app.get("/api/1/analytics-1c/manager/digest/weekly/latest.md", response_class=PlainTextResponse)
+def manager_weekly_digest_latest_markdown() -> str:
+    latest_md = weekly_digest_state_dir() / "latest.md"
+    if not latest_md.exists():
+        raise HTTPException(status_code=404, detail="weekly digest markdown not generated yet")
+    return latest_md.read_text(encoding="utf-8")
+
+
 @app.get("/api/1/analytics-1c/companies/problematic")
 def problematic_companies_api(
     days: int = Query(default=7, ge=1, le=30),
@@ -1461,6 +1775,11 @@ def manager_brief_delta_view() -> str:
 @app.get("/manager/trends/weekly", response_class=HTMLResponse)
 def manager_weekly_trends_view(days: int = Query(default=7, ge=2, le=30)) -> str:
     return render_weekly_trend_html(build_weekly_trend_report(load_brief_history_payloads(limit=400), days=days))
+
+
+@app.get("/manager/digest/weekly", response_class=HTMLResponse)
+def manager_weekly_digest_view() -> str:
+    return render_weekly_digest_html(load_latest_weekly_digest())
 
 
 @app.get("/manager/briefs", response_class=HTMLResponse)
@@ -1492,6 +1811,7 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
     forecasts = summary_payload.get("forecasts") or []
     signals = summary_payload.get("signals") or []
     recent_documents = summary_payload.get("recent_documents") or []
+    priority_context = summary_payload.get("priority_context") or build_company_priority_context(summary_payload, infobase)
 
     title = card.get("counterparty", "Карточка компании")
     subtitle = summary_payload.get("essence", "")
@@ -1526,6 +1846,15 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
     metric_cards = "".join(
         f"<div class=\"stat\"><div class=\"stat-label\">{html.escape(label)}</div><div class=\"stat-value\">{html.escape(value)}</div></div>"
         for label, value in metrics
+    )
+
+    evidence_items = "".join(
+        f"<li>{html.escape(str(item))}</li>"
+        for item in priority_context.get("evidence", [])
+    )
+    action_items = "".join(
+        f"<li>{html.escape(str(item))}</li>"
+        for item in priority_context.get("actions", [])
     )
 
     forecast_rows = []
@@ -1634,6 +1963,10 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
       border: 1px solid var(--line); border-left: 5px solid var(--accent); border-radius: 18px; padding: 16px 18px;
       background: #fffdfa; line-height: 1.55;
     }}
+    .summary-box-priority {{
+      border-left-color: var(--critical);
+      background: #fff8f8;
+    }}
     .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }}
     .stat {{ padding: 16px; border-radius: 18px; background: linear-gradient(180deg, #fff 0%, #f7f4ee 100%); border: 1px solid var(--line); }}
     .stat-label {{ color: var(--muted); font-size: 13px; margin-bottom: 8px; }}
@@ -1678,6 +2011,7 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
           <a href="/manager/brief">К портфелю</a>
           <a href="/manager/changes">Что изменилось</a>
           <a href="/manager/trends/weekly">Неделя</a>
+          <a href="/manager/digest/weekly">Weekly digest</a>
           <a href="/manager/briefs">История brief</a>
           <a href="/manager/problematic?days=7">Проблемные компании</a>
           <a href="{html.escape(summary_url)}">JSON summary</a>
@@ -1703,6 +2037,22 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
         <div class="stats">
           {metric_cards}
         </div>
+      </article>
+
+      <article class="panel span-8">
+        <h2>Почему приоритет высокий именно у этой компании</h2>
+        <div class="summary-box summary-box-priority">
+          <p><strong>{html.escape(str(priority_context.get("verdict") or "-"))}</strong></p>
+          <p>Текущий приоритет: {severity_badge(str(priority_context.get("current_priority_tier") or "low"))}
+          · score {html.escape(fmt_number(priority_context.get("current_priority_score")))}
+          · причина: {html.escape(str(priority_context.get("current_priority_reason") or "-"))}</p>
+          <ul class="meta-list">{evidence_items or '<li>Жёстких драйверов приоритета не зафиксировано.</li>'}</ul>
+        </div>
+      </article>
+
+      <article class="panel span-4">
+        <h2>Что проверить первым действием</h2>
+        <ul class="meta-list">{action_items}</ul>
       </article>
 
       <article class="panel span-6">

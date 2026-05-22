@@ -56,6 +56,77 @@ import company_intelligence_api as api
 
 
 class CompanyIntelligenceApiTests(unittest.TestCase):
+    def test_build_company_priority_context(self) -> None:
+        latest_payload = {
+            "generated_at": "2026-05-22T12:00:00+00:00",
+            "context": {
+                "delta": {
+                    "top_changes": [
+                        {
+                            "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                            "company": "ФЕЛИЦТ ГРУПП 2026",
+                            "priority_tier": "critical",
+                            "priority_score": 190,
+                            "priority_reason": "рост кейсов +5, рост блокировок +2",
+                            "summary": "Открытых кейсов стало больше: 1 -> 6.",
+                            "open_cases_delta": 5,
+                            "active_locks_delta": 2,
+                            "detections_delta": 4,
+                            "forecast_delta": -22.0,
+                        }
+                    ]
+                }
+            },
+            "brief": {"headline": "test"},
+        }
+        history_payload = {
+            "generated_at": "2026-05-22T12:00:00+00:00",
+            "context": {
+                "portfolio_summary": {
+                    "companies_total": 41,
+                    "critical_total": 39,
+                    "high_total": 2,
+                    "busy_total": 40,
+                    "open_cases_total": 100,
+                    "detections_total": 100,
+                    "activity_30d_total": 1000.0,
+                    "activity_forecast_30d_total": 2000.0,
+                },
+                "delta": latest_payload["context"]["delta"],
+            },
+        }
+        summary_payload = {
+            "card": {
+                "counterparty": "ФЕЛИЦТ ГРУПП 2026",
+                "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                "signal_severity": "critical",
+                "signal_score": 95,
+                "open_cases_total": 6,
+                "detections_total": 9,
+                "active_locks": 2,
+                "days_since_last_activity": 0,
+                "registry_match_mode": "manual",
+            }
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            state_dir = Path(tmp)
+            history_dir = state_dir / "history"
+            history_dir.mkdir(parents=True, exist_ok=True)
+            (state_dir / "latest.json").write_text(json.dumps(latest_payload), encoding="utf-8")
+            (history_dir / "20260522T120000Z.json").write_text(json.dumps(history_payload), encoding="utf-8")
+            old = os.environ.get("AW_1C_MANAGER_BRIEF_STATE_DIR")
+            os.environ["AW_1C_MANAGER_BRIEF_STATE_DIR"] = str(state_dir)
+            try:
+                context = api.build_company_priority_context(summary_payload, "ФЕЛИЦТ ГРУПП 2026")
+                self.assertEqual(context["current_priority_tier"], "critical")
+                self.assertIn("рост кейсов", context["current_priority_reason"])
+                self.assertTrue(any("manual" in item.lower() for item in context["evidence"]))
+            finally:
+                if old is None:
+                    os.environ.pop("AW_1C_MANAGER_BRIEF_STATE_DIR", None)
+                else:
+                    os.environ["AW_1C_MANAGER_BRIEF_STATE_DIR"] = old
+
     def test_render_problematic_companies_html(self) -> None:
         html_page = api.render_problematic_companies_html(
             [
@@ -204,6 +275,48 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         self.assertIn("Недельный тренд портфеля", html_page)
         self.assertIn("Недельный рейтинг приоритетов", html_page)
         self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
+
+    def test_render_weekly_digest_html(self) -> None:
+        payload = {
+            "generated_at": "2026-05-22T12:00:00+00:00",
+            "context": {
+                "period_start": "2026-05-16",
+                "period_end": "2026-05-22",
+                "latest_summary": {
+                    "companies_total": 41,
+                    "critical_total": 39,
+                    "busy_total": 40,
+                    "open_cases_total": 100,
+                    "detections_total": 110,
+                    "activity_forecast_30d_total": 2500.0,
+                },
+            },
+            "digest": {
+                "headline": "Неделя тяжёлая: кейсы и busy растут.",
+                "summary": ["critical +2", "кейсы +15", "manual-match не равен юр. факту"],
+                "top_priorities": [
+                    {
+                        "company": "ФЕЛИЦТ ГРУПП 2026",
+                        "priority": "critical",
+                        "reason": "рост кейсов +5, рост блокировок +2",
+                        "recommended_action": "Сразу разобрать новые открытые кейсы.",
+                    }
+                ],
+                "improvements": [
+                    {
+                        "company": "СЕРДИТОВ АНДРЕЙ 2026",
+                        "signal": "severity снизилась high -> medium",
+                        "meaning": "Нагрузка ослабла.",
+                    }
+                ],
+                "actions": ["Разобрать top priority компании."],
+                "caveats": ["Активность не равна выручке."],
+            },
+        }
+        html_page = api.render_weekly_digest_html(payload)
+        self.assertIn("Неделя тяжёлая", html_page)
+        self.assertIn("Компании первой очереди", html_page)
+        self.assertIn("Что улучшилось за неделю", html_page)
 
 
 if __name__ == "__main__":
