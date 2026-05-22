@@ -88,8 +88,10 @@ function Get-1CFileInfobases {
 }
 
 function Get-HostSample {
-    $cpu = (Get-Counter '\Processor(_Total)\% Processor Time').CounterSamples.CookedValue
     $os = Get-CimInstance Win32_OperatingSystem
+    $cpuSample = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue |
+        Measure-Object -Property LoadPercentage -Average
+    $cpu = if ($cpuSample.Count -gt 0 -and $null -ne $cpuSample.Average) { [double]$cpuSample.Average } else { 0 }
     $disk = Get-PSDrive -Name E -ErrorAction SilentlyContinue
     $rdp = (quser 2>$null | Select-Object -Skip 1 | Measure-Object).Count
 

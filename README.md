@@ -12,7 +12,7 @@
 - `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
 - `docs/GRAFANA_DASHBOARDS_RU.md` — импорт и сопровождение Grafana dashboard'ов через Ansible API playbook.
 - `docs/PRESENTATION_RU.md` — презентационные экраны Grafana и AW-rus со скриншотами.
-- `docs/1C_FILE_ANALYTICS_STACK_RU.md` — новый ClickHouse/Grafana/AI Investigator контур для файловой 1С.
+- `docs/1C_FILE_ANALYTICS_STACK_RU.md` — production guide по файловой 1С Detmir: topology, rollout, verification, recovery, task principal и hardening.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
 - `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.

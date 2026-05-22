@@ -1,40 +1,61 @@
 # File 1C Analytics
 
-Эта страница описывает новый контур для **файловой 1С**.
+Эта страница фиксирует **production-контур для файловой 1С Detmir**.
 
-## Когда он нужен
+## Что это за контур
 
-Используй этот контур, если:
+Это не SQL-exporter и не `rac`-мониторинг серверной 1С.
 
-- 1С файловая;
-- на RDP host нельзя или нежелательно ставить тяжёлые агенты;
-- нужен audit/detection/investigation стек;
-- Grafana должна быть не только для KPI, но и для расследования.
+Это отдельный стек для **файловой 1С**, где:
 
-## Схема
+- Windows/RDP host отдаёт только `read-only export/telemetry`;
+- `10.10.10.2` принимает данные, грузит их в `ClickHouse`, строит `detections/cases`;
+- `10.10.10.11` показывает dashboards в `Grafana`.
 
-```text
-1С exports + reglog + host telemetry
-              ↓
-       ETL / normalize
-              ↓
-         ClickHouse
-              ↓
-     Grafana + detections
-              ↓
-       AI Investigator
-```
+## Production topology
 
-## Основные компоненты
+- `192.168.100.18`
+  - файловая 1С
+  - scheduled task `ActivityWatch File1C Upload`
+- `10.10.10.2`
+  - `ClickHouse`
+  - ETL/ingest
+  - `aw-1c-ingest.timer`
+  - `aw-1c-proofcheck.timer`
+- `10.10.10.11`
+  - `Grafana`
+  - datasource `clickhouse-1c`
+  - folder `1C File Analytics`
 
-- `clickhouse-1c/README.md`
-- `clickhouse-1c/clickhouse/init/*.sql`
-- `clickhouse-1c/etl/load_1c_exports.py`
-- `clickhouse-1c/detections/rules.yml`
-- `clickhouse-1c/grafana/dashboard-catalog.md`
-- `clickhouse-1c/ai/INVESTIGATOR_API.md`
+## Подтверждённое рабочее состояние
 
-## Основные dashboard-ы
+Подтверждённые таблицы:
+
+- `documents`
+- `reglog_events`
+- `audit_events`
+- `host_events`
+- `entity_timeline`
+- `detections`
+- `cases`
+
+Подтверждённый runtime:
+
+- scheduled task `\ActivityWatch File1C Upload`
+  - `Run As User: Администратор`
+  - `Last Result: 0`
+- `aw-1c-proofcheck.timer`
+  - `active`
+  - `enabled`
+
+## Что важно помнить
+
+- Контур **не трогает содержимое 1С**.
+- `1Cv8.1CD` не меняется.
+- `COM`, `Configurator`, `Designer` сюда не входят.
+- Для scheduled task на Windows нужен рабочий principal, а не `SYSTEM`.
+
+## Основные dashboards
 
 - `1C Executive Summary`
 - `1C Operations Health`
@@ -43,8 +64,11 @@
 - `1C Investigation Timeline`
 - `1C Data Quality`
 
+## Главный документ
+
+- [Файловая 1С Detmir: промышленное развёртывание ClickHouse/Grafana контура](../1C_FILE_ANALYTICS_STACK_RU.md)
+
 ## Связанные документы
 
-- [File 1C analytics stack](../1C_FILE_ANALYTICS_STACK_RU.md)
 - [1C Grafana deployment](../1C_GRAFANA_DEPLOYMENT_RU.md)
 - [Runbook](../runbook.md)
