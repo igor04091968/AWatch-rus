@@ -466,6 +466,33 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     summary_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in brief.get("summary", []))
     action_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in actions)
     caveat_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in caveats)
+    morning_regulation_items = "\n".join(
+        f"<li>{html.escape(str(item))}</li>"
+        for item in [
+            "Открыть brief, changes и weekly digest. Сначала понять: хвост кейсов растёт или сокращается.",
+            "Выбрать не больше 5 компаний первой очереди. Критерии: рост open cases, active locks, manual-match, повторный critical без улучшения.",
+            "По каждой компании требовать только 4 вещи: причина, владелец, срок, измеримый результат к вечеру.",
+            "Не принимать формулировки «смотрим», «разбираемся», «в работе». Принимать только конкретный план закрытия.",
+        ]
+    )
+    evening_regulation_items = "\n".join(
+        f"<li>{html.escape(str(item))}</li>"
+        for item in [
+            "По каждой компании дня спросить только факт: сколько кейсов было утром и сколько стало вечером.",
+            "Отдельно проверить, снялись ли блокировки и исчез ли прирост новых кейсов.",
+            "По каждой компании зафиксировать один статус: снято, частично снято, не снято.",
+            "Если результата нет, менять владельца или усиливать контроль; не переносить хвост молча.",
+        ]
+    )
+    hard_rules_items = "\n".join(
+        f"<li>{html.escape(str(item))}</li>"
+        for item in [
+            "Не пытаться разбирать все 41 компании сразу.",
+            "Не путать operational critical с финансовым крахом портфеля.",
+            "Не делать жёстких оргвыводов по manual-match компаниям без проверки соответствия реестру.",
+            "Главный KPI на сейчас: закрытые кейсы и снятые блокировки, а не количество проведённых разборов.",
+        ]
+    )
 
     return f"""<!doctype html>
 <html lang="ru">
@@ -784,6 +811,27 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
         <h2>Ограничения интерпретации</h2>
         <ul class="caveat-list">
           {caveat_items}
+        </ul>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Регламент руководителя: утро</h2>
+        <ul class="action-list">
+          {morning_regulation_items}
+        </ul>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Регламент руководителя: вечер</h2>
+        <ul class="action-list">
+          {evening_regulation_items}
+        </ul>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Жёсткие правила управления</h2>
+        <ul class="action-list">
+          {hard_rules_items}
         </ul>
       </article>
 

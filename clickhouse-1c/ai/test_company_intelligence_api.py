@@ -56,6 +56,40 @@ import company_intelligence_api as api
 
 
 class CompanyIntelligenceApiTests(unittest.TestCase):
+    def test_render_manager_brief_includes_executive_regulation(self) -> None:
+        payload = {
+            "generated_at": "2026-05-22T12:00:00+00:00",
+            "render_mode": "codex",
+            "brief": {
+                "headline": "Портфель 1С под давлением.",
+                "summary": ["Кейсы растут.", "Нужен triage.", "Manual-match требует осторожности."],
+                "top_risks": [],
+                "top_forecasts": [],
+                "actions": ["Разобрать 5 компаний первой очереди."],
+                "caveats": ["Operational severity не равна финансам."],
+            },
+            "context": {
+                "portfolio_summary": {
+                    "companies_total": 41,
+                    "critical_total": 41,
+                    "open_cases_total": 2744,
+                    "activity_forecast_30d_total": 1723233.3,
+                },
+                "freshness": [
+                    {
+                        "source": "documents_ts",
+                        "latest_ts": "2026-05-22T09:00:02+00:00",
+                        "lag_hours": 3.84,
+                        "stale": False,
+                    }
+                ],
+            },
+        }
+        html_page = api.render_manager_brief_html(payload)
+        self.assertIn("Регламент руководителя: утро", html_page)
+        self.assertIn("Регламент руководителя: вечер", html_page)
+        self.assertIn("Жёсткие правила управления", html_page)
+
     def test_build_company_priority_context(self) -> None:
         latest_payload = {
             "generated_at": "2026-05-22T12:00:00+00:00",
