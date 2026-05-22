@@ -14,6 +14,7 @@
 - `docs/PRESENTATION_RU.md` — презентационные экраны Grafana и AW-rus со скриншотами.
 - `docs/1C_FILE_ANALYTICS_STACK_RU.md` — production guide по файловой 1С Detmir: topology, rollout, verification, recovery, task principal и hardening.
 - `docs/1C_COMPANY_INTELLIGENCE_RU.md` — слой анализа и прогноза по компаниям поверх `clickhouse-1c`: marts, forecasting, API и Grafana; в file-based Detmir контуре это прогноз активности компаний/баз по read-only telemetry.
+- `docs/1C_AI_INVESTIGATOR_RUNTIME_RU.md` — сводка текущего production runtime: manager pages, recovery briefs, weekly digest, company entity keys и live topology.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
 - `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.

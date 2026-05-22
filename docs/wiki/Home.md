@@ -17,6 +17,7 @@
 - [Security analytics stack v1](../security-analytics-stack-v1.md) - целевая v1-модель без претензии на Splunk-class SIEM
 - [File 1C analytics](File-1C-Analytics) - ClickHouse/Grafana/AI Investigator контур для файловой 1С
 - [1C Company Intelligence](1C-Company-Intelligence) - AI-ready слой анализа и прогноза по компаниям поверх файловой 1С
+- [1C AI Investigator Runtime](../1C_AI_INVESTIGATOR_RUNTIME_RU.md) - что уже реально сделано в production: topology, manager UI, briefs, recovery и границы контура
 
 ### Компоненты
 - [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring) - мониторинг clipboard, печати, USB
