@@ -556,8 +556,8 @@ def problematic_companies(days: int = 7, limit: int = 50) -> list[dict[str, Any]
         GROUP BY infobase, counterparty
     )
     SELECT
-        p.infobase,
-        p.counterparty,
+        p.infobase AS infobase,
+        p.counterparty AS counterparty,
         p.company_name,
         p.normalized_counterparty,
         p.registry_match_mode,
