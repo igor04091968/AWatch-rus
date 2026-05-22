@@ -1,3 +1,4 @@
 clickhouse-connect>=0.7.16
 PyYAML>=6.0.2
 python-dateutil>=2.9.0
+openpyxl>=3.1.5

@@ -11,6 +11,7 @@
     aw_windows_file_1c_auto_upload_interval_hours: 6
     aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
     aw_windows_file_1c_remote_root: "/opt/activitywatch/clickhouse-1c/landing"
+    aw_windows_file_1c_registry_workbook_path: "E:\\USER1\\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx"
     aw_windows_upload_key_private_path: /tmp/awops_ed25519
     aw_windows_upload_key_public_path: /tmp/awops_ed25519.pub
 
@@ -87,6 +88,7 @@
             targetHost = "{{ aw_windows_file_1c_target_host_effective }}"
             targetUser = "{{ aw_windows_file_1c_target_user }}"
             remoteRoot = "{{ aw_windows_file_1c_remote_root }}"
+            registryWorkbookPath = "{{ aw_windows_file_1c_registry_workbook_path }}"
           }
 
           if ($config.analytics.PSObject.Properties.Name -contains 'file1cAutomation') {

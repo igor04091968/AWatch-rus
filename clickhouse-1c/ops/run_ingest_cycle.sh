@@ -38,6 +38,7 @@ fi
 . "${ENV_FILE}"
 
 "${VENV}/bin/python" "${ROOT}/etl/load_1c_exports.py" --config "${CONFIG}"
+"${VENV}/bin/python" "${ROOT}/etl/load_company_registry_xlsx.py" --config "${CONFIG}" --landing "${ROOT}/landing/registry"
 
 docker exec -i "${CH_CONTAINER}" clickhouse-client \
   --user "${CLICKHOUSE_USER}" \

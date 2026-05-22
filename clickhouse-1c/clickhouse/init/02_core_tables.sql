@@ -53,6 +53,23 @@ CREATE TABLE IF NOT EXISTS analytics_1c.companies
 ENGINE = MergeTree
 ORDER BY (infobase, ts);
 
+CREATE TABLE IF NOT EXISTS analytics_1c.company_registry
+(
+    ts DateTime,
+    source_file String,
+    source_sheet LowCardinality(String),
+    company_name String,
+    company_key String,
+    assignee_name String,
+    registry_status LowCardinality(String),
+    share_text String,
+    key_contour UInt8,
+    inn String,
+    kpp String
+)
+ENGINE = MergeTree
+ORDER BY (company_key, ts, source_sheet);
+
 CREATE TABLE IF NOT EXISTS analytics_1c.reglog_events
 (
     ts DateTime,

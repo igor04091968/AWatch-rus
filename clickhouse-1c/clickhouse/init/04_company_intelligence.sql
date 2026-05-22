@@ -101,6 +101,20 @@ SELECT
 FROM analytics_1c.companies
 GROUP BY infobase;
 
+CREATE OR REPLACE VIEW analytics_1c.v_company_registry_current AS
+SELECT
+    company_key,
+    argMax(company_name, ts) AS company_name,
+    argMax(assignee_name, ts) AS assignee_name,
+    argMax(registry_status, ts) AS registry_status,
+    argMax(share_text, ts) AS share_text,
+    argMax(key_contour, ts) AS key_contour,
+    argMax(inn, ts) AS inn,
+    argMax(kpp, ts) AS kpp,
+    max(ts) AS last_registry_snapshot_at
+FROM analytics_1c.company_registry
+GROUP BY company_key;
+
 CREATE OR REPLACE VIEW analytics_1c.v_company_portfolio_overview AS
 WITH
 base AS
@@ -136,6 +150,11 @@ company_state AS
 (
     SELECT *
     FROM analytics_1c.v_companies_current
+),
+registry_state AS
+(
+    SELECT *
+    FROM analytics_1c.v_company_registry_current
 ),
 signals AS
 (
@@ -196,6 +215,12 @@ SELECT
     if(company_state.organization != '', company_state.organization, base.organization) AS organization,
     base.counterparty AS counterparty,
     if(company_state.company_name != '', company_state.company_name, base.counterparty) AS company_name,
+    ifNull(registry_state.assignee_name, '') AS registry_assignee_name,
+    ifNull(registry_state.registry_status, '') AS registry_status,
+    ifNull(registry_state.share_text, '') AS registry_share_text,
+    ifNull(registry_state.key_contour, 0) AS registry_key_contour,
+    ifNull(registry_state.inn, '') AS registry_inn,
+    ifNull(registry_state.kpp, '') AS registry_kpp,
     ifNull(company_state.owner_user, '') AS owner_user,
     ifNull(company_state.base_id, '') AS base_id,
     ifNull(company_state.base_path, '') AS base_path,
@@ -229,6 +254,7 @@ SELECT
     ifNull(signals.top_signal, '') AS top_signal
 FROM base
 LEFT JOIN company_state ON company_state.infobase = base.infobase
+LEFT JOIN registry_state ON registry_state.company_key = trimBoth(replaceRegexpAll(replaceRegexpAll(replaceRegexpAll(upperUTF8(base.counterparty), '(^|\\s)20[0-9]{2}($|\\s)', ' '), '[^0-9A-ZА-ЯЁ]+', ' '), '\\s+', ' '))
 LEFT JOIN d7 ON d7.infobase = base.infobase AND d7.counterparty = base.counterparty
 LEFT JOIN d30 ON d30.infobase = base.infobase AND d30.counterparty = base.counterparty
 LEFT JOIN signals ON signals.infobase = base.infobase AND signals.counterparty = base.counterparty

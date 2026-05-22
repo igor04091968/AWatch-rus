@@ -39,6 +39,7 @@
     aw_windows_file_1c_auto_upload_interval_hours: 6
     aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
     aw_windows_file_1c_target_user: "igor"
+    aw_windows_file_1c_registry_workbook_path: "E:\\USER1\\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx"
     aw_windows_afk_enabled_default: true
     aw_windows_window_enabled_default: true
     aw_windows_file_ops_enabled: true
@@ -250,6 +251,7 @@
             File1CAutoUploadTaskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
             File1CTargetHost = "{{ aw_windows_file_1c_target_host_effective }}"
             File1CTargetUser = "{{ aw_windows_file_1c_target_user }}"
+            File1CRegistryWorkbookPath = "{{ aw_windows_file_1c_registry_workbook_path }}"
             CustomRulesPath = "{{ aw_windows_rules_path }}"
             CustomPolicyPath = "{{ aw_windows_policy_path }}"
           }

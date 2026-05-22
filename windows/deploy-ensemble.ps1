@@ -50,6 +50,7 @@ param(
     [string]$File1CAutoUploadTaskName = 'ActivityWatch File1C Upload',
     [string]$File1CTargetHost,
     [string]$File1CTargetUser = 'igor',
+    [string]$File1CRegistryWorkbookPath = 'E:\USER1\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx',
     [switch]$SkipHardening,
     [switch]$ValidateAfterDeploy,
     [switch]$IntegrationTestEnabled
@@ -118,6 +119,7 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -File1CAutoUploadTaskName $File1CAutoUploadTaskName `
     -File1CTargetHost $File1CTargetHost `
     -File1CTargetUser $File1CTargetUser `
+    -File1CRegistryWorkbookPath $File1CRegistryWorkbookPath `
     -IntegrationTestEnabled:$IntegrationTestEnabled
 
 if (-not $SkipHardening) {

@@ -60,6 +60,7 @@ def health() -> dict[str, Any]:
             SELECT
                 countIf(counterparty != '') AS documents_with_counterparty,
                 (SELECT count() FROM analytics_1c.companies) AS companies_total,
+                (SELECT count() FROM analytics_1c.company_registry) AS registry_rows_total,
                 (SELECT count() FROM analytics_1c.company_forecasts) AS forecasts_total,
                 (SELECT count() FROM analytics_1c.company_health_signals) AS health_signals_total
             FROM analytics_1c.documents
@@ -85,6 +86,12 @@ def companies_overview(
         organization,
         counterparty,
         company_name,
+        registry_assignee_name,
+        registry_status,
+        registry_share_text,
+        registry_key_contour,
+        registry_inn,
+        registry_kpp,
         owner_user,
         base_path,
         current_status,

@@ -7,12 +7,14 @@ mkdir -p \
   "${ROOT}/landing/documents" \
   "${ROOT}/landing/postings" \
   "${ROOT}/landing/companies" \
+  "${ROOT}/landing/registry" \
   "${ROOT}/landing/reglog" \
   "${ROOT}/landing/audit" \
   "${ROOT}/landing/host" \
   "${ROOT}/archive/documents" \
   "${ROOT}/archive/postings" \
   "${ROOT}/archive/companies" \
+  "${ROOT}/archive/registry" \
   "${ROOT}/archive/reglog" \
   "${ROOT}/archive/audit" \
   "${ROOT}/archive/host"

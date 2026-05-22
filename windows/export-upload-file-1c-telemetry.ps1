@@ -4,7 +4,8 @@ param(
     [string]$AnalyticsHost = '',
     [string]$AnalyticsUser = 'igor',
     [string]$RemoteRoot = '/opt/activitywatch/clickhouse-1c/landing',
-    [string]$RemoteKeyPath = 'C:\ProgramData\AWatch-rus\ssh\awops_ed25519'
+    [string]$RemoteKeyPath = 'C:\ProgramData\AWatch-rus\ssh\awops_ed25519',
+    [string]$RegistryWorkbookPath = ''
 )
 
 Set-StrictMode -Version Latest
@@ -263,6 +264,16 @@ if ($config.PSObject.Properties.Name -contains 'analytics' -and
     -not [string]::IsNullOrWhiteSpace([string]$config.analytics.file1cAutomation.remoteRoot)) {
     $RemoteRoot = [string]$config.analytics.file1cAutomation.remoteRoot
 }
+if ([string]::IsNullOrWhiteSpace($RegistryWorkbookPath) -and
+    $config.PSObject.Properties.Name -contains 'analytics' -and
+    $config.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and
+    $config.analytics.file1cAutomation.PSObject.Properties.Name -contains 'registryWorkbookPath' -and
+    -not [string]::IsNullOrWhiteSpace([string]$config.analytics.file1cAutomation.registryWorkbookPath)) {
+    $RegistryWorkbookPath = [string]$config.analytics.file1cAutomation.registryWorkbookPath
+}
+if ([string]::IsNullOrWhiteSpace($RegistryWorkbookPath)) {
+    $RegistryWorkbookPath = 'E:\USER1\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx'
+}
 
 $infobases = @(Get-1CFileInfobases)
 $nowUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
@@ -459,6 +470,7 @@ $files = @{
     reglog = Join-Path $outRoot "reglog-$stamp.jsonl"
     audit = Join-Path $outRoot "audit-$stamp.jsonl"
     host = Join-Path $outRoot "host-$stamp.jsonl"
+    registry = Join-Path $outRoot "company-registry-$stamp.xlsx"
 }
 
 $documentRows = @($documents | ForEach-Object { $_ })
@@ -473,12 +485,21 @@ Write-JsonLines -Path ([string]$files['reglog']) -Rows $reglogRows
 Write-JsonLines -Path ([string]$files['audit']) -Rows $auditRows
 Write-JsonLines -Path ([string]$files['host']) -Rows $hostRowsNormalized
 
+$registryUploaded = $false
+if (Test-Path -LiteralPath $RegistryWorkbookPath) {
+    Copy-Item -LiteralPath $RegistryWorkbookPath -Destination ([string]$files['registry']) -Force
+}
+
 $effectiveKeyPath = New-TemporarySshKeyCopy -SourceKeyPath $RemoteKeyPath
 
 try {
     Write-RunLog "prepared datasets documents=$($documentRows.Count) companies=$($companyRows.Count) reglog=$($reglogRows.Count) audit=$($auditRows.Count) host=$($hostRowsNormalized.Count)"
     foreach ($dataset in 'documents', 'companies', 'reglog', 'audit', 'host') {
         Invoke-SshUploadWithRetry -KeyPath $effectiveKeyPath -SourcePath ([string]$files[$dataset]) -Destination "$AnalyticsUser@$AnalyticsHost`:$RemoteRoot/$dataset/"
+    }
+    if (Test-Path -LiteralPath ([string]$files['registry'])) {
+        Invoke-SshUploadWithRetry -KeyPath $effectiveKeyPath -SourcePath ([string]$files['registry']) -Destination "$AnalyticsUser@$AnalyticsHost`:$RemoteRoot/registry/"
+        $registryUploaded = $true
     }
     Save-ExporterState -Path $ExporterStatePath -State $nextExporterState
     Write-RunLog "upload complete analyticsHost=$AnalyticsHost remoteRoot=$RemoteRoot"
@@ -501,5 +522,6 @@ Write-RunLog 'file1c exporter done'
         reglog = $reglog.Count
         audit = $audit.Count
         host = $hostRows.Count
+        registry = if ($registryUploaded) { 1 } else { 0 }
     }
 } | ConvertTo-Json -Depth 8

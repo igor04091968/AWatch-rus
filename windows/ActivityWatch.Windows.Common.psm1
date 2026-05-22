@@ -560,6 +560,7 @@ function New-ActivityWatchDeploymentConfig {
         [string]$File1CTargetHost,
         [string]$File1CTargetUser = 'igor',
         [string]$File1CRemoteRoot = '/opt/activitywatch/clickhouse-1c/landing',
+        [string]$File1CRegistryWorkbookPath = 'E:\USER1\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx',
         [switch]$IntegrationTestEnabled
     )
 
@@ -645,6 +646,7 @@ function New-ActivityWatchDeploymentConfig {
                 targetHost = $File1CTargetHost
                 targetUser = $File1CTargetUser
                 remoteRoot = $File1CRemoteRoot
+                registryWorkbookPath = $File1CRegistryWorkbookPath
             }
         }
         sessionEvents = [pscustomobject]@{
