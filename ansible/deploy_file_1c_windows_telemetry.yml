@@ -105,8 +105,13 @@
           $taskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
           $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
           $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1`" -ConfigPath `"{{ aw_windows_state_root }}\deployment-config.json`""
-          & cmd.exe /c "schtasks /Delete /TN `"$taskName`" /F >nul 2>&1" | Out-Null
-          & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO {{ aw_windows_file_1c_auto_upload_interval_hours | int }} /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
-          if ($LASTEXITCODE -ne 0) {
-            throw "Не удалось создать scheduled task $taskName"
+          $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if ($existingTask) {
+            $action = New-ScheduledTaskAction -Execute $powerShellExe -Argument "-NoProfile -ExecutionPolicy Bypass -File `"{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1`" -ConfigPath `"{{ aw_windows_state_root }}\deployment-config.json`""
+            Set-ScheduledTask -TaskName $taskName -Action $action | Out-Null
+          } else {
+            & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO {{ aw_windows_file_1c_auto_upload_interval_hours | int }} /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "Не удалось создать scheduled task $taskName"
+            }
           }

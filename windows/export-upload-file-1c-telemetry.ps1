@@ -10,6 +10,27 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$LogDir = 'C:\ProgramData\AWatch-rus\logs'
+$LogPath = Join-Path $LogDir 'file1c-telemetry.log'
+$ScpExe = Join-Path $env:WINDIR 'System32\OpenSSH\scp.exe'
+
+New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+
+function Write-RunLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    $line = '{0} {1}' -f ([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')), $Message
+    Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
+}
+
+trap {
+    Write-RunLog ("ERROR: " + ($_ | Out-String).Trim())
+    exit 1
+}
+
 function New-TemporarySshKeyCopy {
     param(
         [Parameter(Mandatory = $true)]
@@ -119,15 +140,24 @@ function Invoke-SshUploadWithRetry {
     )
 
     for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
-        & scp.exe -q -i $KeyPath -o LogLevel=ERROR -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL $SourcePath $Destination
+        Write-RunLog "scp attempt=$attempt source=$SourcePath destination=$Destination"
+        & $ScpExe -q -i $KeyPath -o LogLevel=ERROR -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL $SourcePath $Destination
         if ($LASTEXITCODE -eq 0) {
+            Write-RunLog "scp success source=$SourcePath"
             return
         }
         if ($attempt -ge $Attempts) {
             throw "scp upload failed after $Attempts attempts for $SourcePath with rc=$LASTEXITCODE"
         }
+        Write-RunLog "scp retry source=$SourcePath rc=$LASTEXITCODE delay=${DelaySeconds}s"
         Start-Sleep -Seconds $DelaySeconds
     }
+}
+
+Write-RunLog 'file1c exporter start'
+
+if (-not (Test-Path -LiteralPath $ScpExe)) {
+    throw "scp client not found: $ScpExe"
 }
 
 if (-not (Test-Path -LiteralPath $RemoteKeyPath)) {
@@ -275,14 +305,18 @@ Write-JsonLines -Path ([string]$files['host']) -Rows $hostRowsNormalized
 $effectiveKeyPath = New-TemporarySshKeyCopy -SourceKeyPath $RemoteKeyPath
 
 try {
+    Write-RunLog "prepared datasets documents=$($documentRows.Count) reglog=$($reglogRows.Count) audit=$($auditRows.Count) host=$($hostRowsNormalized.Count)"
     foreach ($dataset in 'documents', 'reglog', 'audit', 'host') {
         Invoke-SshUploadWithRetry -KeyPath $effectiveKeyPath -SourcePath ([string]$files[$dataset]) -Destination "$AnalyticsUser@$AnalyticsHost`:$RemoteRoot/$dataset/"
     }
+    Write-RunLog "upload complete analyticsHost=$AnalyticsHost remoteRoot=$RemoteRoot"
 }
 finally {
     Remove-Item -LiteralPath $effectiveKeyPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $outRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+Write-RunLog 'file1c exporter done'
 
 [ordered]@{
     analyticsHost = $AnalyticsHost

@@ -1652,6 +1652,10 @@ function Register-ActivityWatchFile1CAutoUploadTask {
     $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`""
 
+    if (Set-ActivityWatchScheduledTaskAction -TaskName $taskName -Execute $powerShellExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`"") {
+        return
+    }
+
     Remove-ActivityWatchScheduledTask -TaskName $taskName
     & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
     if ($LASTEXITCODE -ne 0) {
