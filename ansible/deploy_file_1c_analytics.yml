@@ -70,6 +70,8 @@
         - clickhouse
         - detections
         - etl
+        - ai
+        - grafana
         - ops
         - sample
 
@@ -85,6 +87,8 @@
         - clickhouse
         - detections
         - etl
+        - ai
+        - grafana
         - ops
         - sample
 
@@ -98,6 +102,8 @@
       loop:
         - bootstrap_runtime.sh
         - check_ingest_freshness.sh
+        - run_company_intelligence_api.sh
+        - run_company_intelligence_refresh.sh
         - run_ingest_cycle.sh
 
     - name: Создать .env для file-1C analytics
@@ -235,6 +241,15 @@
         mode: "0644"
       notify: Перезагрузить systemd
 
+    - name: Установить systemd unit aw-1c-company-api.service
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/ops/aw-1c-company-api.service"
+        dest: /etc/systemd/system/aw-1c-company-api.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезагрузить systemd
+
     - name: Разрешить Windows upload key для igor
       ansible.builtin.lineinfile:
         path: /home/igor/.ssh/authorized_keys
@@ -254,6 +269,13 @@
     - name: Включить и запустить aw-1c-proofcheck.timer
       ansible.builtin.systemd:
         name: aw-1c-proofcheck.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Включить и запустить aw-1c-company-api.service
+      ansible.builtin.systemd:
+        name: aw-1c-company-api.service
         enabled: true
         state: started
         daemon_reload: true
