@@ -13,11 +13,20 @@ STATE_PATH = os.environ.get(
     "/var/lib/activitywatch/aw-worktime-ui-bridge-state.json",
 )
 TIMEOUT = float(os.environ.get("AW_WORKTIME_UI_BRIDGE_TIMEOUT", "20"))
+WATCHER_FALLBACK_ENABLED = os.environ.get("AW_WORKTIME_UI_BRIDGE_WATCHER_FALLBACK", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
+WATCHER_FALLBACK_STALE_SECONDS = float(os.environ.get("AW_WORKTIME_UI_BRIDGE_WATCHER_STALE_SECONDS", "600"))
 
 
 SESSIONS_BUCKET = f"aw-worktime-sessions_{HOST}"
 AFK_BUCKET = f"aw-rdp-afk_{HOST}"
 WINDOW_BUCKET = f"aw-rdp-window_{HOST}"
+WATCHER_AFK_BUCKET = f"aw-watcher-afk_{HOST}"
+WATCHER_WINDOW_BUCKET = f"aw-watcher-window_{HOST}"
 
 
 def _req(method: str, path: str, payload=None):
@@ -41,6 +50,31 @@ def ensure_bucket(bucket_id: str, event_type: str, client: str):
     except urllib.error.HTTPError as e:
         if e.code != 304:
             raise
+
+
+def get_latest_bucket_event_ts(bucket_id: str):
+    try:
+        events = _req("GET", f"/api/0/buckets/{bucket_id}/events?limit=1") or []
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+    if not events:
+        return None
+    ts = events[0].get("timestamp")
+    if not ts:
+        return None
+    try:
+        return parse_iso_utc(ts)
+    except Exception:
+        return None
+
+
+def bucket_needs_fallback(bucket_id: str, now_utc: datetime, stale_after_seconds: float):
+    latest_dt = get_latest_bucket_event_ts(bucket_id)
+    if latest_dt is None:
+        return True
+    return (now_utc - latest_dt).total_seconds() >= stale_after_seconds
 
 
 def load_state():
@@ -198,6 +232,13 @@ def main():
 
     _req("POST", f"/api/0/buckets/{AFK_BUCKET}/events", afk_events)
     _req("POST", f"/api/0/buckets/{WINDOW_BUCKET}/events", win_events)
+    if WATCHER_FALLBACK_ENABLED:
+        if bucket_needs_fallback(WATCHER_AFK_BUCKET, now_utc, WATCHER_FALLBACK_STALE_SECONDS):
+            ensure_bucket(WATCHER_AFK_BUCKET, "afkstatus", "aw-watcher-afk")
+            _req("POST", f"/api/0/buckets/{WATCHER_AFK_BUCKET}/events", afk_events)
+        if bucket_needs_fallback(WATCHER_WINDOW_BUCKET, now_utc, WATCHER_FALLBACK_STALE_SECONDS):
+            ensure_bucket(WATCHER_WINDOW_BUCKET, "currentwindow", "aw-watcher-window")
+            _req("POST", f"/api/0/buckets/{WATCHER_WINDOW_BUCKET}/events", win_events)
     save_state({"last_ts": new_last_ts})
     print(f"posted_afk={len(afk_events)} posted_win={len(win_events)} last_ts={new_last_ts}")
 

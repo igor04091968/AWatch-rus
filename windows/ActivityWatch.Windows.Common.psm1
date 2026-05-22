@@ -1,4 +1,4 @@
-﻿Set-StrictMode -Version Latest
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 function Assert-Administrator {
@@ -354,16 +354,80 @@ function Get-ActivityWatchLoggedOnUsers {
     return @($users)
 }
 
-function Test-ActivityWatchUserHasSession {
+function Get-ActivityWatchSessionRecords {
+    $sessions = New-Object System.Collections.Generic.List[object]
+
+    try {
+        $lines = & qwinsta.exe 2>$null
+        foreach ($line in @($lines)) {
+            $normalized = [string]$line
+            if ([string]::IsNullOrWhiteSpace($normalized)) {
+                continue
+            }
+
+            $normalized = $normalized.TrimStart(' ', '>')
+            if ([string]::IsNullOrWhiteSpace($normalized)) {
+                continue
+            }
+
+            if ($normalized -match '^(SESSIONNAME|ИМЯ СЕАНСА)\s+') {
+                continue
+            }
+
+            $columns = @(
+                (($normalized -replace '\s{2,}', '|') -split '\|') |
+                    ForEach-Object { $_.Trim() } |
+                    Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            )
+            if ($columns.Count -lt 3) {
+                continue
+            }
+
+            $sessionName = [string]$columns[0]
+            $userName = $null
+            $sessionIdIndex = 1
+
+            if ($columns[1] -notmatch '^\d+$') {
+                $userName = [string]$columns[1]
+                $sessionIdIndex = 2
+            }
+
+            if ($columns.Count -le $sessionIdIndex -or $columns[$sessionIdIndex] -notmatch '^\d+$') {
+                continue
+            }
+
+            $sessionId = [int]$columns[$sessionIdIndex]
+            $state = if ($columns.Count -gt ($sessionIdIndex + 1)) { [string]$columns[$sessionIdIndex + 1] } else { '' }
+            $isLive = $state -match '^(Active|Conn)$'
+
+            $sessions.Add([pscustomobject]@{
+                    SessionName = $sessionName
+                    UserName    = $userName
+                    SessionId   = $sessionId
+                    State       = $state
+                    IsLive      = $isLive
+                }) | Out-Null
+        }
+    }
+    catch {
+    }
+
+    $explorerUsers = Get-ActivityWatchExplorerUsersBySession
+    foreach ($session in @($sessions.ToArray())) {
+        $sessionId = [int]$session.SessionId
+        if ($explorerUsers.ContainsKey($sessionId)) {
+            $session.UserName = [string]$explorerUsers[$sessionId]
+        }
+    }
+
+    return @($sessions.ToArray())
+}
+
+function Resolve-ActivityWatchUserCandidates {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$UserId,
-        [string[]]$LoggedOnUsers
+        [string]$UserId
     )
-
-    if ([string]::IsNullOrWhiteSpace($UserId)) {
-        return $false
-    }
 
     $candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
     [void]$candidateIds.Add($UserId)
@@ -379,8 +443,50 @@ function Test-ActivityWatchUserHasSession {
         [void]$candidateIds.Add(('{0}\{1}' -f $env:USERDOMAIN, $leafUser))
     }
 
-    foreach ($candidate in @($candidateIds)) {
+    return @($candidateIds)
+}
+
+function Test-ActivityWatchUserHasSession {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserId,
+        [string[]]$LoggedOnUsers
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserId)) {
+        return $false
+    }
+
+    foreach ($candidate in @(Resolve-ActivityWatchUserCandidates -UserId $UserId)) {
         if ($LoggedOnUsers -contains $candidate) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-ActivityWatchUserHasLiveSession {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserId,
+        [object[]]$SessionRecords
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserId)) {
+        return $false
+    }
+
+    foreach ($candidate in @(Resolve-ActivityWatchUserCandidates -UserId $UserId)) {
+        if (@($SessionRecords | Where-Object {
+                    $_.IsLive -and
+                    -not [string]::IsNullOrWhiteSpace([string]$_.UserName) -and
+                    (
+                        [string]$_.UserName -ieq $candidate -or
+                        ('{0}\{1}' -f $env:COMPUTERNAME, [string]$_.UserName) -ieq $candidate -or
+                        ((-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) -and ('{0}\{1}' -f $env:USERDOMAIN, [string]$_.UserName) -ieq $candidate)
+                    )
+                }).Count -gt 0) {
             return $true
         }
     }
@@ -1075,6 +1181,7 @@ function Write-ActivityWatchRecoveryScript {
         [string]$ConfigPath
     )
 
+    $modulePath = Join-Path $PSScriptRoot 'ActivityWatch.Windows.Common.psm1'
     $content = @"
 param(
     [string]`$ConfigPath = '$ConfigPath'
@@ -1082,57 +1189,58 @@ param(
 
 Set-StrictMode -Version Latest
 `$ErrorActionPreference = 'Continue'
+Import-Module '$modulePath' -Force
+Invoke-ActivityWatchRecoveryLoop -ConfigPath `$ConfigPath
+"@
 
-function Get-DeploymentConfig {
-    param([string]`$Path)
-    return Get-Content -LiteralPath `$Path -Raw | ConvertFrom-Json
+    Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
 }
 
-function Get-RecoveryConfigPaths {
-    param([string]`$PrimaryConfigPath)
+function Get-ActivityWatchRecoveryConfigPaths {
+    param([string]$PrimaryConfigPath)
 
-    `$paths = New-Object System.Collections.Generic.List[string]
-    if (`$PrimaryConfigPath -and (Test-Path -LiteralPath `$PrimaryConfigPath)) {
-        `$paths.Add((Resolve-Path -LiteralPath `$PrimaryConfigPath).Path)
+    $paths = New-Object System.Collections.Generic.List[string]
+    if ($PrimaryConfigPath -and (Test-Path -LiteralPath $PrimaryConfigPath)) {
+        $paths.Add((Resolve-Path -LiteralPath $PrimaryConfigPath).Path)
     }
 
-    `$searchRoot = `$env:ProgramData
-    if (`$PrimaryConfigPath) {
-        `$stateRoot = Split-Path -Path `$PrimaryConfigPath -Parent
-        `$candidateRoot = Split-Path -Path `$stateRoot -Parent
-        if (`$candidateRoot -and (Test-Path -LiteralPath `$candidateRoot)) {
-            `$searchRoot = `$candidateRoot
+    $searchRoot = $env:ProgramData
+    if ($PrimaryConfigPath) {
+        $stateRoot = Split-Path -Path $PrimaryConfigPath -Parent
+        $candidateRoot = Split-Path -Path $stateRoot -Parent
+        if ($candidateRoot -and (Test-Path -LiteralPath $candidateRoot)) {
+            $searchRoot = $candidateRoot
         }
     }
 
-    if (Test-Path -LiteralPath `$searchRoot) {
-        Get-ChildItem -LiteralPath `$searchRoot -Directory -ErrorAction SilentlyContinue |
-            Where-Object { `$_.Name -like 'ActivityWatch*' } |
+    if (Test-Path -LiteralPath $searchRoot) {
+        Get-ChildItem -LiteralPath $searchRoot -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -like 'ActivityWatch*' } |
             ForEach-Object {
-                `$candidate = Join-Path `$_.FullName 'deployment-config.json'
-                if (Test-Path -LiteralPath `$candidate) {
-                    `$paths.Add(`$candidate)
+                $candidate = Join-Path $_.FullName 'deployment-config.json'
+                if (Test-Path -LiteralPath $candidate) {
+                    $paths.Add($candidate)
                 }
             }
     }
 
-    return @(`$paths | Sort-Object -Unique)
+    return @($paths | Sort-Object -Unique)
 }
 
-function Get-RecoveryTaskDefinitions {
-    param([string[]]`$ConfigPaths)
+function Get-ActivityWatchRecoveryTaskDefinitions {
+    param([string[]]$ConfigPaths)
 
-    `$taskMap = [ordered]@{}
-    foreach (`$candidatePath in @(`$ConfigPaths)) {
+    $taskMap = [ordered]@{}
+    foreach ($candidatePath in @($ConfigPaths)) {
         try {
-            `$config = Get-DeploymentConfig -Path `$candidatePath
-            foreach (`$task in @(`$config.userTasks)) {
-                `$taskName = [string]`$task.launchTaskName
-                `$userId = [string]`$task.userId
-                if (-not [string]::IsNullOrWhiteSpace(`$taskName) -and -not `$taskMap.Contains(`$taskName)) {
-                    `$taskMap[`$taskName] = [pscustomobject]@{
-                        taskName = `$taskName
-                        userId   = `$userId
+            $config = Read-ActivityWatchDeploymentConfig -Path $candidatePath
+            foreach ($task in @($config.userTasks)) {
+                $taskName = [string]$task.launchTaskName
+                $userId = [string]$task.userId
+                if (-not [string]::IsNullOrWhiteSpace($taskName) -and -not $taskMap.Contains($taskName)) {
+                    $taskMap[$taskName] = [pscustomobject]@{
+                        taskName = $taskName
+                        userId   = $userId
                     }
                 }
             }
@@ -1141,221 +1249,380 @@ function Get-RecoveryTaskDefinitions {
         }
     }
 
-    return @(`$taskMap.Values)
+    return @($taskMap.Values)
 }
 
-function New-RecoveryLock {
-    param([string]`$PrimaryConfigPath)
+function New-ActivityWatchRecoveryLock {
+    param([string]$PrimaryConfigPath)
 
-    `$stateRoot = if (`$PrimaryConfigPath) { Split-Path -Path `$PrimaryConfigPath -Parent } else { Join-Path `$env:ProgramData 'AWatch-rus' }
-    if (-not (Test-Path -LiteralPath `$stateRoot)) {
-        New-Item -Path `$stateRoot -ItemType Directory -Force | Out-Null
+    $stateRoot = if ($PrimaryConfigPath) { Split-Path -Path $PrimaryConfigPath -Parent } else { Join-Path $env:ProgramData 'AWatch-rus' }
+    if (-not (Test-Path -LiteralPath $stateRoot)) {
+        New-Item -Path $stateRoot -ItemType Directory -Force | Out-Null
     }
 
-    `$lockPath = Join-Path `$stateRoot 'recovery-loop.lock'
-    if (Test-Path -LiteralPath `$lockPath) {
+    $lockPath = Join-Path $stateRoot 'recovery-loop.lock'
+    if (Test-Path -LiteralPath $lockPath) {
         try {
-            `$lockData = Get-Content -LiteralPath `$lockPath -Raw | ConvertFrom-Json
-            `$existingPid = [int]`$lockData.pid
-            if (`$existingPid -gt 0 -and (Get-Process -Id `$existingPid -ErrorAction SilentlyContinue)) {
-                return `$null
+            $lockData = Get-Content -LiteralPath $lockPath -Raw | ConvertFrom-Json
+            $existingPid = [int]$lockData.pid
+            if ($existingPid -gt 0 -and (Get-Process -Id $existingPid -ErrorAction SilentlyContinue)) {
+                return $null
             }
         }
         catch {
         }
     }
 
-    `$payload = @{
-        pid       = `$PID
+    $payload = @{
+        pid       = $PID
         createdAt = (Get-Date).ToUniversalTime().ToString('o')
     } | ConvertTo-Json -Compress
-    Set-Content -LiteralPath `$lockPath -Value `$payload -Encoding UTF8
-    return `$lockPath
+    Set-Content -LiteralPath $lockPath -Value $payload -Encoding UTF8
+    return $lockPath
 }
 
-function Start-TaskIfNotRunning {
-    param(
-        [string]`$TaskName,
-        [string]`$UserId,
-        [string[]]`$LoggedOnUsers
-    )
-    if ([string]::IsNullOrWhiteSpace(`$TaskName)) {
-        return
-    }
+function Test-ActivityWatchCollectorRunningGlobal {
+    param([string]$ScriptPath)
 
-    if ([string]::IsNullOrWhiteSpace(`$UserId)) {
-        return
-    }
-
-    if (-not (Test-UserHasSession -UserId `$UserId -LoggedOnUsers `$LoggedOnUsers)) {
-        return
-    }
-
-    try {
-        `$task = Get-ScheduledTask -TaskName `$TaskName -ErrorAction SilentlyContinue
-        if (-not `$task) {
-            return
-        }
-        if ([string]`$task.State -eq 'Running') {
-            return
-        }
-        Start-ScheduledTask -TaskName `$TaskName -ErrorAction SilentlyContinue
-    }
-    catch {
-    }
-}
-
-function Get-LoggedOnUsers {
-    `$users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-
-    try {
-        `$lines = & quser.exe 2>`$null
-        foreach (`$line in @(`$lines)) {
-            `$normalized = [string]`$line
-            if ([string]::IsNullOrWhiteSpace(`$normalized)) {
-                continue
-            }
-
-            `$normalized = `$normalized.TrimStart(' ', '>')
-            if ([string]::IsNullOrWhiteSpace(`$normalized)) {
-                continue
-            }
-
-            if (`$normalized -match '^(USERNAME|ПОЛЬЗОВАТЕЛЬ)\s+') {
-                continue
-            }
-
-            `$parts = `$normalized -split '\s+'
-            if (`$parts.Count -lt 1) {
-                continue
-            }
-
-            `$user = [string]`$parts[0]
-            if ([string]::IsNullOrWhiteSpace(`$user)) {
-                continue
-            }
-
-            [void]`$users.Add(`$user)
-            [void]`$users.Add(('{0}\{1}' -f `$env:COMPUTERNAME, `$user))
-            if (-not [string]::IsNullOrWhiteSpace(`$env:USERDOMAIN)) {
-                [void]`$users.Add(('{0}\{1}' -f `$env:USERDOMAIN, `$user))
-            }
-        }
-    }
-    catch {
-    }
-
-    return @(`$users)
-}
-
-function Test-UserHasSession {
-    param(
-        [string]`$UserId,
-        [string[]]`$LoggedOnUsers
-    )
-
-    if ([string]::IsNullOrWhiteSpace(`$UserId)) {
-        return `$false
-    }
-
-    `$candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    [void]`$candidateIds.Add(`$UserId)
-
-    `$leafUser = `$UserId
-    if (`$leafUser -match '^[^\\]+\\(.+)$') {
-        `$leafUser = `$Matches[1]
-        [void]`$candidateIds.Add(`$leafUser)
-    }
-
-    [void]`$candidateIds.Add(('{0}\{1}' -f `$env:COMPUTERNAME, `$leafUser))
-    if (-not [string]::IsNullOrWhiteSpace(`$env:USERDOMAIN)) {
-        [void]`$candidateIds.Add(('{0}\{1}' -f `$env:USERDOMAIN, `$leafUser))
-    }
-
-    foreach (`$candidate in @(`$candidateIds)) {
-        if (`$LoggedOnUsers -contains `$candidate) {
-            return `$true
-        }
-    }
-
-    return `$false
-}
-
-function Test-CollectorRunningGlobal {
-    param([string]`$ScriptPath)
-    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
-        return `$false
+    if ([string]::IsNullOrWhiteSpace($ScriptPath)) {
+        return $false
     }
 
     return [bool]@(
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
             Where-Object {
-                (`$_.Name -ieq 'powershell.exe' -or `$_.Name -ieq 'pwsh.exe') -and
-                `$_.CommandLine -match [Regex]::Escape(`$ScriptPath)
+                ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and
+                $_.CommandLine -match [Regex]::Escape($ScriptPath)
             }
     ).Count
 }
 
-function Start-CollectorScriptGlobalIfNeeded {
+function Start-ActivityWatchCollectorScriptGlobalIfNeeded {
     param(
-        [string]`$ScriptPath,
-        [string]`$ConfigPath
+        [string]$ScriptPath,
+        [string]$ConfigPath
     )
 
-    if ([string]::IsNullOrWhiteSpace(`$ScriptPath)) {
+    if ([string]::IsNullOrWhiteSpace($ScriptPath)) {
         return
     }
 
-    if (-not (Test-Path -LiteralPath `$ScriptPath)) {
+    if (-not (Test-Path -LiteralPath $ScriptPath)) {
         return
     }
 
-    if (Test-CollectorRunningGlobal -ScriptPath `$ScriptPath) {
+    if (Test-ActivityWatchCollectorRunningGlobal -ScriptPath $ScriptPath) {
         return
     }
 
-    `$powershellExe = Join-Path `$env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    `$argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', `$ScriptPath, '-ConfigPath', `$ConfigPath)
-    Start-Process -FilePath `$powershellExe -ArgumentList `$argumentList -WindowStyle Hidden
+    $powershellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $argumentList = @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath, '-ConfigPath', $ConfigPath)
+    Start-Process -FilePath $powershellExe -ArgumentList $argumentList -WindowStyle Hidden
 }
 
-`$recoveryLockPath = New-RecoveryLock -PrimaryConfigPath `$ConfigPath
-if (-not `$recoveryLockPath) {
-    return
+function Start-ActivityWatchTaskIfNotRunning {
+    param(
+        [string]$TaskName,
+        [string]$UserId,
+        [object[]]$SessionRecords
+    )
+
+    if ([string]::IsNullOrWhiteSpace($TaskName) -or [string]::IsNullOrWhiteSpace($UserId)) {
+        return $false
+    }
+
+    if (-not (Test-ActivityWatchUserHasLiveSession -UserId $UserId -SessionRecords $SessionRecords)) {
+        return $false
+    }
+
+    try {
+        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        if (-not $task) {
+            return $false
+        }
+        if ([string]$task.State -eq 'Running') {
+            return $true
+        }
+        Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        return $true
+    }
+    catch {
+        return $false
+    }
 }
 
-try {
-    while (`$true) {
-        `$sleepSeconds = 180
-        try {
-            `$configPaths = Get-RecoveryConfigPaths -PrimaryConfigPath `$ConfigPath
-            `$config = Get-DeploymentConfig -Path `$ConfigPath
-            `$loggedOnUsers = Get-LoggedOnUsers
-            `$stateRoot = [string]`$config.paths.stateRoot
-            `$sessionCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]`$config.paths.sessionCollectorScript } else { Join-Path `$stateRoot 'worktime-session-collector.ps1' }
-            Start-CollectorScriptGlobalIfNeeded -ScriptPath `$sessionCollectorScript -ConfigPath `$ConfigPath
-            foreach (`$taskDef in Get-RecoveryTaskDefinitions -ConfigPaths `$configPaths) {
-                Start-TaskIfNotRunning -TaskName `$taskDef.taskName -UserId `$taskDef.userId -LoggedOnUsers `$loggedOnUsers
-            }
+function Get-ActivityWatchLiveInteractiveSessions {
+    param([object[]]$SessionRecords)
 
-            if (`$config -and `$config.recovery -and `$config.recovery.intervalSeconds) {
-                `$sleepSeconds = [Math]::Max([int]`$config.recovery.intervalSeconds, 30)
+    return @(
+        $SessionRecords |
+            Where-Object {
+                $_.IsLive -and
+                $_.SessionId -gt 0 -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.UserName)
+            } |
+            Sort-Object @{ Expression = { if ([string]$_.SessionName -ieq 'console') { 0 } else { 1 } } }, @{ Expression = { [int]$_.SessionId } }
+    )
+}
+
+function Resolve-ActivityWatchLiveSessionUserId {
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$SessionRecord,
+        [pscustomobject[]]$TaskDefinitions
+    )
+
+    $rawUser = [string]$SessionRecord.UserName
+    if ([string]::IsNullOrWhiteSpace($rawUser)) {
+        return $null
+    }
+
+    foreach ($taskDef in @($TaskDefinitions)) {
+        foreach ($candidate in @(Resolve-ActivityWatchUserCandidates -UserId [string]$taskDef.userId)) {
+            if ($candidate -ieq $rawUser -or
+                $candidate -ieq ('{0}\{1}' -f $env:COMPUTERNAME, $rawUser) -or
+                ((-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) -and $candidate -ieq ('{0}\{1}' -f $env:USERDOMAIN, $rawUser))) {
+                return [string]$taskDef.userId
             }
         }
-        catch {
+    }
+
+    if ($rawUser -match '^[^\\]+\\') {
+        return $rawUser
+    }
+
+    return ('{0}\{1}' -f $env:COMPUTERNAME, $rawUser)
+}
+
+function Get-ActivityWatchExplorerUsersBySession {
+    $map = @{}
+
+    try {
+        Get-Process explorer -IncludeUserName -ErrorAction SilentlyContinue |
+            Where-Object { $_.SessionId -gt 0 -and -not [string]::IsNullOrWhiteSpace([string]$_.UserName) } |
+            Sort-Object SessionId, StartTime |
+            ForEach-Object {
+                if (-not $map.ContainsKey([int]$_.SessionId)) {
+                    $map[[int]$_.SessionId] = [string]$_.UserName
+                }
+            }
+    }
+    catch {
+    }
+
+    return $map
+}
+
+function Get-ActivityWatchDisconnectedInteractiveSessions {
+    param([object[]]$SessionRecords)
+
+    $explorerUsers = Get-ActivityWatchExplorerUsersBySession
+    $result = New-Object System.Collections.Generic.List[object]
+
+    foreach ($session in @($SessionRecords | Where-Object { -not $_.IsLive -and $_.SessionId -gt 0 })) {
+        $resolvedUser = [string]$session.UserName
+        if ([string]::IsNullOrWhiteSpace($resolvedUser) -and $explorerUsers.ContainsKey([int]$session.SessionId)) {
+            $resolvedUser = [string]$explorerUsers[[int]$session.SessionId]
         }
 
-        Start-Sleep -Seconds `$sleepSeconds
-    }
-}
-finally {
-    if (`$recoveryLockPath -and (Test-Path -LiteralPath `$recoveryLockPath)) {
-        Remove-Item -LiteralPath `$recoveryLockPath -Force -ErrorAction SilentlyContinue
-    }
-}
-"@
+        if ([string]::IsNullOrWhiteSpace($resolvedUser)) {
+            continue
+        }
 
-    Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
+        $result.Add([pscustomobject]@{
+                SessionName = [string]$session.SessionName
+                SessionId   = [int]$session.SessionId
+                State       = [string]$session.State
+                UserName    = $resolvedUser
+            }) | Out-Null
+    }
+
+    return @($result | Sort-Object SessionId -Unique)
+}
+
+function Promote-ActivityWatchDisconnectedSessionToConsole {
+    param(
+        [pscustomobject[]]$TaskDefinitions,
+        [object[]]$SessionRecords
+    )
+
+    $candidates = Get-ActivityWatchDisconnectedInteractiveSessions -SessionRecords $SessionRecords
+    if (-not $candidates -or $candidates.Count -eq 0) {
+        return $false
+    }
+
+    $selected = $null
+    foreach ($taskDef in @($TaskDefinitions)) {
+        foreach ($candidate in @($candidates)) {
+            foreach ($knownUser in @(Resolve-ActivityWatchUserCandidates -UserId [string]$taskDef.userId)) {
+                if ($knownUser -ieq [string]$candidate.UserName -or
+                    $knownUser -ieq ('{0}\{1}' -f $env:COMPUTERNAME, [string]$candidate.UserName) -or
+                    ((-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) -and $knownUser -ieq ('{0}\{1}' -f $env:USERDOMAIN, [string]$candidate.UserName))) {
+                    $selected = $candidate
+                    break
+                }
+            }
+            if ($selected) { break }
+        }
+        if ($selected) { break }
+    }
+
+    if (-not $selected) {
+        $selected = $candidates | Select-Object -First 1
+    }
+
+    if (-not $selected) {
+        return $false
+    }
+
+    try {
+        & cmd.exe /c ("tscon {0} /dest:console" -f [int]$selected.SessionId) | Out-Null
+        return ($LASTEXITCODE -eq 0)
+    }
+    catch {
+        return $false
+    }
+}
+
+function Ensure-ActivityWatchLaunchTaskForUser {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserId,
+        [Parameter(Mandatory = $true)]
+        [string]$LaunchScriptPath,
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserId) -or -not (Test-Path -LiteralPath $LaunchScriptPath)) {
+        return $null
+    }
+
+    $taskName = "ActivityWatch Launch [$((Get-ActivityWatchTaskNameToken -UserId $UserId))]"
+    $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $LaunchScriptPath
+    Write-ActivityWatchHiddenPowerShellWrapper -Path $launcherPath -ScriptPath $LaunchScriptPath -ConfigPath $ConfigPath
+
+    $wscriptExe = Join-Path $env:SystemRoot 'System32\wscript.exe'
+    $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument "//B //NoLogo `"$launcherPath`""
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $UserId
+    $principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+
+    try {
+        $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($existingTask) {
+            $existingUserId = [string]$existingTask.Principal.UserId
+            $existingArgs = @($existingTask.Actions | ForEach-Object { [string]$_.Arguments }) -join ' '
+            if ($existingUserId -ieq $UserId -and $existingArgs -like "*$launcherPath*") {
+                return $taskName
+            }
+
+            Remove-ActivityWatchScheduledTask -TaskName $taskName
+        }
+
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+        return $taskName
+    }
+    catch {
+        return $null
+    }
+}
+
+function Start-ActivityWatchConsoleFallbackIfNeeded {
+    param(
+        [pscustomobject[]]$TaskDefinitions,
+        [object[]]$SessionRecords,
+        [pscustomobject]$Config,
+        [string]$ConfigPath,
+        [bool]$ConfiguredLiveTasksStarted
+    )
+
+    if ($ConfiguredLiveTasksStarted) {
+        return
+    }
+
+    $liveSessions = Get-ActivityWatchLiveInteractiveSessions -SessionRecords $SessionRecords
+    if (-not $liveSessions -or $liveSessions.Count -eq 0) {
+        if (Promote-ActivityWatchDisconnectedSessionToConsole -TaskDefinitions $TaskDefinitions -SessionRecords $SessionRecords) {
+            Start-Sleep -Seconds 3
+            $SessionRecords = Get-ActivityWatchSessionRecords
+            $liveSessions = Get-ActivityWatchLiveInteractiveSessions -SessionRecords $SessionRecords
+        }
+    }
+    if (-not $liveSessions -or $liveSessions.Count -eq 0) {
+        return
+    }
+
+    $launchScriptPath = if ($Config.paths.PSObject.Properties.Name -contains 'launchScript') { [string]$Config.paths.launchScript } else { $null }
+    if ([string]::IsNullOrWhiteSpace($launchScriptPath)) {
+        return
+    }
+
+    $preferredSession = $liveSessions | Select-Object -First 1
+    $userId = Resolve-ActivityWatchLiveSessionUserId -SessionRecord $preferredSession -TaskDefinitions $TaskDefinitions
+    if ([string]::IsNullOrWhiteSpace($userId)) {
+        return
+    }
+
+    $taskName = Ensure-ActivityWatchLaunchTaskForUser -UserId $userId -LaunchScriptPath $launchScriptPath -ConfigPath $ConfigPath
+    if ([string]::IsNullOrWhiteSpace($taskName)) {
+        return
+    }
+
+    try {
+        $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        if ($task -and [string]$task.State -ne 'Running') {
+            Start-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        }
+    }
+    catch {
+    }
+}
+
+function Invoke-ActivityWatchRecoveryLoop {
+    param([string]$ConfigPath)
+
+    $recoveryLockPath = New-ActivityWatchRecoveryLock -PrimaryConfigPath $ConfigPath
+    if (-not $recoveryLockPath) {
+        return
+    }
+
+    try {
+        while ($true) {
+            $sleepSeconds = 180
+            try {
+                $configPaths = Get-ActivityWatchRecoveryConfigPaths -PrimaryConfigPath $ConfigPath
+                $config = Read-ActivityWatchDeploymentConfig -Path $ConfigPath
+                $taskDefs = Get-ActivityWatchRecoveryTaskDefinitions -ConfigPaths $configPaths
+                $sessionRecords = Get-ActivityWatchSessionRecords
+                $stateRoot = [string]$config.paths.stateRoot
+                $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
+                Start-ActivityWatchCollectorScriptGlobalIfNeeded -ScriptPath $sessionCollectorScript -ConfigPath $ConfigPath
+
+                $configuredLiveTasksStarted = $false
+                foreach ($taskDef in $taskDefs) {
+                    if (Start-ActivityWatchTaskIfNotRunning -TaskName $taskDef.taskName -UserId $taskDef.userId -SessionRecords $sessionRecords) {
+                        $configuredLiveTasksStarted = $true
+                    }
+                }
+
+                Start-ActivityWatchConsoleFallbackIfNeeded -TaskDefinitions $taskDefs -SessionRecords $sessionRecords -Config $config -ConfigPath $ConfigPath -ConfiguredLiveTasksStarted $configuredLiveTasksStarted
+
+                if ($config -and $config.recovery -and $config.recovery.intervalSeconds) {
+                    $sleepSeconds = [Math]::Max([int]$config.recovery.intervalSeconds, 30)
+                }
+            }
+            catch {
+            }
+
+            Start-Sleep -Seconds $sleepSeconds
+        }
+    }
+    finally {
+        if ($recoveryLockPath -and (Test-Path -LiteralPath $recoveryLockPath)) {
+            Remove-Item -LiteralPath $recoveryLockPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 function Get-ActivityWatchHiddenLauncherPath {
@@ -1702,10 +1969,10 @@ function Start-ActivityWatchTasks {
         [string]$RecoveryTaskName = 'ActivityWatch Recovery'
     )
 
-    $loggedOnUsers = Get-ActivityWatchLoggedOnUsers
+    $sessionRecords = Get-ActivityWatchSessionRecords
 
     foreach ($definition in $TaskDefinitions) {
-        if (Test-ActivityWatchUserHasSession -UserId $definition.UserId -LoggedOnUsers $loggedOnUsers) {
+        if (Test-ActivityWatchUserHasLiveSession -UserId $definition.UserId -SessionRecords $sessionRecords) {
             Start-ScheduledTask -TaskName $definition.LaunchTaskName -ErrorAction SilentlyContinue
         }
     }
