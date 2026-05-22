@@ -21,6 +21,46 @@ INSERT INTO analytics_1c.entity_timeline
 SELECT *
 FROM (
     SELECT
+        ts,
+        'document' AS entity_type,
+        document_id AS entity_id,
+        infobase,
+        user AS actor,
+        'business_events' AS source,
+        concat('business:', event_kind, ':', operation_type) AS event_type,
+        if(event_kind = 'posting', 'low', 'medium') AS severity,
+        greatest(10, toUInt32(round(amount))) AS score,
+        concat('business:', event_id) AS ref_id,
+        concat('Business event ', event_kind, ' ', document_type, ' №', document_number, ' amount=', toString(amount)) AS summary
+    FROM analytics_1c.business_events
+    WHERE document_id != ''
+) AS src
+WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
+
+INSERT INTO analytics_1c.entity_timeline
+SELECT *
+FROM (
+    SELECT
+        ts,
+        'counterparty' AS entity_type,
+        company_entity_key AS entity_id,
+        infobase,
+        user AS actor,
+        'business_events' AS source,
+        concat('company:', event_kind) AS event_type,
+        if(amount >= 50000, 'medium', 'low') AS severity,
+        greatest(10, toUInt32(round(amount))) AS score,
+        concat('business-company:', event_id) AS ref_id,
+        concat('Business activity ', counterparty, ' ', operation_type, ' amount=', toString(amount)) AS summary
+    FROM analytics_1c.business_events
+    WHERE company_entity_key != ''
+) AS src
+WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
+
+INSERT INTO analytics_1c.entity_timeline
+SELECT *
+FROM (
+    SELECT
         documents.ts AS ts,
         'counterparty' AS entity_type,
         ifNull(portfolio.company_entity_key, documents.counterparty) AS entity_id,
@@ -37,6 +77,26 @@ FROM (
         ON portfolio.infobase = documents.infobase
        AND portfolio.source_counterparty = documents.counterparty
     WHERE documents.counterparty != ''
+) AS src
+WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
+
+INSERT INTO analytics_1c.entity_timeline
+SELECT *
+FROM (
+    SELECT
+        ts,
+        if(document_id != '', 'document', 'counterparty') AS entity_type,
+        if(document_id != '', document_id, company_entity_key) AS entity_id,
+        infobase,
+        user AS actor,
+        'document_changes' AS source,
+        concat('change:', change_kind, ':', field_name) AS event_type,
+        if(risk_tag != '', 'high', 'medium') AS severity,
+        if(risk_tag != '', 70, 35) AS score,
+        concat('change:', change_id) AS ref_id,
+        concat('Change ', change_kind, ' field=', field_name, ' risk=', risk_tag) AS summary
+    FROM analytics_1c.document_change_events
+    WHERE (document_id != '' OR company_entity_key != '')
 ) AS src
 WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
 

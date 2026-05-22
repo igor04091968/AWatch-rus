@@ -23,6 +23,51 @@ INSERT INTO analytics_1c.detections
 SELECT *
 FROM (
     SELECT
+        ts,
+        concat('large_manual_adjustment:', infobase, ':', document_id, ':', toString(toUnixTimestamp(ts)), ':', toString(line_no)) AS detection_id,
+        infobase,
+        'large_manual_adjustment' AS rule_id,
+        'Крупная корректировка проводки' AS rule_title,
+        'document' AS entity_type,
+        document_id AS entity_id,
+        'high' AS severity,
+        75 AS score,
+        concat('Крупная корректировка по документу ', document_id, ' amount=', toString(amount), ' счет ', debit_account, ' -> ', credit_account) AS summary,
+        'open' AS status
+    FROM analytics_1c.business_events
+    WHERE event_kind = 'posting'
+      AND amount >= 50000
+      AND (
+          operation_type ILIKE '%adjust%'
+          OR document_type ILIKE '%Коррект%'
+      )
+) AS src
+WHERE src.detection_id NOT IN (SELECT detection_id FROM analytics_1c.detections);
+
+INSERT INTO analytics_1c.detections
+SELECT *
+FROM (
+    SELECT
+        ts,
+        concat('risky_document_change:', infobase, ':', change_id) AS detection_id,
+        infobase,
+        'risky_document_change' AS rule_id,
+        'Рискованное изменение документа' AS rule_title,
+        if(document_id != '', 'document', 'counterparty') AS entity_type,
+        if(document_id != '', document_id, company_entity_key) AS entity_id,
+        'high' AS severity,
+        70 AS score,
+        concat('Изменение ', change_kind, ' field=', field_name, ' risk=', risk_tag) AS summary,
+        'open' AS status
+    FROM analytics_1c.document_change_events
+    WHERE risk_tag != ''
+) AS src
+WHERE src.detection_id NOT IN (SELECT detection_id FROM analytics_1c.detections);
+
+INSERT INTO analytics_1c.detections
+SELECT *
+FROM (
+    SELECT
         generated_at AS ts,
         concat('company_signal:', signal_id, ':', toString(toUnixTimestamp(generated_at))) AS detection_id,
         infobase,

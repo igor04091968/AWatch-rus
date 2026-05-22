@@ -46,6 +46,8 @@ File 1C + reglog + host telemetry
 - `.env.example` — переменные окружения.
 - `clickhouse/init/*.sql` — схема БД.
 - `etl/load_1c_exports.py` — loader CSV/JSON выгрузок в raw/core таблицы.
+- `etl/build_business_event_exports.py` — read-only normalizer из
+  `documents/postings/audit` в canonical `business_events/document_changes`.
 - `etl/config.example.yml` — пример ETL-конфига.
 - `docs/1C_BUSINESS_EVENT_LAYER_RU.md` — production contract следующего шага:
   canonical business-event слой для документов/проводок/изменений.
@@ -109,6 +111,7 @@ cp etl/config.example.yml etl/config.yml
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r etl/requirements.txt
+python etl/build_business_event_exports.py --config etl/config.yml
 python etl/load_1c_exports.py --config etl/config.yml
 ```
 
@@ -199,5 +202,7 @@ Read-only API для руководителя:
 - `document_change_events` — изменения документов/реквизитов;
 - ETL уже умеет принимать эти datasets в `landing/business_events` и
   `landing/document_changes`;
-- дальше нужен только read-only extractor, который будет наполнять их из 1С
-  или внешних безопасных выгрузок без записи в базу.
+- built-in normalizer уже умеет собирать этот слой из существующих read-only
+  выгрузок `documents/postings/audit`;
+- дальше нужен только более богатый extractor из 1С или внешних безопасных
+  выгрузок, если нужна большая бухгалтерская детализация.

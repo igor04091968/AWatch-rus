@@ -40,6 +40,7 @@ fi
 # shellcheck disable=SC1090
 . "${ENV_FILE}"
 
+"${VENV}/bin/python" "${ROOT}/etl/build_business_event_exports.py" --config "${CONFIG}"
 "${VENV}/bin/python" "${ROOT}/etl/load_1c_exports.py" --config "${CONFIG}"
 "${VENV}/bin/python" "${ROOT}/etl/load_company_registry_xlsx.py" --config "${CONFIG}" --landing "${ROOT}/landing/registry"
 

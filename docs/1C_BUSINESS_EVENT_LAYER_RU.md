@@ -179,8 +179,21 @@
   - `landing/business_events`
   - `landing/document_changes`
   - dataset mapping в `etl/load_1c_exports.py`
+- built-in normalizer:
+  - `etl/build_business_event_exports.py`
+  - собирает canonical events из существующих read-only выгрузок
+    `documents/postings/audit`
+- ingest wiring:
+  - normalizer запускается перед `load_1c_exports.py`
+- timeline/detection wiring:
+  - `business_events` и `document_change_events` уже входят в
+    `entity_timeline`
+  - на этом слое уже есть первые detections:
+    - крупная корректировка проводки
+    - рискованное изменение документа
 
-Это именно scaffold, а не обещание, что live extractor уже существует.
+Это уже рабочий v1 normalizer, но ещё не конечный extractor со всей
+бухгалтерской глубиной.
 
 ## Что делать дальше
 
