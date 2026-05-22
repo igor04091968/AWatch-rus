@@ -56,3 +56,11 @@ docker exec -i "${CH_CONTAINER}" clickhouse-client \
   --password "${CLICKHOUSE_PASSWORD}" \
   --database "${CLICKHOUSE_DB}" \
   < "${ROOT}/detections/open_cases_from_detections.sql"
+
+docker exec -i "${CH_CONTAINER}" clickhouse-client \
+  --user "${CLICKHOUSE_USER}" \
+  --password "${CLICKHOUSE_PASSWORD}" \
+  --database "${CLICKHOUSE_DB}" \
+  < "${ROOT}/clickhouse/init/04_company_intelligence.sql"
+
+"${ROOT}/ops/run_company_intelligence_refresh.sh"

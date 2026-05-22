@@ -15,6 +15,9 @@ AI Investigator не должен ходить напрямую в файлов�
 - что произошло по case `X`;
 - собрать summary по entity timeline;
 - предложить next steps без write-действий.
+- какие компании выпали из активности;
+- где ожидается спад или рост объёма по компаниям;
+- какие компании требуют проверки из-за резкого падения документооборота.
 
 ## Рекомендуемые API endpoints
 
@@ -61,6 +64,52 @@ AI Investigator не должен ходить напрямую в файлов�
 - related detections
 - related timeline rows
 
+### `GET /api/1/analytics-1c/companies/overview`
+
+Фильтры:
+
+- `infobase`
+- `min_signal_score`
+- `limit`
+
+Возвращает:
+
+- компании с активностью за 30 дней
+- последние сигналы риска
+- прогноз `amount/docs` на `7/30` дней
+
+### `GET /api/1/analytics-1c/companies/{counterparty}/summary`
+
+Возвращает:
+
+- текущую карточку компании
+- AI-ready short summary
+- последние документы
+- forecasts
+- signals
+
+### `GET /api/1/analytics-1c/companies/{counterparty}/forecast`
+
+Возвращает:
+
+- `metric`
+- `horizon_days`
+- `baseline_daily`
+- `trend_slope`
+- `predicted_daily`
+- `predicted_total`
+- `confidence`
+
+### `GET /api/1/analytics-1c/companies/{counterparty}/timeline`
+
+Возвращает:
+
+- последние документы по компании
+- базу
+- автора
+- тип операции
+- статус
+
 ## Guardrails
 
 - read-only SQL;
@@ -68,6 +117,7 @@ AI Investigator не должен ходить напрямую в файлов�
 - no direct write-back into 1С;
 - no direct execution of arbitrary SQL from prompt;
 - all investigator requests are logged.
+- если live-данные не содержат `counterparty`, company endpoints должны честно возвращать пустой результат, а не симулировать прогноз.
 
 ## Output style
 

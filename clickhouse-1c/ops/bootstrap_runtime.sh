@@ -22,3 +22,4 @@ fi
 python3 -m venv "${ROOT}/.venv"
 "${ROOT}/.venv/bin/pip" install --upgrade pip
 "${ROOT}/.venv/bin/pip" install -r "${ROOT}/etl/requirements.txt"
+"${ROOT}/.venv/bin/pip" install -r "${ROOT}/ai/requirements.txt"

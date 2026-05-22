@@ -13,6 +13,7 @@
 - `docs/GRAFANA_DASHBOARDS_RU.md` — импорт и сопровождение Grafana dashboard'ов через Ansible API playbook.
 - `docs/PRESENTATION_RU.md` — презентационные экраны Grafana и AW-rus со скриншотами.
 - `docs/1C_FILE_ANALYTICS_STACK_RU.md` — production guide по файловой 1С Detmir: topology, rollout, verification, recovery, task principal и hardening.
+- `docs/1C_COMPANY_INTELLIGENCE_RU.md` — слой анализа и прогноза по компаниям поверх `clickhouse-1c`: marts, forecasting, API и Grafana.
 - `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
 - `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
 - `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.
@@ -25,7 +26,7 @@
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `grafana/` — version-controlled Grafana dashboard JSON для RDP/worktime, DLP/ИБ и overview-экранов.
-- `clickhouse-1c/` — отдельный analytics stack для **файловой 1С**: ETL, ClickHouse schema, detections, Grafana catalog и AI Investigator contract.
+- `clickhouse-1c/` — отдельный analytics stack для **файловой 1С**: ETL, ClickHouse schema, detections, company intelligence marts/forecasting, Grafana catalog и AI Investigator contract.
 - `pfsense/` — внешний poller для pfSense API и systemd unit под Debian/Ubuntu utility VM.
 - `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, Windows/RDP DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`) и session-level presence для удалённых Windows/RDP пользователей (`aw-worktime-sessions_*`).
 - `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.

@@ -16,6 +16,7 @@
 - [Hayabusa Security Analytics](Hayabusa-Security-Analytics) - текущий production-контур: auto-upload, auto-case, severity scoring и Telegram alerts
 - [Security analytics stack v1](../security-analytics-stack-v1.md) - целевая v1-модель без претензии на Splunk-class SIEM
 - [File 1C analytics](File-1C-Analytics) - ClickHouse/Grafana/AI Investigator контур для файловой 1С
+- [1C Company Intelligence](1C-Company-Intelligence) - AI-ready слой анализа и прогноза по компаниям поверх файловой 1С
 
 ### Компоненты
 - [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring) - мониторинг clipboard, печати, USB

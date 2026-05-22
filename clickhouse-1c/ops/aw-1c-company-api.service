@@ -1,0 +1,14 @@
+[Unit]
+Description=AW-rus 1C Company Intelligence API
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=AW_1C_ROOT=/opt/activitywatch/clickhouse-1c
+ExecStart=/opt/activitywatch/clickhouse-1c/ops/run_company_intelligence_api.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

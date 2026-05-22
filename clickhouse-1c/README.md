@@ -31,7 +31,9 @@ File 1C + reglog + host telemetry
    ├─ host_events
    ├─ entity_timeline
    ├─ detections
-   └─ cases
+   ├─ cases
+   ├─ company_forecasts
+   └─ company_health_signals
           ↓
  Grafana + Alerting + AI Investigator
 ```
@@ -48,11 +50,14 @@ File 1C + reglog + host telemetry
 - `grafana/dashboard-catalog.md` — целевая структура дашбордов.
 - `grafana/query-pack.sql` — базовые SQL-запросы для панелей.
 - `grafana/provisioning/datasources/clickhouse.yml` — provisioned datasource для Grafana.
+- `grafana/provisioning/dashboards/files/1c-company-intelligence.json` — source dashboard для анализа и прогноза по компаниям.
 - `detections/build_entity_timeline.sql` — сборка единого timeline слоя.
 - `detections/open_cases_from_detections.sql` — шаблон открытия cases из detections.
 - `ops/etl-cron.example` — пример расписания каждые 6 часов.
 - `ops/retention-policy.md` — минимальная retention policy.
 - `ai/INVESTIGATOR_API.md` — контракт AI Investigator поверх ClickHouse/cases.
+- `ai/refresh_company_intelligence.py` — materialization forecast/signals по `counterparty`.
+- `ai/company_intelligence_api.py` — read-only API для AI/аналитики по компаниям.
 
 ## Когда использовать именно этот контур
 
@@ -106,7 +111,20 @@ python etl/load_1c_exports.py --config etl/config.yml
 clickhouse-client --queries-file detections/insert_detections.sql
 ```
 
-6. В Grafana строить dashboards из `grafana/dashboard-catalog.md` и
+6. Включить company intelligence слой:
+
+```bash
+clickhouse-client --queries-file clickhouse/init/04_company_intelligence.sql
+python ai/refresh_company_intelligence.py --host localhost --port 8123 --user default --password change-me --database analytics_1c
+```
+
+7. Запустить read-only API:
+
+```bash
+python ai/company_intelligence_api.py --host 127.0.0.1 --port 8710
+```
+
+8. В Grafana строить dashboards из `grafana/dashboard-catalog.md` и
 `grafana/query-pack.sql`.
 
 ## Ожидаемые источники данных
@@ -116,6 +134,7 @@ clickhouse-client --queries-file detections/insert_detections.sql
 - журнал регистрации 1С;
 - audit/export критичных изменений;
 - host telemetry с Windows/RDP host.
+- для company intelligence нужны документы с непустым `counterparty`.
 
 ## Границы
 
@@ -123,3 +142,4 @@ clickhouse-client --queries-file detections/insert_detections.sql
 - LLM не ходит прямо в production 1С;
 - в ClickHouse кладутся нормализованные выгрузки и enrichment;
 - case/timeline слой считается вне 1С.
+- если `counterparty` в live-выгрузках пустой, company-forecast слой останется корректно пустым.

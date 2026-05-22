@@ -1,0 +1,480 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Активные компании 30д",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countDistinct(counterparty) AS value FROM analytics_1c.v_counterparty_daily WHERE d >= today() - 30",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 20
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "title": "Прогноз объёма 30д",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT round(sum(predicted_total), 2) AS value FROM analytics_1c.v_company_forecasts_current WHERE metric = 'amount_total' AND horizon_days = 30",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "title": "Компании с high/critical сигналами",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countDistinct(counterparty) AS value FROM analytics_1c.v_company_health_current WHERE severity IN ('high', 'critical')",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "title": "Counterparty cases",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT count() AS value FROM analytics_1c.cases WHERE entity_type = 'counterparty' AND status != 'closed'",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "title": "Объём по компаниям",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT toDateTime(d) AS time, sum(amount_total) AS value FROM analytics_1c.v_counterparty_daily WHERE d >= today() - 30 GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "title": "Количество документов по компаниям",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT toDateTime(d) AS time, sum(docs_total) AS value FROM analytics_1c.v_counterparty_daily WHERE d >= today() - 30 GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 7,
+      "title": "Портфель компаний",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 16,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT infobase, counterparty, amount_30d, docs_30d, amount_forecast_30d, signal_severity, signal_score, top_signal, last_seen_at FROM analytics_1c.v_company_portfolio_overview ORDER BY signal_score DESC, amount_30d DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "signal_score",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "title": "Последние AI-сигналы",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "pluginVersion": "11.2.2",
+      "gridPos": {
+        "x": 16,
+        "y": 14,
+        "w": 8,
+        "h": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT generated_at, infobase, counterparty, severity, score, signal_type, summary FROM analytics_1c.v_company_health_current ORDER BY score DESC, generated_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "score",
+            "desc": true
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "1c",
+    "companies",
+    "forecast",
+    "clickhouse"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "infobase",
+        "label": "Infobase",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-1c"
+        },
+        "refresh": 1,
+        "definition": "SELECT DISTINCT infobase FROM analytics_1c.v_counterparty_latest_activity ORDER BY infobase",
+        "query": "SELECT DISTINCT infobase FROM analytics_1c.v_counterparty_latest_activity ORDER BY infobase",
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      },
+      {
+        "name": "counterparty",
+        "label": "Counterparty",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse-1c"
+        },
+        "refresh": 1,
+        "definition": "SELECT DISTINCT counterparty FROM analytics_1c.v_counterparty_latest_activity ORDER BY counterparty",
+        "query": "SELECT DISTINCT counterparty FROM analytics_1c.v_counterparty_latest_activity ORDER BY counterparty",
+        "multi": true,
+        "includeAll": true,
+        "sort": 1,
+        "current": {
+          "selected": false,
+          "text": "All",
+          "value": "$__all"
+        }
+      }
+    ]
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "1C File - Company Intelligence",
+  "uid": "1c-file-companies",
+  "version": 1,
+  "weekStart": ""
+}
