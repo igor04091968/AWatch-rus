@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW-rus file-1C ingest cycle every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Unit=aw-1c-ingest.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

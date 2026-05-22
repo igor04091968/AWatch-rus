@@ -1,0 +1,256 @@
+---
+- name: Развернуть file-1C analytics backend
+  hosts: proxmox
+  become: true
+  gather_facts: true
+
+  vars:
+    aw_file_1c_repo_root: "{{ playbook_dir | dirname }}"
+    aw_file_1c_release_root: /opt/activitywatch/releases
+    aw_file_1c_release_dir: "{{ aw_file_1c_release_root }}/clickhouse-1c"
+    aw_file_1c_root: /opt/activitywatch/clickhouse-1c
+    aw_file_1c_clickhouse_db: analytics_1c
+    aw_file_1c_clickhouse_user: default
+    aw_file_1c_clickhouse_password: change-me
+    aw_file_1c_clickhouse_port: 8123
+    aw_file_1c_clickhouse_native_port: 9000
+    aw_file_1c_grafana_admin_user: admin
+    aw_file_1c_grafana_admin_password: change-me
+    aw_file_1c_grafana_port: 3300
+    aw_file_1c_windows_upload_pubkey_path: /tmp/awops_ed25519.pub
+
+  tasks:
+    - name: Установить базовые пакеты file-1C analytics
+      ansible.builtin.apt:
+        name:
+          - docker.io
+          - docker-compose
+          - python3-venv
+          - python3-pip
+        state: present
+        update_cache: true
+
+    - name: Включить и запустить docker
+      ansible.builtin.systemd:
+        name: docker
+        enabled: true
+        state: started
+
+    - name: Создать release каталоги file-1C analytics
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: igor
+        group: igor
+        mode: "0755"
+      loop:
+        - "{{ aw_file_1c_release_root }}"
+        - "{{ aw_file_1c_release_dir }}"
+
+    - name: Скопировать верхнеуровневые файлы stack file-1C analytics
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/{{ item.src }}"
+        dest: "{{ aw_file_1c_release_dir }}/{{ item.dest }}"
+        owner: igor
+        group: igor
+        mode: "{{ item.mode | default('0644') }}"
+      loop:
+        - { src: 'README.md', dest: 'README.md' }
+        - { src: 'docker-compose.yml', dest: 'docker-compose.yml' }
+        - { src: '.env.example', dest: '.env.example' }
+
+    - name: Подготовить каталоги stack file-1C analytics
+      ansible.builtin.file:
+        path: "{{ aw_file_1c_release_dir }}/{{ item }}"
+        state: directory
+        owner: igor
+        group: igor
+        mode: "0755"
+      loop:
+        - clickhouse
+        - detections
+        - etl
+        - ops
+        - sample
+
+    - name: Скопировать каталоги stack file-1C analytics
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/{{ item }}/"
+        dest: "{{ aw_file_1c_release_dir }}/{{ item }}/"
+        owner: igor
+        group: igor
+        mode: preserve
+        directory_mode: "0755"
+      loop:
+        - clickhouse
+        - detections
+        - etl
+        - ops
+        - sample
+
+    - name: Установить права на исполняемые ops scripts
+      ansible.builtin.file:
+        path: "{{ aw_file_1c_release_dir }}/ops/{{ item }}"
+        owner: igor
+        group: igor
+        mode: "0755"
+        state: file
+      loop:
+        - bootstrap_runtime.sh
+        - check_ingest_freshness.sh
+        - run_ingest_cycle.sh
+
+    - name: Создать .env для file-1C analytics
+      ansible.builtin.copy:
+        dest: "{{ aw_file_1c_release_dir }}/.env"
+        owner: igor
+        group: igor
+        mode: "0600"
+        content: |
+          CLICKHOUSE_DB={{ aw_file_1c_clickhouse_db }}
+          CLICKHOUSE_USER={{ aw_file_1c_clickhouse_user }}
+          CLICKHOUSE_PASSWORD={{ aw_file_1c_clickhouse_password }}
+          CLICKHOUSE_PORT={{ aw_file_1c_clickhouse_port }}
+          CLICKHOUSE_NATIVE_PORT={{ aw_file_1c_clickhouse_native_port }}
+          GRAFANA_ADMIN_USER={{ aw_file_1c_grafana_admin_user }}
+          GRAFANA_ADMIN_PASSWORD={{ aw_file_1c_grafana_admin_password }}
+          GRAFANA_PORT={{ aw_file_1c_grafana_port }}
+          CLICKHOUSE_HOST=clickhouse
+
+    - name: Создать etl/config.yml для file-1C analytics
+      ansible.builtin.copy:
+        dest: "{{ aw_file_1c_release_dir }}/etl/config.yml"
+        owner: igor
+        group: igor
+        mode: "0644"
+        content: |
+          clickhouse:
+            host: localhost
+            port: {{ aw_file_1c_clickhouse_port }}
+            username: {{ aw_file_1c_clickhouse_user }}
+            password: {{ aw_file_1c_clickhouse_password }}
+            database: {{ aw_file_1c_clickhouse_db }}
+
+          landing:
+            documents: {{ aw_file_1c_root }}/landing/documents
+            postings: {{ aw_file_1c_root }}/landing/postings
+            reglog: {{ aw_file_1c_root }}/landing/reglog
+            audit: {{ aw_file_1c_root }}/landing/audit
+            host: {{ aw_file_1c_root }}/landing/host
+
+          formats:
+            default: jsonl
+            documents: jsonl
+            postings: jsonl
+            reglog: jsonl
+            audit: jsonl
+            host: jsonl
+
+          archive_dir: {{ aw_file_1c_root }}/archive
+          delete_after_load: false
+
+    - name: Создать symlink на активный root file-1C analytics
+      ansible.builtin.file:
+        src: "{{ aw_file_1c_release_dir }}"
+        dest: "{{ aw_file_1c_root }}"
+        state: link
+        force: true
+
+    - name: Bootstrap runtime file-1C analytics
+      ansible.builtin.command:
+        cmd: "{{ aw_file_1c_root }}/ops/bootstrap_runtime.sh"
+      environment:
+        AW_1C_ROOT: "{{ aw_file_1c_root }}"
+
+    - name: Сделать landing/archive writable для igor upload path
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: igor
+        group: igor
+        mode: "0755"
+        recurse: true
+      loop:
+        - "{{ aw_file_1c_root }}/landing"
+        - "{{ aw_file_1c_root }}/archive"
+
+    - name: Поднять ClickHouse для file-1C analytics
+      ansible.builtin.command:
+        cmd: docker compose up -d clickhouse
+      args:
+        chdir: "{{ aw_file_1c_root }}"
+
+    - name: Установить systemd unit aw-1c-ingest.service
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/ops/aw-1c-ingest.service"
+        dest: /etc/systemd/system/aw-1c-ingest.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезагрузить systemd
+
+    - name: Установить systemd unit aw-1c-ingest.timer
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/ops/aw-1c-ingest.timer"
+        dest: /etc/systemd/system/aw-1c-ingest.timer
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезагрузить systemd
+
+    - name: Установить systemd unit aw-1c-proofcheck.service
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/ops/aw-1c-proofcheck.service"
+        dest: /etc/systemd/system/aw-1c-proofcheck.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезагрузить systemd
+
+    - name: Установить systemd unit aw-1c-proofcheck.timer
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/ops/aw-1c-proofcheck.timer"
+        dest: /etc/systemd/system/aw-1c-proofcheck.timer
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезагрузить systemd
+
+    - name: Разрешить Windows upload key для igor
+      ansible.builtin.lineinfile:
+        path: /home/igor/.ssh/authorized_keys
+        line: "{{ lookup('file', aw_file_1c_windows_upload_pubkey_path) }}"
+        create: true
+        owner: igor
+        group: igor
+        mode: "0600"
+
+    - name: Включить и запустить aw-1c-ingest.timer
+      ansible.builtin.systemd:
+        name: aw-1c-ingest.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Включить и запустить aw-1c-proofcheck.timer
+      ansible.builtin.systemd:
+        name: aw-1c-proofcheck.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Проверить доступность ClickHouse ping
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ aw_file_1c_clickhouse_port }}/ping"
+        return_content: true
+      register: aw_file_1c_ping
+      changed_when: false
+
+    - name: Показать ping ClickHouse
+      ansible.builtin.debug:
+        msg: "{{ aw_file_1c_ping.content }}"
+
+  handlers:
+    - name: Перезагрузить systemd
+      ansible.builtin.systemd:
+        daemon_reload: true

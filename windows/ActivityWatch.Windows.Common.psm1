@@ -401,6 +401,7 @@ function Copy-ActivityWatchCollectorAssets {
         [string]$SessionCollectorScriptSource,
         [string]$EvtxExportScriptSource,
         [string]$HayabusaUploadScriptSource,
+        [string]$File1CTelemetryScriptSource,
         [string]$EmailCollectorScriptSource,
         [Parameter(Mandatory = $true)]
         [string]$ExampleRulesSource,
@@ -421,6 +422,7 @@ function Copy-ActivityWatchCollectorAssets {
     $sessionCollectorTarget = Join-Path $StateRoot 'worktime-session-collector.ps1'
     $evtxExportTarget = Join-Path $StateRoot 'export-evtx-for-hayabusa.ps1'
     $hayabusaUploadTarget = Join-Path $StateRoot 'export-upload-hayabusa-to-aw-server.ps1'
+    $file1cTelemetryTarget = Join-Path $StateRoot 'export-upload-file-1c-telemetry.ps1'
     $emailCollectorTarget = Join-Path $StateRoot 'email-outbound-collector.ps1'
     $exampleRulesTarget = Join-Path $StateRoot 'web-category-rules.example.json'
     $rulesTarget = Join-Path $StateRoot 'web-category-rules.json'
@@ -439,6 +441,9 @@ function Copy-ActivityWatchCollectorAssets {
     }
     if ($HayabusaUploadScriptSource -and (Test-Path -LiteralPath $HayabusaUploadScriptSource)) {
         Copy-Item -LiteralPath $HayabusaUploadScriptSource -Destination $hayabusaUploadTarget -Force
+    }
+    if ($File1CTelemetryScriptSource -and (Test-Path -LiteralPath $File1CTelemetryScriptSource)) {
+        Copy-Item -LiteralPath $File1CTelemetryScriptSource -Destination $file1cTelemetryTarget -Force
     }
     if ($EmailCollectorScriptSource -and (Test-Path -LiteralPath $EmailCollectorScriptSource)) {
         Copy-Item -LiteralPath $EmailCollectorScriptSource -Destination $emailCollectorTarget -Force
@@ -470,6 +475,7 @@ function Copy-ActivityWatchCollectorAssets {
         SessionCollectorScript  = $sessionCollectorTarget
         EvtxExportScript        = $evtxExportTarget
         HayabusaUploadScript    = $hayabusaUploadTarget
+        File1CTelemetryScript   = $file1cTelemetryTarget
         EmailCollectorScript    = $emailCollectorTarget
         ExampleRules            = $exampleRulesTarget
         ActiveRules             = $rulesTarget
@@ -503,6 +509,7 @@ function New-ActivityWatchDeploymentConfig {
         [string]$SessionCollectorScript,
         [string]$EvtxExportScript,
         [string]$HayabusaUploadScript,
+        [string]$File1CTelemetryScript,
         [string]$EmailCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$RulesPath,
@@ -547,6 +554,12 @@ function New-ActivityWatchDeploymentConfig {
         [int]$HayabusaAutoUploadHoursBack = 6,
         [string]$HayabusaAutoUploadMode = 'incident',
         [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
+        [bool]$File1CAutoUploadEnabled = $true,
+        [int]$File1CAutoUploadIntervalHours = 6,
+        [string]$File1CAutoUploadTaskName = 'ActivityWatch File1C Upload',
+        [string]$File1CTargetHost,
+        [string]$File1CTargetUser = 'igor',
+        [string]$File1CRemoteRoot = '/opt/activitywatch/clickhouse-1c/landing',
         [switch]$IntegrationTestEnabled
     )
 
@@ -588,6 +601,7 @@ function New-ActivityWatchDeploymentConfig {
             sessionCollectorScript = $SessionCollectorScript
             evtxExportScript = $EvtxExportScript
             hayabusaUploadScript = $HayabusaUploadScript
+            file1cTelemetryScript = $File1CTelemetryScript
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -621,6 +635,16 @@ function New-ActivityWatchDeploymentConfig {
                 hoursBack = $HayabusaAutoUploadHoursBack
                 mode = $HayabusaAutoUploadMode
                 taskName = $HayabusaAutoUploadTaskName
+            }
+        }
+        analytics = [pscustomobject]@{
+            file1cAutomation = [pscustomobject]@{
+                enabled = [bool]$File1CAutoUploadEnabled
+                intervalHours = $File1CAutoUploadIntervalHours
+                taskName = $File1CAutoUploadTaskName
+                targetHost = $File1CTargetHost
+                targetUser = $File1CTargetUser
+                remoteRoot = $File1CRemoteRoot
             }
         }
         sessionEvents = [pscustomobject]@{
@@ -1587,6 +1611,46 @@ function Register-ActivityWatchHayabusaAutoUploadTask {
     $mode = if ($automation.PSObject.Properties.Name -contains 'mode' -and -not [string]::IsNullOrWhiteSpace([string]$automation.mode)) { [string]$automation.mode } else { 'incident' }
     $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`" -HoursBack $hoursBack -Mode `"$mode`""
+
+    Remove-ActivityWatchScheduledTask -TaskName $taskName
+    & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Не удалось создать scheduled task $taskName через schtasks.exe"
+    }
+}
+
+function Register-ActivityWatchFile1CAutoUploadTask {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ConfigPath
+    )
+
+    $config = Read-ActivityWatchDeploymentConfig -Path $ConfigPath
+    if ($config.PSObject.Properties.Name -notcontains 'analytics' -or
+        $config.analytics.PSObject.Properties.Name -notcontains 'file1cAutomation') {
+        return
+    }
+
+    $automation = $config.analytics.file1cAutomation
+    $taskName = if ($automation.PSObject.Properties.Name -contains 'taskName' -and -not [string]::IsNullOrWhiteSpace([string]$automation.taskName)) {
+        [string]$automation.taskName
+    } else {
+        'ActivityWatch File1C Upload'
+    }
+
+    if (-not [bool]$automation.enabled) {
+        Remove-ActivityWatchScheduledTask -TaskName $taskName
+        return
+    }
+
+    $uploadScript = if ($config.paths.PSObject.Properties.Name -contains 'file1cTelemetryScript') { [string]$config.paths.file1cTelemetryScript } else { Join-Path $config.paths.stateRoot 'export-upload-file-1c-telemetry.ps1' }
+    if (-not (Test-Path -LiteralPath $uploadScript)) {
+        throw "Не найден скрипт file-1C telemetry upload: $uploadScript"
+    }
+
+    $intervalHours = [Math]::Max(1, [int]$automation.intervalHours)
+    $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`""
 
     Remove-ActivityWatchScheduledTask -TaskName $taskName
     & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null

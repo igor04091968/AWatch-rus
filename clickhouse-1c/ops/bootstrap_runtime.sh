@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="${AW_1C_ROOT:-/opt/activitywatch/clickhouse-1c}"
+
+mkdir -p \
+  "${ROOT}/landing/documents" \
+  "${ROOT}/landing/postings" \
+  "${ROOT}/landing/reglog" \
+  "${ROOT}/landing/audit" \
+  "${ROOT}/landing/host" \
+  "${ROOT}/archive/documents" \
+  "${ROOT}/archive/postings" \
+  "${ROOT}/archive/reglog" \
+  "${ROOT}/archive/audit" \
+  "${ROOT}/archive/host"
+
+if [[ ! -f "${ROOT}/etl/config.yml" ]]; then
+  cp "${ROOT}/etl/config.example.yml" "${ROOT}/etl/config.yml"
+fi
+
+python3 -m venv "${ROOT}/.venv"
+"${ROOT}/.venv/bin/pip" install --upgrade pip
+"${ROOT}/.venv/bin/pip" install -r "${ROOT}/etl/requirements.txt"

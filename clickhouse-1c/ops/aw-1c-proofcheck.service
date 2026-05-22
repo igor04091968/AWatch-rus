@@ -1,0 +1,9 @@
+[Unit]
+Description=AW-rus file-1C ingest freshness proof check
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+Environment=AW_1C_ROOT=/opt/activitywatch/clickhouse-1c
+ExecStart=/opt/activitywatch/clickhouse-1c/ops/check_ingest_freshness.sh

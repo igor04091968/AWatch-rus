@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW-rus file-1C freshness proof check every 6 hours
+
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=6h
+Unit=aw-1c-proofcheck.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -35,6 +35,10 @@
     aw_windows_hayabusa_auto_upload_hours_back: 6
     aw_windows_hayabusa_auto_upload_mode: "incident"
     aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"
+    aw_windows_file_1c_auto_upload_enabled: true
+    aw_windows_file_1c_auto_upload_interval_hours: 6
+    aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
+    aw_windows_file_1c_target_user: "igor"
     aw_windows_afk_enabled_default: true
     aw_windows_window_enabled_default: true
     aw_windows_file_ops_enabled: true
@@ -69,6 +73,10 @@
       ansible.builtin.set_fact:
         aw_server_inventory_host_effective: "{{ (groups['aw_server'] | default([]) | first) | default('', true) }}"
 
+    - name: Вычислить inventory host analytics node по умолчанию
+      ansible.builtin.set_fact:
+        aw_analytics_inventory_host_effective: "{{ (groups['proxmox'] | default([]) | first) | default('', true) }}"
+
     - name: Вычислить effective host для AW server
       ansible.builtin.set_fact:
         aw_windows_server_host_effective: >-
@@ -93,6 +101,22 @@
             | default(aw_windows_server_host_effective, true)
           }}
 
+    - name: Вычислить effective host для file-1C analytics
+      ansible.builtin.set_fact:
+        aw_windows_file_1c_target_host_effective: >-
+          {{
+            aw_windows_file_1c_target_host
+            | default(
+                (
+                  hostvars[aw_analytics_inventory_host_effective].ansible_host
+                  | default(aw_analytics_inventory_host_effective, true)
+                )
+                if (aw_analytics_inventory_host_effective | length) > 0
+                else '',
+                true
+              )
+          }}
+
     - name: Проверить обязательные переменные
       ansible.builtin.assert:
         that:
@@ -103,6 +127,7 @@
           - aw_windows_users_effective | length > 0
           - aw_windows_install_root is defined
           - aw_windows_state_root is defined
+          - (not (aw_windows_file_1c_auto_upload_enabled | bool)) or (aw_windows_file_1c_target_host_effective | length > 0)
         fail_msg: "Не заданы обязательные переменные Windows-развёртывания."
 
     - name: Нормализовать effective флаги collector'ов и smoke-check
@@ -134,6 +159,7 @@
         - worktime-session-collector.ps1
         - export-evtx-for-hayabusa.ps1
         - export-upload-hayabusa-to-aw-server.ps1
+        - export-upload-file-1c-telemetry.ps1
         - migrate-awatch-rus-paths.ps1
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1
@@ -219,6 +245,11 @@
             HayabusaAutoUploadHoursBack = {{ aw_windows_hayabusa_auto_upload_hours_back | int }}
             HayabusaAutoUploadMode = "{{ aw_windows_hayabusa_auto_upload_mode }}"
             HayabusaAutoUploadTaskName = "{{ aw_windows_hayabusa_auto_upload_task_name }}"
+            File1CAutoUploadEnabled = {{ '$true' if (aw_windows_file_1c_auto_upload_enabled | bool) else '$false' }}
+            File1CAutoUploadIntervalHours = {{ aw_windows_file_1c_auto_upload_interval_hours | int }}
+            File1CAutoUploadTaskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
+            File1CTargetHost = "{{ aw_windows_file_1c_target_host_effective }}"
+            File1CTargetUser = "{{ aw_windows_file_1c_target_user }}"
             CustomRulesPath = "{{ aw_windows_rules_path }}"
             CustomPolicyPath = "{{ aw_windows_policy_path }}"
           }

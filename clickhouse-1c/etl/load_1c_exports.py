@@ -78,9 +78,9 @@ def normalize_ts(value: Any) -> datetime:
 
 def iter_rows(path: Path, fmt: str) -> list[dict[str, Any]]:
     if fmt == "jsonl":
-        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        return [json.loads(line) for line in path.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
     if fmt == "json":
-        payload = json.loads(path.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
         return payload if isinstance(payload, list) else [payload]
     if fmt == "csv":
         with path.open("r", encoding="utf-8-sig", newline="") as fh:

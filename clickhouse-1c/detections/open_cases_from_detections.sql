@@ -12,5 +12,8 @@ SELECT
     entity_id,
     summary
 FROM analytics_1c.detections
-WHERE severity IN ('high', 'critical')
+WHERE (
+        severity IN ('high', 'critical')
+        OR (severity = 'medium' AND score >= 35)
+      )
   AND detection_id NOT IN (SELECT case_id FROM analytics_1c.cases);

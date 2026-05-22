@@ -1,0 +1,112 @@
+---
+- name: Развернуть file-1C telemetry uploader на Windows
+  hosts: aw_windows
+  gather_facts: false
+
+  vars:
+    aw_windows_repo_root: "{{ playbook_dir | dirname }}"
+    aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
+    aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
+    aw_windows_file_1c_target_user: "igor"
+    aw_windows_file_1c_auto_upload_interval_hours: 6
+    aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
+    aw_windows_file_1c_remote_root: "/opt/activitywatch/clickhouse-1c/landing"
+    aw_windows_upload_key_private_path: /tmp/awops_ed25519
+    aw_windows_upload_key_public_path: /tmp/awops_ed25519.pub
+
+  tasks:
+    - name: Вычислить inventory host analytics node по умолчанию
+      ansible.builtin.set_fact:
+        aw_analytics_inventory_host_effective: "{{ (groups['proxmox'] | default([]) | first) | default('', true) }}"
+
+    - name: Вычислить effective host для file-1C analytics
+      ansible.builtin.set_fact:
+        aw_windows_file_1c_target_host_effective: >-
+          {{
+            aw_windows_file_1c_target_host
+            | default(
+                (
+                  hostvars[aw_analytics_inventory_host_effective].ansible_host
+                  | default(aw_analytics_inventory_host_effective, true)
+                )
+                if (aw_analytics_inventory_host_effective | length) > 0
+                else '',
+                true
+              )
+          }}
+
+    - name: Проверить обязательные переменные file-1C telemetry
+      ansible.builtin.assert:
+        that:
+          - aw_windows_file_1c_target_host_effective | length > 0
+        fail_msg: "Не удалось вычислить host file-1C analytics для Windows uploader."
+
+    - name: Создать каталоги file-1C telemetry на Windows
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ aw_windows_state_root }}"
+        - "{{ aw_windows_deploy_root }}\\windows"
+        - "{{ aw_windows_state_root }}\\ssh"
+
+    - name: Загрузить file-1C telemetry script в toolkit
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_repo_root }}/windows/export-upload-file-1c-telemetry.ps1"
+        dest: "{{ aw_windows_deploy_root }}\\windows\\export-upload-file-1c-telemetry.ps1"
+
+    - name: Загрузить file-1C telemetry script в state root
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_repo_root }}/windows/export-upload-file-1c-telemetry.ps1"
+        dest: "{{ aw_windows_state_root }}\\export-upload-file-1c-telemetry.ps1"
+
+    - name: Обновить deployment-config.json блоком analytics.file1cAutomation
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $configPath = "{{ aw_windows_state_root }}\deployment-config.json"
+          $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
+
+          if ($config.PSObject.Properties.Name -notcontains 'paths') {
+            $config | Add-Member -NotePropertyName 'paths' -NotePropertyValue ([pscustomobject]@{})
+          }
+          if ($config.paths.PSObject.Properties.Name -contains 'file1cTelemetryScript') {
+            $config.paths.file1cTelemetryScript = "{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1"
+          } else {
+            $config.paths | Add-Member -NotePropertyName 'file1cTelemetryScript' -NotePropertyValue "{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1"
+          }
+
+          if ($config.PSObject.Properties.Name -notcontains 'analytics') {
+            $config | Add-Member -NotePropertyName 'analytics' -NotePropertyValue ([pscustomobject]@{})
+          }
+
+          $automation = [pscustomobject]@{
+            enabled = $true
+            intervalHours = {{ aw_windows_file_1c_auto_upload_interval_hours | int }}
+            taskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
+            targetHost = "{{ aw_windows_file_1c_target_host_effective }}"
+            targetUser = "{{ aw_windows_file_1c_target_user }}"
+            remoteRoot = "{{ aw_windows_file_1c_remote_root }}"
+          }
+
+          if ($config.analytics.PSObject.Properties.Name -contains 'file1cAutomation') {
+            $config.analytics.file1cAutomation = $automation
+          } else {
+            $config.analytics | Add-Member -NotePropertyName 'file1cAutomation' -NotePropertyValue $automation
+          }
+
+          $json = $config | ConvertTo-Json -Depth 12
+          Set-Content -LiteralPath $configPath -Value $json -Encoding UTF8
+
+    - name: Создать scheduled task file-1C upload
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $taskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
+          $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1`" -ConfigPath `"{{ aw_windows_state_root }}\deployment-config.json`""
+          & cmd.exe /c "schtasks /Delete /TN `"$taskName`" /F >nul 2>&1" | Out-Null
+          & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO {{ aw_windows_file_1c_auto_upload_interval_hours | int }} /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw "Не удалось создать scheduled task $taskName"
+          }
