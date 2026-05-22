@@ -115,11 +115,65 @@ SELECT
 FROM analytics_1c.company_registry
 GROUP BY company_key;
 
+CREATE OR REPLACE VIEW analytics_1c.v_company_registry_alias_map AS
+SELECT
+    source_company_key,
+    target_company_key,
+    target_company_name,
+    exclude_from_portfolio,
+    note
+FROM
+(
+    SELECT
+        'ИНФОРМАЦИОННАЯ БАЗА' AS source_company_key,
+        '' AS target_company_key,
+        'Информационная база' AS target_company_name,
+        toUInt8(1) AS exclude_from_portfolio,
+        'system_filebase' AS note
+    UNION ALL
+    SELECT
+        'МОСКОТЕЛЬИНКОВ АЛЕНСАНДР',
+        'МОСКОТЕЛЬНИКОВ АЛ В',
+        'МОСКОТЕЛЬНИКОВ АЛ.В',
+        toUInt8(0),
+        'manual_alias_typo'
+    UNION ALL
+    SELECT
+        'МОСКОТЕЛЬНИКОВ АЛЕКСАНДР',
+        'МОСКОТЕЛЬНИКОВ АЛ В',
+        'МОСКОТЕЛЬНИКОВ АЛ.В',
+        toUInt8(0),
+        'manual_alias_expansion'
+    UNION ALL
+    SELECT
+        'СЕРДИТОВ АНДРЕЙ',
+        'СЕРДИТОВ АВ',
+        'СЕРДИТОВ АВ',
+        toUInt8(0),
+        'manual_alias_initials'
+    UNION ALL
+    SELECT
+        'СЕРДИТОВ СЕРГЕЙ',
+        'СЕРДИТОВ СВ',
+        'СЕРДИТОВ СВ',
+        toUInt8(0),
+        'manual_alias_initials'
+    UNION ALL
+    SELECT
+        'СОРФИН',
+        'СОЛФИН',
+        'СОЛФИН',
+        toUInt8(0),
+        'manual_alias_typo'
+);
+
 CREATE OR REPLACE VIEW analytics_1c.v_company_portfolio_overview AS
 WITH
 base AS
 (
-    SELECT *
+    SELECT
+        *,
+        trimBoth(replaceRegexpAll(replaceRegexpAll(replaceRegexpAll(upperUTF8(counterparty), '(^|\\s)20[0-9]{2}($|\\s)', ' '), '[^0-9A-ZА-ЯЁ]+', ' '), '\\s+', ' ')) AS counterparty_key
     FROM analytics_1c.v_counterparty_latest_activity
 ),
 d7 AS
@@ -155,6 +209,11 @@ registry_state AS
 (
     SELECT *
     FROM analytics_1c.v_company_registry_current
+),
+alias_state AS
+(
+    SELECT *
+    FROM analytics_1c.v_company_registry_alias_map
 ),
 signals AS
 (
@@ -214,7 +273,9 @@ SELECT
     base.infobase AS infobase,
     if(company_state.organization != '', company_state.organization, base.organization) AS organization,
     base.counterparty AS counterparty,
-    if(company_state.company_name != '', company_state.company_name, base.counterparty) AS company_name,
+    if(alias_state.target_company_name != '', alias_state.target_company_name, if(company_state.company_name != '', company_state.company_name, base.counterparty)) AS company_name,
+    if(alias_state.target_company_name != '', alias_state.target_company_name, base.counterparty) AS normalized_counterparty,
+    multiIf(ifNull(alias_state.exclude_from_portfolio, 0) = 1, 'excluded', alias_state.target_company_key != '', 'alias', registry_state.company_key != '', 'direct', 'none') AS registry_match_mode,
     ifNull(registry_state.assignee_name, '') AS registry_assignee_name,
     ifNull(registry_state.registry_status, '') AS registry_status,
     ifNull(registry_state.share_text, '') AS registry_share_text,
@@ -254,11 +315,13 @@ SELECT
     ifNull(signals.top_signal, '') AS top_signal
 FROM base
 LEFT JOIN company_state ON company_state.infobase = base.infobase
-LEFT JOIN registry_state ON registry_state.company_key = trimBoth(replaceRegexpAll(replaceRegexpAll(replaceRegexpAll(upperUTF8(base.counterparty), '(^|\\s)20[0-9]{2}($|\\s)', ' '), '[^0-9A-ZА-ЯЁ]+', ' '), '\\s+', ' '))
+LEFT JOIN alias_state ON alias_state.source_company_key = base.counterparty_key
+LEFT JOIN registry_state ON registry_state.company_key = if(alias_state.target_company_key != '', alias_state.target_company_key, base.counterparty_key)
 LEFT JOIN d7 ON d7.infobase = base.infobase AND d7.counterparty = base.counterparty
 LEFT JOIN d30 ON d30.infobase = base.infobase AND d30.counterparty = base.counterparty
 LEFT JOIN signals ON signals.infobase = base.infobase AND signals.counterparty = base.counterparty
 LEFT JOIN amount_forecast ON amount_forecast.infobase = base.infobase AND amount_forecast.counterparty = base.counterparty
 LEFT JOIN docs_forecast ON docs_forecast.infobase = base.infobase AND docs_forecast.counterparty = base.counterparty
 LEFT JOIN cases_current ON cases_current.infobase = base.infobase AND cases_current.counterparty = base.counterparty
-LEFT JOIN detections_current ON detections_current.infobase = base.infobase AND detections_current.counterparty = base.counterparty;
+LEFT JOIN detections_current ON detections_current.infobase = base.infobase AND detections_current.counterparty = base.counterparty
+WHERE ifNull(alias_state.exclude_from_portfolio, 0) = 0;

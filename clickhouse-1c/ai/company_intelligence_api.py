@@ -86,6 +86,8 @@ def companies_overview(
         organization,
         counterparty,
         company_name,
+        normalized_counterparty,
+        registry_match_mode,
         registry_assignee_name,
         registry_status,
         registry_share_text,

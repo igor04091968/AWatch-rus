@@ -74,6 +74,16 @@ def linear_slope(values: list[float]) -> float:
     return num / den
 
 
+def normalize_company_key(value: str) -> str:
+    import re
+
+    text = (value or "").upper().replace("Ё", "Е")
+    text = re.sub(r"(^|\s)20\d{2}($|\s)", " ", text)
+    text = re.sub(r"[^0-9A-ZА-Я]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 def build_forecast(values: list[float], horizon: int, min_days: int, lookback_days: int) -> tuple[float, float, float, float, int, str]:
     if len(values) < min_days:
         raise ValueError("not enough data")
@@ -180,11 +190,24 @@ def main() -> int:
             """,
         )
     }
+    excluded_company_keys = {
+        str(row["source_company_key"])
+        for row in query_rows(
+            client,
+            """
+            SELECT source_company_key
+            FROM analytics_1c.v_company_registry_alias_map
+            WHERE exclude_from_portfolio = 1
+            """,
+        )
+    }
 
     forecast_rows: list[list[Any]] = []
     signal_rows: list[list[Any]] = []
 
     for (infobase, _organization, counterparty), points in grouped.items():
+        if normalize_company_key(counterparty) in excluded_company_keys:
+            continue
         points.sort(key=lambda p: p.d)
         filled = fill_daily_series(points)
         docs_series = [p.docs_total for p in filled]

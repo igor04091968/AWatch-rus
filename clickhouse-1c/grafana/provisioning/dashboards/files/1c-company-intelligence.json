@@ -352,7 +352,7 @@
           "format": 1,
           "pluginVersion": "11.2.2",
           "queryType": "table",
-          "rawSql": "SELECT infobase, company_name, registry_assignee_name, registry_inn, registry_kpp, owner_user, current_status, round(db_size_bytes / 1048576, 2) AS db_size_mb, amount_30d, docs_30d, amount_forecast_30d, signal_severity, signal_score, top_signal, last_seen_at FROM analytics_1c.v_company_portfolio_overview ORDER BY signal_score DESC, amount_30d DESC LIMIT 20",
+          "rawSql": "SELECT infobase, counterparty, normalized_counterparty, registry_match_mode, company_name, registry_assignee_name, registry_inn, registry_kpp, owner_user, current_status, round(db_size_bytes / 1048576, 2) AS db_size_mb, amount_30d, docs_30d, amount_forecast_30d, signal_severity, signal_score, top_signal, last_seen_at FROM analytics_1c.v_company_portfolio_overview ORDER BY signal_score DESC, amount_30d DESC LIMIT 20",
           "refId": "A"
         }
       ],
@@ -475,6 +475,6 @@
   "timezone": "browser",
   "title": "1C File - Company Intelligence",
   "uid": "1c-file-companies",
-  "version": 4,
+  "version": 5,
   "weekStart": ""
 }
