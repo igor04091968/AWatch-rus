@@ -90,6 +90,16 @@ Endpoints:
 - `GET /api/1/analytics-1c/manager/brief/latest`
 - `GET /api/1/analytics-1c/manager/brief/latest.md`
 - `GET /api/1/analytics-1c/manager/brief/history`
+- `GET /manager/brief`
+
+`/manager/brief` — это human-facing browser page для руководителя:
+
+- server-rendered HTML;
+- без frontend build chain и SPA-зависимостей;
+- опирается на уже сгенерированный `latest.json`;
+- показывает headline, человеческие комментарии, top risks, top forecasts,
+  действия и свежесть источников;
+- даёт быстрые ссылки на raw JSON/Markdown и в Grafana.
 
 ### Executive brief для руководителя
 

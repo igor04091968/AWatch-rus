@@ -2,17 +2,19 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import os
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import clickhouse_connect
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 
 
 def parse_args() -> argparse.Namespace:
@@ -64,6 +66,424 @@ def load_latest_manager_brief() -> dict[str, Any]:
     if not latest_path.exists():
         raise HTTPException(status_code=404, detail="manager brief not generated yet")
     return json.loads(latest_path.read_text(encoding="utf-8"))
+
+
+def grafana_company_dashboard_url() -> str:
+    return os.getenv(
+        "AW_1C_MANAGER_BRIEF_GRAFANA_URL",
+        "http://10.10.10.11:3000/d/1c-file-companies/1c-file-company-intelligence",
+    )
+
+
+def fmt_number(value: Any) -> str:
+    if value is None or value == "":
+        return "-"
+    if isinstance(value, float):
+        return f"{value:,.2f}".replace(",", " ").replace(".", ",")
+    if isinstance(value, int):
+        return f"{value:,}".replace(",", " ")
+    return str(value)
+
+
+def severity_badge(severity: str) -> str:
+    tone = {
+        "critical": "critical",
+        "high": "high",
+        "medium": "medium",
+        "low": "low",
+        "none": "none",
+    }.get((severity or "").lower(), "none")
+    return f'<span class="badge badge-{tone}">{html.escape(severity or "none")}</span>'
+
+
+def render_manager_brief_html(payload: dict[str, Any]) -> str:
+    brief = payload.get("brief", {})
+    context = payload.get("context", {})
+    summary = context.get("portfolio_summary", {})
+    freshness = context.get("freshness", [])
+    top_risks = brief.get("top_risks", [])
+    top_forecasts = brief.get("top_forecasts", [])
+    actions = brief.get("actions", [])
+    caveats = brief.get("caveats", [])
+    render_mode = payload.get("render_mode", "unknown")
+    generated_at = payload.get("generated_at", "")
+    history_url = "/api/1/analytics-1c/manager/brief/history"
+    json_url = "/api/1/analytics-1c/manager/brief/latest"
+    md_url = "/api/1/analytics-1c/manager/brief/latest.md"
+    grafana_url = grafana_company_dashboard_url()
+
+    freshness_rows = []
+    for item in freshness:
+        status = "stale" if item.get("stale") else "fresh"
+        freshness_rows.append(
+            "<tr>"
+            f"<td>{html.escape(str(item.get('source', '')))}</td>"
+            f"<td>{html.escape(str(item.get('latest_ts', '-')))}</td>"
+            f"<td>{html.escape(str(item.get('lag_hours', '-')))}</td>"
+            f"<td><span class=\"freshness freshness-{status}\">{'просрочен' if status == 'stale' else 'свежий'}</span></td>"
+            "</tr>"
+        )
+
+    risk_cards = []
+    for item in top_risks:
+        risk_cards.append(
+            "<article class=\"stack-card\">"
+            f"<div class=\"stack-card-head\"><h3>{html.escape(item.get('company', '-'))}</h3>{severity_badge(item.get('severity', ''))}</div>"
+            f"<p class=\"stack-card-body\">{html.escape(item.get('reason', '-'))}</p>"
+            f"<p class=\"stack-card-action\"><strong>Действие:</strong> {html.escape(item.get('recommended_action', '-'))}</p>"
+            "</article>"
+        )
+
+    forecast_cards = []
+    for item in top_forecasts:
+        company = item.get("company", "-")
+        forecast_cards.append(
+            "<article class=\"stack-card\">"
+            f"<div class=\"stack-card-head\"><h3>{html.escape(company)}</h3></div>"
+            f"<p class=\"metric-line\"><strong>Прогноз 30д:</strong> {html.escape(item.get('forecast_30d', '-'))}</p>"
+            f"<p class=\"stack-card-body\">{html.escape(item.get('interpretation', '-'))}</p>"
+            f"<a class=\"inline-link\" href=\"/api/1/analytics-1c/companies/{quote(company)}/summary\">Карточка компании</a>"
+            "</article>"
+        )
+
+    summary_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in brief.get("summary", []))
+    action_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in actions)
+    caveat_items = "\n".join(f"<li>{html.escape(str(item))}</li>" for item in caveats)
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Executive Brief</title>
+  <style>
+    :root {{
+      --bg: #f4f1ea;
+      --paper: #fffdf8;
+      --ink: #1c1a17;
+      --muted: #6b655c;
+      --line: #d8d0c4;
+      --accent: #005f73;
+      --accent-soft: #d9eef2;
+      --critical: #9b2226;
+      --high: #bb3e03;
+      --medium: #ca6702;
+      --low: #4d7c0f;
+      --none: #687076;
+      --fresh: #1d6f42;
+      --stale: #9b2226;
+      --shadow: 0 14px 40px rgba(28, 26, 23, 0.08);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      font-family: \"IBM Plex Sans\", \"Segoe UI\", system-ui, sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(0, 95, 115, 0.08), transparent 28%),
+        linear-gradient(180deg, #faf7f2 0%, var(--bg) 100%);
+      color: var(--ink);
+    }}
+    .shell {{
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 28px 22px 60px;
+    }}
+    .hero {{
+      background: linear-gradient(135deg, rgba(0,95,115,0.94), rgba(10,77,104,0.92));
+      color: #f8fbfc;
+      border-radius: 24px;
+      padding: 28px 30px;
+      box-shadow: var(--shadow);
+    }}
+    .hero-top {{
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }}
+    .hero h1 {{
+      margin: 0 0 12px;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+    }}
+    .hero-meta {{
+      color: rgba(248, 251, 252, 0.82);
+      font-size: 14px;
+    }}
+    .hero-links {{
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }}
+    .hero-links a {{
+      text-decoration: none;
+      color: #f8fbfc;
+      border: 1px solid rgba(248, 251, 252, 0.28);
+      padding: 9px 12px;
+      border-radius: 999px;
+      font-size: 14px;
+      backdrop-filter: blur(4px);
+    }}
+    .hero-links a:hover {{
+      background: rgba(248, 251, 252, 0.12);
+    }}
+    .grid {{
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 18px;
+      margin-top: 22px;
+    }}
+    .panel {{
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: var(--shadow);
+    }}
+    .panel h2 {{
+      margin: 0 0 14px;
+      font-size: 21px;
+      line-height: 1.1;
+    }}
+    .panel h3 {{
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.2;
+    }}
+    .span-12 {{ grid-column: span 12; }}
+    .span-8 {{ grid-column: span 8; }}
+    .span-6 {{ grid-column: span 6; }}
+    .span-4 {{ grid-column: span 4; }}
+    .span-3 {{ grid-column: span 3; }}
+    .summary-list,
+    .action-list,
+    .caveat-list {{
+      margin: 0;
+      padding-left: 20px;
+      line-height: 1.55;
+    }}
+    .stats {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }}
+    .stat {{
+      padding: 16px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fff 0%, #f7f4ee 100%);
+      border: 1px solid var(--line);
+    }}
+    .stat-label {{
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }}
+    .stat-value {{
+      font-size: 26px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }}
+    .stack {{
+      display: grid;
+      gap: 14px;
+    }}
+    .stack-card {{
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px 18px;
+      background: #fffdfa;
+    }}
+    .stack-card-head {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }}
+    .stack-card-body,
+    .stack-card-action,
+    .metric-line {{
+      margin: 0;
+      line-height: 1.5;
+    }}
+    .stack-card-action {{
+      margin-top: 10px;
+      color: var(--muted);
+    }}
+    .badge {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      white-space: nowrap;
+      color: #fff;
+    }}
+    .badge-critical {{ background: var(--critical); }}
+    .badge-high {{ background: var(--high); }}
+    .badge-medium {{ background: var(--medium); }}
+    .badge-low {{ background: var(--low); }}
+    .badge-none {{ background: var(--none); }}
+    .freshness {{
+      display: inline-flex;
+      border-radius: 999px;
+      padding: 4px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }}
+    .freshness-fresh {{
+      background: rgba(29, 111, 66, 0.12);
+      color: var(--fresh);
+    }}
+    .freshness-stale {{
+      background: rgba(155, 34, 38, 0.12);
+      color: var(--stale);
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }}
+    th, td {{
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }}
+    th {{
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }}
+    .inline-link {{
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }}
+    .inline-link:hover {{
+      text-decoration: underline;
+    }}
+    @media (max-width: 1100px) {{
+      .span-8, .span-6, .span-4, .span-3 {{ grid-column: span 12; }}
+      .stats {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+    }}
+    @media (max-width: 640px) {{
+      .shell {{ padding: 16px 14px 40px; }}
+      .hero {{ padding: 22px 18px; }}
+      .stats {{ grid-template-columns: 1fr; }}
+      .stack-card-head {{ flex-direction: column; align-items: flex-start; }}
+      th:nth-child(2), td:nth-child(2),
+      th:nth-child(3), td:nth-child(3) {{
+        display: none;
+      }}
+    }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="hero-top">
+        <div>
+          <div class="hero-meta">AW-rus · 1C Executive Brief · render mode: {html.escape(render_mode)}</div>
+          <h1>{html.escape(brief.get("headline", "Executive brief недоступен"))}</h1>
+          <div class="hero-meta">Сформировано: {html.escape(generated_at)}</div>
+        </div>
+        <nav class="hero-links">
+          <a href="{html.escape(json_url)}">JSON</a>
+          <a href="{html.escape(md_url)}">Markdown</a>
+          <a href="{html.escape(history_url)}">History</a>
+          <a href="{html.escape(grafana_url)}">Grafana</a>
+        </nav>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel span-8">
+        <h2>Краткий комментарий</h2>
+        <ol class="summary-list">
+          {summary_items}
+        </ol>
+      </article>
+      <article class="panel span-4">
+        <h2>Портфель</h2>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">Компаний</div>
+            <div class="stat-value">{fmt_number(summary.get("companies_total"))}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Critical</div>
+            <div class="stat-value">{fmt_number(summary.get("critical_total"))}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Кейсы</div>
+            <div class="stat-value">{fmt_number(summary.get("open_cases_total"))}</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Прогноз 30д</div>
+            <div class="stat-value">{fmt_number(summary.get("activity_forecast_30d_total"))}</div>
+          </div>
+        </div>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Компании риска</h2>
+        <div class="stack">
+          {''.join(risk_cards) or '<p>Нет данных.</p>'}
+        </div>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Прогноз активности 30 дней</h2>
+        <div class="stack">
+          {''.join(forecast_cards) or '<p>Нет данных.</p>'}
+        </div>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Что проверить руководителю</h2>
+        <ul class="action-list">
+          {action_items}
+        </ul>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Ограничения интерпретации</h2>
+        <ul class="caveat-list">
+          {caveat_items}
+        </ul>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Свежесть источников</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Источник</th>
+              <th>Последняя отметка</th>
+              <th>Отставание, ч</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(freshness_rows)}
+          </tbody>
+        </table>
+      </article>
+    </section>
+  </main>
+</body>
+</html>"""
 
 
 app = FastAPI(title="AW-rus 1C Company Intelligence API", version="1.0.0")
@@ -278,6 +698,11 @@ def manager_brief_history(limit: int = Query(default=20, ge=1, le=200)) -> dict[
             }
         )
     return {"items": items, "count": len(items)}
+
+
+@app.get("/manager/brief", response_class=HTMLResponse)
+def manager_brief_view() -> str:
+    return render_manager_brief_html(load_latest_manager_brief())
 
 
 if __name__ == "__main__":
