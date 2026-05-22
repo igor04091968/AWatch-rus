@@ -14,7 +14,7 @@ from urllib.parse import quote
 import clickhouse_connect
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 
 def parse_args() -> argparse.Namespace:
@@ -487,6 +487,11 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
 
 
 app = FastAPI(title="AW-rus 1C Company Intelligence API", version="1.0.0")
+
+
+@app.get("/favicon.ico")
+def favicon() -> Response:
+    return Response(status_code=204)
 
 
 @app.get("/health")
