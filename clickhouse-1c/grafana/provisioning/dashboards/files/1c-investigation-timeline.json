@@ -33,7 +33,7 @@
           "format": 1,
           "pluginVersion": "11.2.2",
           "queryType": "table",
-          "rawSql": "SELECT ts, entity_type, entity_id, actor, source, event_type, severity, score, summary FROM analytics_1c.entity_timeline WHERE $__timeFilter(ts) AND ('${entity_type}' IN ('', '$__all') OR entity_type = '${entity_type}') AND ('${entity_id}' IN ('', '$__all') OR entity_id = '${entity_id}') ORDER BY ts DESC LIMIT 200",
+          "rawSql": "SELECT ts, entity_type, entity_id, actor, source, event_type, severity, score, summary FROM analytics_1c.entity_timeline WHERE $__timeFilter(ts) ORDER BY ts DESC LIMIT 200",
           "refId": "A"
         }
       ],
@@ -76,7 +76,7 @@
           "format": 1,
           "pluginVersion": "11.2.2",
           "queryType": "table",
-          "rawSql": "SELECT ts, rule_title, severity, score, summary FROM analytics_1c.detections WHERE $__timeFilter(ts) AND ('${entity_type}' IN ('', '$__all') OR entity_type = '${entity_type}') AND ('${entity_id}' IN ('', '$__all') OR entity_id = '${entity_id}') ORDER BY ts DESC LIMIT 100",
+          "rawSql": "SELECT ts, entity_type, entity_id, rule_title, severity, score, summary FROM analytics_1c.detections WHERE $__timeFilter(ts) ORDER BY ts DESC LIMIT 100",
           "refId": "A"
         }
       ],
@@ -313,46 +313,6 @@
           "text": "All",
           "value": "$__all"
         }
-      },
-      {
-        "name": "entity_type",
-        "label": "Entity type",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "clickhouse-1c"
-        },
-        "refresh": 1,
-        "definition": "SELECT DISTINCT entity_type FROM analytics_1c.entity_timeline ORDER BY entity_type",
-        "query": "SELECT DISTINCT entity_type FROM analytics_1c.entity_timeline ORDER BY entity_type",
-        "multi": false,
-        "includeAll": true,
-        "sort": 1,
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        }
-      },
-      {
-        "name": "entity_id",
-        "label": "Entity id",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-clickhouse-datasource",
-          "uid": "clickhouse-1c"
-        },
-        "refresh": 1,
-        "definition": "SELECT DISTINCT entity_id FROM analytics_1c.entity_timeline WHERE ('${entity_type}' IN ('', '$__all') OR entity_type = '${entity_type}') ORDER BY entity_id",
-        "query": "SELECT DISTINCT entity_id FROM analytics_1c.entity_timeline WHERE ('${entity_type}' IN ('', '$__all') OR entity_type = '${entity_type}') ORDER BY entity_id",
-        "multi": false,
-        "includeAll": true,
-        "sort": 1,
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        }
       }
     ]
   },
@@ -364,6 +324,6 @@
   "timezone": "browser",
   "title": "1C File - Investigation Timeline",
   "uid": "1c-file-investigation",
-  "version": 2,
+  "version": 3,
   "weekStart": ""
 }
