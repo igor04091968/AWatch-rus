@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import sys
+import tempfile
+import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -98,6 +100,14 @@ class BuildBusinessEventExportsTests(unittest.TestCase):
         self.assertEqual(changes[0]["document_type"], "Корректировка")
         self.assertEqual(changes[0]["change_kind"], "repost")
         self.assertEqual(changes[0]["risk_tag"], "repost")
+
+    def test_write_jsonl_ages_generated_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "events.jsonl"
+            before = time.time()
+            builder.write_jsonl(path, [{"event_id": "1"}], min_age_seconds=180)
+            self.assertTrue(path.exists())
+            self.assertLessEqual(path.stat().st_mtime, before - 5)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -90,7 +91,7 @@ def stable_id(prefix: str, *parts: Any) -> str:
     return f"{prefix}:{digest}"
 
 
-def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
+def write_jsonl(path: Path, rows: list[dict[str, Any]], *, min_age_seconds: int) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not rows:
         path.unlink(missing_ok=True)
@@ -99,6 +100,8 @@ def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     payload = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + "\n"
     tmp.write_text(payload, encoding="utf-8")
     tmp.replace(path)
+    aged_mtime = max(0, int(datetime.now(UTC).timestamp()) - max(min_age_seconds + 1, 5))
+    os.utime(path, (aged_mtime, aged_mtime))
 
 
 def load_company_index(conf: Config) -> dict[str, str]:
@@ -323,19 +326,19 @@ def main() -> int:
     for path in iter_dataset_files(conf, "documents"):
         rows = iter_rows(path, source_format(conf, "documents"))
         out = output_path(conf, "business_events", path, "business-events-documents")
-        write_jsonl(out, build_document_events(rows, path.name, company_index))
+        write_jsonl(out, build_document_events(rows, path.name, company_index), min_age_seconds=conf.min_file_age_seconds)
         print(f"built business_events from documents: {path.name} rows={len(rows)}")
 
     for path in iter_dataset_files(conf, "postings"):
         rows = iter_rows(path, source_format(conf, "postings"))
         out = output_path(conf, "business_events", path, "business-events-postings")
-        write_jsonl(out, build_posting_events(rows, path.name, company_index, by_id, by_number))
+        write_jsonl(out, build_posting_events(rows, path.name, company_index, by_id, by_number), min_age_seconds=conf.min_file_age_seconds)
         print(f"built business_events from postings: {path.name} rows={len(rows)}")
 
     for path in iter_dataset_files(conf, "audit"):
         rows = iter_rows(path, source_format(conf, "audit"))
         out = output_path(conf, "document_changes", path, "document-changes-audit")
-        write_jsonl(out, build_document_changes(rows, path.name, company_index, by_id, by_number))
+        write_jsonl(out, build_document_changes(rows, path.name, company_index, by_id, by_number), min_age_seconds=conf.min_file_age_seconds)
         print(f"built document_changes from audit: {path.name} rows={len(rows)}")
 
     return 0

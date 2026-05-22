@@ -164,6 +164,8 @@
           landing:
             documents: {{ aw_file_1c_root }}/landing/documents
             postings: {{ aw_file_1c_root }}/landing/postings
+            business_events: {{ aw_file_1c_root }}/landing/business_events
+            document_changes: {{ aw_file_1c_root }}/landing/document_changes
             companies: {{ aw_file_1c_root }}/landing/companies
             reglog: {{ aw_file_1c_root }}/landing/reglog
             audit: {{ aw_file_1c_root }}/landing/audit
@@ -173,6 +175,8 @@
             default: jsonl
             documents: jsonl
             postings: jsonl
+            business_events: jsonl
+            document_changes: jsonl
             companies: jsonl
             reglog: jsonl
             audit: jsonl
