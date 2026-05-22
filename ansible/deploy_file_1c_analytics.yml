@@ -17,6 +17,8 @@
     aw_file_1c_grafana_admin_user: admin
     aw_file_1c_grafana_admin_password: change-me
     aw_file_1c_grafana_port: 3300
+    aw_file_1c_company_api_host: "{{ ansible_host | default('127.0.0.1') }}"
+    aw_file_1c_company_api_port: 8710
     aw_file_1c_windows_upload_pubkey_path: /tmp/awops_ed25519.pub
 
   tasks:
@@ -122,6 +124,8 @@
           GRAFANA_ADMIN_PASSWORD={{ aw_file_1c_grafana_admin_password }}
           GRAFANA_PORT={{ aw_file_1c_grafana_port }}
           CLICKHOUSE_HOST=clickhouse
+          AW_1C_COMPANY_API_HOST={{ aw_file_1c_company_api_host }}
+          AW_1C_COMPANY_API_PORT={{ aw_file_1c_company_api_port }}
 
     - name: Создать etl/config.yml для file-1C analytics
       ansible.builtin.copy:
