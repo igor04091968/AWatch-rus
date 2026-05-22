@@ -33,7 +33,7 @@
           "format": 1,
           "pluginVersion": "11.2.2",
           "queryType": "table",
-          "rawSql": "SELECT countDistinct(counterparty) AS value FROM analytics_1c.v_counterparty_daily WHERE d >= today() - 30",
+          "rawSql": "SELECT count() AS value FROM analytics_1c.v_companies_current",
           "refId": "A"
         }
       ],
@@ -352,7 +352,7 @@
           "format": 1,
           "pluginVersion": "11.2.2",
           "queryType": "table",
-          "rawSql": "SELECT infobase, counterparty, amount_30d, docs_30d, amount_forecast_30d, signal_severity, signal_score, top_signal, last_seen_at FROM analytics_1c.v_company_portfolio_overview ORDER BY signal_score DESC, amount_30d DESC LIMIT 20",
+          "rawSql": "SELECT infobase, company_name, owner_user, current_status, round(db_size_bytes / 1048576, 2) AS db_size_mb, amount_30d, docs_30d, amount_forecast_30d, signal_severity, signal_score, top_signal, last_seen_at FROM analytics_1c.v_company_portfolio_overview ORDER BY signal_score DESC, amount_30d DESC LIMIT 20",
           "refId": "A"
         }
       ],
@@ -475,6 +475,6 @@
   "timezone": "browser",
   "title": "1C File - Company Intelligence",
   "uid": "1c-file-companies",
-  "version": 1,
+  "version": 3,
   "weekStart": ""
 }

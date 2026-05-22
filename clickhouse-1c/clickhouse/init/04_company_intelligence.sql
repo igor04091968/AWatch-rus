@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS analytics_1c.company_health_signals
 ENGINE = MergeTree
 ORDER BY (generated_at, severity, infobase, counterparty, signal_id);
 
-CREATE VIEW IF NOT EXISTS analytics_1c.v_counterparty_daily AS
+CREATE OR REPLACE VIEW analytics_1c.v_counterparty_daily AS
 SELECT
     toDate(ts) AS d,
     infobase,
@@ -56,7 +56,7 @@ FROM analytics_1c.documents
 WHERE counterparty != ''
 GROUP BY d, infobase, organization, counterparty;
 
-CREATE VIEW IF NOT EXISTS analytics_1c.v_counterparty_latest_activity AS
+CREATE OR REPLACE VIEW analytics_1c.v_counterparty_latest_activity AS
 SELECT
     infobase,
     organization,
@@ -72,17 +72,36 @@ FROM analytics_1c.documents
 WHERE counterparty != ''
 GROUP BY infobase, organization, counterparty;
 
-CREATE VIEW IF NOT EXISTS analytics_1c.v_company_forecasts_current AS
+CREATE OR REPLACE VIEW analytics_1c.v_company_forecasts_current AS
 SELECT *
 FROM analytics_1c.company_forecasts
 WHERE generated_at = (SELECT max(generated_at) FROM analytics_1c.company_forecasts);
 
-CREATE VIEW IF NOT EXISTS analytics_1c.v_company_health_current AS
+CREATE OR REPLACE VIEW analytics_1c.v_company_health_current AS
 SELECT *
 FROM analytics_1c.company_health_signals
 WHERE generated_at = (SELECT max(generated_at) FROM analytics_1c.company_health_signals);
 
-CREATE VIEW IF NOT EXISTS analytics_1c.v_company_portfolio_overview AS
+CREATE OR REPLACE VIEW analytics_1c.v_companies_current AS
+SELECT
+    infobase,
+    argMax(company_name, ts) AS company_name,
+    argMax(organization, ts) AS organization,
+    argMax(owner_user, ts) AS owner_user,
+    argMax(base_id, ts) AS base_id,
+    argMax(base_path, ts) AS base_path,
+    argMax(status, ts) AS current_status,
+    argMax(db_size_bytes, ts) AS db_size_bytes,
+    argMax(reglog_size_bytes, ts) AS reglog_size_bytes,
+    argMax(active_locks, ts) AS active_locks,
+    argMax(temp_db_present, ts) AS temp_db_present,
+    argMax(scheduler_touched, ts) AS scheduler_touched,
+    argMax(activity_score, ts) AS current_activity_score,
+    max(ts) AS last_company_snapshot_at
+FROM analytics_1c.companies
+GROUP BY infobase;
+
+CREATE OR REPLACE VIEW analytics_1c.v_company_portfolio_overview AS
 WITH
 base AS
 (
@@ -112,6 +131,11 @@ d30 AS
     FROM analytics_1c.v_counterparty_daily
     WHERE d >= today() - 30
     GROUP BY infobase, counterparty
+),
+company_state AS
+(
+    SELECT *
+    FROM analytics_1c.v_companies_current
 ),
 signals AS
 (
@@ -169,12 +193,24 @@ detections_current AS
 )
 SELECT
     base.infobase AS infobase,
-    base.organization,
+    if(company_state.organization != '', company_state.organization, base.organization) AS organization,
     base.counterparty AS counterparty,
+    if(company_state.company_name != '', company_state.company_name, base.counterparty) AS company_name,
+    ifNull(company_state.owner_user, '') AS owner_user,
+    ifNull(company_state.base_id, '') AS base_id,
+    ifNull(company_state.base_path, '') AS base_path,
     base.last_seen_at,
+    company_state.last_company_snapshot_at,
     base.last_doc_type,
     base.last_operation_type,
     base.last_status,
+    ifNull(company_state.current_status, base.last_status) AS current_status,
+    ifNull(company_state.db_size_bytes, 0) AS db_size_bytes,
+    ifNull(company_state.reglog_size_bytes, 0) AS reglog_size_bytes,
+    ifNull(company_state.active_locks, 0) AS active_locks,
+    ifNull(company_state.temp_db_present, 0) AS temp_db_present,
+    ifNull(company_state.scheduler_touched, 0) AS scheduler_touched,
+    ifNull(company_state.current_activity_score, 0) AS current_activity_score,
     dateDiff('day', toDate(base.last_seen_at), today()) AS days_since_last_activity,
     ifNull(d7.docs_7d, 0) AS docs_7d,
     ifNull(d7.amount_7d, 0) AS amount_7d,
@@ -192,6 +228,7 @@ SELECT
     ifNull(signals.signal_score, 0) AS signal_score,
     ifNull(signals.top_signal, '') AS top_signal
 FROM base
+LEFT JOIN company_state ON company_state.infobase = base.infobase
 LEFT JOIN d7 ON d7.infobase = base.infobase AND d7.counterparty = base.counterparty
 LEFT JOIN d30 ON d30.infobase = base.infobase AND d30.counterparty = base.counterparty
 LEFT JOIN signals ON signals.infobase = base.infobase AND signals.counterparty = base.counterparty

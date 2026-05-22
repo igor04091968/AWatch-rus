@@ -1,4 +1,4 @@
-CREATE VIEW IF NOT EXISTS analytics_1c.v_documents_daily AS
+CREATE OR REPLACE VIEW analytics_1c.v_documents_daily AS
 SELECT
     toDate(ts) AS d,
     infobase,
@@ -10,7 +10,7 @@ SELECT
 FROM analytics_1c.documents
 GROUP BY d, infobase, organization, doc_type;
 
-CREATE VIEW IF NOT EXISTS analytics_1c.v_detections_daily AS
+CREATE OR REPLACE VIEW analytics_1c.v_detections_daily AS
 SELECT
     toDate(ts) AS d,
     infobase,
@@ -20,7 +20,7 @@ SELECT
 FROM analytics_1c.detections
 GROUP BY d, infobase, severity;
 
-CREATE VIEW IF NOT EXISTS analytics_1c.v_open_cases AS
+CREATE OR REPLACE VIEW analytics_1c.v_open_cases AS
 SELECT *
 FROM analytics_1c.cases
 WHERE status != 'closed';

@@ -268,6 +268,7 @@ $nextExporterState = @{}
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 $documents = New-Object System.Collections.Generic.List[object]
+$companies = New-Object System.Collections.Generic.List[object]
 $reglog = New-Object System.Collections.Generic.List[object]
 $audit = New-Object System.Collections.Generic.List[object]
 
@@ -331,6 +332,23 @@ foreach ($base in $infobases) {
         amount = 0
         status = $status
         posted = 1
+    })
+
+    $companies.Add([ordered]@{
+        ts = $nowUtc
+        infobase = [string]$base.infobase
+        company_name = [string]$base.infobase
+        organization = $organization
+        owner_user = $owner
+        base_id = $docId
+        base_path = [string]$base.path
+        status = $status
+        db_size_bytes = $dbSizeBytes
+        reglog_size_bytes = $mainLogBytes
+        active_locks = $activeLocks.Count
+        temp_db_present = if ($tempDb) { 1 } else { 0 }
+        scheduler_touched = if ($schedulerTouched) { 1 } else { 0 }
+        activity_score = $activityScore
     })
 
     if ($activityScore -gt 0) {
@@ -434,17 +452,20 @@ New-Item -ItemType Directory -Path $outRoot -Force | Out-Null
 
 $files = @{
     documents = Join-Path $outRoot "documents-$stamp.jsonl"
+    companies = Join-Path $outRoot "companies-$stamp.jsonl"
     reglog = Join-Path $outRoot "reglog-$stamp.jsonl"
     audit = Join-Path $outRoot "audit-$stamp.jsonl"
     host = Join-Path $outRoot "host-$stamp.jsonl"
 }
 
 $documentRows = @($documents | ForEach-Object { $_ })
+$companyRows = @($companies | ForEach-Object { $_ })
 $reglogRows = @($reglog | ForEach-Object { $_ })
 $auditRows = @($audit | ForEach-Object { $_ })
 $hostRowsNormalized = @($hostRows | ForEach-Object { $_ })
 
 Write-JsonLines -Path ([string]$files['documents']) -Rows $documentRows
+Write-JsonLines -Path ([string]$files['companies']) -Rows $companyRows
 Write-JsonLines -Path ([string]$files['reglog']) -Rows $reglogRows
 Write-JsonLines -Path ([string]$files['audit']) -Rows $auditRows
 Write-JsonLines -Path ([string]$files['host']) -Rows $hostRowsNormalized
@@ -452,8 +473,8 @@ Write-JsonLines -Path ([string]$files['host']) -Rows $hostRowsNormalized
 $effectiveKeyPath = New-TemporarySshKeyCopy -SourceKeyPath $RemoteKeyPath
 
 try {
-    Write-RunLog "prepared datasets documents=$($documentRows.Count) reglog=$($reglogRows.Count) audit=$($auditRows.Count) host=$($hostRowsNormalized.Count)"
-    foreach ($dataset in 'documents', 'reglog', 'audit', 'host') {
+    Write-RunLog "prepared datasets documents=$($documentRows.Count) companies=$($companyRows.Count) reglog=$($reglogRows.Count) audit=$($auditRows.Count) host=$($hostRowsNormalized.Count)"
+    foreach ($dataset in 'documents', 'companies', 'reglog', 'audit', 'host') {
         Invoke-SshUploadWithRetry -KeyPath $effectiveKeyPath -SourcePath ([string]$files[$dataset]) -Destination "$AnalyticsUser@$AnalyticsHost`:$RemoteRoot/$dataset/"
     }
     Save-ExporterState -Path $ExporterStatePath -State $nextExporterState
@@ -473,6 +494,7 @@ Write-RunLog 'file1c exporter done'
     infobases = @($infobases | ForEach-Object { $_.infobase })
     datasets = [ordered]@{
         documents = $documents.Count
+        companies = $companies.Count
         reglog = $reglog.Count
         audit = $audit.Count
         host = $hostRows.Count

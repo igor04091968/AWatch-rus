@@ -134,6 +134,7 @@
           landing:
             documents: {{ aw_file_1c_root }}/landing/documents
             postings: {{ aw_file_1c_root }}/landing/postings
+            companies: {{ aw_file_1c_root }}/landing/companies
             reglog: {{ aw_file_1c_root }}/landing/reglog
             audit: {{ aw_file_1c_root }}/landing/audit
             host: {{ aw_file_1c_root }}/landing/host
@@ -142,6 +143,7 @@
             default: jsonl
             documents: jsonl
             postings: jsonl
+            companies: jsonl
             reglog: jsonl
             audit: jsonl
             host: jsonl
@@ -180,6 +182,22 @@
         cmd: docker compose up -d clickhouse
       args:
         chdir: "{{ aw_file_1c_root }}"
+
+    - name: Переапплиить ClickHouse schema и views для file-1C analytics
+      ansible.builtin.shell: |
+        set -eu
+        docker exec -i aw-rus-1c-clickhouse clickhouse-client \
+          --user {{ aw_file_1c_clickhouse_user }} \
+          --password {{ aw_file_1c_clickhouse_password }} \
+          --multiquery < "{{ aw_file_1c_root }}/clickhouse/init/{{ item }}"
+      args:
+        executable: /bin/bash
+      loop:
+        - 00_database.sql
+        - 01_raw_tables.sql
+        - 02_core_tables.sql
+        - 03_views.sql
+        - 04_company_intelligence.sql
 
     - name: Установить systemd unit aw-1c-ingest.service
       ansible.builtin.copy:

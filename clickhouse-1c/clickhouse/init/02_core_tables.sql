@@ -32,6 +32,27 @@ CREATE TABLE IF NOT EXISTS analytics_1c.postings
 ENGINE = MergeTree
 ORDER BY (infobase, ts, registrar);
 
+CREATE TABLE IF NOT EXISTS analytics_1c.companies
+(
+    ts DateTime,
+    infobase LowCardinality(String),
+    company_name String,
+    organization String,
+    owner_user String,
+    base_id String,
+    base_path String,
+    status LowCardinality(String),
+    db_size_bytes UInt64,
+    reglog_size_bytes UInt64,
+    active_locks UInt32,
+    temp_db_present UInt8,
+    scheduler_touched UInt8,
+    activity_score Float32,
+    source_file String
+)
+ENGINE = MergeTree
+ORDER BY (infobase, ts);
+
 CREATE TABLE IF NOT EXISTS analytics_1c.reglog_events
 (
     ts DateTime,

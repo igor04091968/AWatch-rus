@@ -6,11 +6,13 @@ ROOT="${AW_1C_ROOT:-/opt/activitywatch/clickhouse-1c}"
 mkdir -p \
   "${ROOT}/landing/documents" \
   "${ROOT}/landing/postings" \
+  "${ROOT}/landing/companies" \
   "${ROOT}/landing/reglog" \
   "${ROOT}/landing/audit" \
   "${ROOT}/landing/host" \
   "${ROOT}/archive/documents" \
   "${ROOT}/archive/postings" \
+  "${ROOT}/archive/companies" \
   "${ROOT}/archive/reglog" \
   "${ROOT}/archive/audit" \
   "${ROOT}/archive/host"

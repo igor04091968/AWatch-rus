@@ -42,6 +42,25 @@ SELECT *
 FROM (
     SELECT
         ts,
+        'counterparty' AS entity_type,
+        company_name AS entity_id,
+        infobase,
+        owner_user AS actor,
+        'companies' AS source,
+        'company_snapshot' AS event_type,
+        if(status = 'busy' OR active_locks > 0 OR temp_db_present = 1, 'medium', 'low') AS severity,
+        greatest(10, toUInt32(round(activity_score))) AS score,
+        concat('company:', infobase, ':', toString(toUnixTimestamp(ts))) AS ref_id,
+        concat('Company snapshot ', company_name, ': status=', status, ' locks=', toString(active_locks), ' score=', toString(activity_score)) AS summary
+    FROM analytics_1c.companies
+) AS src
+WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
+
+INSERT INTO analytics_1c.entity_timeline
+SELECT *
+FROM (
+    SELECT
+        ts,
         'user' AS entity_type,
         user AS entity_id,
         infobase,

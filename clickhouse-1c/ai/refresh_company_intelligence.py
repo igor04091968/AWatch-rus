@@ -164,6 +164,22 @@ def main() -> int:
             """,
         )
     }
+    company_state_map = {
+        row["infobase"]: row
+        for row in query_rows(
+            client,
+            """
+            SELECT
+                infobase,
+                current_status,
+                active_locks,
+                temp_db_present,
+                scheduler_touched,
+                current_activity_score
+            FROM analytics_1c.v_companies_current
+            """,
+        )
+    }
 
     forecast_rows: list[list[Any]] = []
     signal_rows: list[list[Any]] = []
@@ -186,6 +202,12 @@ def main() -> int:
         days_since_last_activity = (date.today() - latest_day).days
         open_cases_total = cases_map.get((infobase, counterparty), 0)
         detections_total = detections_map.get((infobase, counterparty), 0)
+        company_state = company_state_map.get(infobase, {})
+        current_status = str(company_state.get("current_status") or "")
+        active_locks = int(company_state.get("active_locks") or 0)
+        temp_db_present = int(company_state.get("temp_db_present") or 0)
+        scheduler_touched = int(company_state.get("scheduler_touched") or 0)
+        current_activity_score = float(company_state.get("current_activity_score") or 0)
 
         for metric, values in (("docs_total", docs_series), ("amount_total", amount_series)):
             for horizon in horizons:
@@ -221,6 +243,11 @@ def main() -> int:
             signals.append(("amount_drop", 70, "high", f"Активность по компании {counterparty} упала более чем на 50% неделя к неделе."))
         if docs_prev_7d > 0 and docs_7d == 0:
             signals.append(("docs_stopped", 55, "medium", f"По компании {counterparty} прекратился поток документов за последние 7 дней."))
+        if current_status == "busy" or active_locks > 0 or temp_db_present > 0:
+            score = min(85, 45 + active_locks * 5 + temp_db_present * 10)
+            signals.append(("base_busy", score, severity_score_to_label(score), f"Файловая база компании {counterparty} занята: status={current_status}, locks={active_locks}, tempDb={temp_db_present}."))
+        if scheduler_touched > 0 and current_activity_score >= 15:
+            signals.append(("scheduler_activity", 35, "medium", f"По компании {counterparty} есть активность scheduler и повышенный activity score {current_activity_score}."))
         if open_cases_total > 0:
             signals.append(("open_cases", min(95, 40 + open_cases_total * 10), severity_score_to_label(min(95, 40 + open_cases_total * 10)), f"По компании {counterparty} есть открытые кейсы: {open_cases_total}."))
         if detections_total > 0:

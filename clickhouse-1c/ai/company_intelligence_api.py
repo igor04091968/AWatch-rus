@@ -59,6 +59,7 @@ def health() -> dict[str, Any]:
             """
             SELECT
                 countIf(counterparty != '') AS documents_with_counterparty,
+                (SELECT count() FROM analytics_1c.companies) AS companies_total,
                 (SELECT count() FROM analytics_1c.company_forecasts) AS forecasts_total,
                 (SELECT count() FROM analytics_1c.company_health_signals) AS health_signals_total
             FROM analytics_1c.documents
@@ -83,6 +84,14 @@ def companies_overview(
         infobase,
         organization,
         counterparty,
+        company_name,
+        owner_user,
+        base_path,
+        current_status,
+        db_size_bytes,
+        reglog_size_bytes,
+        active_locks,
+        current_activity_score,
         last_seen_at,
         days_since_last_activity,
         docs_7d,
@@ -135,6 +144,16 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
     ORDER BY score DESC, generated_at DESC
     """
     timeline_sql = f"""
+    SELECT ts, infobase, company_name, owner_user, current_status, db_size_bytes, reglog_size_bytes, active_locks, current_activity_score
+    FROM analytics_1c.v_company_portfolio_overview
+    WHERE counterparty = {q(counterparty)}
+    {"AND infobase = " + q(infobase) if infobase else ""}
+    LIMIT 1
+    """
+    forecasts = rows_to_dict(client.query(forecast_sql))
+    signals = rows_to_dict(client.query(signals_sql))
+    company_state = rows_to_dict(client.query(timeline_sql))
+    timeline_sql = f"""
     SELECT ts, infobase, doc_type, operation_type, amount, status, author
     FROM analytics_1c.documents
     WHERE counterparty = {q(counterparty)}
@@ -142,8 +161,6 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
     ORDER BY ts DESC
     LIMIT 20
     """
-    forecasts = rows_to_dict(client.query(forecast_sql))
-    signals = rows_to_dict(client.query(signals_sql))
     timeline = rows_to_dict(client.query(timeline_sql))
     essence = (
         f"Компания {counterparty}: за 30 дней событий {card['docs_30d']}, суммарная активность {card['amount_30d']}, "
@@ -152,6 +169,7 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
     return {
         "essence": essence,
         "card": card,
+        "company_state": company_state[0] if company_state else None,
         "forecasts": forecasts,
         "signals": signals,
         "recent_documents": timeline,

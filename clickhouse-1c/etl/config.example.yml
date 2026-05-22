@@ -8,6 +8,7 @@ clickhouse:
 landing:
   documents: ./landing/documents
   postings: ./landing/postings
+  companies: ./landing/companies
   reglog: ./landing/reglog
   audit: ./landing/audit
   host: ./landing/host
@@ -16,6 +17,7 @@ formats:
   default: jsonl
   documents: jsonl
   postings: jsonl
+  companies: jsonl
   reglog: jsonl
   audit: jsonl
   host: jsonl

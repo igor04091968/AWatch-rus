@@ -17,6 +17,7 @@ from dateutil import parser as date_parser
 RAW_TABLES = {
     "documents": "raw_1c_documents",
     "postings": "raw_1c_postings",
+    "companies": "raw_1c_companies",
     "reglog": "raw_reglog",
     "audit": "raw_audit",
     "host": "raw_host_metrics",
@@ -25,6 +26,7 @@ RAW_TABLES = {
 CORE_TABLES = {
     "documents": "documents",
     "postings": "postings",
+    "companies": "companies",
     "reglog": "reglog_events",
     "audit": "audit_events",
     "host": "host_events",
@@ -44,7 +46,7 @@ class Config:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Load file-based 1C exports into ClickHouse")
     p.add_argument("--config", required=True, help="Path to YAML config")
-    p.add_argument("--dataset", choices=["documents", "postings", "reglog", "audit", "host"], help="Load only one dataset")
+    p.add_argument("--dataset", choices=["documents", "postings", "companies", "reglog", "audit", "host"], help="Load only one dataset")
     return p.parse_args()
 
 
@@ -127,6 +129,24 @@ def map_core_row(dataset: str, source_file: str, row: dict[str, Any]) -> list[An
             float(row.get("amount", 0) or 0),
             source_file,
         ]
+    if dataset == "companies":
+        return [
+            normalize_ts(row.get("ts")),
+            row.get("infobase", ""),
+            row.get("company_name", row.get("counterparty", row.get("infobase", ""))),
+            row.get("organization", ""),
+            row.get("owner_user", row.get("author", "")),
+            row.get("base_id", row.get("doc_id", "")),
+            row.get("base_path", ""),
+            row.get("status", ""),
+            int(row.get("db_size_bytes", 0) or 0),
+            int(row.get("reglog_size_bytes", 0) or 0),
+            int(row.get("active_locks", 0) or 0),
+            int(row.get("temp_db_present", 0) or 0),
+            int(row.get("scheduler_touched", 0) or 0),
+            float(row.get("activity_score", row.get("amount", 0)) or 0),
+            source_file,
+        ]
     if dataset == "reglog":
         return [
             normalize_ts(row.get("ts")),
@@ -174,6 +194,8 @@ def core_columns(dataset: str) -> list[str]:
         return ["ts", "infobase", "organization", "department", "doc_type", "doc_id", "doc_number", "author", "counterparty", "operation_type", "amount", "status", "posted", "source_file"]
     if dataset == "postings":
         return ["ts", "infobase", "registrar", "operation_type", "account_dt", "account_ct", "amount", "source_file"]
+    if dataset == "companies":
+        return ["ts", "infobase", "company_name", "organization", "owner_user", "base_id", "base_path", "status", "db_size_bytes", "reglog_size_bytes", "active_locks", "temp_db_present", "scheduler_touched", "activity_score", "source_file"]
     if dataset == "reglog":
         return ["ts", "infobase", "user", "host", "app", "event_name", "level", "duration_ms", "message", "source_file"]
     if dataset == "audit":
