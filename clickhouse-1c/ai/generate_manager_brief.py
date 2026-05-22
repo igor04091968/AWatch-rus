@@ -185,14 +185,14 @@ def snapshot_from_context(context: dict[str, Any]) -> dict[tuple[Any, Any], dict
     snapshot_items = context.get("portfolio_snapshot") or []
     if snapshot_items:
         return {
-            (item.get("infobase"), item.get("counterparty")): item
+            (item.get("infobase"), item.get("company_entity_key") or item.get("counterparty")): item
             for item in snapshot_items
         }
 
     merged: dict[tuple[Any, Any], dict[str, Any]] = {}
     for source_name in ("top_risks", "top_forecasts", "watchlist", "busy_bases"):
         for item in context.get(source_name, []):
-            key = (item.get("infobase"), item.get("counterparty"))
+            key = (item.get("infobase"), item.get("company_entity_key") or item.get("counterparty"))
             if key not in merged:
                 merged[key] = dict(item)
             else:
@@ -268,6 +268,7 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
             f"""
             SELECT
                 infobase,
+                company_entity_key,
                 counterparty,
                 normalized_counterparty,
                 registry_match_mode,
@@ -294,6 +295,7 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
             f"""
             SELECT
                 infobase,
+                company_entity_key,
                 counterparty,
                 normalized_counterparty,
                 registry_match_mode,
@@ -316,6 +318,7 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
             f"""
             SELECT
                 s.infobase,
+                p.company_entity_key,
                 s.counterparty,
                 p.normalized_counterparty,
                 p.registry_match_mode,
@@ -328,7 +331,7 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
                 round(p.amount_forecast_30d, 2) AS amount_forecast_30d
             FROM analytics_1c.v_company_health_current AS s
             LEFT JOIN analytics_1c.v_company_portfolio_overview AS p
-              ON p.infobase = s.infobase AND p.counterparty = s.counterparty
+              ON p.infobase = s.infobase AND p.company_entity_key = s.counterparty
             WHERE s.signal_type IN ('inactive_company', 'amount_drop', 'docs_stopped')
             ORDER BY s.score DESC, p.days_since_last_activity DESC, p.amount_30d DESC
             LIMIT {int(top_limit)}
@@ -341,6 +344,7 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
             f"""
             SELECT
                 infobase,
+                company_entity_key,
                 counterparty,
                 normalized_counterparty,
                 current_status,
@@ -364,11 +368,14 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
             SELECT
                 c.opened_at,
                 c.infobase,
+                p.company_entity_key,
                 c.entity_id AS counterparty,
                 c.title,
                 c.severity,
                 c.status
             FROM analytics_1c.cases AS c
+            LEFT JOIN analytics_1c.v_company_portfolio_overview AS p
+              ON p.infobase = c.infobase AND p.company_entity_key = c.entity_id
             WHERE c.entity_type = 'counterparty' AND c.status != 'closed'
             ORDER BY c.opened_at DESC
             LIMIT {int(top_limit)}
@@ -381,6 +388,7 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
             """
             SELECT
                 infobase,
+                company_entity_key,
                 counterparty,
                 normalized_counterparty,
                 registry_match_mode,
@@ -424,8 +432,8 @@ def compute_delta_context(current: dict[str, Any], previous_artifact: dict[str, 
     previous = previous_artifact.get("context", {})
     current_summary = current.get("portfolio_summary", {})
     previous_summary = previous.get("portfolio_summary", {})
-    current_watchlist = {(item.get("infobase"), item.get("counterparty")) for item in current.get("watchlist", [])}
-    previous_watchlist = {(item.get("infobase"), item.get("counterparty")) for item in previous.get("watchlist", [])}
+    current_watchlist = {(item.get("infobase"), item.get("company_entity_key") or item.get("counterparty")) for item in current.get("watchlist", [])}
+    previous_watchlist = {(item.get("infobase"), item.get("company_entity_key") or item.get("counterparty")) for item in previous.get("watchlist", [])}
     current_snapshot = snapshot_from_context(current)
     previous_snapshot = snapshot_from_context(previous)
 
@@ -530,6 +538,7 @@ def compute_delta_context(current: dict[str, Any], previous_artifact: dict[str, 
             rank_top_change(
                 {
                 "infobase": current_item.get("infobase"),
+                "company_entity_key": current_item.get("company_entity_key"),
                 "company": current_item.get("counterparty"),
                 "normalized_counterparty": current_item.get("normalized_counterparty"),
                 "registry_match_mode": current_item.get("registry_match_mode"),

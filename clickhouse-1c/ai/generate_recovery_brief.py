@@ -146,7 +146,9 @@ def build_context(client, args: argparse.Namespace) -> dict[str, Any]:
             )
             SELECT
                 p.infobase AS infobase,
+                p.company_entity_key AS company_entity_key,
                 p.counterparty AS counterparty,
+                p.source_counterparty,
                 p.company_name,
                 p.normalized_counterparty,
                 p.registry_match_mode,
@@ -220,7 +222,7 @@ def render_deterministic_recovery(context: dict[str, Any]) -> dict[str, Any]:
     ]
     top_incidents = []
     for item in problematic[:6]:
-        company = str(item.get("counterparty") or "-")
+        company = str(item.get("counterparty") or item.get("company_name") or "-")
         actions = [
             "Проверить владельца и состав открытых кейсов по компании.",
             "Подтвердить, что по компании есть план снижения хвоста в ближайшие 24 часа.",
@@ -231,6 +233,7 @@ def render_deterministic_recovery(context: dict[str, Any]) -> dict[str, Any]:
             actions.append("Сначала подтвердить корректность manual-сопоставления.")
         top_incidents.append(
             {
+                "company_entity_key": str(item.get("company_entity_key") or ""),
                 "company": company,
                 "severity": str(item.get("signal_severity") or item.get("top_severity") or "critical"),
                 "diagnosis": (

@@ -130,18 +130,18 @@ def main() -> int:
     daily_rows = query_rows(
         client,
         """
-        SELECT infobase, organization, counterparty, d, docs_total, amount_total
-        FROM analytics_1c.v_counterparty_daily
-        ORDER BY infobase, counterparty, d
+        SELECT infobase, organization, company_entity_key, source_counterparty, d, docs_total, amount_total
+        FROM analytics_1c.v_company_activity_daily
+        ORDER BY infobase, company_entity_key, d
         """,
     )
     if not daily_rows:
-        print("no counterparty rows in analytics_1c.v_counterparty_daily; nothing to refresh")
+        print("no company activity rows in analytics_1c.v_company_activity_daily; nothing to refresh")
         return 0
 
-    grouped: dict[tuple[str, str, str], list[DailyPoint]] = defaultdict(list)
+    grouped: dict[tuple[str, str, str, str], list[DailyPoint]] = defaultdict(list)
     for row in daily_rows:
-        key = (row["infobase"], row["organization"], row["counterparty"])
+        key = (row["infobase"], row["organization"], row["company_entity_key"], row.get("source_counterparty") or row["company_entity_key"])
         grouped[key].append(
             DailyPoint(
                 d=row["d"],
@@ -151,26 +151,26 @@ def main() -> int:
         )
 
     cases_map = {
-        (row["infobase"], row["counterparty"]): int(row["open_cases_total"] or 0)
+        (row["infobase"], row["company_entity_key"]): int(row["open_cases_total"] or 0)
         for row in query_rows(
             client,
             """
-            SELECT infobase, entity_id AS counterparty, countIf(status != 'closed') AS open_cases_total
+            SELECT infobase, entity_id AS company_entity_key, countIf(status != 'closed') AS open_cases_total
             FROM analytics_1c.cases
             WHERE entity_type = 'counterparty'
-            GROUP BY infobase, counterparty
+            GROUP BY infobase, company_entity_key
             """,
         )
     }
     detections_map = {
-        (row["infobase"], row["counterparty"]): int(row["detections_total"] or 0)
+        (row["infobase"], row["company_entity_key"]): int(row["detections_total"] or 0)
         for row in query_rows(
             client,
             """
-            SELECT infobase, entity_id AS counterparty, count() AS detections_total
+            SELECT infobase, entity_id AS company_entity_key, count() AS detections_total
             FROM analytics_1c.detections
             WHERE entity_type = 'counterparty' AND status != 'closed'
-            GROUP BY infobase, counterparty
+            GROUP BY infobase, company_entity_key
             """,
         )
     }
@@ -205,8 +205,8 @@ def main() -> int:
     forecast_rows: list[list[Any]] = []
     signal_rows: list[list[Any]] = []
 
-    for (infobase, _organization, counterparty), points in grouped.items():
-        if normalize_company_key(counterparty) in excluded_company_keys:
+    for (infobase, _organization, company_entity_key, source_counterparty), points in grouped.items():
+        if normalize_company_key(source_counterparty) in excluded_company_keys:
             continue
         points.sort(key=lambda p: p.d)
         filled = fill_daily_series(points)
@@ -223,8 +223,8 @@ def main() -> int:
         amount_7d = float(sum(p.amount_total for p in last_7))
         amount_prev_7d = float(sum(p.amount_total for p in prev_7))
         days_since_last_activity = (date.today() - latest_day).days
-        open_cases_total = cases_map.get((infobase, counterparty), 0)
-        detections_total = detections_map.get((infobase, counterparty), 0)
+        open_cases_total = cases_map.get((infobase, company_entity_key), 0)
+        detections_total = detections_map.get((infobase, company_entity_key), 0)
         company_state = company_state_map.get(infobase, {})
         current_status = str(company_state.get("current_status") or "")
         active_locks = int(company_state.get("active_locks") or 0)
@@ -245,7 +245,7 @@ def main() -> int:
                         generated_at,
                         latest_day,
                         infobase,
-                        counterparty,
+                        company_entity_key,
                         int(horizon),
                         metric,
                         float(baseline),
@@ -261,29 +261,29 @@ def main() -> int:
 
         signals: list[tuple[str, int, str, str]] = []
         if days_since_last_activity >= 14 and (docs_prev_7d > 0 or amount_prev_7d > 0):
-            signals.append(("inactive_company", 85, "high", f"Нет активности по компании {counterparty} уже {days_since_last_activity} дн."))
+            signals.append(("inactive_company", 85, "high", f"Нет активности по компании {source_counterparty} уже {days_since_last_activity} дн."))
         if amount_prev_7d > 0 and amount_7d < amount_prev_7d * 0.5:
-            signals.append(("amount_drop", 70, "high", f"Активность по компании {counterparty} упала более чем на 50% неделя к неделе."))
+            signals.append(("amount_drop", 70, "high", f"Активность по компании {source_counterparty} упала более чем на 50% неделя к неделе."))
         if docs_prev_7d > 0 and docs_7d == 0:
-            signals.append(("docs_stopped", 55, "medium", f"По компании {counterparty} прекратился поток документов за последние 7 дней."))
+            signals.append(("docs_stopped", 55, "medium", f"По компании {source_counterparty} прекратился поток документов за последние 7 дней."))
         if current_status == "busy" or active_locks > 0 or temp_db_present > 0:
             score = min(85, 45 + active_locks * 5 + temp_db_present * 10)
-            signals.append(("base_busy", score, severity_score_to_label(score), f"Файловая база компании {counterparty} занята: status={current_status}, locks={active_locks}, tempDb={temp_db_present}."))
+            signals.append(("base_busy", score, severity_score_to_label(score), f"Файловая база компании {source_counterparty} занята: status={current_status}, locks={active_locks}, tempDb={temp_db_present}."))
         if scheduler_touched > 0 and current_activity_score >= 15:
-            signals.append(("scheduler_activity", 35, "medium", f"По компании {counterparty} есть активность scheduler и повышенный activity score {current_activity_score}."))
+            signals.append(("scheduler_activity", 35, "medium", f"По компании {source_counterparty} есть активность scheduler и повышенный activity score {current_activity_score}."))
         if open_cases_total > 0:
-            signals.append(("open_cases", min(95, 40 + open_cases_total * 10), severity_score_to_label(min(95, 40 + open_cases_total * 10)), f"По компании {counterparty} есть открытые кейсы: {open_cases_total}."))
+            signals.append(("open_cases", min(95, 40 + open_cases_total * 10), severity_score_to_label(min(95, 40 + open_cases_total * 10)), f"По компании {source_counterparty} есть открытые кейсы: {open_cases_total}."))
         if detections_total > 0:
-            signals.append(("open_detections", min(90, 35 + detections_total * 5), severity_score_to_label(min(90, 35 + detections_total * 5)), f"По компании {counterparty} есть активные detections: {detections_total}."))
+            signals.append(("open_detections", min(90, 35 + detections_total * 5), severity_score_to_label(min(90, 35 + detections_total * 5)), f"По компании {source_counterparty} есть активные detections: {detections_total}."))
 
         for signal_type, score, severity, summary in signals:
             signal_rows.append(
-                [
-                    generated_at,
-                    infobase,
-                    counterparty,
-                    f"{signal_type}:{infobase}:{counterparty}",
-                    severity,
+                    [
+                        generated_at,
+                        infobase,
+                        company_entity_key,
+                        f"{signal_type}:{infobase}:{company_entity_key}",
+                        severity,
                     int(score),
                     signal_type,
                     summary,

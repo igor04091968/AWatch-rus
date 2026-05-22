@@ -55,6 +55,7 @@ docker exec -i "${CH_CONTAINER}" clickhouse-client \
   --database "${CLICKHOUSE_DB}" \
   < "${ROOT}/clickhouse/init/04_company_intelligence.sql"
 
+"${ROOT}/ops/run_company_registry_bindings_refresh.sh"
 "${ROOT}/ops/run_company_intelligence_refresh.sh"
 
 docker exec -i "${CH_CONTAINER}" clickhouse-client \

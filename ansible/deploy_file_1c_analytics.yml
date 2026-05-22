@@ -115,6 +115,7 @@
         - check_ingest_freshness.sh
         - run_company_intelligence_api.sh
         - run_company_intelligence_refresh.sh
+        - run_company_registry_bindings_refresh.sh
         - run_manager_brief.sh
         - run_ingest_cycle.sh
 

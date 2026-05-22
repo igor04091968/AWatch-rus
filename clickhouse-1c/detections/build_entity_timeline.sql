@@ -21,19 +21,22 @@ INSERT INTO analytics_1c.entity_timeline
 SELECT *
 FROM (
     SELECT
-        ts,
+        documents.ts AS ts,
         'counterparty' AS entity_type,
-        counterparty AS entity_id,
-        infobase,
-        author AS actor,
+        ifNull(portfolio.company_entity_key, documents.counterparty) AS entity_id,
+        documents.infobase AS infobase,
+        documents.author AS actor,
         'documents' AS source,
-        concat('counterparty:', operation_type) AS event_type,
-        if(status = 'busy', 'medium', 'low') AS severity,
-        greatest(10, toUInt32(round(amount))) AS score,
-        concat('counterparty:', counterparty, ':', doc_id, ':', toString(toUnixTimestamp(ts))) AS ref_id,
-        concat('Активность компании ', counterparty, ': ', doc_type, ' score=', toString(amount), ' status=', status) AS summary
-    FROM analytics_1c.documents
-    WHERE counterparty != ''
+        concat('counterparty:', documents.operation_type) AS event_type,
+        if(documents.status = 'busy', 'medium', 'low') AS severity,
+        greatest(10, toUInt32(round(documents.amount))) AS score,
+        concat('counterparty:', ifNull(portfolio.company_entity_key, documents.counterparty), ':', documents.doc_id, ':', toString(toUnixTimestamp(documents.ts))) AS ref_id,
+        concat('Активность компании ', ifNull(portfolio.company_name, documents.counterparty), ': ', documents.doc_type, ' score=', toString(documents.amount), ' status=', documents.status) AS summary
+    FROM analytics_1c.documents AS documents
+    LEFT JOIN analytics_1c.v_company_portfolio_overview AS portfolio
+        ON portfolio.infobase = documents.infobase
+       AND portfolio.source_counterparty = documents.counterparty
+    WHERE documents.counterparty != ''
 ) AS src
 WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
 
@@ -41,18 +44,18 @@ INSERT INTO analytics_1c.entity_timeline
 SELECT *
 FROM (
     SELECT
-        ts,
+        last_company_snapshot_at AS ts,
         'counterparty' AS entity_type,
-        company_name AS entity_id,
+        company_entity_key AS entity_id,
         infobase,
         owner_user AS actor,
         'companies' AS source,
         'company_snapshot' AS event_type,
-        if(status = 'busy' OR active_locks > 0 OR temp_db_present = 1, 'medium', 'low') AS severity,
-        greatest(10, toUInt32(round(activity_score))) AS score,
-        concat('company:', infobase, ':', toString(toUnixTimestamp(ts))) AS ref_id,
-        concat('Company snapshot ', company_name, ': status=', status, ' locks=', toString(active_locks), ' score=', toString(activity_score)) AS summary
-    FROM analytics_1c.companies
+        if(current_status = 'busy' OR active_locks > 0 OR temp_db_present = 1, 'medium', 'low') AS severity,
+        greatest(10, toUInt32(round(current_activity_score))) AS score,
+        concat('company:', company_entity_key, ':', toString(toUnixTimestamp(last_company_snapshot_at))) AS ref_id,
+        concat('Company snapshot ', company_name, ': status=', current_status, ' locks=', toString(active_locks), ' score=', toString(current_activity_score)) AS summary
+    FROM analytics_1c.v_companies_current
 ) AS src
 WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
 

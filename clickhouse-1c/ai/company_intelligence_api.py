@@ -463,6 +463,35 @@ def grafana_company_dashboard_url() -> str:
     )
 
 
+def resolve_company_portfolio_card(company_ref: str, infobase: str | None = None) -> dict[str, Any]:
+    client = ch_client()
+    filters = [
+        "("
+        + " OR ".join(
+            [
+                f"company_entity_key = {q(company_ref)}",
+                f"counterparty = {q(company_ref)}",
+                f"company_name = {q(company_ref)}",
+                f"source_counterparty = {q(company_ref)}",
+            ]
+        )
+        + ")"
+    ]
+    if infobase:
+        filters.append(f"infobase = {q(infobase)}")
+    sql = f"""
+    SELECT *
+    FROM analytics_1c.v_company_portfolio_overview
+    WHERE {' AND '.join(filters)}
+    ORDER BY last_company_snapshot_at DESC, amount_30d DESC
+    LIMIT 1
+    """
+    rows = rows_to_dict(client.query(sql))
+    if not rows:
+        raise HTTPException(status_code=404, detail="company not found in analytics_1c.v_company_portfolio_overview")
+    return rows[0]
+
+
 def fmt_number(value: Any) -> str:
     if value is None or value == "":
         return "-"
@@ -484,8 +513,8 @@ def severity_badge(severity: str) -> str:
     return f'<span class="badge badge-{tone}">{html.escape(severity or "none")}</span>'
 
 
-def company_detail_url(counterparty: str, infobase: str | None = None) -> str:
-    base = f"/manager/company/{quote(counterparty)}"
+def company_detail_url(company_ref: str, infobase: str | None = None) -> str:
+    base = f"/manager/company/{quote(company_ref)}"
     if infobase:
         return f"{base}?infobase={quote(infobase)}"
     return base
@@ -538,7 +567,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
             f"<div class=\"stack-card-head\"><h3>{html.escape(item.get('company', '-'))}</h3>{severity_badge(item.get('severity', ''))}</div>"
             f"<p class=\"stack-card-body\">{html.escape(item.get('reason', '-'))}</p>"
             f"<p class=\"stack-card-action\"><strong>Действие:</strong> {html.escape(item.get('recommended_action', '-'))}</p>"
-            f"<p class=\"stack-card-action\"><a class=\"inline-link\" href=\"{company_detail_url(item.get('company', '-'))}\">Открыть карточку компании</a></p>"
+            f"<p class=\"stack-card-action\"><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or item.get('company') or '-'), str(item.get('infobase') or '') or None)}\">Открыть карточку компании</a></p>"
             "</article>"
         )
 
@@ -550,7 +579,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
             f"<div class=\"stack-card-head\"><h3>{html.escape(company)}</h3></div>"
             f"<p class=\"metric-line\"><strong>Прогноз 30д:</strong> {html.escape(item.get('forecast_30d', '-'))}</p>"
             f"<p class=\"stack-card-body\">{html.escape(item.get('interpretation', '-'))}</p>"
-            f"<a class=\"inline-link\" href=\"{company_detail_url(company)}\">Карточка компании</a>"
+            f"<a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or company), str(item.get('infobase') or '') or None)}\">Карточка компании</a>"
             "</article>"
         )
 
@@ -955,7 +984,7 @@ def problematic_companies(days: int = 7, limit: int = 50) -> list[dict[str, Any]
     WITH recent AS (
         SELECT
             infobase,
-            counterparty,
+            counterparty AS company_entity_key,
             max(generated_at) AS latest_signal_at,
             max(score) AS max_score,
             sum(score) AS total_score,
@@ -971,7 +1000,9 @@ def problematic_companies(days: int = 7, limit: int = 50) -> list[dict[str, Any]
     )
     SELECT
         p.infobase AS infobase,
+        p.company_entity_key AS company_entity_key,
         p.counterparty AS counterparty,
+        p.source_counterparty,
         p.company_name,
         p.normalized_counterparty,
         p.registry_match_mode,
@@ -997,7 +1028,7 @@ def problematic_companies(days: int = 7, limit: int = 50) -> list[dict[str, Any]
     FROM recent AS r
     INNER JOIN analytics_1c.v_company_portfolio_overview AS p
         ON p.infobase = r.infobase
-       AND p.counterparty = r.counterparty
+       AND p.company_entity_key = r.company_entity_key
     ORDER BY r.max_score DESC, r.signals_total DESC, p.amount_30d DESC, p.counterparty
     LIMIT {int(limit)}
     """
@@ -1089,7 +1120,7 @@ def render_problematic_companies_html(items: list[dict[str, Any]], days: int) ->
     for item in items:
         rows.append(
             "<tr>"
-            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('counterparty', '-')), str(item.get('infobase', '')) if item.get('infobase') else None)}\">{html.escape(str(item.get('counterparty', '-')))}</a></td>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or item.get('counterparty') or '-'), str(item.get('infobase', '')) if item.get('infobase') else None)}\">{html.escape(str(item.get('counterparty', '-')))}</a></td>"
             f"<td>{html.escape(str(item.get('normalized_counterparty') or '-'))}</td>"
             f"<td>{severity_badge(str(item.get('top_severity') or item.get('signal_severity') or 'none'))}</td>"
             f"<td>{fmt_number(item.get('max_score'))}</td>"
@@ -1231,7 +1262,7 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
         priority_tier = str(item.get("priority_tier") or "low")
         rows.append(
             "<tr>"
-            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(counterparty), str(infobase) if infobase else None)}\">{html.escape(str(counterparty or '-'))}</a></td>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or counterparty), str(infobase) if infobase else None)}\">{html.escape(str(counterparty or '-'))}</a></td>"
             f"<td>{html.escape(tier_labels.get(priority_tier, priority_tier))}</td>"
             f"<td>{delta_value(item.get('priority_score', 0))}</td>"
             f"<td>{html.escape(str(item.get('change_type') or '-'))}</td>"
@@ -1538,7 +1569,7 @@ def render_weekly_digest_html(payload: dict[str, Any]) -> str:
             f"<div class=\"stack-card-head\"><h3>{html.escape(company)}</h3>{severity_badge(str(item.get('priority') or 'low'))}</div>"
             f"<p class=\"stack-card-body\">{html.escape(str(item.get('reason') or '-'))}</p>"
             f"<p class=\"stack-card-action\"><strong>Действие:</strong> {html.escape(str(item.get('recommended_action') or '-'))}</p>"
-            f"<p class=\"stack-card-action\"><a class=\"inline-link\" href=\"{company_detail_url(company)}\">Карточка компании</a></p>"
+            f"<p class=\"stack-card-action\"><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or company), str(item.get('infobase') or '') or None)}\">Карточка компании</a></p>"
             "</article>"
         )
 
@@ -1792,11 +1823,16 @@ def companies_overview(
     sql = f"""
     SELECT
         infobase,
+        company_entity_key,
         organization,
         counterparty,
+        source_counterparty,
         company_name,
         normalized_counterparty,
         registry_match_mode,
+        registry_company_key,
+        registry_binding_source,
+        registry_binding_note,
         registry_assignee_name,
         registry_status,
         registry_share_text,
@@ -1833,39 +1869,27 @@ def companies_overview(
 @app.get("/api/1/analytics-1c/companies/{counterparty}/summary")
 def company_summary(counterparty: str, infobase: str | None = None) -> dict[str, Any]:
     client = ch_client()
-    filters = [f"counterparty = {q(counterparty)}"]
-    if infobase:
-        filters.append(f"infobase = {q(infobase)}")
-    sql = f"""
-    SELECT *
-    FROM analytics_1c.v_company_portfolio_overview
-    WHERE {' AND '.join(filters)}
-    ORDER BY last_company_snapshot_at DESC, amount_30d DESC
-    LIMIT 1
-    """
-    rows = rows_to_dict(client.query(sql))
-    if not rows:
-        raise HTTPException(status_code=404, detail="counterparty not found in analytics_1c.v_company_portfolio_overview")
-    card = rows[0]
+    card = resolve_company_portfolio_card(counterparty, infobase)
+    entity_key = str(card.get("company_entity_key") or "")
     forecast_sql = f"""
     SELECT metric, horizon_days, baseline_daily, trend_slope, predicted_daily, predicted_total, confidence, note
     FROM analytics_1c.v_company_forecasts_current
-    WHERE counterparty = {q(counterparty)}
-    {"AND infobase = " + q(infobase) if infobase else ""}
+    WHERE counterparty = {q(entity_key)}
+    {"AND infobase = " + q(str(card.get('infobase') or infobase)) if (card.get('infobase') or infobase) else ""}
     ORDER BY metric, horizon_days
     """
     signals_sql = f"""
     SELECT generated_at, severity, score, signal_type, summary
     FROM analytics_1c.v_company_health_current
-    WHERE counterparty = {q(counterparty)}
-    {"AND infobase = " + q(infobase) if infobase else ""}
+    WHERE counterparty = {q(entity_key)}
+    {"AND infobase = " + q(str(card.get('infobase') or infobase)) if (card.get('infobase') or infobase) else ""}
     ORDER BY score DESC, generated_at DESC
     """
     timeline_sql = f"""
     SELECT last_company_snapshot_at AS ts, infobase, company_name, owner_user, current_status, db_size_bytes, reglog_size_bytes, active_locks, current_activity_score
     FROM analytics_1c.v_company_portfolio_overview
-    WHERE counterparty = {q(counterparty)}
-    {"AND infobase = " + q(infobase) if infobase else ""}
+    WHERE company_entity_key = {q(entity_key)}
+    {"AND infobase = " + q(str(card.get('infobase') or infobase)) if (card.get('infobase') or infobase) else ""}
     ORDER BY ts DESC
     LIMIT 1
     """
@@ -1875,14 +1899,14 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
     timeline_sql = f"""
     SELECT ts, infobase, doc_type, operation_type, amount, status, author
     FROM analytics_1c.documents
-    WHERE counterparty = {q(counterparty)}
-    {"AND infobase = " + q(infobase) if infobase else ""}
+    WHERE infobase = {q(str(card.get('infobase') or infobase or ''))}
+      AND counterparty != ''
     ORDER BY ts DESC
     LIMIT 20
     """
     timeline = rows_to_dict(client.query(timeline_sql))
     essence = (
-        f"Компания {counterparty}: за 30 дней событий {card['docs_30d']}, суммарная активность {card['amount_30d']}, "
+        f"Компания {card['counterparty']}: за 30 дней событий {card['docs_30d']}, суммарная активность {card['amount_30d']}, "
         f"прогноз активности на 30 дней {card['amount_forecast_30d']}, риск {card['signal_severity']}."
     )
     payload = {
@@ -1905,9 +1929,10 @@ def company_forecast(
     horizon_days: int | None = Query(default=None, ge=1, le=365),
 ) -> dict[str, Any]:
     client = ch_client()
-    filters = [f"counterparty = {q(counterparty)}"]
-    if infobase:
-        filters.append(f"infobase = {q(infobase)}")
+    card = resolve_company_portfolio_card(counterparty, infobase)
+    filters = [f"counterparty = {q(str(card.get('company_entity_key') or counterparty))}"]
+    if card.get("infobase") or infobase:
+        filters.append(f"infobase = {q(str(card.get('infobase') or infobase))}")
     if horizon_days is not None:
         filters.append(f"horizon_days = {int(horizon_days)}")
     sql = f"""
@@ -1927,9 +1952,8 @@ def company_timeline(
     limit: int = Query(default=100, ge=1, le=500),
 ) -> dict[str, Any]:
     client = ch_client()
-    filters = [f"counterparty = {q(counterparty)}"]
-    if infobase:
-        filters.append(f"infobase = {q(infobase)}")
+    card = resolve_company_portfolio_card(counterparty, infobase)
+    filters = [f"infobase = {q(str(card.get('infobase') or infobase or ''))}", "counterparty != ''"]
     sql = f"""
     SELECT ts, infobase, organization, doc_type, doc_number, author, operation_type, amount, status, posted
     FROM analytics_1c.documents
@@ -2076,13 +2100,14 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
     title = card.get("counterparty", "Карточка компании")
     subtitle = summary_payload.get("essence", "")
     grafana_url = grafana_company_dashboard_url()
-    summary_url = f"/api/1/analytics-1c/companies/{quote(card['counterparty'])}/summary"
+    company_ref = str(card.get("company_entity_key") or card.get("counterparty") or "")
+    summary_url = f"/api/1/analytics-1c/companies/{quote(company_ref)}/summary"
     if infobase:
         summary_url += f"?infobase={quote(infobase)}"
-    timeline_url = f"/api/1/analytics-1c/companies/{quote(card['counterparty'])}/timeline"
+    timeline_url = f"/api/1/analytics-1c/companies/{quote(company_ref)}/timeline"
     if infobase:
         timeline_url += f"?infobase={quote(infobase)}"
-    forecast_url = f"/api/1/analytics-1c/companies/{quote(card['counterparty'])}/forecast"
+    forecast_url = f"/api/1/analytics-1c/companies/{quote(company_ref)}/forecast"
     if infobase:
         forecast_url += f"?infobase={quote(infobase)}"
 
