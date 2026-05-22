@@ -146,8 +146,8 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
     signals = rows_to_dict(client.query(signals_sql))
     timeline = rows_to_dict(client.query(timeline_sql))
     essence = (
-        f"Компания {counterparty}: за 30 дней документов {card['docs_30d']}, объём {card['amount_30d']}, "
-        f"прогноз на 30 дней {card['amount_forecast_30d']}, риск {card['signal_severity']}."
+        f"Компания {counterparty}: за 30 дней событий {card['docs_30d']}, суммарная активность {card['amount_30d']}, "
+        f"прогноз активности на 30 дней {card['amount_forecast_30d']}, риск {card['signal_severity']}."
     )
     return {
         "essence": essence,

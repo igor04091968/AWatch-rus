@@ -79,7 +79,7 @@
     },
     {
       "id": 2,
-      "title": "Прогноз объёма 30д",
+      "title": "Прогноз активности 30д",
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -235,7 +235,7 @@
     },
     {
       "id": 5,
-      "title": "Объём по компаниям",
+      "title": "Активность по компаниям",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -282,7 +282,7 @@
     },
     {
       "id": 6,
-      "title": "Количество документов по компаниям",
+      "title": "Количество событий по компаниям",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",

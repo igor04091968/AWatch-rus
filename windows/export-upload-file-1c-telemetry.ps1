@@ -13,6 +13,7 @@ $ErrorActionPreference = 'Stop'
 $LogDir = 'C:\ProgramData\AWatch-rus\logs'
 $LogPath = Join-Path $LogDir 'file1c-telemetry.log'
 $ScpExe = Join-Path $env:WINDIR 'System32\OpenSSH\scp.exe'
+$ExporterStatePath = Join-Path (Split-Path -Parent $ConfigPath) 'file1c-telemetry-state.json'
 
 New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
 
@@ -156,6 +157,76 @@ function Invoke-SshUploadWithRetry {
     }
 }
 
+function Get-ExporterState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return @{}
+    }
+
+    $raw = Get-Content -Raw -LiteralPath $Path -Encoding UTF8
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return @{}
+    }
+
+    $payload = $raw | ConvertFrom-Json
+    $state = @{}
+    foreach ($prop in $payload.PSObject.Properties) {
+        $state[[string]$prop.Name] = $prop.Value
+    }
+    return $state
+}
+
+function Save-ExporterState {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [hashtable]$State
+    )
+
+    $directory = Split-Path -Parent $Path
+    if ($directory) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+    $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding UTF8
+}
+
+function Get-CompanyActivityScore {
+    param(
+        [double]$DbDeltaMb,
+        [double]$ReglogDeltaMb,
+        [int]$ActiveLocks,
+        [bool]$HasTempDb,
+        [bool]$SchedulerTouched,
+        [string]$Status,
+        [bool]$IsBootstrap
+    )
+
+    $score = 0.0
+    $score += [math]::Abs($DbDeltaMb)
+    $score += [math]::Abs($ReglogDeltaMb)
+    if ($ActiveLocks -gt 0) {
+        $score += ($ActiveLocks * 5)
+    }
+    if ($HasTempDb) {
+        $score += 10
+    }
+    if ($SchedulerTouched) {
+        $score += 3
+    }
+    if ($Status -eq 'busy') {
+        $score += 5
+    }
+    if ($IsBootstrap -and $score -le 0) {
+        $score = 1
+    }
+    return [math]::Round($score, 2)
+}
+
 Write-RunLog 'file1c exporter start'
 
 if (-not (Test-Path -LiteralPath $ScpExe)) {
@@ -192,6 +263,9 @@ if ($config.PSObject.Properties.Name -contains 'analytics' -and
 
 $infobases = @(Get-1CFileInfobases)
 $nowUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$exporterState = Get-ExporterState -Path $ExporterStatePath
+$nextExporterState = @{}
+$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 
 $documents = New-Object System.Collections.Generic.List[object]
 $reglog = New-Object System.Collections.Generic.List[object]
@@ -207,13 +281,46 @@ foreach ($base in $infobases) {
     $tempDb = Get-Item -LiteralPath (Join-Path $base.path '1Cv8tmp.1CD') -ErrorAction SilentlyContinue
     $schedulerDir = Get-Item -LiteralPath (Join-Path $base.path '1Cv8JobScheduler') -ErrorAction SilentlyContinue
     $owner = if ($base.userName) { [string]$base.userName } else { 'unknown' }
+    $organization = [string](Split-Path -Leaf (Split-Path -Parent $base.path))
     $status = if ($activeLocks.Count -gt 0 -or $tempDb) { 'busy' } else { 'online' }
     $docId = if ($base.baseId) { [string]$base.baseId } else { ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([string]$base.path)).TrimEnd('=').Replace('/','_').Replace('+','-')) }
+    $stateKey = [string]$docId
+    $previous = if ($exporterState.ContainsKey($stateKey)) { $exporterState[$stateKey] } else { $null }
+    $dbSizeBytes = if ($dbItem) { [int64]$dbItem.Length } else { 0 }
+    $mainLogBytes = if ($mainLog) { [int64]$mainLog.Length } else { 0 }
+    $schedulerWriteUtc = if ($schedulerDir) { [datetime]$schedulerDir.LastWriteTimeUtc } else { $null }
+    $dbDeltaMb = 0.0
+    $reglogDeltaMb = 0.0
+    $schedulerTouched = $false
+    $isBootstrap = ($null -eq $previous)
+
+    if (-not $isBootstrap) {
+        $prevDbSize = if ($previous.PSObject.Properties.Name -contains 'dbSizeBytes') { [double]$previous.dbSizeBytes } else { 0 }
+        $prevMainLogSize = if ($previous.PSObject.Properties.Name -contains 'mainLogBytes') { [double]$previous.mainLogBytes } else { 0 }
+        $dbDeltaMb = [math]::Round(($dbSizeBytes - $prevDbSize) / 1MB, 2)
+        $reglogDeltaMb = [math]::Round(($mainLogBytes - $prevMainLogSize) / 1MB, 2)
+        if ($schedulerWriteUtc -and $previous.PSObject.Properties.Name -contains 'schedulerWriteUtc' -and -not [string]::IsNullOrWhiteSpace([string]$previous.schedulerWriteUtc)) {
+            $prevSchedulerWriteUtc = [datetime]::Parse([string]$previous.schedulerWriteUtc)
+            $schedulerTouched = ($schedulerWriteUtc -gt $prevSchedulerWriteUtc)
+        }
+        elseif ($schedulerWriteUtc) {
+            $schedulerTouched = $true
+        }
+    }
+
+    $activityScore = Get-CompanyActivityScore `
+        -DbDeltaMb $dbDeltaMb `
+        -ReglogDeltaMb $reglogDeltaMb `
+        -ActiveLocks $activeLocks.Count `
+        -HasTempDb ([bool]$tempDb) `
+        -SchedulerTouched $schedulerTouched `
+        -Status $status `
+        -IsBootstrap $isBootstrap
 
     $documents.Add([ordered]@{
         ts = $nowUtc
         infobase = [string]$base.infobase
-        organization = ''
+        organization = $organization
         department = 'FileBase'
         doc_type = 'InfobaseSnapshot'
         doc_id = $docId
@@ -225,6 +332,24 @@ foreach ($base in $infobases) {
         status = $status
         posted = 1
     })
+
+    if ($activityScore -gt 0) {
+        $documents.Add([ordered]@{
+            ts = $nowUtc
+            infobase = [string]$base.infobase
+            organization = $organization
+            department = 'FileBaseActivity'
+            doc_type = 'CompanyActivitySnapshot'
+            doc_id = "$docId-$stamp"
+            doc_number = $stamp
+            author = $owner
+            counterparty = [string]$base.infobase
+            operation_type = 'activity_snapshot'
+            amount = $activityScore
+            status = $status
+            posted = 1
+        })
+    }
 
     $audit.Add([ordered]@{
         ts = $nowUtc
@@ -279,11 +404,31 @@ foreach ($base in $infobases) {
             message = "1Cv8JobScheduler touched at $([datetime]$schedulerDir.LastWriteTimeUtc)"
         })
     }
+
+    $reglog.Add([ordered]@{
+        ts = $nowUtc
+        infobase = [string]$base.infobase
+        user = $owner
+        host = $env:COMPUTERNAME
+        app = '1cv8-file'
+        event_name = 'CompanyActivitySnapshot'
+        level = if ($activityScore -gt 20) { 'warn' } else { 'info' }
+        duration_ms = 0
+        message = "activityScore=$activityScore dbDeltaMb=$dbDeltaMb reglogDeltaMb=$reglogDeltaMb locks=$($activeLocks.Count) tempDb=$([bool]$tempDb) schedulerTouched=$schedulerTouched"
+    })
+
+    $nextExporterState[$stateKey] = [ordered]@{
+        infobase = [string]$base.infobase
+        path = [string]$base.path
+        dbSizeBytes = $dbSizeBytes
+        mainLogBytes = $mainLogBytes
+        schedulerWriteUtc = if ($schedulerWriteUtc) { $schedulerWriteUtc.ToString('o') } else { '' }
+        updatedAtUtc = $nowUtc
+    }
 }
 
 $hostRows = @((Get-HostSample))
 
-$stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $outRoot = Join-Path $env:TEMP "aw-rus-1c-outbox-$stamp"
 New-Item -ItemType Directory -Path $outRoot -Force | Out-Null
 
@@ -311,6 +456,7 @@ try {
     foreach ($dataset in 'documents', 'reglog', 'audit', 'host') {
         Invoke-SshUploadWithRetry -KeyPath $effectiveKeyPath -SourcePath ([string]$files[$dataset]) -Destination "$AnalyticsUser@$AnalyticsHost`:$RemoteRoot/$dataset/"
     }
+    Save-ExporterState -Path $ExporterStatePath -State $nextExporterState
     Write-RunLog "upload complete analyticsHost=$AnalyticsHost remoteRoot=$RemoteRoot"
 }
 finally {

@@ -218,7 +218,7 @@ def main() -> int:
         if days_since_last_activity >= 14 and (docs_prev_7d > 0 or amount_prev_7d > 0):
             signals.append(("inactive_company", 85, "high", f"Нет активности по компании {counterparty} уже {days_since_last_activity} дн."))
         if amount_prev_7d > 0 and amount_7d < amount_prev_7d * 0.5:
-            signals.append(("amount_drop", 70, "high", f"Объём по компании {counterparty} упал более чем на 50% неделя к неделе."))
+            signals.append(("amount_drop", 70, "high", f"Активность по компании {counterparty} упала более чем на 50% неделя к неделе."))
         if docs_prev_7d > 0 and docs_7d == 0:
             signals.append(("docs_stopped", 55, "medium", f"По компании {counterparty} прекратился поток документов за последние 7 дней."))
         if open_cases_total > 0:

@@ -11,9 +11,29 @@ FROM (
         concat('document:', doc_type) AS event_type,
         if(posted = 1, 'low', 'medium') AS severity,
         if(posted = 1, 5, 20) AS score,
-        doc_id AS ref_id,
+        concat(doc_id, ':', toString(toUnixTimestamp(ts)), ':', doc_type) AS ref_id,
         concat('Документ ', doc_type, ' №', doc_number, ' статус=', status) AS summary
     FROM analytics_1c.documents
+) AS src
+WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
+
+INSERT INTO analytics_1c.entity_timeline
+SELECT *
+FROM (
+    SELECT
+        ts,
+        'counterparty' AS entity_type,
+        counterparty AS entity_id,
+        infobase,
+        author AS actor,
+        'documents' AS source,
+        concat('counterparty:', operation_type) AS event_type,
+        if(status = 'busy', 'medium', 'low') AS severity,
+        greatest(10, toUInt32(round(amount))) AS score,
+        concat('counterparty:', counterparty, ':', doc_id, ':', toString(toUnixTimestamp(ts))) AS ref_id,
+        concat('Активность компании ', counterparty, ': ', doc_type, ' score=', toString(amount), ' status=', status) AS summary
+    FROM analytics_1c.documents
+    WHERE counterparty != ''
 ) AS src
 WHERE src.ref_id NOT IN (SELECT ref_id FROM analytics_1c.entity_timeline);
 

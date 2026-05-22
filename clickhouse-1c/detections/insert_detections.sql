@@ -23,6 +23,26 @@ INSERT INTO analytics_1c.detections
 SELECT *
 FROM (
     SELECT
+        generated_at AS ts,
+        concat('company_signal:', signal_id, ':', toString(toUnixTimestamp(generated_at))) AS detection_id,
+        infobase,
+        concat('company_', signal_type) AS rule_id,
+        'Сигнал активности компании' AS rule_title,
+        'counterparty' AS entity_type,
+        counterparty AS entity_id,
+        severity,
+        score,
+        summary,
+        'open' AS status
+    FROM analytics_1c.v_company_health_current
+    WHERE severity IN ('medium', 'high', 'critical')
+) AS src
+WHERE src.detection_id NOT IN (SELECT detection_id FROM analytics_1c.detections);
+
+INSERT INTO analytics_1c.detections
+SELECT *
+FROM (
+    SELECT
         event_ts AS ts,
         concat('failed_login_burst:', infobase, ':', user, ':', toString(toUnixTimestamp(event_ts))) AS detection_id,
         infobase,
