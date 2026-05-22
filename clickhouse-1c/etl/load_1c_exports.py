@@ -17,6 +17,8 @@ from dateutil import parser as date_parser
 RAW_TABLES = {
     "documents": "raw_1c_documents",
     "postings": "raw_1c_postings",
+    "business_events": "raw_1c_business_events",
+    "document_changes": "raw_1c_document_changes",
     "companies": "raw_1c_companies",
     "reglog": "raw_reglog",
     "audit": "raw_audit",
@@ -26,6 +28,8 @@ RAW_TABLES = {
 CORE_TABLES = {
     "documents": "documents",
     "postings": "postings",
+    "business_events": "business_events",
+    "document_changes": "document_change_events",
     "companies": "companies",
     "reglog": "reglog_events",
     "audit": "audit_events",
@@ -46,7 +50,7 @@ class Config:
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Load file-based 1C exports into ClickHouse")
     p.add_argument("--config", required=True, help="Path to YAML config")
-    p.add_argument("--dataset", choices=["documents", "postings", "companies", "reglog", "audit", "host"], help="Load only one dataset")
+    p.add_argument("--dataset", choices=["documents", "postings", "business_events", "document_changes", "companies", "reglog", "audit", "host"], help="Load only one dataset")
     return p.parse_args()
 
 
@@ -129,6 +133,50 @@ def map_core_row(dataset: str, source_file: str, row: dict[str, Any]) -> list[An
             float(row.get("amount", 0) or 0),
             source_file,
         ]
+    if dataset == "business_events":
+        return [
+            normalize_ts(row.get("ts") or row.get("event_time")),
+            row.get("event_id", ""),
+            row.get("infobase", ""),
+            row.get("company_entity_key", ""),
+            row.get("organization", ""),
+            row.get("department", ""),
+            row.get("document_id", row.get("doc_id", "")),
+            row.get("document_number", row.get("doc_number", "")),
+            row.get("document_type", row.get("doc_type", "")),
+            row.get("registrar", ""),
+            row.get("operation_type", ""),
+            row.get("event_kind", ""),
+            row.get("user", row.get("author", "")),
+            row.get("counterparty", ""),
+            row.get("counterparty_inn", ""),
+            row.get("debit_account", row.get("account_dt", "")),
+            row.get("credit_account", row.get("account_ct", "")),
+            float(row.get("amount", 0) or 0),
+            row.get("currency", "RUB"),
+            int(row.get("line_no", 0) or 0),
+            row.get("evidence_ref", ""),
+            source_file,
+        ]
+    if dataset == "document_changes":
+        return [
+            normalize_ts(row.get("ts") or row.get("change_time")),
+            row.get("change_id", ""),
+            row.get("infobase", ""),
+            row.get("company_entity_key", ""),
+            row.get("organization", ""),
+            row.get("document_id", row.get("doc_id", "")),
+            row.get("document_number", row.get("doc_number", "")),
+            row.get("document_type", row.get("doc_type", "")),
+            row.get("change_kind", ""),
+            row.get("field_name", ""),
+            row.get("user", row.get("author", "")),
+            row.get("before_value", ""),
+            row.get("after_value", ""),
+            row.get("risk_tag", ""),
+            row.get("evidence_ref", ""),
+            source_file,
+        ]
     if dataset == "companies":
         return [
             normalize_ts(row.get("ts")),
@@ -194,6 +242,10 @@ def core_columns(dataset: str) -> list[str]:
         return ["ts", "infobase", "organization", "department", "doc_type", "doc_id", "doc_number", "author", "counterparty", "operation_type", "amount", "status", "posted", "source_file"]
     if dataset == "postings":
         return ["ts", "infobase", "registrar", "operation_type", "account_dt", "account_ct", "amount", "source_file"]
+    if dataset == "business_events":
+        return ["ts", "event_id", "infobase", "company_entity_key", "organization", "department", "document_id", "document_number", "document_type", "registrar", "operation_type", "event_kind", "user", "counterparty", "counterparty_inn", "debit_account", "credit_account", "amount", "currency", "line_no", "evidence_ref", "source_file"]
+    if dataset == "document_changes":
+        return ["ts", "change_id", "infobase", "company_entity_key", "organization", "document_id", "document_number", "document_type", "change_kind", "field_name", "user", "before_value", "after_value", "risk_tag", "evidence_ref", "source_file"]
     if dataset == "companies":
         return ["ts", "infobase", "company_name", "organization", "owner_user", "base_id", "base_path", "status", "db_size_bytes", "reglog_size_bytes", "active_locks", "temp_db_present", "scheduler_touched", "activity_score", "source_file"]
     if dataset == "reglog":

@@ -32,6 +32,56 @@ CREATE TABLE IF NOT EXISTS analytics_1c.postings
 ENGINE = MergeTree
 ORDER BY (infobase, ts, registrar);
 
+CREATE TABLE IF NOT EXISTS analytics_1c.business_events
+(
+    ts DateTime,
+    event_id String,
+    infobase LowCardinality(String),
+    company_entity_key String,
+    organization String,
+    department String,
+    document_id String,
+    document_number String,
+    document_type LowCardinality(String),
+    registrar String,
+    operation_type String,
+    event_kind LowCardinality(String),
+    user String,
+    counterparty String,
+    counterparty_inn String,
+    debit_account String,
+    credit_account String,
+    amount Decimal(18, 2),
+    currency LowCardinality(String),
+    line_no UInt32,
+    evidence_ref String,
+    source_file String
+)
+ENGINE = MergeTree
+ORDER BY (infobase, ts, document_id, line_no, event_id);
+
+CREATE TABLE IF NOT EXISTS analytics_1c.document_change_events
+(
+    ts DateTime,
+    change_id String,
+    infobase LowCardinality(String),
+    company_entity_key String,
+    organization String,
+    document_id String,
+    document_number String,
+    document_type LowCardinality(String),
+    change_kind LowCardinality(String),
+    field_name String,
+    user String,
+    before_value String,
+    after_value String,
+    risk_tag String,
+    evidence_ref String,
+    source_file String
+)
+ENGINE = MergeTree
+ORDER BY (infobase, ts, document_id, change_id);
+
 CREATE TABLE IF NOT EXISTS analytics_1c.companies
 (
     ts DateTime,

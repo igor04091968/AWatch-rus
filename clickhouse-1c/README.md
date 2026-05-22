@@ -26,6 +26,8 @@ File 1C + reglog + host telemetry
    ├─ raw_*
    ├─ documents
    ├─ postings
+   ├─ business_events
+   ├─ document_change_events
    ├─ reglog_events
    ├─ audit_events
    ├─ host_events
@@ -45,6 +47,8 @@ File 1C + reglog + host telemetry
 - `clickhouse/init/*.sql` — схема БД.
 - `etl/load_1c_exports.py` — loader CSV/JSON выгрузок в raw/core таблицы.
 - `etl/config.example.yml` — пример ETL-конфига.
+- `docs/1C_BUSINESS_EVENT_LAYER_RU.md` — production contract следующего шага:
+  canonical business-event слой для документов/проводок/изменений.
 - `detections/rules.yml` — каталог правил detections.
 - `detections/insert_detections.sql` — SQL-шаблоны rule-based detections.
 - `grafana/dashboard-catalog.md` — целевая структура дашбордов.
@@ -95,7 +99,7 @@ docker compose up -d
 3. Инициализировать landing-каталоги и ETL config:
 
 ```bash
-mkdir -p landing/{documents,postings,reglog,audit,host}
+mkdir -p landing/{documents,postings,business_events,document_changes,companies,reglog,audit,host}
 cp etl/config.example.yml etl/config.yml
 ```
 
@@ -156,6 +160,8 @@ Read-only API для руководителя:
 
 - выгрузки 1С по документам;
 - выгрузки движений/проводок;
+- выгрузки canonical business events;
+- выгрузки изменений документов и реквизитов;
 - read-only `companies` snapshot по файловым базам;
 - журнал регистрации 1С;
 - audit/export критичных изменений;
@@ -184,3 +190,14 @@ Read-only API для руководителя:
 - case/timeline слой считается вне 1С.
 - это прогноз активности компании/базы, а не финансовых проводок;
 - если `counterparty` в live-выгрузках пустой, company-forecast слой останется корректно пустым.
+
+## Следующий production шаг
+
+В репо уже заложен scaffold под следующий слой:
+
+- `business_events` — единый event stream бухгалтерских событий;
+- `document_change_events` — изменения документов/реквизитов;
+- ETL уже умеет принимать эти datasets в `landing/business_events` и
+  `landing/document_changes`;
+- дальше нужен только read-only extractor, который будет наполнять их из 1С
+  или внешних безопасных выгрузок без записи в базу.

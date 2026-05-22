@@ -6,6 +6,8 @@ ROOT="${AW_1C_ROOT:-/opt/activitywatch/clickhouse-1c}"
 mkdir -p \
   "${ROOT}/landing/documents" \
   "${ROOT}/landing/postings" \
+  "${ROOT}/landing/business_events" \
+  "${ROOT}/landing/document_changes" \
   "${ROOT}/landing/companies" \
   "${ROOT}/landing/registry" \
   "${ROOT}/landing/reglog" \
@@ -13,6 +15,8 @@ mkdir -p \
   "${ROOT}/landing/host" \
   "${ROOT}/archive/documents" \
   "${ROOT}/archive/postings" \
+  "${ROOT}/archive/business_events" \
+  "${ROOT}/archive/document_changes" \
   "${ROOT}/archive/companies" \
   "${ROOT}/archive/registry" \
   "${ROOT}/archive/reglog" \
