@@ -167,6 +167,53 @@ FROM
         'manual_alias_typo'
 );
 
+CREATE OR REPLACE VIEW analytics_1c.v_company_registry_manual_overrides AS
+SELECT
+    company_key,
+    company_name,
+    assignee_name,
+    registry_status,
+    share_text,
+    key_contour,
+    inn,
+    kpp,
+    note
+FROM
+(
+    SELECT
+        'МАВЕРИК' AS company_key,
+        'МАВЕРИК' AS company_name,
+        '' AS assignee_name,
+        'manual' AS registry_status,
+        '' AS share_text,
+        toUInt8(0) AS key_contour,
+        '' AS inn,
+        '' AS kpp,
+        'workbook:list-sheet' AS note
+    UNION ALL
+    SELECT
+        'ТСН КОММУНИСТИЧЕСКАЯ 4',
+        'ТСН КОММУНИСТИЧЕСКАЯ 4',
+        '',
+        'manual',
+        '',
+        toUInt8(0),
+        '',
+        '',
+        'manual:portfolio-carry'
+    UNION ALL
+    SELECT
+        'ФЕЛИЦТ ГРУПП',
+        'ФЕЛИЦТ ГРУПП',
+        '',
+        'manual',
+        '',
+        toUInt8(0),
+        '',
+        '',
+        'manual:portfolio-carry'
+);
+
 CREATE OR REPLACE VIEW analytics_1c.v_company_portfolio_overview AS
 WITH
 base AS
@@ -214,6 +261,11 @@ alias_state AS
 (
     SELECT *
     FROM analytics_1c.v_company_registry_alias_map
+),
+manual_state AS
+(
+    SELECT *
+    FROM analytics_1c.v_company_registry_manual_overrides
 ),
 signals AS
 (
@@ -273,15 +325,15 @@ SELECT
     base.infobase AS infobase,
     if(company_state.organization != '', company_state.organization, base.organization) AS organization,
     base.counterparty AS counterparty,
-    if(alias_state.target_company_name != '', alias_state.target_company_name, if(company_state.company_name != '', company_state.company_name, base.counterparty)) AS company_name,
-    if(alias_state.target_company_name != '', alias_state.target_company_name, base.counterparty) AS normalized_counterparty,
-    multiIf(ifNull(alias_state.exclude_from_portfolio, 0) = 1, 'excluded', alias_state.target_company_key != '', 'alias', registry_state.company_key != '', 'direct', 'none') AS registry_match_mode,
-    ifNull(registry_state.assignee_name, '') AS registry_assignee_name,
-    ifNull(registry_state.registry_status, '') AS registry_status,
-    ifNull(registry_state.share_text, '') AS registry_share_text,
-    ifNull(registry_state.key_contour, 0) AS registry_key_contour,
-    ifNull(registry_state.inn, '') AS registry_inn,
-    ifNull(registry_state.kpp, '') AS registry_kpp,
+    if(alias_state.target_company_name != '', alias_state.target_company_name, if(manual_state.company_name != '', manual_state.company_name, if(company_state.company_name != '', company_state.company_name, base.counterparty))) AS company_name,
+    if(alias_state.target_company_name != '', alias_state.target_company_name, if(manual_state.company_name != '', manual_state.company_name, base.counterparty)) AS normalized_counterparty,
+    multiIf(ifNull(alias_state.exclude_from_portfolio, 0) = 1, 'excluded', alias_state.target_company_key != '' AND registry_state.company_key != '', 'alias', registry_state.company_key != '', 'direct', manual_state.company_key != '', 'manual', 'none') AS registry_match_mode,
+    if(registry_state.assignee_name != '', registry_state.assignee_name, ifNull(manual_state.assignee_name, '')) AS registry_assignee_name,
+    if(registry_state.registry_status != '', registry_state.registry_status, ifNull(manual_state.registry_status, '')) AS registry_status,
+    if(registry_state.share_text != '', registry_state.share_text, ifNull(manual_state.share_text, '')) AS registry_share_text,
+    if(registry_state.key_contour != 0, registry_state.key_contour, ifNull(manual_state.key_contour, 0)) AS registry_key_contour,
+    if(registry_state.inn != '', registry_state.inn, ifNull(manual_state.inn, '')) AS registry_inn,
+    if(registry_state.kpp != '', registry_state.kpp, ifNull(manual_state.kpp, '')) AS registry_kpp,
     ifNull(company_state.owner_user, '') AS owner_user,
     ifNull(company_state.base_id, '') AS base_id,
     ifNull(company_state.base_path, '') AS base_path,
@@ -317,6 +369,7 @@ FROM base
 LEFT JOIN company_state ON company_state.infobase = base.infobase
 LEFT JOIN alias_state ON alias_state.source_company_key = base.counterparty_key
 LEFT JOIN registry_state ON registry_state.company_key = if(alias_state.target_company_key != '', alias_state.target_company_key, base.counterparty_key)
+LEFT JOIN manual_state ON manual_state.company_key = if(alias_state.target_company_key != '', alias_state.target_company_key, base.counterparty_key)
 LEFT JOIN d7 ON d7.infobase = base.infobase AND d7.counterparty = base.counterparty
 LEFT JOIN d30 ON d30.infobase = base.infobase AND d30.counterparty = base.counterparty
 LEFT JOIN signals ON signals.infobase = base.infobase AND signals.counterparty = base.counterparty
