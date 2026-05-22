@@ -869,7 +869,7 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
   <main class="shell">
     <section class="hero">
       <h1>Что изменилось с прошлого запуска</h1>
-      <p>Сравнение between briefs: {html.escape(str(delta.get('previous_generated_at') or '-'))} -> {html.escape(str(delta.get('current_generated_at') or payload.get('generated_at') or '-'))}.</p>
+      <p>Сравнение запусков: {html.escape(str(delta.get('previous_generated_at') or '-'))} -> {html.escape(str(delta.get('current_generated_at') or payload.get('generated_at') or '-'))}.</p>
       <div class="hero-links">
         <a href="/manager/brief">Текущий brief</a>
         <a href="/manager/briefs">История brief</a>
@@ -905,7 +905,7 @@ def render_brief_delta_html(payload: dict[str, Any]) -> str:
       </article>
 
       <article class="panel span-12">
-        <h2>Top changes today</h2>
+        <h2>Ключевые изменения</h2>
         <table>
           <thead>
             <tr>
