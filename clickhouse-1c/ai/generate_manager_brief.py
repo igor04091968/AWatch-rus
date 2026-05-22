@@ -107,6 +107,26 @@ def q(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def severity_rank(value: str | None) -> int:
+    return {
+        "none": 0,
+        "low": 1,
+        "medium": 2,
+        "high": 3,
+        "critical": 4,
+    }.get((value or "none").lower(), 0)
+
+
+def load_previous_artifact(state_dir: Path) -> dict[str, Any] | None:
+    latest_path = state_dir / "latest.json"
+    if not latest_path.exists():
+        return None
+    try:
+        return json.loads(latest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+
+
 def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any]:
     now = datetime.now(UTC)
 
@@ -283,6 +303,29 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
         )
     )
 
+    portfolio_snapshot = rows_to_dict(
+        client.query(
+            """
+            SELECT
+                infobase,
+                counterparty,
+                normalized_counterparty,
+                registry_match_mode,
+                signal_severity,
+                signal_score,
+                current_status,
+                active_locks,
+                days_since_last_activity,
+                round(amount_30d, 2) AS amount_30d,
+                round(amount_forecast_30d, 2) AS amount_forecast_30d,
+                open_cases_total,
+                detections_total
+            FROM analytics_1c.v_company_portfolio_overview
+            ORDER BY counterparty, infobase
+            """
+        )
+    )
+
     return {
         "generated_at": now.isoformat(),
         "freshness_threshold_hours": freshness_hours,
@@ -293,12 +336,200 @@ def build_context(client, top_limit: int, freshness_hours: int) -> dict[str, Any
         "watchlist": watchlist,
         "busy_bases": busy_bases,
         "recent_cases": recent_cases,
+        "portfolio_snapshot": portfolio_snapshot,
+    }
+
+
+def compute_delta_context(current: dict[str, Any], previous_artifact: dict[str, Any] | None) -> dict[str, Any]:
+    if not previous_artifact:
+        return {
+            "available": False,
+            "reason": "no previous brief artifact",
+            "current_generated_at": current.get("generated_at"),
+        }
+
+    previous = previous_artifact.get("context", {})
+    current_summary = current.get("portfolio_summary", {})
+    previous_summary = previous.get("portfolio_summary", {})
+    current_watchlist = {(item.get("infobase"), item.get("counterparty")) for item in current.get("watchlist", [])}
+    previous_watchlist = {(item.get("infobase"), item.get("counterparty")) for item in previous.get("watchlist", [])}
+    current_snapshot = {
+        (item.get("infobase"), item.get("counterparty")): item
+        for item in current.get("portfolio_snapshot", [])
+    }
+    previous_snapshot = {
+        (item.get("infobase"), item.get("counterparty")): item
+        for item in previous.get("portfolio_snapshot", [])
+    }
+
+    delta_summary = {
+        "companies_total_delta": current_summary.get("companies_total", 0) - previous_summary.get("companies_total", 0),
+        "critical_total_delta": current_summary.get("critical_total", 0) - previous_summary.get("critical_total", 0),
+        "high_total_delta": current_summary.get("high_total", 0) - previous_summary.get("high_total", 0),
+        "busy_total_delta": current_summary.get("busy_total", 0) - previous_summary.get("busy_total", 0),
+        "open_cases_total_delta": current_summary.get("open_cases_total", 0) - previous_summary.get("open_cases_total", 0),
+        "detections_total_delta": current_summary.get("detections_total", 0) - previous_summary.get("detections_total", 0),
+        "activity_30d_total_delta": round(
+            float(current_summary.get("activity_30d_total", 0) or 0)
+            - float(previous_summary.get("activity_30d_total", 0) or 0),
+            2,
+        ),
+        "activity_forecast_30d_total_delta": round(
+            float(current_summary.get("activity_forecast_30d_total", 0) or 0)
+            - float(previous_summary.get("activity_forecast_30d_total", 0) or 0),
+            2,
+        ),
+    }
+
+    new_critical: list[str] = []
+    resolved_critical: list[str] = []
+    top_changes: list[dict[str, Any]] = []
+
+    for key, current_item in current_snapshot.items():
+        previous_item = previous_snapshot.get(key)
+        if not previous_item:
+            continue
+
+        current_severity = str(current_item.get("signal_severity") or "none")
+        previous_severity = str(previous_item.get("signal_severity") or "none")
+        current_rank = severity_rank(current_severity)
+        previous_rank = severity_rank(previous_severity)
+        score_before = int(previous_item.get("signal_score") or 0)
+        score_after = int(current_item.get("signal_score") or 0)
+        score_delta = score_after - score_before
+        cases_before = int(previous_item.get("open_cases_total") or 0)
+        cases_after = int(current_item.get("open_cases_total") or 0)
+        cases_delta = cases_after - cases_before
+        detections_before = int(previous_item.get("detections_total") or 0)
+        detections_after = int(current_item.get("detections_total") or 0)
+        detections_delta = detections_after - detections_before
+        locks_before = int(previous_item.get("active_locks") or 0)
+        locks_after = int(current_item.get("active_locks") or 0)
+        locks_delta = locks_after - locks_before
+        forecast_before = float(previous_item.get("amount_forecast_30d") or 0)
+        forecast_after = float(current_item.get("amount_forecast_30d") or 0)
+        forecast_delta = round(forecast_after - forecast_before, 2)
+
+        if current_severity == "critical" and previous_severity != "critical":
+            new_critical.append(str(current_item.get("counterparty") or "-"))
+        if previous_severity == "critical" and current_severity != "critical":
+            resolved_critical.append(str(current_item.get("counterparty") or "-"))
+
+        change_type = None
+        summary = None
+        significance = 0.0
+
+        if current_rank > previous_rank:
+            change_type = "severity_up"
+            summary = f"Severity {previous_severity} -> {current_severity}, score {score_before} -> {score_after}."
+            significance = max(significance, (current_rank - previous_rank) * 50 + max(score_delta, 0))
+        elif current_rank < previous_rank:
+            change_type = "severity_down"
+            summary = f"Severity {previous_severity} -> {current_severity}, напряжение по компании снизилось."
+            significance = max(significance, (previous_rank - current_rank) * 40 + abs(score_delta))
+
+        if cases_delta > 0 and cases_delta * 6 > significance:
+            change_type = "cases_up"
+            summary = f"Открытых кейсов стало больше: {cases_before} -> {cases_after}."
+            significance = cases_delta * 6 + max(score_delta, 0)
+
+        if locks_delta > 0 and locks_delta * 8 > significance:
+            change_type = "locks_up"
+            summary = f"Активные блокировки выросли: {locks_before} -> {locks_after}."
+            significance = locks_delta * 8 + max(score_delta, 0)
+
+        if forecast_delta < 0:
+            forecast_drop_pct = abs(forecast_delta) / max(abs(forecast_before), 1.0) * 100.0
+            if forecast_drop_pct > significance:
+                change_type = "forecast_drop"
+                summary = f"Прогноз активности 30д снизился: {round(forecast_before, 2)} -> {round(forecast_after, 2)}."
+                significance = forecast_drop_pct
+        elif forecast_delta > 0:
+            forecast_growth_pct = abs(forecast_delta) / max(abs(forecast_before), 1.0) * 100.0
+            if forecast_growth_pct > significance and not change_type:
+                change_type = "forecast_growth"
+                summary = f"Прогноз активности 30д вырос: {round(forecast_before, 2)} -> {round(forecast_after, 2)}."
+                significance = forecast_growth_pct
+
+        if detections_delta > 0 and detections_delta * 4 > significance:
+            change_type = "detections_up"
+            summary = f"Число detections выросло: {detections_before} -> {detections_after}."
+            significance = detections_delta * 4
+
+        if not change_type:
+            continue
+
+        top_changes.append(
+            {
+                "infobase": current_item.get("infobase"),
+                "company": current_item.get("counterparty"),
+                "normalized_counterparty": current_item.get("normalized_counterparty"),
+                "registry_match_mode": current_item.get("registry_match_mode"),
+                "change_type": change_type,
+                "summary": summary,
+                "severity_before": previous_severity,
+                "severity_after": current_severity,
+                "score_before": score_before,
+                "score_after": score_after,
+                "score_delta": score_delta,
+                "open_cases_before": cases_before,
+                "open_cases_after": cases_after,
+                "open_cases_delta": cases_delta,
+                "detections_before": detections_before,
+                "detections_after": detections_after,
+                "detections_delta": detections_delta,
+                "active_locks_before": locks_before,
+                "active_locks_after": locks_after,
+                "active_locks_delta": locks_delta,
+                "forecast_before": round(forecast_before, 2),
+                "forecast_after": round(forecast_after, 2),
+                "forecast_delta": forecast_delta,
+                "significance": round(significance, 2),
+            }
+        )
+
+    entered_watchlist = sorted(
+        key[1] for key in current_watchlist - previous_watchlist if key[1]
+    )
+    left_watchlist = sorted(
+        key[1] for key in previous_watchlist - current_watchlist if key[1]
+    )
+
+    top_changes.sort(
+        key=lambda item: (
+            float(item.get("significance") or 0),
+            int(item.get("score_after") or 0),
+            int(item.get("open_cases_after") or 0),
+        ),
+        reverse=True,
+    )
+
+    delta_summary.update(
+        {
+            "new_critical_total": len(new_critical),
+            "resolved_critical_total": len(resolved_critical),
+            "entered_watchlist_total": len(entered_watchlist),
+            "left_watchlist_total": len(left_watchlist),
+        }
+    )
+
+    return {
+        "available": True,
+        "previous_generated_at": previous.get("generated_at") or previous_artifact.get("generated_at"),
+        "current_generated_at": current.get("generated_at"),
+        "summary": delta_summary,
+        "new_critical": new_critical[:10],
+        "resolved_critical": resolved_critical[:10],
+        "entered_watchlist": entered_watchlist[:10],
+        "left_watchlist": left_watchlist[:10],
+        "top_changes": top_changes[:15],
     }
 
 
 def render_deterministic_payload(context: dict[str, Any]) -> dict[str, Any]:
     summary = context["portfolio_summary"]
     freshness = context["freshness"]
+    delta = context.get("delta", {})
     stale_sources = [item["source"] for item in freshness if item["stale"]]
     top_risks = context["top_risks"][:5]
     top_forecasts = context["top_forecasts"][:5]
@@ -313,6 +544,19 @@ def render_deterministic_payload(context: dict[str, Any]) -> dict[str, Any]:
         f"Суммарная активность за 30 дней {summary['activity_30d_total']}, прогнозная активность на 30 дней {summary['activity_forecast_30d_total']}.",
         f"Открытых кейсов по компаниям {summary['open_cases_total']}, активных detections {summary['detections_total']}.",
     ]
+    if delta.get("available"):
+        delta_summary = delta.get("summary", {})
+        summary_lines.append(
+            "С прошлого запуска: "
+            f"critical {delta_summary.get('critical_total_delta', 0):+d}, "
+            f"busy {delta_summary.get('busy_total_delta', 0):+d}, "
+            f"кейсы {delta_summary.get('open_cases_total_delta', 0):+d}, "
+            f"detections {delta_summary.get('detections_total_delta', 0):+d}."
+        )
+        if delta.get("top_changes"):
+            leaders = ", ".join(item["company"] for item in delta["top_changes"][:3] if item.get("company"))
+            if leaders:
+                summary_lines.append(f"Главные изменения с прошлого запуска: {leaders}.")
     if stale_sources:
         summary_lines.append(f"Есть просрочка по источникам: {', '.join(stale_sources)}.")
     else:
@@ -348,6 +592,8 @@ def render_deterministic_payload(context: dict[str, Any]) -> dict[str, Any]:
         "Проверить watchlist по inactivity/amount_drop/docs_stopped и подтвердить, это бизнес-пауза или operational сбой.",
         "Отдельно пройти по manual-match компаниям перед управленческими выводами из реестра.",
     ]
+    if delta.get("available") and delta.get("summary", {}).get("new_critical_total", 0) > 0:
+        actions.insert(0, f"Сначала разобрать новые critical-компании: {', '.join(delta.get('new_critical', [])[:3])}.")
     if watchlist:
         actions[1] = (
             f"Проверить watchlist: {', '.join(item['counterparty'] for item in watchlist[:3])}."
@@ -471,8 +717,10 @@ def main() -> int:
     state_dir = Path(args.state_dir)
     state_dir.mkdir(parents=True, exist_ok=True)
 
+    previous_artifact = load_previous_artifact(state_dir)
     client = ch_client(args)
     context = build_context(client, top_limit=args.top_limit, freshness_hours=args.freshness_hours)
+    context["delta"] = compute_delta_context(context, previous_artifact)
     prompt = build_prompt(context)
 
     codex_rc = None

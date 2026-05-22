@@ -98,6 +98,13 @@ def load_brief_history_record(name: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def extract_delta(payload: dict[str, Any]) -> dict[str, Any]:
+    delta = payload.get("context", {}).get("delta")
+    if isinstance(delta, dict):
+        return delta
+    return {"available": False, "reason": "delta not present in artifact"}
+
+
 def grafana_company_dashboard_url() -> str:
     return os.getenv(
         "AW_1C_MANAGER_BRIEF_GRAFANA_URL",
@@ -151,6 +158,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     generated_at = payload.get("generated_at", "")
     history_url = "/api/1/analytics-1c/manager/brief/history"
     history_html_url = "/manager/briefs"
+    delta_html_url = "/manager/changes"
     problematic_1d_url = "/manager/problematic?days=1"
     problematic_7d_url = "/manager/problematic?days=7"
     json_url = "/api/1/analytics-1c/manager/brief/latest"
@@ -448,6 +456,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
           <a href="{html.escape(json_url)}">JSON</a>
           <a href="{html.escape(md_url)}">Markdown</a>
           <a href="{html.escape(history_html_url)}">История brief</a>
+          <a href="{html.escape(delta_html_url)}">Что изменилось</a>
           <a href="{html.escape(problematic_1d_url)}">Проблемные 1д</a>
           <a href="{html.escape(problematic_7d_url)}">Проблемные 7д</a>
           <a href="{html.escape(history_url)}">History API</a>
@@ -605,6 +614,7 @@ def render_brief_history_html(items: list[dict[str, Any]]) -> str:
             f"<td>{html.escape(str(item.get('render_mode', '-')))}</td>"
             f"<td>{html.escape(str(item.get('model') or '-'))}</td>"
             f"<td>{html.escape(str(item.get('headline') or '-'))}</td>"
+            f"<td><a class=\"inline-link\" href=\"/manager/briefs/{quote(str(item.get('path', '')))}/changes\">Изменения</a></td>"
             f"<td><a class=\"inline-link\" href=\"/api/1/analytics-1c/manager/brief/history/{quote(str(item.get('path', '')))}\">JSON</a></td>"
             "</tr>"
         )
@@ -640,6 +650,7 @@ def render_brief_history_html(items: list[dict[str, Any]]) -> str:
       <h1>История executive brief</h1>
       <div class="hero-links">
         <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/changes">Что изменилось</a>
         <a href="/manager/problematic?days=1">Проблемные 1д</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
       </div>
@@ -652,11 +663,12 @@ def render_brief_history_html(items: list[dict[str, Any]]) -> str:
             <th>Режим</th>
             <th>Модель</th>
             <th>Headline</th>
+            <th>Delta</th>
             <th>Raw</th>
           </tr>
         </thead>
         <tbody>
-          {''.join(rows) or '<tr><td colspan="5">История пока пуста.</td></tr>'}
+          {''.join(rows) or '<tr><td colspan="6">История пока пуста.</td></tr>'}
         </tbody>
       </table>
     </section>
@@ -751,6 +763,167 @@ def render_problematic_companies_html(items: list[dict[str, Any]], days: int) ->
           {''.join(rows) or '<tr><td colspan="10">Нет сигналов за выбранный период.</td></tr>'}
         </tbody>
       </table>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def render_brief_delta_html(payload: dict[str, Any]) -> str:
+    delta = extract_delta(payload)
+    brief = payload.get("brief", {})
+    if not delta.get("available"):
+        return f"""<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>1C Brief Changes</title></head><body><main style="max-width:980px;margin:40px auto;font-family:IBM Plex Sans,Segoe UI,sans-serif">
+<h1>Что изменилось с прошлого запуска</h1><p>Delta пока недоступна: {html.escape(str(delta.get('reason', 'unknown')))}.</p>
+<p><a href="/manager/brief">Вернуться к brief</a></p></main></body></html>"""
+
+    summary = delta.get("summary", {})
+    top_changes = delta.get("top_changes", [])
+    new_critical = delta.get("new_critical", [])
+    resolved_critical = delta.get("resolved_critical", [])
+    entered_watchlist = delta.get("entered_watchlist", [])
+    left_watchlist = delta.get("left_watchlist", [])
+
+    def delta_value(value: Any) -> str:
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return html.escape(str(value))
+        prefix = "+" if numeric > 0 else ""
+        if numeric.is_integer():
+            return prefix + str(int(numeric))
+        return prefix + f"{numeric:.2f}".replace(".", ",")
+
+    stat_cards = [
+        ("Critical", delta_value(summary.get("critical_total_delta", 0))),
+        ("Busy", delta_value(summary.get("busy_total_delta", 0))),
+        ("Кейсы", delta_value(summary.get("open_cases_total_delta", 0))),
+        ("Detections", delta_value(summary.get("detections_total_delta", 0))),
+        ("Активность 30д", delta_value(summary.get("activity_30d_total_delta", 0))),
+        ("Прогноз 30д", delta_value(summary.get("activity_forecast_30d_total_delta", 0))),
+    ]
+    stat_html = "".join(
+        f"<div class=\"stat\"><div class=\"stat-label\">{html.escape(label)}</div><div class=\"stat-value\">{html.escape(value)}</div></div>"
+        for label, value in stat_cards
+    )
+
+    rows = []
+    for item in top_changes:
+        infobase = item.get("infobase")
+        counterparty = item.get("company")
+        rows.append(
+            "<tr>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(counterparty), str(infobase) if infobase else None)}\">{html.escape(str(counterparty or '-'))}</a></td>"
+            f"<td>{html.escape(str(item.get('change_type') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('severity_before') or '-'))} -> {html.escape(str(item.get('severity_after') or '-'))}</td>"
+            f"<td>{delta_value(item.get('score_delta', 0))}</td>"
+            f"<td>{delta_value(item.get('open_cases_delta', 0))}</td>"
+            f"<td>{delta_value(item.get('active_locks_delta', 0))}</td>"
+            f"<td>{delta_value(item.get('forecast_delta', 0))}</td>"
+            f"<td>{html.escape(str(item.get('summary') or '-'))}</td>"
+            "</tr>"
+        )
+
+    def as_list(items: list[str]) -> str:
+        if not items:
+            return "<li>Нет</li>"
+        return "".join(f"<li>{html.escape(str(item))}</li>" for item in items)
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Brief Changes</title>
+  <style>
+    :root {{ --bg:#f4f1ea; --paper:#fffdf8; --ink:#1c1a17; --muted:#6b655c; --line:#d8d0c4; --accent:#005f73; --shadow:0 14px 40px rgba(28,26,23,.08); }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; font-family:"IBM Plex Sans","Segoe UI",system-ui,sans-serif; color:var(--ink); background:linear-gradient(180deg,#faf7f2 0%,var(--bg) 100%); }}
+    .shell {{ max-width:1480px; margin:0 auto; padding:28px 22px 60px; }}
+    .hero {{ background:linear-gradient(135deg,rgba(0,95,115,.94),rgba(10,77,104,.92)); color:#f8fbfc; border-radius:24px; padding:28px 30px; box-shadow:var(--shadow); }}
+    .hero h1 {{ margin:0 0 10px; font-size:clamp(28px,4vw,42px); }}
+    .hero p {{ margin:0 0 14px; color:rgba(248,251,252,.88); line-height:1.5; }}
+    .hero-links {{ display:flex; gap:10px; flex-wrap:wrap; }}
+    .hero-links a {{ text-decoration:none; color:#f8fbfc; border:1px solid rgba(248,251,252,.28); padding:9px 12px; border-radius:999px; font-size:14px; }}
+    .grid {{ display:grid; grid-template-columns:repeat(12,minmax(0,1fr)); gap:18px; margin-top:22px; }}
+    .panel {{ background:var(--paper); border:1px solid var(--line); border-radius:22px; padding:22px; box-shadow:var(--shadow); }}
+    .span-12 {{ grid-column:span 12; }} .span-6 {{ grid-column:span 6; }} .span-4 {{ grid-column:span 4; }}
+    .stats {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }}
+    .stat {{ padding:16px; border-radius:18px; background:linear-gradient(180deg,#fff 0%,#f7f4ee 100%); border:1px solid var(--line); }}
+    .stat-label {{ color:var(--muted); font-size:13px; margin-bottom:8px; }}
+    .stat-value {{ font-size:24px; font-weight:700; letter-spacing:-.03em; }}
+    table {{ width:100%; border-collapse:collapse; font-size:14px; }}
+    th,td {{ text-align:left; padding:10px 8px; border-bottom:1px solid var(--line); vertical-align:top; }}
+    th {{ color:var(--muted); font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }}
+    .inline-link {{ color:var(--accent); text-decoration:none; font-weight:600; }}
+    .inline-link:hover {{ text-decoration:underline; }}
+    ul {{ margin:0; padding-left:20px; line-height:1.55; }}
+    @media (max-width:1100px) {{ .span-6,.span-4 {{ grid-column:span 12; }} .stats {{ grid-template-columns:repeat(2,minmax(0,1fr)); }} }}
+    @media (max-width:640px) {{ .shell {{ padding:16px 14px 40px; }} .hero {{ padding:22px 18px; }} .stats {{ grid-template-columns:1fr; }} }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>Что изменилось с прошлого запуска</h1>
+      <p>Сравнение between briefs: {html.escape(str(delta.get('previous_generated_at') or '-'))} -> {html.escape(str(delta.get('current_generated_at') or payload.get('generated_at') or '-'))}.</p>
+      <div class="hero-links">
+        <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/briefs">История brief</a>
+        <a href="/manager/problematic?days=1">Проблемные 1д</a>
+        <a href="/manager/problematic?days=7">Проблемные 7д</a>
+      </div>
+    </section>
+
+    <section class="grid">
+      <article class="panel span-12">
+        <h2>Сводка изменений</h2>
+        <div class="stats">{stat_html}</div>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Новые critical</h2>
+        <ul>{as_list(new_critical)}</ul>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Вышли из critical</h2>
+        <ul>{as_list(resolved_critical)}</ul>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Зашли в watchlist</h2>
+        <ul>{as_list(entered_watchlist)}</ul>
+      </article>
+
+      <article class="panel span-6">
+        <h2>Вышли из watchlist</h2>
+        <ul>{as_list(left_watchlist)}</ul>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Top changes today</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Компания</th>
+              <th>Тип</th>
+              <th>Severity</th>
+              <th>Score Δ</th>
+              <th>Cases Δ</th>
+              <th>Locks Δ</th>
+              <th>Forecast Δ</th>
+              <th>Комментарий</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(rows) or '<tr><td colspan="8">Нет выраженных изменений.</td></tr>'}
+          </tbody>
+        </table>
+      </article>
     </section>
   </main>
 </body>
@@ -967,6 +1140,17 @@ def manager_brief_history_record(name: str) -> dict[str, Any]:
     return load_brief_history_record(name)
 
 
+@app.get("/api/1/analytics-1c/manager/brief/delta/latest")
+def manager_brief_delta_latest() -> dict[str, Any]:
+    payload = load_latest_manager_brief()
+    delta = extract_delta(payload)
+    return {
+        "generated_at": payload.get("generated_at"),
+        "headline": payload.get("brief", {}).get("headline"),
+        "delta": delta,
+    }
+
+
 @app.get("/api/1/analytics-1c/companies/problematic")
 def problematic_companies_api(
     days: int = Query(default=7, ge=1, le=30),
@@ -981,6 +1165,11 @@ def manager_brief_view() -> str:
     return render_manager_brief_html(load_latest_manager_brief())
 
 
+@app.get("/manager/changes", response_class=HTMLResponse)
+def manager_brief_delta_view() -> str:
+    return render_brief_delta_html(load_latest_manager_brief())
+
+
 @app.get("/manager/briefs", response_class=HTMLResponse)
 def manager_brief_history_view(limit: int = Query(default=40, ge=1, le=200)) -> str:
     return render_brief_history_html(load_brief_history_records(limit))
@@ -989,6 +1178,11 @@ def manager_brief_history_view(limit: int = Query(default=40, ge=1, le=200)) -> 
 @app.get("/manager/briefs/{name}", response_class=HTMLResponse)
 def manager_brief_history_detail_view(name: str) -> str:
     return render_manager_brief_html(load_brief_history_record(name))
+
+
+@app.get("/manager/briefs/{name}/changes", response_class=HTMLResponse)
+def manager_brief_history_delta_view(name: str) -> str:
+    return render_brief_delta_html(load_brief_history_record(name))
 
 
 @app.get("/manager/problematic", response_class=HTMLResponse)
@@ -1189,6 +1383,7 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
         </div>
         <nav class="hero-links">
           <a href="/manager/brief">К портфелю</a>
+          <a href="/manager/changes">Что изменилось</a>
           <a href="/manager/briefs">История brief</a>
           <a href="/manager/problematic?days=7">Проблемные компании</a>
           <a href="{html.escape(summary_url)}">JSON summary</a>

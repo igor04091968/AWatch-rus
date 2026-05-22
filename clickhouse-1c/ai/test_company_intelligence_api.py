@@ -105,6 +105,49 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
                 else:
                     os.environ["AW_1C_MANAGER_BRIEF_STATE_DIR"] = old
 
+    def test_render_brief_delta_html(self) -> None:
+        payload = {
+            "generated_at": "2026-05-22T12:00:00+00:00",
+            "brief": {"headline": "Тест"},
+            "context": {
+                "delta": {
+                    "available": True,
+                    "previous_generated_at": "2026-05-22T09:00:00+00:00",
+                    "current_generated_at": "2026-05-22T12:00:00+00:00",
+                    "summary": {
+                        "critical_total_delta": 2,
+                        "busy_total_delta": 1,
+                        "open_cases_total_delta": 5,
+                        "detections_total_delta": 4,
+                        "activity_30d_total_delta": 120.5,
+                        "activity_forecast_30d_total_delta": -50.25,
+                    },
+                    "new_critical": ["ФЕЛИЦТ ГРУПП 2026"],
+                    "resolved_critical": [],
+                    "entered_watchlist": ["АВКО 2026"],
+                    "left_watchlist": [],
+                    "top_changes": [
+                        {
+                            "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                            "company": "ФЕЛИЦТ ГРУПП 2026",
+                            "change_type": "severity_up",
+                            "severity_before": "high",
+                            "severity_after": "critical",
+                            "score_delta": 25,
+                            "open_cases_delta": 3,
+                            "active_locks_delta": 2,
+                            "forecast_delta": -15.0,
+                            "summary": "Severity high -> critical.",
+                        }
+                    ],
+                }
+            },
+        }
+        html_page = api.render_brief_delta_html(payload)
+        self.assertIn("Что изменилось с прошлого запуска", html_page)
+        self.assertIn("Top changes today", html_page)
+        self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
+
 
 if __name__ == "__main__":
     unittest.main()
