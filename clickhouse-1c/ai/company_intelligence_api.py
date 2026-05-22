@@ -68,6 +68,36 @@ def load_latest_manager_brief() -> dict[str, Any]:
     return json.loads(latest_path.read_text(encoding="utf-8"))
 
 
+def load_brief_history_records(limit: int = 20) -> list[dict[str, Any]]:
+    history_dir = manager_brief_state_dir() / "history"
+    if not history_dir.exists():
+        return []
+    items: list[dict[str, Any]] = []
+    for path in sorted(history_dir.glob("*.json"), reverse=True)[:limit]:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        items.append(
+            {
+                "generated_at": payload.get("generated_at"),
+                "render_mode": payload.get("render_mode"),
+                "model": payload.get("model"),
+                "headline": payload.get("brief", {}).get("headline", ""),
+                "path": path.name,
+                "brief": payload.get("brief", {}),
+            }
+        )
+    return items
+
+
+def load_brief_history_record(name: str) -> dict[str, Any]:
+    safe_name = Path(name).name
+    if not safe_name.endswith(".json"):
+        safe_name += ".json"
+    path = manager_brief_state_dir() / "history" / safe_name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="manager brief history record not found")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def grafana_company_dashboard_url() -> str:
     return os.getenv(
         "AW_1C_MANAGER_BRIEF_GRAFANA_URL",
@@ -103,6 +133,11 @@ def company_detail_url(counterparty: str, infobase: str | None = None) -> str:
     return base
 
 
+def manager_brief_history_html_url(name: str) -> str:
+    safe_name = Path(name).name
+    return f"/manager/briefs/{quote(safe_name)}"
+
+
 def render_manager_brief_html(payload: dict[str, Any]) -> str:
     brief = payload.get("brief", {})
     context = payload.get("context", {})
@@ -115,6 +150,9 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     render_mode = payload.get("render_mode", "unknown")
     generated_at = payload.get("generated_at", "")
     history_url = "/api/1/analytics-1c/manager/brief/history"
+    history_html_url = "/manager/briefs"
+    problematic_1d_url = "/manager/problematic?days=1"
+    problematic_7d_url = "/manager/problematic?days=7"
     json_url = "/api/1/analytics-1c/manager/brief/latest"
     md_url = "/api/1/analytics-1c/manager/brief/latest.md"
     grafana_url = grafana_company_dashboard_url()
@@ -409,7 +447,10 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
         <nav class="hero-links">
           <a href="{html.escape(json_url)}">JSON</a>
           <a href="{html.escape(md_url)}">Markdown</a>
-          <a href="{html.escape(history_url)}">History</a>
+          <a href="{html.escape(history_html_url)}">История brief</a>
+          <a href="{html.escape(problematic_1d_url)}">Проблемные 1д</a>
+          <a href="{html.escape(problematic_7d_url)}">Проблемные 7д</a>
+          <a href="{html.escape(history_url)}">History API</a>
           <a href="{html.escape(grafana_url)}">Grafana</a>
         </nav>
       </div>
@@ -488,6 +529,222 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
           </tbody>
         </table>
       </article>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def problematic_companies(days: int = 7, limit: int = 50) -> list[dict[str, Any]]:
+    client = ch_client()
+    sql = f"""
+    WITH recent AS (
+        SELECT
+            infobase,
+            counterparty,
+            max(generated_at) AS latest_signal_at,
+            max(score) AS max_score,
+            sum(score) AS total_score,
+            count() AS signals_total,
+            countIf(severity = 'critical') AS critical_total,
+            countIf(severity = 'high') AS high_total,
+            argMax(severity, tuple(score, generated_at)) AS top_severity,
+            argMax(signal_type, tuple(score, generated_at)) AS top_signal_type,
+            argMax(summary, tuple(score, generated_at)) AS top_summary
+        FROM analytics_1c.company_health_signals
+        WHERE generated_at >= now() - INTERVAL {int(days)} DAY
+        GROUP BY infobase, counterparty
+    )
+    SELECT
+        p.infobase,
+        p.counterparty,
+        p.company_name,
+        p.normalized_counterparty,
+        p.registry_match_mode,
+        p.registry_assignee_name,
+        p.registry_status,
+        p.signal_severity,
+        p.signal_score,
+        p.amount_30d,
+        p.amount_forecast_30d,
+        p.current_status,
+        p.active_locks,
+        p.open_cases_total,
+        p.detections_total,
+        r.latest_signal_at,
+        r.max_score,
+        r.total_score,
+        r.signals_total,
+        r.critical_total,
+        r.high_total,
+        r.top_severity,
+        r.top_signal_type,
+        r.top_summary
+    FROM recent AS r
+    INNER JOIN analytics_1c.v_company_portfolio_overview AS p
+        ON p.infobase = r.infobase
+       AND p.counterparty = r.counterparty
+    ORDER BY r.max_score DESC, r.signals_total DESC, p.amount_30d DESC, p.counterparty
+    LIMIT {int(limit)}
+    """
+    return rows_to_dict(client.query(sql))
+
+
+def render_brief_history_html(items: list[dict[str, Any]]) -> str:
+    rows = []
+    for item in items:
+        rows.append(
+            "<tr>"
+            f"<td><a class=\"inline-link\" href=\"{manager_brief_history_html_url(str(item.get('path', '')))}\">{html.escape(str(item.get('generated_at', '-')))}</a></td>"
+            f"<td>{html.escape(str(item.get('render_mode', '-')))}</td>"
+            f"<td>{html.escape(str(item.get('model') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('headline') or '-'))}</td>"
+            f"<td><a class=\"inline-link\" href=\"/api/1/analytics-1c/manager/brief/history/{quote(str(item.get('path', '')))}\">JSON</a></td>"
+            "</tr>"
+        )
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Brief History</title>
+  <style>
+    :root {{
+      --bg: #f4f1ea; --paper: #fffdf8; --ink: #1c1a17; --muted: #6b655c; --line: #d8d0c4; --accent: #005f73; --shadow: 0 14px 40px rgba(28, 26, 23, 0.08);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: linear-gradient(180deg, #faf7f2 0%, var(--bg) 100%); color: var(--ink); }}
+    .shell {{ max-width: 1380px; margin: 0 auto; padding: 28px 22px 60px; }}
+    .hero {{ background: linear-gradient(135deg, rgba(0,95,115,0.94), rgba(10,77,104,0.92)); color: #f8fbfc; border-radius: 24px; padding: 28px 30px; box-shadow: var(--shadow); }}
+    .hero h1 {{ margin: 0 0 10px; font-size: clamp(28px, 4vw, 42px); }}
+    .hero-links {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+    .hero-links a {{ text-decoration: none; color: #f8fbfc; border: 1px solid rgba(248, 251, 252, 0.28); padding: 9px 12px; border-radius: 999px; font-size: 14px; }}
+    .panel {{ margin-top: 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow); }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+    th, td {{ text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }}
+    th {{ color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }}
+    .inline-link {{ color: var(--accent); text-decoration: none; font-weight: 600; }}
+    .inline-link:hover {{ text-decoration: underline; }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>История executive brief</h1>
+      <div class="hero-links">
+        <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/problematic?days=1">Проблемные 1д</a>
+        <a href="/manager/problematic?days=7">Проблемные 7д</a>
+      </div>
+    </section>
+    <section class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>Сформировано</th>
+            <th>Режим</th>
+            <th>Модель</th>
+            <th>Headline</th>
+            <th>Raw</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(rows) or '<tr><td colspan="5">История пока пуста.</td></tr>'}
+        </tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def render_problematic_companies_html(items: list[dict[str, Any]], days: int) -> str:
+    rows = []
+    for item in items:
+        rows.append(
+            "<tr>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('counterparty', '-')), str(item.get('infobase', '')) if item.get('infobase') else None)}\">{html.escape(str(item.get('counterparty', '-')))}</a></td>"
+            f"<td>{html.escape(str(item.get('normalized_counterparty') or '-'))}</td>"
+            f"<td>{severity_badge(str(item.get('top_severity') or item.get('signal_severity') or 'none'))}</td>"
+            f"<td>{fmt_number(item.get('max_score'))}</td>"
+            f"<td>{fmt_number(item.get('signals_total'))}</td>"
+            f"<td>{fmt_number(item.get('critical_total'))}</td>"
+            f"<td>{fmt_number(item.get('amount_30d'))}</td>"
+            f"<td>{fmt_number(item.get('amount_forecast_30d'))}</td>"
+            f"<td>{html.escape(str(item.get('top_signal_type') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('top_summary') or '-'))}</td>"
+            "</tr>"
+        )
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Problem Companies</title>
+  <style>
+    :root {{
+      --bg: #f4f1ea; --paper: #fffdf8; --ink: #1c1a17; --muted: #6b655c; --line: #d8d0c4; --accent: #005f73; --shadow: 0 14px 40px rgba(28, 26, 23, 0.08);
+      --critical: #9b2226; --high: #bb3e03; --medium: #ca6702; --low: #4d7c0f; --none: #687076;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: linear-gradient(180deg, #faf7f2 0%, var(--bg) 100%); color: var(--ink); }}
+    .shell {{ max-width: 1500px; margin: 0 auto; padding: 28px 22px 60px; }}
+    .hero {{ background: linear-gradient(135deg, rgba(0,95,115,0.94), rgba(10,77,104,0.92)); color: #f8fbfc; border-radius: 24px; padding: 28px 30px; box-shadow: var(--shadow); }}
+    .hero h1 {{ margin: 0 0 10px; font-size: clamp(28px, 4vw, 42px); }}
+    .hero p {{ margin: 0 0 14px; line-height: 1.5; color: rgba(248,251,252,0.88); }}
+    .hero-links {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+    .hero-links a {{ text-decoration: none; color: #f8fbfc; border: 1px solid rgba(248, 251, 252, 0.28); padding: 9px 12px; border-radius: 999px; font-size: 14px; }}
+    .panel {{ margin-top: 22px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow); }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+    th, td {{ text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }}
+    th {{ color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }}
+    .inline-link {{ color: var(--accent); text-decoration: none; font-weight: 600; }}
+    .inline-link:hover {{ text-decoration: underline; }}
+    .badge {{
+      display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #fff;
+    }}
+    .badge-critical {{ background: var(--critical); }}
+    .badge-high {{ background: var(--high); }}
+    .badge-medium {{ background: var(--medium); }}
+    .badge-low {{ background: var(--low); }}
+    .badge-none {{ background: var(--none); }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>Проблемные компании за {days} {('день' if days == 1 else 'дней')}</h1>
+      <p>Список собран по live company signals. В приоритете max score, плотность сигналов и общий вес проблемного контура.</p>
+      <div class="hero-links">
+        <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/briefs">История brief</a>
+        <a href="/manager/problematic?days=1">Срез 1д</a>
+        <a href="/manager/problematic?days=7">Срез 7д</a>
+      </div>
+    </section>
+    <section class="panel">
+      <table>
+        <thead>
+          <tr>
+            <th>Компания</th>
+            <th>Нормализация</th>
+            <th>Severity</th>
+            <th>Max score</th>
+            <th>Signals</th>
+            <th>Critical</th>
+            <th>Активность 30д</th>
+            <th>Прогноз 30д</th>
+            <th>Top signal</th>
+            <th>Комментарий</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(rows) or '<tr><td colspan="10">Нет сигналов за выбранный период.</td></tr>'}
+        </tbody>
+      </table>
     </section>
   </main>
 </body>
@@ -695,27 +952,45 @@ def manager_brief_latest_markdown() -> str:
 
 @app.get("/api/1/analytics-1c/manager/brief/history")
 def manager_brief_history(limit: int = Query(default=20, ge=1, le=200)) -> dict[str, Any]:
-    history_dir = manager_brief_state_dir() / "history"
-    if not history_dir.exists():
-        return {"items": [], "count": 0}
-    items: list[dict[str, Any]] = []
-    for path in sorted(history_dir.glob("*.json"), reverse=True)[:limit]:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        items.append(
-            {
-                "generated_at": payload.get("generated_at"),
-                "render_mode": payload.get("render_mode"),
-                "model": payload.get("model"),
-                "headline": payload.get("brief", {}).get("headline", ""),
-                "path": path.name,
-            }
-        )
+    items = load_brief_history_records(limit)
     return {"items": items, "count": len(items)}
+
+
+@app.get("/api/1/analytics-1c/manager/brief/history/{name}")
+def manager_brief_history_record(name: str) -> dict[str, Any]:
+    return load_brief_history_record(name)
+
+
+@app.get("/api/1/analytics-1c/companies/problematic")
+def problematic_companies_api(
+    days: int = Query(default=7, ge=1, le=30),
+    limit: int = Query(default=50, ge=1, le=500),
+) -> dict[str, Any]:
+    items = problematic_companies(days=days, limit=limit)
+    return {"items": items, "count": len(items), "days": days}
 
 
 @app.get("/manager/brief", response_class=HTMLResponse)
 def manager_brief_view() -> str:
     return render_manager_brief_html(load_latest_manager_brief())
+
+
+@app.get("/manager/briefs", response_class=HTMLResponse)
+def manager_brief_history_view(limit: int = Query(default=40, ge=1, le=200)) -> str:
+    return render_brief_history_html(load_brief_history_records(limit))
+
+
+@app.get("/manager/briefs/{name}", response_class=HTMLResponse)
+def manager_brief_history_detail_view(name: str) -> str:
+    return render_manager_brief_html(load_brief_history_record(name))
+
+
+@app.get("/manager/problematic", response_class=HTMLResponse)
+def manager_problematic_companies_view(
+    days: int = Query(default=7, ge=1, le=30),
+    limit: int = Query(default=50, ge=1, le=500),
+) -> str:
+    return render_problematic_companies_html(problematic_companies(days=days, limit=limit), days)
 
 
 def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | None = None) -> str:
@@ -908,6 +1183,8 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
         </div>
         <nav class="hero-links">
           <a href="/manager/brief">К портфелю</a>
+          <a href="/manager/briefs">История brief</a>
+          <a href="/manager/problematic?days=7">Проблемные компании</a>
           <a href="{html.escape(summary_url)}">JSON summary</a>
           <a href="{html.escape(forecast_url)}">JSON forecast</a>
           <a href="{html.escape(timeline_url)}">JSON timeline</a>
