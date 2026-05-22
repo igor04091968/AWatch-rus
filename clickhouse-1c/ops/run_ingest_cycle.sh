@@ -6,6 +6,7 @@ ENV_FILE="${ROOT}/.env"
 VENV="${ROOT}/.venv"
 CONFIG="${ROOT}/etl/config.yml"
 CH_CONTAINER="${AW_1C_CLICKHOUSE_CONTAINER:-aw-rus-1c-clickhouse}"
+LOCK_FILE="${ROOT}/.ingest.lock"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "missing env file: ${ENV_FILE}" >&2
@@ -25,6 +26,12 @@ fi
 if ! docker ps --format '{{.Names}}' | grep -qx "${CH_CONTAINER}"; then
   echo "clickhouse container not running: ${CH_CONTAINER}" >&2
   exit 1
+fi
+
+exec 9>"${LOCK_FILE}"
+if ! flock -n 9; then
+  echo "ingest cycle already running" >&2
+  exit 0
 fi
 
 # shellcheck disable=SC1090

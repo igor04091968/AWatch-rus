@@ -106,6 +106,30 @@ function Write-JsonLines {
         Set-Content -LiteralPath $Path -Encoding UTF8
 }
 
+function Invoke-SshUploadWithRetry {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$KeyPath,
+        [Parameter(Mandatory = $true)]
+        [string]$SourcePath,
+        [Parameter(Mandatory = $true)]
+        [string]$Destination,
+        [int]$Attempts = 3,
+        [int]$DelaySeconds = 5
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
+        & scp.exe -q -i $KeyPath -o LogLevel=ERROR -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL $SourcePath $Destination
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+        if ($attempt -ge $Attempts) {
+            throw "scp upload failed after $Attempts attempts for $SourcePath with rc=$LASTEXITCODE"
+        }
+        Start-Sleep -Seconds $DelaySeconds
+    }
+}
+
 if (-not (Test-Path -LiteralPath $RemoteKeyPath)) {
     throw "SSH private key not found: $RemoteKeyPath"
 }
@@ -252,10 +276,7 @@ $effectiveKeyPath = New-TemporarySshKeyCopy -SourceKeyPath $RemoteKeyPath
 
 try {
     foreach ($dataset in 'documents', 'reglog', 'audit', 'host') {
-        & scp.exe -q -i $effectiveKeyPath -o LogLevel=ERROR -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL $files[$dataset] "$AnalyticsUser@$AnalyticsHost`:$RemoteRoot/$dataset/"
-        if ($LASTEXITCODE -ne 0) {
-            throw "scp upload failed for dataset $dataset with rc=$LASTEXITCODE"
-        }
+        Invoke-SshUploadWithRetry -KeyPath $effectiveKeyPath -SourcePath ([string]$files[$dataset]) -Destination "$AnalyticsUser@$AnalyticsHost`:$RemoteRoot/$dataset/"
     }
 }
 finally {

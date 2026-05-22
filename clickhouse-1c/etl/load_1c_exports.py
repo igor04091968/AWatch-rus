@@ -6,7 +6,7 @@ import csv
 import json
 import shutil
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +38,7 @@ class Config:
     formats: dict[str, str]
     archive_dir: str | None
     delete_after_load: bool
+    min_file_age_seconds: int
 
 
 def parse_args() -> argparse.Namespace:
@@ -55,6 +56,7 @@ def load_config(path: str) -> Config:
         formats=raw.get("formats", {"default": "jsonl"}),
         archive_dir=raw.get("archive_dir"),
         delete_after_load=bool(raw.get("delete_after_load", False)),
+        min_file_age_seconds=int(raw.get("min_file_age_seconds", 180)),
     )
 
 
@@ -201,6 +203,10 @@ def main() -> int:
         if not landing.exists():
             continue
         for path in sorted(p for p in landing.iterdir() if p.is_file()):
+            age_seconds = max(0, int((datetime.now(UTC) - datetime.fromtimestamp(path.stat().st_mtime, UTC)).total_seconds()))
+            if age_seconds < conf.min_file_age_seconds:
+                print(f"skip {dataset}: {path.name} age={age_seconds}s < min_file_age_seconds={conf.min_file_age_seconds}")
+                continue
             rows = iter_rows(path, fmt)
             if not rows:
                 archive_or_delete(conf, dataset, path)

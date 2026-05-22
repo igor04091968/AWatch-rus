@@ -148,6 +148,7 @@
 
           archive_dir: {{ aw_file_1c_root }}/archive
           delete_after_load: false
+          min_file_age_seconds: 180
 
     - name: Создать symlink на активный root file-1C analytics
       ansible.builtin.file:
