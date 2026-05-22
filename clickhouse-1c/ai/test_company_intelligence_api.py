@@ -145,7 +145,7 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         }
         html_page = api.render_brief_delta_html(payload)
         self.assertIn("Что изменилось с прошлого запуска", html_page)
-        self.assertIn("Top changes today", html_page)
+        self.assertIn("Ключевые изменения", html_page)
         self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
 
 
