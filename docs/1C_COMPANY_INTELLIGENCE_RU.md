@@ -87,6 +87,34 @@ Endpoints:
 - `GET /api/1/analytics-1c/companies/{counterparty}/summary`
 - `GET /api/1/analytics-1c/companies/{counterparty}/forecast`
 - `GET /api/1/analytics-1c/companies/{counterparty}/timeline`
+- `GET /api/1/analytics-1c/manager/brief/latest`
+- `GET /api/1/analytics-1c/manager/brief/latest.md`
+- `GET /api/1/analytics-1c/manager/brief/history`
+
+### Executive brief для руководителя
+
+Файлы:
+
+- `clickhouse-1c/ai/generate_manager_brief.py`
+- `clickhouse-1c/ai/manager_brief_prompt.md`
+- `clickhouse-1c/ai/manager_brief_schema.json`
+- `clickhouse-1c/ops/run_manager_brief.sh`
+- `clickhouse-1c/ops/aw-1c-manager-brief.service`
+- `clickhouse-1c/ops/aw-1c-manager-brief.timer`
+
+Что делает:
+
+- собирает live context по портфелю компаний из `ClickHouse`;
+- вызывает локальный `codex exec` на `10.10.10.2` от пользователя `codex`;
+- требует structured JSON по schema, а не свободный текст;
+- рендерит итог в `latest.json` и `latest.md`;
+- при сбое `codex` даёт deterministic fallback, чтобы контур не оставался пустым.
+
+Важно:
+
+- `tmux` не является production-зависимостью;
+- интерактивная сессия `codex` может быть открыта, но pipeline работает через обычный `codex exec`;
+- service не трогает `1С`, работает только на уже выгруженных read-only данных.
 
 ### Ops
 
@@ -133,6 +161,12 @@ clickhouse-client --queries-file clickhouse/init/04_company_intelligence.sql
 ./ops/run_company_intelligence_api.sh
 ```
 
+### 5. Сформировать manager brief
+
+```bash
+./ops/run_manager_brief.sh
+```
+
 По умолчанию:
 
 - host: `127.0.0.1`
@@ -151,6 +185,15 @@ clickhouse-client --queries-file clickhouse/init/04_company_intelligence.sql
 - `AW_1C_COMPANY_LOOKBACK_DAYS`
 - `AW_1C_COMPANY_MIN_DAYS`
 - `AW_1C_COMPANY_HORIZONS`
+- `AW_1C_MANAGER_BRIEF_STATE_DIR`
+- `AW_1C_MANAGER_BRIEF_MODEL`
+- `AW_1C_MANAGER_BRIEF_CODEX_USER`
+- `AW_1C_MANAGER_BRIEF_CODEX_BIN`
+- `AW_1C_MANAGER_BRIEF_WORKDIR`
+- `AW_1C_MANAGER_BRIEF_TOP_LIMIT`
+- `AW_1C_MANAGER_BRIEF_FRESHNESS_HOURS`
+- `AW_1C_MANAGER_BRIEF_TIMEOUT_SEC`
+- `AW_1C_MANAGER_BRIEF_RUN_AFTER_INGEST`
 
 ## Что уже есть в live payload
 

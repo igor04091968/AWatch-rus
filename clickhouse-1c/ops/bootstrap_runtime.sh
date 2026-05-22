@@ -17,7 +17,8 @@ mkdir -p \
   "${ROOT}/archive/registry" \
   "${ROOT}/archive/reglog" \
   "${ROOT}/archive/audit" \
-  "${ROOT}/archive/host"
+  "${ROOT}/archive/host" \
+  "${ROOT}/state/manager-brief/history"
 
 if [[ ! -f "${ROOT}/etl/config.yml" ]]; then
   cp "${ROOT}/etl/config.example.yml" "${ROOT}/etl/config.yml"

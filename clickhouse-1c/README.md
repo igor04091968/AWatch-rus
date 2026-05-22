@@ -58,6 +58,9 @@ File 1C + reglog + host telemetry
 - `ai/INVESTIGATOR_API.md` — контракт AI Investigator поверх ClickHouse/cases.
 - `ai/refresh_company_intelligence.py` — materialization forecast/signals по `counterparty`.
 - `ai/company_intelligence_api.py` — read-only API для AI/аналитики по компаниям.
+- `ai/generate_manager_brief.py` — executive brief для руководителя поверх live company intelligence.
+- `ai/manager_brief_prompt.md` — prompt для локального `codex exec`.
+- `ai/manager_brief_schema.json` — строгая schema structured-brief ответа.
 
 ## Когда использовать именно этот контур
 
@@ -124,8 +127,30 @@ python ai/refresh_company_intelligence.py --host localhost --port 8123 --user de
 python ai/company_intelligence_api.py --host 127.0.0.1 --port 8710
 ```
 
-8. В Grafana строить dashboards из `grafana/dashboard-catalog.md` и
+8. Сформировать executive brief:
+
+```bash
+python ai/generate_manager_brief.py --host localhost --port 8123 --user default --password change-me --database analytics_1c
+```
+
+9. В Grafana строить dashboards из `grafana/dashboard-catalog.md` и
 `grafana/query-pack.sql`.
+
+## Manager brief
+
+Этот слой делает не raw LLM-чат, а промышленный pipeline:
+
+- строит компактный context из `v_company_portfolio_overview`;
+- вызывает локальный `codex exec` на `10.10.10.2`;
+- валидирует structured output по JSON schema;
+- при сбое `codex` отдаёт deterministic fallback, чтобы контур не пустел;
+- пишет `latest.json` и `latest.md` в `state/manager-brief/`.
+
+Read-only API для руководителя:
+
+- `GET /api/1/analytics-1c/manager/brief/latest`
+- `GET /api/1/analytics-1c/manager/brief/latest.md`
+- `GET /api/1/analytics-1c/manager/brief/history`
 
 ## Ожидаемые источники данных
 

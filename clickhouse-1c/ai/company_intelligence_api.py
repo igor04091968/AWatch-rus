@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 from datetime import UTC, datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import clickhouse_connect
 import uvicorn
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import PlainTextResponse
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +49,21 @@ def ch_client():
         password=os.getenv("CLICKHOUSE_PASSWORD", ""),
         database=os.getenv("CLICKHOUSE_DB", "analytics_1c"),
     )
+
+
+def manager_brief_state_dir() -> Path:
+    root = Path(os.getenv("AW_1C_ROOT", "/opt/activitywatch/clickhouse-1c"))
+    configured = os.getenv("AW_1C_MANAGER_BRIEF_STATE_DIR")
+    if configured:
+        return Path(configured)
+    return root / "state" / "manager-brief"
+
+
+def load_latest_manager_brief() -> dict[str, Any]:
+    latest_path = manager_brief_state_dir() / "latest.json"
+    if not latest_path.exists():
+        raise HTTPException(status_code=404, detail="manager brief not generated yet")
+    return json.loads(latest_path.read_text(encoding="utf-8"))
 
 
 app = FastAPI(title="AW-rus 1C Company Intelligence API", version="1.0.0")
@@ -227,6 +245,39 @@ def company_timeline(
     """
     rows = rows_to_dict(client.query(sql))
     return {"items": rows, "count": len(rows)}
+
+
+@app.get("/api/1/analytics-1c/manager/brief/latest")
+def manager_brief_latest() -> dict[str, Any]:
+    return load_latest_manager_brief()
+
+
+@app.get("/api/1/analytics-1c/manager/brief/latest.md", response_class=PlainTextResponse)
+def manager_brief_latest_markdown() -> str:
+    latest_md = manager_brief_state_dir() / "latest.md"
+    if not latest_md.exists():
+        raise HTTPException(status_code=404, detail="manager brief markdown not generated yet")
+    return latest_md.read_text(encoding="utf-8")
+
+
+@app.get("/api/1/analytics-1c/manager/brief/history")
+def manager_brief_history(limit: int = Query(default=20, ge=1, le=200)) -> dict[str, Any]:
+    history_dir = manager_brief_state_dir() / "history"
+    if not history_dir.exists():
+        return {"items": [], "count": 0}
+    items: list[dict[str, Any]] = []
+    for path in sorted(history_dir.glob("*.json"), reverse=True)[:limit]:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        items.append(
+            {
+                "generated_at": payload.get("generated_at"),
+                "render_mode": payload.get("render_mode"),
+                "model": payload.get("model"),
+                "headline": payload.get("brief", {}).get("headline", ""),
+                "path": path.name,
+            }
+        )
+    return {"items": items, "count": len(items)}
 
 
 if __name__ == "__main__":

@@ -1,0 +1,115 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "headline",
+    "summary",
+    "top_risks",
+    "top_forecasts",
+    "actions",
+    "caveats"
+  ],
+  "properties": {
+    "headline": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 180
+    },
+    "summary": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 6,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 260
+      }
+    },
+    "top_risks": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "company",
+          "severity",
+          "reason",
+          "recommended_action"
+        ],
+        "properties": {
+          "company": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "severity": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 260
+          },
+          "recommended_action": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 260
+          }
+        }
+      }
+    },
+    "top_forecasts": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "company",
+          "forecast_30d",
+          "interpretation"
+        ],
+        "properties": {
+          "company": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "forecast_30d": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "interpretation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 260
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 260
+      }
+    },
+    "caveats": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 260
+      }
+    }
+  }
+}

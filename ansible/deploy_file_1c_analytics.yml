@@ -19,6 +19,15 @@
     aw_file_1c_grafana_port: 3300
     aw_file_1c_company_api_host: "{{ ansible_host | default('127.0.0.1') }}"
     aw_file_1c_company_api_port: 8710
+    aw_file_1c_manager_brief_state_dir: /opt/activitywatch/clickhouse-1c/state/manager-brief
+    aw_file_1c_manager_brief_model: gpt-5.3-codex
+    aw_file_1c_manager_brief_codex_user: codex
+    aw_file_1c_manager_brief_codex_bin: codex
+    aw_file_1c_manager_brief_workdir: /home/codex/infra-admin
+    aw_file_1c_manager_brief_top_limit: 5
+    aw_file_1c_manager_brief_freshness_hours: 8
+    aw_file_1c_manager_brief_timeout_sec: 300
+    aw_file_1c_manager_brief_run_after_ingest: false
     aw_file_1c_windows_upload_pubkey_path: /tmp/awops_ed25519.pub
 
   tasks:
@@ -106,6 +115,7 @@
         - check_ingest_freshness.sh
         - run_company_intelligence_api.sh
         - run_company_intelligence_refresh.sh
+        - run_manager_brief.sh
         - run_ingest_cycle.sh
 
     - name: Создать .env для file-1C analytics
@@ -126,6 +136,15 @@
           CLICKHOUSE_HOST=clickhouse
           AW_1C_COMPANY_API_HOST={{ aw_file_1c_company_api_host }}
           AW_1C_COMPANY_API_PORT={{ aw_file_1c_company_api_port }}
+          AW_1C_MANAGER_BRIEF_STATE_DIR={{ aw_file_1c_manager_brief_state_dir }}
+          AW_1C_MANAGER_BRIEF_MODEL={{ aw_file_1c_manager_brief_model }}
+          AW_1C_MANAGER_BRIEF_CODEX_USER={{ aw_file_1c_manager_brief_codex_user }}
+          AW_1C_MANAGER_BRIEF_CODEX_BIN={{ aw_file_1c_manager_brief_codex_bin }}
+          AW_1C_MANAGER_BRIEF_WORKDIR={{ aw_file_1c_manager_brief_workdir }}
+          AW_1C_MANAGER_BRIEF_TOP_LIMIT={{ aw_file_1c_manager_brief_top_limit }}
+          AW_1C_MANAGER_BRIEF_FRESHNESS_HOURS={{ aw_file_1c_manager_brief_freshness_hours }}
+          AW_1C_MANAGER_BRIEF_TIMEOUT_SEC={{ aw_file_1c_manager_brief_timeout_sec }}
+          AW_1C_MANAGER_BRIEF_RUN_AFTER_INGEST={{ 1 if aw_file_1c_manager_brief_run_after_ingest else 0 }}
 
     - name: Создать etl/config.yml для file-1C analytics
       ansible.builtin.copy:
@@ -254,6 +273,24 @@
         mode: "0644"
       notify: Перезагрузить systemd
 
+    - name: Установить systemd unit aw-1c-manager-brief.service
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/ops/aw-1c-manager-brief.service"
+        dest: /etc/systemd/system/aw-1c-manager-brief.service
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезагрузить systemd
+
+    - name: Установить systemd unit aw-1c-manager-brief.timer
+      ansible.builtin.copy:
+        src: "{{ aw_file_1c_repo_root }}/clickhouse-1c/ops/aw-1c-manager-brief.timer"
+        dest: /etc/systemd/system/aw-1c-manager-brief.timer
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Перезагрузить systemd
+
     - name: Разрешить Windows upload key для igor
       ansible.builtin.lineinfile:
         path: /home/igor/.ssh/authorized_keys
@@ -280,6 +317,13 @@
     - name: Включить и запустить aw-1c-company-api.service
       ansible.builtin.systemd:
         name: aw-1c-company-api.service
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Включить и запустить aw-1c-manager-brief.timer
+      ansible.builtin.systemd:
+        name: aw-1c-manager-brief.timer
         enabled: true
         state: started
         daemon_reload: true

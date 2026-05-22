@@ -65,3 +65,9 @@ docker exec -i "${CH_CONTAINER}" clickhouse-client \
   --password "${CLICKHOUSE_PASSWORD}" \
   --database "${CLICKHOUSE_DB}" \
   < "${ROOT}/detections/open_cases_from_detections.sql"
+
+if [[ "${AW_1C_MANAGER_BRIEF_RUN_AFTER_INGEST:-0}" == "1" ]]; then
+  if ! "${ROOT}/ops/run_manager_brief.sh"; then
+    echo "warning: manager brief refresh failed after ingest" >&2
+  fi
+fi

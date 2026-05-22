@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AW-rus 1C manager brief every 6 hours
+
+[Timer]
+OnBootSec=30min
+OnUnitActiveSec=6h
+Unit=aw-1c-manager-brief.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target
