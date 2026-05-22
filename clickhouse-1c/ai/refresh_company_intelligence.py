@@ -21,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--password", default=os.getenv("CLICKHOUSE_PASSWORD", ""))
     p.add_argument("--database", default=os.getenv("CLICKHOUSE_DB", "analytics_1c"))
     p.add_argument("--lookback-days", type=int, default=int(os.getenv("AW_1C_COMPANY_LOOKBACK_DAYS", "30")))
-    p.add_argument("--min-days", type=int, default=int(os.getenv("AW_1C_COMPANY_MIN_DAYS", "3")))
+    p.add_argument("--min-days", type=int, default=int(os.getenv("AW_1C_COMPANY_MIN_DAYS", "1")))
     p.add_argument("--horizons", default=os.getenv("AW_1C_COMPANY_HORIZONS", "7,30"))
     return p.parse_args()
 

@@ -6,15 +6,21 @@
 
 - анализировать работу с компаниями (`counterparty`);
 - показывать, где компании выпали из активности;
-- считать простой, объяснимый прогноз по документам и объёму;
+- считать простой, объяснимый прогноз по событиям и activity score;
 - давать read-only API для AI Investigator и внешних аналитических сервисов.
 
 ## Что считается компанией
 
-В этом контуре компания = `documents.counterparty`.
+В file-based Detmir контуре компания = `documents.counterparty`, но это поле
+заполняется **не из бухгалтерских проводок**, а из read-only file-base telemetry:
 
-Если в live-выгрузках поле `counterparty` пустое, слой остаётся корректно пустым.
-Он не выдумывает данные и не пытается прогнозировать то, чего нет.
+- `counterparty = infobase`;
+- `doc_type = CompanyActivitySnapshot`;
+- `amount` = интегральный `activity score` по изменению базы, росту reglog,
+  lock/temp markers и scheduler activity.
+
+То есть это слой прогноза **операционной активности по компаниям/базам**, а не
+финансовый forecast по первичке.
 
 ## Что добавлено
 
@@ -149,7 +155,7 @@ clickhouse-client --queries-file clickhouse/init/04_company_intelligence.sql
 
 ## Ограничения
 
-- без `counterparty` в выгрузках слой пустой;
-- это прогноз тенденции, а не финансовое обещание;
+- в file-based telemetry `amount` означает `activity score`, а не деньги;
+- прогноз показывает тенденцию активности компании/базы, а не финансовое обещание;
 - API строго read-only;
 - никакой записи обратно в 1С нет.

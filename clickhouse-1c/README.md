@@ -134,7 +134,9 @@ python ai/company_intelligence_api.py --host 127.0.0.1 --port 8710
 - журнал регистрации 1С;
 - audit/export критичных изменений;
 - host telemetry с Windows/RDP host.
-- для company intelligence нужны документы с непустым `counterparty`.
+- для company intelligence в file-based Detmir контуре `counterparty`
+  наполняется read-only telemetry слоем как `counterparty = infobase`, а
+  `amount` используется как интегральный `activity score`.
 
 ## Границы
 
@@ -142,4 +144,5 @@ python ai/company_intelligence_api.py --host 127.0.0.1 --port 8710
 - LLM не ходит прямо в production 1С;
 - в ClickHouse кладутся нормализованные выгрузки и enrichment;
 - case/timeline слой считается вне 1С.
+- это прогноз активности компании/базы, а не финансовых проводок;
 - если `counterparty` в live-выгрузках пустой, company-forecast слой останется корректно пустым.
