@@ -1,0 +1,26 @@
+{
+  "users": {
+    "SHARKON2025\\USER1": {
+      "display_name": "Иван Петров",
+      "manager": "Руководитель смены",
+      "department": "Бухгалтерия",
+      "role": "Оператор 1С",
+      "notes": "Дневная смена",
+      "exclude": false
+    },
+    "SHARKON2025\\USER4": {
+      "display_name": "Мария Сидорова",
+      "manager": "Руководитель смены",
+      "department": "Бухгалтерия",
+      "role": "Оператор 1С",
+      "exclude": false
+    },
+    "SHARKON2025\\ADMINISTRATOR": {
+      "display_name": "Администратор",
+      "manager": "Ops",
+      "department": "Инфраструктура",
+      "role": "Системный администратор",
+      "exclude": false
+    }
+  }
+}

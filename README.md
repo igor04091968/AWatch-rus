@@ -24,7 +24,7 @@
 - `docs/dlp-reliability-roadmap.md` — roadmap повышения надёжности DLP-коллекторов.
 - `docs/powershell-analysis.md` — статический анализ работоспособности DLP PowerShell-скриптов.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
-- `aw-server/` — установочные скрипты, env-шаблон, systemd unit и RU patch для Web UI.
+- `aw-server/` — установочные скрипты, env-шаблон, systemd unit, RU patch для Web UI и server-side worktime/management report API на `:5610`.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
 - `grafana/` — version-controlled Grafana dashboard JSON для RDP/worktime, DLP/ИБ и overview-экранов.
 - `clickhouse-1c/` — отдельный analytics stack для **файловой 1С**: ETL, ClickHouse schema, detections, company intelligence marts/forecasting, Grafana catalog и AI Investigator contract.

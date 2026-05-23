@@ -26,6 +26,7 @@ VIEWS_JSON="$BOOTSTRAP_DIR/settings/views-default.json"
 CLASSES_JSON="$BOOTSTRAP_DIR/settings/classes-worktime.json"
 WORKTIME_API_SRC="$BOOTSTRAP_DIR/aw-worktime-api.py"
 WORKTIME_API_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-api.service"
+WORKTIME_ALIASES_SRC="$BOOTSTRAP_DIR/worktime-manager-aliases.example.json"
 WORKTIME_UI_BRIDGE_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.py"
 WORKTIME_UI_BRIDGE_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.service"
 WORKTIME_UI_BRIDGE_TIMER_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.timer"
@@ -108,6 +109,14 @@ if [[ -f "$WORKTIME_API_SERVICE_SRC" ]]; then
   systemctl enable aw-worktime-api.service
   systemctl restart aw-worktime-api.service
   systemctl --no-pager --full status aw-worktime-api.service || true
+fi
+
+if [[ -f "$WORKTIME_ALIASES_SRC" ]]; then
+  install -d -m 0755 /etc/activitywatch
+  install -m 0644 "$WORKTIME_ALIASES_SRC" /etc/activitywatch/worktime-manager-aliases.json.example
+  if [[ ! -f /etc/activitywatch/worktime-manager-aliases.json ]]; then
+    install -m 0644 "$WORKTIME_ALIASES_SRC" /etc/activitywatch/worktime-manager-aliases.json
+  fi
 fi
 
 if [[ -f "$WORKTIME_UI_BRIDGE_SRC" ]]; then

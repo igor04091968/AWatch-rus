@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import sys
+import tempfile
 import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -30,7 +31,23 @@ DEFAULT_SAMPLE_SECONDS = max(1.0, float(os.environ.get("AW_WORKTIME_DEFAULT_SAMP
 MAX_SAMPLE_SECONDS = max(DEFAULT_SAMPLE_SECONDS, float(os.environ.get("AW_WORKTIME_MAX_SAMPLE_SECONDS", "300")))
 LISTEN_HOST = os.environ.get("AW_WORKTIME_LISTEN_HOST", "0.0.0.0")
 LISTEN_PORT = int(os.environ.get("AW_WORKTIME_PORT", "5610"))
+WORKDAY_START_HOUR = int(os.environ.get("AW_WORKTIME_MANAGER_START_HOUR", "9"))
+WORKDAY_END_HOUR = int(os.environ.get("AW_WORKTIME_MANAGER_END_HOUR", "18"))
+MANAGER_TARGET_COVERAGE_PCT = max(1, min(100, int(os.environ.get("AW_WORKTIME_MANAGER_TARGET_COVERAGE_PCT", "75"))))
+MANAGER_LOW_COVERAGE_PCT = max(1, min(100, int(os.environ.get("AW_WORKTIME_MANAGER_LOW_COVERAGE_PCT", "35"))))
+MANAGER_LATE_START_GRACE_MINUTES = max(0, int(os.environ.get("AW_WORKTIME_MANAGER_LATE_START_GRACE_MINUTES", "60")))
+MANAGER_EARLY_FINISH_GRACE_MINUTES = max(0, int(os.environ.get("AW_WORKTIME_MANAGER_EARLY_FINISH_GRACE_MINUTES", "90")))
+MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS = max(60, int(os.environ.get("AW_WORKTIME_MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS", "900")))
+MANAGER_WEB_SOURCE_MAX_AGE_SECONDS = max(3600, int(os.environ.get("AW_WORKTIME_MANAGER_WEB_SOURCE_MAX_AGE_SECONDS", "259200")))
+MANAGER_SESSION_SOURCE_MAX_AGE_SECONDS = max(3600, int(os.environ.get("AW_WORKTIME_MANAGER_SESSION_SOURCE_MAX_AGE_SECONDS", "604800")))
+MANAGER_INFRA_SOURCE_MAX_AGE_SECONDS = max(3600, int(os.environ.get("AW_WORKTIME_MANAGER_INFRA_SOURCE_MAX_AGE_SECONDS", "172800")))
+MANAGER_TREND_DAYS = max(3, min(31, int(os.environ.get("AW_WORKTIME_MANAGER_TREND_DAYS", "7"))))
+MANAGER_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_MANAGER_CACHE_TTL_SECONDS", "120")))
+MANAGER_CACHE_DIR = Path(os.environ.get("AW_WORKTIME_MANAGER_CACHE_DIR", "/var/lib/activitywatch/worktime-cache"))
+MANAGER_ALIASES_JSON = Path(os.environ.get("AW_WORKTIME_MANAGER_ALIASES_JSON", "/etc/activitywatch/worktime-manager-aliases.json"))
+MANAGER_EXCLUDE_USERS = {item.strip().lower() for item in os.environ.get("AW_WORKTIME_MANAGER_EXCLUDE_USERS", "").split(",") if item.strip()}
 MODULE_PATH = Path(__file__).resolve()
+_ALIASES_CACHE = {"mtime": None, "payload": {}}
 
 
 def get(u):
@@ -50,9 +67,35 @@ def to_iso_utc(dt):
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def parse_iso_utc(value):
+    if not value:
+        return None
+    return pts(value)
+
+
 def hhmm(total_seconds):
     total_seconds = max(0, int(total_seconds))
     return "%02d:%02d" % (total_seconds // 3600, (total_seconds % 3600) // 60)
+
+
+def now_utc():
+    return datetime.now(timezone.utc)
+
+
+def age_seconds(ts, now=None):
+    if ts is None:
+        return None
+    ref = now or now_utc()
+    return max(0, int((ref - ts).total_seconds()))
+
+
+def write_atomic_json(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False) as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+        tmp_name = handle.name
+    os.replace(tmp_name, path)
 
 
 def safe_slug(value):
@@ -67,6 +110,83 @@ def safe_slug(value):
     while "--" in normalized:
         normalized = normalized.replace("--", "-")
     return normalized or "user"
+
+
+def _normalize_identity_key(value):
+    return str(value or "").strip().lower()
+
+
+def _default_display_name(user, user_id):
+    base = str(user_id or user or "").strip()
+    if "\\" in base:
+        base = base.split("\\", 1)[1]
+    if not base:
+        base = str(user or "").strip()
+    if base and base.isascii() and base.lower() == base and any(ch.isalpha() for ch in base):
+        return base.upper()
+    return base or str(user or "").strip()
+
+
+def load_manager_aliases():
+    try:
+        stat = MANAGER_ALIASES_JSON.stat()
+    except FileNotFoundError:
+        _ALIASES_CACHE["mtime"] = None
+        _ALIASES_CACHE["payload"] = {}
+        return {}
+    mtime = stat.st_mtime
+    if _ALIASES_CACHE["mtime"] == mtime:
+        return _ALIASES_CACHE["payload"]
+    try:
+        raw = json.loads(MANAGER_ALIASES_JSON.read_text(encoding="utf-8"))
+    except Exception as exc:
+        log_warning(f"failed to load manager aliases from {MANAGER_ALIASES_JSON}: {exc}")
+        raw = {}
+    payload = {}
+    if isinstance(raw, dict):
+        users = raw.get("users", raw)
+        if isinstance(users, dict):
+            for key, value in users.items():
+                norm_key = _normalize_identity_key(key)
+                if not norm_key:
+                    continue
+                if isinstance(value, str):
+                    payload[norm_key] = {"display_name": value}
+                elif isinstance(value, dict):
+                    payload[norm_key] = dict(value)
+    _ALIASES_CACHE["mtime"] = mtime
+    _ALIASES_CACHE["payload"] = payload
+    return payload
+
+
+def resolve_user_alias(user, user_id, host):
+    aliases = load_manager_aliases()
+    candidates = [
+        _normalize_identity_key(user_id),
+        _normalize_identity_key(f"{resolve_host(host)}\\{user}"),
+        _normalize_identity_key(user),
+    ]
+    alias = {}
+    for candidate in candidates:
+        if candidate and candidate in aliases:
+            alias = dict(aliases[candidate])
+            break
+    display_name = str(alias.get("display_name") or alias.get("name") or _default_display_name(user, user_id)).strip()
+    manager_owner = str(alias.get("manager") or alias.get("owner") or display_name).strip() or display_name
+    department = str(alias.get("department") or "").strip()
+    role = str(alias.get("role") or "").strip()
+    notes = str(alias.get("notes") or "").strip()
+    canonical_user_id = str(alias.get("canonical_user_id") or user_id or "").strip()
+    exclude = bool(alias.get("exclude")) or _normalize_identity_key(user) in MANAGER_EXCLUDE_USERS or _normalize_identity_key(display_name) in MANAGER_EXCLUDE_USERS
+    return {
+        "display_name": display_name,
+        "manager_owner": manager_owner,
+        "department": department,
+        "role": role,
+        "notes": notes,
+        "canonical_user_id": canonical_user_id,
+        "exclude": exclude,
+    }
 
 
 def clamp_seconds(value, fallback=DEFAULT_SAMPLE_SECONDS):
@@ -111,6 +231,18 @@ def get_report_bounds(report_date):
         "start": start,
         "end": end,
         "end_exclusive": end_exclusive,
+    }
+
+
+def get_workday_bounds(report_date):
+    start_local = datetime(report_date.year, report_date.month, report_date.day, WORKDAY_START_HOUR, 0, 0, tzinfo=REPORT_TZ)
+    end_local = datetime(report_date.year, report_date.month, report_date.day, WORKDAY_END_HOUR, 0, 0, tzinfo=REPORT_TZ)
+    if end_local <= start_local:
+        end_local = start_local + timedelta(hours=8)
+    return {
+        "start_local": start_local,
+        "end_local": end_local,
+        "duration_seconds": int((end_local - start_local).total_seconds()),
     }
 
 
@@ -236,6 +368,15 @@ def _collect_user_rows(events, start, end, host):
 
 def aggregate_rows(events, start, end, host):
     by_user = _collect_user_rows(events, start, end, host)
+    return _build_rows_from_user_map(by_user, start, end, include_intervals=False)
+
+
+def aggregate_rows_with_intervals(events, start, end, host):
+    by_user = _collect_user_rows(events, start, end, host)
+    return _build_rows_from_user_map(by_user, start, end, include_intervals=True)
+
+
+def _build_rows_from_user_map(by_user, start, end, include_intervals):
     rows = []
     full_range = int((end - start).total_seconds()) + 1
     for username in sorted(by_user):
@@ -259,6 +400,8 @@ def aggregate_rows(events, start, end, host):
                 "active_samples": row["active_samples"],
             }
         )
+        if include_intervals:
+            rows[-1]["_intervals"] = merged
     return rows
 
 
@@ -345,9 +488,591 @@ def build_report_summary(rows):
     }
 
 
+def latest_bucket_event(bucket_id):
+    try:
+        events = get(f"{AW}/buckets/{bucket_id}/events?limit=20")
+    except Exception:
+        return None
+    if not isinstance(events, list) or not events:
+        return None
+    valid = [item for item in events if isinstance(item, dict)]
+    if not valid:
+        return None
+    valid.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+    return valid[0]
+
+
+def _priority_rank(priority):
+    return {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(priority, 9)
+
+
+def _clamp_pct(value):
+    return round(min(100.0, max(0.0, float(value))), 2)
+
+
+def _action(action_id, priority, owner, deadline_hint, reason, recommended_action, *, user_id="", evidence=None):
+    return {
+        "action_id": action_id,
+        "priority": priority,
+        "owner": owner,
+        "user_id": user_id,
+        "deadline_hint": deadline_hint,
+        "reason": reason,
+        "recommended_action": recommended_action,
+        "evidence": evidence or {},
+    }
+
+
+def build_executive_summary(summary, actions, sources):
+    critical = [action for action in actions if action.get("priority") == "critical"]
+    high = [action for action in actions if action.get("priority") == "high"]
+    stale_sources = [source for source in sources if source.get("status") != "ok"]
+    if critical:
+        portfolio_state = "critical"
+        headline = f"Есть {len(critical)} критичных вопроса, требующих решения сегодня."
+    elif high:
+        portfolio_state = "attention"
+        headline = f"Критичных провалов нет, но есть {len(high)} вопроса повышенного внимания."
+    elif summary.get("portfolio_coverage_pct", 0.0) < MANAGER_TARGET_COVERAGE_PCT:
+        portfolio_state = "attention"
+        headline = "Покрытие ниже целевого порога, но явных критичных кейсов не найдено."
+    else:
+        portfolio_state = "stable"
+        headline = "Критичных отклонений не найдено, рабочий день идёт в пределах нормы."
+
+    message_parts = [
+        f"Активны {summary.get('active_users', 0)} из {summary.get('users_count', 0)} сотрудников.",
+        f"Покрытие рабочего окна {summary.get('portfolio_coverage_pct', 0.0)}%.",
+    ]
+    if stale_sources:
+        message_parts.append(f"Есть {len(stale_sources)} проблем(ы) со свежестью источников.")
+    message = " ".join(message_parts)
+
+    focus_items = []
+    for action in actions[:5]:
+        focus_items.append(
+            {
+                "priority": action["priority"],
+                "owner": action["owner"],
+                "title": action["action_id"],
+                "reason": action["reason"],
+                "recommended_action": action["recommended_action"],
+            }
+        )
+    stale_items = []
+    for source in stale_sources[:3]:
+        stale_items.append(
+            {
+                "source_id": source["source_id"],
+                "label": source["label"],
+                "status": source["status_label"],
+                "summary": source["summary"],
+            }
+        )
+    return {
+        "portfolio_state": portfolio_state,
+        "headline": headline,
+        "message": message,
+        "focus_items": focus_items,
+        "stale_sources": stale_items,
+    }
+
+
+def _interval_overlap_seconds(intervals, start, end):
+    total = 0
+    first = None
+    last = None
+    for interval_start, interval_end in intervals or []:
+        overlap_start = max(interval_start, start)
+        overlap_end = min(interval_end, end)
+        if overlap_end <= overlap_start:
+            continue
+        seconds = int((overlap_end - overlap_start).total_seconds())
+        if seconds <= 0:
+            continue
+        total += seconds
+        if first is None or overlap_start < first:
+            first = overlap_start
+        if last is None or overlap_end > last:
+            last = overlap_end
+    return total, first, last
+
+
+def _source_status_label(status):
+    return {
+        "ok": "fresh",
+        "warn": "stale",
+        "fail": "missing",
+    }.get(status, status)
+
+
+def _source_summary(event):
+    data = (event or {}).get("data") or {}
+    signal_type = str(data.get("signalType") or "").strip()
+    if signal_type == "collector_health":
+        return (
+            f"queue={data.get('queueDepth', 0)} "
+            f"failures={data.get('sendFailures', 0)} "
+            f"flushed={data.get('eventsFlushed', 0)}"
+        )
+    if data.get("domain"):
+        return f"{data.get('domain')} ({data.get('category', 'uncategorized')})"
+    if data.get("eventType"):
+        return f"{data.get('eventType')} {data.get('username', '')}".strip()
+    if data.get("action"):
+        return f"{data.get('action')} {data.get('result', '')}".strip()
+    if data.get("title"):
+        return str(data.get("title"))[:120]
+    if data.get("status"):
+        return str(data.get("status"))
+    if data.get("app"):
+        return str(data.get("app"))
+    return ""
+
+
+def management_cache_path(host, report_date):
+    host_slug = safe_slug(host)
+    return MANAGER_CACHE_DIR / f"{host_slug}-{report_date.isoformat()}.json"
+
+
+def load_management_cache(host, report_date):
+    if MANAGER_CACHE_TTL_SECONDS <= 0:
+        return None
+    path = management_cache_path(host, report_date)
+    if not path.exists():
+        return None
+    age = age_seconds(datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc))
+    if age is None or age > MANAGER_CACHE_TTL_SECONDS:
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def save_management_cache(host, report_date, payload):
+    if MANAGER_CACHE_TTL_SECONDS <= 0:
+        return
+    write_atomic_json(management_cache_path(host, report_date), payload)
+
+
+def build_source_freshness(host):
+    source_specs = [
+        {
+            "source_id": "worktime_sessions",
+            "label": "RDP worktime sessions",
+            "bucket_candidates": [f"aw-worktime-sessions_{host}"],
+            "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
+            "required": True,
+            "owner": "ops",
+        },
+        {
+            "source_id": "rdp_window",
+            "label": "RDP current window",
+            "bucket_candidates": [f"aw-rdp-window_{host}"],
+            "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
+            "required": True,
+            "owner": "ops",
+        },
+        {
+            "source_id": "rdp_afk",
+            "label": "RDP AFK",
+            "bucket_candidates": [f"aw-rdp-afk_{host}"],
+            "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
+            "required": True,
+            "owner": "ops",
+        },
+        {
+            "source_id": "watcher_window",
+            "label": "Local watcher window",
+            "bucket_candidates": [f"aw-watcher-window_{host}"],
+            "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
+            "required": True,
+            "owner": "ops",
+        },
+        {
+            "source_id": "watcher_afk",
+            "label": "Local watcher AFK",
+            "bucket_candidates": [f"aw-watcher-afk_{host}"],
+            "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
+            "required": True,
+            "owner": "ops",
+        },
+        {
+            "source_id": "file_operations",
+            "label": "File operations collector",
+            "bucket_candidates": [f"aw-file-operations_{host}", "aw-file-operations_10.10.10.13"],
+            "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
+            "required": True,
+            "owner": "ops",
+        },
+        {
+            "source_id": "web_categories",
+            "label": "Browser/web categories",
+            "bucket_candidates": [f"aw-detmir-web-category_{host}"],
+            "max_age_seconds": MANAGER_WEB_SOURCE_MAX_AGE_SECONDS,
+            "required": False,
+            "owner": "ops",
+        },
+        {
+            "source_id": "session_events",
+            "label": "Windows session events",
+            "bucket_candidates": [f"aw-session-events_{host}"],
+            "max_age_seconds": MANAGER_SESSION_SOURCE_MAX_AGE_SECONDS,
+            "required": False,
+            "owner": "ops",
+        },
+        {
+            "source_id": "pve_tasks",
+            "label": "PVE task feed",
+            "bucket_candidates": ["aw-pve-task-events_pve-detmir"],
+            "max_age_seconds": MANAGER_INFRA_SOURCE_MAX_AGE_SECONDS,
+            "required": False,
+            "owner": "ops",
+        },
+    ]
+    now = now_utc()
+    sources = []
+    actions = []
+    for spec in source_specs:
+        matched_bucket = ""
+        matched_event = None
+        matched_age = None
+        for candidate in spec["bucket_candidates"]:
+            event = latest_bucket_event(candidate)
+            if not event:
+                continue
+            ts = parse_iso_utc(event.get("timestamp"))
+            candidate_age = age_seconds(ts, now=now)
+            if matched_event is None or (candidate_age is not None and (matched_age is None or candidate_age < matched_age)):
+                matched_bucket = candidate
+                matched_event = event
+                matched_age = candidate_age
+        ts = parse_iso_utc((matched_event or {}).get("timestamp"))
+        age = matched_age if matched_event is not None else age_seconds(ts, now=now)
+        if matched_event is None:
+            status = "fail" if spec["required"] else "warn"
+            summary = "bucket missing or empty"
+        elif age is None:
+            status = "warn"
+            summary = "timestamp parse failed"
+        elif age > spec["max_age_seconds"]:
+            status = "fail" if spec["required"] else "warn"
+            summary = f"stale ({age}s)"
+        else:
+            status = "ok"
+            summary = f"fresh ({age}s)"
+        detail = {
+            "source_id": spec["source_id"],
+            "label": spec["label"],
+            "status": status,
+            "status_label": _source_status_label(status),
+            "bucket_id": matched_bucket or spec["bucket_candidates"][0],
+            "timestamp": (matched_event or {}).get("timestamp", ""),
+            "age_seconds": age,
+            "required": spec["required"],
+            "max_age_seconds": spec["max_age_seconds"],
+            "summary": summary,
+            "event_summary": _source_summary(matched_event),
+        }
+        sources.append(detail)
+        if status == "ok":
+            continue
+        priority = "critical" if spec["required"] else "medium"
+        actions.append(
+            _action(
+                "source_freshness_review",
+                priority,
+                spec["owner"],
+                "today" if spec["required"] else "3d",
+                f"Источник '{spec['label']}' в состоянии {detail['status_label']}: {summary}.",
+                "Проверить collector/service, причину отставания и подтвердить, что управленческие выводы по данным ещё надёжны.",
+                evidence={
+                    "source_id": spec["source_id"],
+                    "bucket_id": detail["bucket_id"],
+                    "age_seconds": age,
+                    "required": spec["required"],
+                },
+            )
+        )
+    return sources, actions
+
+
+def _build_management_core(rows, host, report_date):
+    calendar_summary = build_report_summary(rows)
+    report_bounds = get_report_bounds(report_date)
+    workday = get_workday_bounds(report_date)
+    now_local = datetime.now(REPORT_TZ)
+    is_today = report_date == now_local.date()
+    effective_end_local = min(now_local, workday["end_local"]) if is_today else workday["end_local"]
+    elapsed_seconds = max(0, int((effective_end_local - workday["start_local"]).total_seconds()))
+    if not is_today:
+        elapsed_seconds = workday["duration_seconds"]
+    expected_seconds_per_user = min(workday["duration_seconds"], max(0, elapsed_seconds))
+    target_seconds = int(expected_seconds_per_user * (MANAGER_TARGET_COVERAGE_PCT / 100.0))
+    low_seconds = int(expected_seconds_per_user * (MANAGER_LOW_COVERAGE_PCT / 100.0))
+    late_start_local = workday["start_local"] + timedelta(minutes=MANAGER_LATE_START_GRACE_MINUTES)
+    early_finish_local = workday["end_local"] - timedelta(minutes=MANAGER_EARLY_FINISH_GRACE_MINUTES)
+
+    roster = []
+    actions = []
+    active_users = 0
+    on_target_users = 0
+    below_target_users = 0
+    workday_total_active_seconds = 0
+    workday_first_values = []
+    workday_last_values = []
+    top_workday_user = ""
+    top_workday_seconds = -1
+
+    for row in rows:
+        alias = resolve_user_alias(row.get("user", ""), row.get("user_id", ""), host)
+        if alias["exclude"]:
+            continue
+        public_row = {key: value for key, value in row.items() if key != "_intervals"}
+        calendar_active_seconds = int(row.get("active_seconds", 0) or 0)
+        intervals = row.get("_intervals") or []
+        workday_active_seconds, workday_first, workday_last = _interval_overlap_seconds(
+            intervals,
+            workday["start_local"].astimezone(timezone.utc),
+            effective_end_local.astimezone(timezone.utc),
+        )
+        first_activity = parse_iso_utc(row.get("first_activity"))
+        last_activity = parse_iso_utc(row.get("last_activity"))
+        first_local = first_activity.astimezone(REPORT_TZ) if first_activity else None
+        last_local = last_activity.astimezone(REPORT_TZ) if last_activity else None
+        workday_first_local = workday_first.astimezone(REPORT_TZ) if workday_first else None
+        workday_last_local = workday_last.astimezone(REPORT_TZ) if workday_last else None
+        coverage_pct = _clamp_pct((workday_active_seconds / expected_seconds_per_user) * 100.0) if expected_seconds_per_user > 0 else 0.0
+        status = "ok"
+        if workday_active_seconds <= 0:
+            status = "inactive"
+        elif workday_active_seconds < target_seconds:
+            status = "below_target"
+        if workday_active_seconds > 0:
+            active_users += 1
+            workday_total_active_seconds += workday_active_seconds
+            if workday_first_local:
+                workday_first_values.append(workday_first_local.isoformat())
+            if workday_last_local:
+                workday_last_values.append(workday_last_local.isoformat())
+        if workday_active_seconds >= target_seconds and workday_active_seconds > 0:
+            on_target_users += 1
+        elif workday_active_seconds > 0:
+            below_target_users += 1
+        if workday_active_seconds > top_workday_seconds:
+            top_workday_seconds = workday_active_seconds
+            top_workday_user = alias["display_name"]
+
+        roster.append(
+            {
+                **public_row,
+                "user": alias["display_name"],
+                "user_original": row.get("user", ""),
+                "manager_owner": alias["manager_owner"],
+                "department": alias["department"],
+                "role": alias["role"],
+                "notes": alias["notes"],
+                "canonical_user_id": alias["canonical_user_id"] or row.get("user_id", ""),
+                "calendar_active_seconds": calendar_active_seconds,
+                "calendar_active_hhmm": row.get("active_hhmm", "00:00"),
+                "workday_active_seconds": workday_active_seconds,
+                "workday_active_hhmm": hhmm(workday_active_seconds),
+                "coverage_pct": coverage_pct,
+                "status": status,
+                "first_activity_local": first_local.isoformat() if first_local else "",
+                "last_activity_local": last_local.isoformat() if last_local else "",
+                "workday_first_activity_local": workday_first_local.isoformat() if workday_first_local else "",
+                "workday_last_activity_local": workday_last_local.isoformat() if workday_last_local else "",
+            }
+        )
+
+        owner = alias["display_name"]
+        user_id = alias["canonical_user_id"] or row.get("user_id", "")
+        evidence = {
+            "calendar_active_hhmm": row.get("active_hhmm", "00:00"),
+            "workday_active_hhmm": hhmm(workday_active_seconds),
+            "coverage_pct": coverage_pct,
+            "first_activity": row.get("first_activity", ""),
+            "last_activity": row.get("last_activity", ""),
+            "sessions_count": row.get("sessions_count", 0),
+            "manager_owner": alias["manager_owner"],
+            "department": alias["department"],
+            "role": alias["role"],
+        }
+        if workday_active_seconds <= 0:
+            actions.append(
+                _action(
+                    "missing_activity",
+                    "critical",
+                    alias["manager_owner"],
+                    "today",
+                    f"За {report_date.isoformat()} у сотрудника {owner} нет подтверждённой активности в рабочем окне RDP.",
+                    f"Проверить сотрудника {owner}: работал ли он в рабочее время, была ли потеря сбора данных или отсутствие входа в систему.",
+                    user_id=user_id,
+                    evidence=evidence,
+                )
+            )
+            continue
+        if expected_seconds_per_user > 0 and workday_active_seconds < low_seconds:
+            actions.append(
+                _action(
+                    "low_activity_review",
+                    "high",
+                    alias["manager_owner"],
+                    "24h",
+                    f"У сотрудника {owner} активное время в рабочем окне {hhmm(workday_active_seconds)} ниже {MANAGER_LOW_COVERAGE_PCT}% от ожидаемого окна.",
+                    f"Проверить загрузку сотрудника {owner}, задачи и фактическое присутствие в рабочем процессе.",
+                    user_id=user_id,
+                    evidence=evidence,
+                )
+            )
+        elif expected_seconds_per_user > 0 and workday_active_seconds < target_seconds:
+            actions.append(
+                _action(
+                    "target_gap_review",
+                    "medium",
+                    alias["manager_owner"],
+                    "24h",
+                    f"У сотрудника {owner} активное время в рабочем окне {hhmm(workday_active_seconds)} ниже управленческого целевого порога {MANAGER_TARGET_COVERAGE_PCT}%.",
+                    f"Уточнить причину отклонения по сотруднику {owner} и подтвердить план работ.",
+                    user_id=user_id,
+                    evidence=evidence,
+                )
+            )
+        if workday_first_local and workday_first_local > late_start_local:
+            actions.append(
+                _action(
+                    "late_start_review",
+                    "medium",
+                    alias["manager_owner"],
+                    "24h",
+                    f"У сотрудника {owner} первая активность в рабочем окне зафиксирована поздно: {workday_first_local.strftime('%H:%M')}.",
+                    f"Проверить причину позднего старта сотрудника {owner} и подтвердить, что это не проблема доступа или дисциплины.",
+                    user_id=user_id,
+                    evidence=evidence,
+                )
+            )
+        if (not is_today) and workday_last_local and workday_last_local < early_finish_local:
+            actions.append(
+                _action(
+                    "early_finish_review",
+                    "medium",
+                    alias["manager_owner"],
+                    "24h",
+                    f"У сотрудника {owner} последняя активность в рабочем окне завершилась рано: {workday_last_local.strftime('%H:%M')}.",
+                    f"Проверить, было ли досрочное завершение рабочего дня сотрудника {owner} согласовано и чем оно объясняется.",
+                    user_id=user_id,
+                    evidence=evidence,
+                )
+            )
+
+    actions.sort(key=lambda item: (_priority_rank(item["priority"]), item["owner"].lower(), item["action_id"]))
+    inactive_users = sum(1 for row in roster if row["status"] == "inactive")
+    portfolio_coverage_pct = _clamp_pct((workday_total_active_seconds / (expected_seconds_per_user * len(rows))) * 100.0) if rows and expected_seconds_per_user > 0 else 0.0
+    calendar_first = calendar_summary.get("first_activity", "")
+    calendar_last = calendar_summary.get("last_activity", "")
+    return {
+        "generated_at_utc": now_utc().isoformat().replace("+00:00", "Z"),
+        "host": resolve_host(host),
+        "report_date": report_date.isoformat(),
+        "report_timezone": str(REPORT_TZ),
+        "workday": {
+            "start_local": workday["start_local"].isoformat(),
+            "end_local": workday["end_local"].isoformat(),
+            "expected_seconds_per_user": expected_seconds_per_user,
+            "expected_hhmm_per_user": hhmm(expected_seconds_per_user),
+            "target_coverage_pct": MANAGER_TARGET_COVERAGE_PCT,
+            "low_coverage_pct": MANAGER_LOW_COVERAGE_PCT,
+        },
+        "summary": {
+            **calendar_summary,
+            "calendar_total_active_seconds": calendar_summary["total_active_seconds"],
+            "calendar_total_active_hhmm": calendar_summary["total_active_hhmm"],
+            "calendar_first_activity": calendar_first,
+            "calendar_last_activity": calendar_last,
+            "workday_total_active_seconds": workday_total_active_seconds,
+            "workday_total_active_hhmm": hhmm(workday_total_active_seconds),
+            "workday_first_activity": min(workday_first_values) if workday_first_values else "",
+            "workday_last_activity": max(workday_last_values) if workday_last_values else "",
+            "total_active_seconds": workday_total_active_seconds,
+            "total_active_hhmm": hhmm(workday_total_active_seconds),
+            "first_activity": min(workday_first_values) if workday_first_values else "",
+            "last_activity": max(workday_last_values) if workday_last_values else "",
+            "top_user": top_workday_user,
+            "top_user_active_hhmm": hhmm(top_workday_seconds if top_workday_seconds > 0 else 0),
+            "active_users": active_users,
+            "inactive_users": inactive_users,
+            "on_target_users": on_target_users,
+            "below_target_users": below_target_users,
+            "portfolio_coverage_pct": portfolio_coverage_pct,
+            "actions_count": len(actions),
+            "critical_actions_count": sum(1 for action in actions if action["priority"] == "critical"),
+            "high_actions_count": sum(1 for action in actions if action["priority"] == "high"),
+        },
+        "actions": actions,
+        "rows": roster,
+        "bucket_id": get_sessions_bucket_id(host),
+        "report_bounds": {
+            "start_utc": to_iso_utc(report_bounds["start"]),
+            "end_utc": to_iso_utc(report_bounds["end"]),
+        },
+    }
+
+
+def build_management_trend(host, anchor_date):
+    trend = []
+    for offset in range(MANAGER_TREND_DAYS - 1, -1, -1):
+        current_date = anchor_date - timedelta(days=offset)
+        bounds, events = fetch_events_for_date(host, current_date)
+        rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
+        payload = _build_management_core(rows, host, current_date)
+        summary = payload["summary"]
+        trend.append(
+            {
+                "report_date": current_date.isoformat(),
+                "users_count": summary["users_count"],
+                "active_users": summary["active_users"],
+                "inactive_users": summary["inactive_users"],
+                "workday_total_active_seconds": summary["workday_total_active_seconds"],
+                "workday_total_active_hhmm": summary["workday_total_active_hhmm"],
+                "portfolio_coverage_pct": summary["portfolio_coverage_pct"],
+                "actions_count": summary["actions_count"],
+                "critical_actions_count": summary["critical_actions_count"],
+            }
+        )
+    return trend
+
+
+def build_management_payload(rows, host, report_date):
+    payload = _build_management_core(rows, host, report_date)
+    source_freshness, source_actions = build_source_freshness(resolve_host(host))
+    payload["sources"] = source_freshness
+    payload["trend"] = build_management_trend(resolve_host(host), report_date)
+    if source_actions:
+        payload["actions"].extend(source_actions)
+        payload["actions"].sort(key=lambda item: (_priority_rank(item["priority"]), item["owner"].lower(), item["action_id"]))
+        payload["summary"]["actions_count"] = len(payload["actions"])
+        payload["summary"]["critical_actions_count"] = sum(1 for action in payload["actions"] if action["priority"] == "critical")
+        payload["summary"]["high_actions_count"] = sum(1 for action in payload["actions"] if action["priority"] == "high")
+    payload["executive"] = build_executive_summary(payload["summary"], payload["actions"], payload["sources"])
+    return payload
+
+
 def report_for_date(host, report_date):
     bounds, events = fetch_events_for_date(host, report_date)
     return aggregate_rows(events, bounds["start"], bounds["end"], host)
+
+
+def management_report_for_date(host, report_date):
+    cached = load_management_cache(host, report_date)
+    if cached is not None:
+        return cached
+    bounds, events = fetch_events_for_date(host, report_date)
+    rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
+    payload = build_management_payload(rows, host, report_date)
+    save_management_cache(host, report_date, payload)
+    return payload
 
 
 def report_today(host):
@@ -667,6 +1392,365 @@ def render_html(rows, host, report_date, selected_day=None):
 </html>"""
 
 
+def render_management_html(payload, selected_day=None):
+    summary = payload["summary"]
+    workday = payload["workday"]
+    report_date = payload["report_date"]
+    host = payload["host"]
+    executive = payload.get("executive") or {}
+    today_url = "/reports/worktime/management?" + urlencode({"format": "html", "host": host, "day": "today"})
+    yesterday_url = "/reports/worktime/management?" + urlencode({"format": "html", "host": host, "day": "yesterday"})
+    json_url = "/reports/worktime/management?" + urlencode({"host": host, **({"day": selected_day} if selected_day in {"today", "yesterday"} else {"date": report_date})})
+    classic_url = "/reports/worktime/today?" + urlencode({"format": "html", "host": host, **({"day": selected_day} if selected_day in {"today", "yesterday"} else {"date": report_date})})
+    actions_html = []
+    for action in payload["actions"]:
+        actions_html.append(
+            "<tr>"
+            f"<td><span class='prio prio-{html.escape(action['priority'])}'>{html.escape(action['priority'])}</span></td>"
+            f"<td>{html.escape(action['owner'])}</td>"
+            f"<td>{html.escape(action['action_id'])}</td>"
+            f"<td>{html.escape(action['deadline_hint'])}</td>"
+            f"<td>{html.escape(action['reason'])}</td>"
+            f"<td>{html.escape(action['recommended_action'])}</td>"
+            "</tr>"
+        )
+    if not actions_html:
+        actions_html.append("<tr><td colspan='6'>Отклонений по текущим правилам не найдено.</td></tr>")
+
+    roster_html = []
+    for row in payload["rows"]:
+        roster_html.append(
+            "<tr>"
+            f"<td>{html.escape(row['user'])}</td>"
+            f"<td>{html.escape(row.get('canonical_user_id') or row['user_id'])}</td>"
+            f"<td>{html.escape(row.get('manager_owner') or row['user'])}</td>"
+            f"<td>{html.escape(row.get('department') or '-')}</td>"
+            f"<td>{html.escape(row['workday_active_hhmm'])}</td>"
+            f"<td>{html.escape(row['calendar_active_hhmm'])}</td>"
+            f"<td>{row['coverage_pct']}</td>"
+            f"<td>{html.escape(row['status'])}</td>"
+            f"<td>{html.escape(row.get('workday_first_activity_local') or '-')}</td>"
+            f"<td>{html.escape(row.get('workday_last_activity_local') or '-')}</td>"
+            f"<td>{row['sessions_count']}</td>"
+            "</tr>"
+        )
+    if not roster_html:
+        roster_html.append("<tr><td colspan='11'>За выбранную дату данных нет.</td></tr>")
+
+    trend_html = []
+    for row in payload.get("trend", []):
+        trend_html.append(
+            "<tr>"
+            f"<td>{html.escape(row['report_date'])}</td>"
+            f"<td>{row['users_count']}</td>"
+            f"<td>{row['active_users']}</td>"
+            f"<td>{row['inactive_users']}</td>"
+            f"<td>{html.escape(row['workday_total_active_hhmm'])}</td>"
+            f"<td>{row['portfolio_coverage_pct']}</td>"
+            f"<td>{row['actions_count']}</td>"
+            f"<td>{row['critical_actions_count']}</td>"
+            "</tr>"
+        )
+    if not trend_html:
+        trend_html.append("<tr><td colspan='8'>Тренд пока недоступен.</td></tr>")
+
+    sources_html = []
+    for source in payload.get("sources", []):
+        sources_html.append(
+            "<tr>"
+            f"<td>{html.escape(source['label'])}</td>"
+            f"<td><span class='prio prio-{html.escape('low' if source['status'] == 'ok' else ('critical' if source['required'] else 'medium'))}'>{html.escape(source['status_label'])}</span></td>"
+            f"<td>{html.escape(source['bucket_id'])}</td>"
+            f"<td>{html.escape(source.get('timestamp') or '-')}</td>"
+            f"<td>{html.escape(str(source.get('age_seconds')) if source.get('age_seconds') is not None else '-')}</td>"
+            f"<td>{html.escape(source.get('event_summary') or source.get('summary') or '-')}</td>"
+            "</tr>"
+        )
+    if not sources_html:
+        sources_html.append("<tr><td colspan='6'>Статусы источников недоступны.</td></tr>")
+
+    focus_html = []
+    for item in executive.get("focus_items", []):
+        focus_html.append(
+            "<article class='focus-card'>"
+            f"<div class='focus-priority prio prio-{html.escape(item['priority'])}'>{html.escape(item['priority'])}</div>"
+            f"<h3>{html.escape(item['title'])}</h3>"
+            f"<div class='focus-owner'>Ответственный: {html.escape(item['owner'])}</div>"
+            f"<p>{html.escape(item['reason'])}</p>"
+            f"<strong>{html.escape(item['recommended_action'])}</strong>"
+            "</article>"
+        )
+    if not focus_html:
+        focus_html.append("<article class='focus-card'><h3>Критичных действий нет</h3><p>На текущий момент менеджерских отклонений по активным правилам не найдено.</p></article>")
+
+    stale_html = []
+    for item in executive.get("stale_sources", []):
+        stale_html.append(
+            "<li>"
+            f"{html.escape(item['label'])}: {html.escape(item['status'])} · {html.escape(item['summary'])}"
+            "</li>"
+        )
+    stale_block = (
+        "<div class='note note-light'><strong>Проблемы со свежестью источников:</strong><ul>"
+        + "".join(stale_html)
+        + "</ul></div>"
+    ) if stale_html else ""
+
+    cards = [
+        ("Пользователи", str(summary["users_count"])),
+        ("Активны", str(summary["active_users"])),
+        ("Без активности", str(summary["inactive_users"])),
+        ("Ниже цели", str(summary["below_target_users"])),
+        ("Покрытие", f"{summary['portfolio_coverage_pct']}%"),
+        ("Действия", str(summary["actions_count"])),
+        ("Рабочее окно", summary["workday_total_active_hhmm"]),
+        ("Календарный день", summary["calendar_total_active_hhmm"]),
+    ]
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AW-rus Управленческий отчёт по работе в RDP</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --line: #dbe3ee;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #0f766e;
+      --critical: #b91c1c;
+      --high: #c2410c;
+      --medium: #1d4ed8;
+      --low: #166534;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font: 14px/1.45 "Segoe UI", "Noto Sans", sans-serif; color: var(--text); background: var(--bg); }}
+    .wrap {{ max-width: 1440px; margin: 0 auto; padding: 24px; }}
+    .hero {{
+      background: linear-gradient(135deg, #0f172a, #1e293b 58%, #0f766e);
+      color: #fff;
+      border-radius: 18px;
+      padding: 20px 22px;
+      box-shadow: 0 22px 60px rgba(15,23,42,.22);
+    }}
+    .hero h1 {{ margin: 0 0 8px; font-size: 28px; }}
+    .meta {{ color: rgba(255,255,255,.84); }}
+    .actions {{ margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }}
+    .actions a {{
+      text-decoration: none;
+      color: #fff;
+      background: rgba(255,255,255,.12);
+      border: 1px solid rgba(255,255,255,.18);
+      padding: 8px 12px;
+      border-radius: 999px;
+    }}
+    .summary-grid {{
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }}
+    .summary-card {{
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 14px;
+      padding: 14px 16px;
+    }}
+    .summary-card span {{
+      display: block;
+      color: rgba(255,255,255,.78);
+      font-size: 12px;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }}
+    .summary-card strong {{ display: block; font-size: 22px; }}
+    .note {{
+      margin-top: 16px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: rgba(255,255,255,.1);
+      border: 1px solid rgba(255,255,255,.14);
+    }}
+    .note-light {{
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      color: var(--text);
+    }}
+    .note-light ul {{ margin: 8px 0 0 18px; padding: 0; }}
+    .section {{
+      margin-top: 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 16px 40px rgba(15,23,42,.08);
+      overflow: hidden;
+    }}
+    .section h2 {{ margin: 0; padding: 18px; font-size: 18px; }}
+    .section-body {{ padding: 18px; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th, td {{ padding: 12px 14px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }}
+    th {{ background: #eef4fb; color: var(--muted); font-weight: 600; }}
+    .prio {{
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      color: #fff;
+      font-weight: 700;
+      text-transform: uppercase;
+      font-size: 12px;
+    }}
+    .prio-critical {{ background: var(--critical); }}
+    .prio-high {{ background: var(--high); }}
+    .prio-medium {{ background: var(--medium); }}
+    .prio-low {{ background: var(--low); }}
+    .focus-grid {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      padding: 0 18px 18px;
+    }}
+    .focus-card {{
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      background: linear-gradient(180deg, rgba(238,244,251,.8), #fff);
+    }}
+    .focus-card h3 {{ margin: 12px 0 8px; font-size: 16px; }}
+    .focus-card p {{ margin: 0 0 10px; color: var(--muted); }}
+    .focus-owner {{ color: var(--muted); font-size: 12px; }}
+    .focus-priority {{ width: fit-content; }}
+    @media (max-width: 1100px) {{
+      .wrap {{ padding: 14px; }}
+      .summary-grid {{ grid-template-columns: 1fr 1fr; }}
+      .focus-grid {{ grid-template-columns: 1fr; }}
+      .section {{ overflow-x: auto; }}
+      table {{ min-width: 1100px; }}
+    }}
+    @media (max-width: 640px) {{
+      .summary-grid {{ grid-template-columns: 1fr; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <section class="hero">
+      <h1>Управленческий отчёт по работе в RDP</h1>
+      <div class="meta">Хост: {html.escape(host)} · Дата: {html.escape(report_date)} · Рабочее окно: {html.escape(workday['start_local'])} -> {html.escape(workday['end_local'])} · Сформировано UTC: {html.escape(payload['generated_at_utc'])}</div>
+      <div class="actions">
+        <a href="{today_url}">Сегодня</a>
+        <a href="{yesterday_url}">Вчера</a>
+        <a href="{json_url}">Открыть JSON</a>
+        <a href="{classic_url}">Классический RDP отчёт</a>
+      </div>
+      <div class="summary-grid">
+        {''.join(f"<div class='summary-card'><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>" for label, value in cards)}
+      </div>
+      <div class="note">
+        Целевое покрытие: {MANAGER_TARGET_COVERAGE_PCT}% от ожидаемого рабочего окна на пользователя.
+        Критический провал: ниже {MANAGER_LOW_COVERAGE_PCT}% или полное отсутствие активности.
+        Рабочее окно считается отдельно от календарной активности, чтобы ночная работа не маскировала дневной провал.
+      </div>
+    </section>
+    <section class="section">
+      <h2>Что делать сегодня</h2>
+      <div class="section-body">
+        <strong>{html.escape(executive.get('headline') or 'Сводка недоступна')}</strong>
+        <p>{html.escape(executive.get('message') or '')}</p>
+        {stale_block}
+      </div>
+      <div class="focus-grid">
+        {''.join(focus_html)}
+      </div>
+    </section>
+    <section class="section">
+      <h2>Тренд за {MANAGER_TREND_DAYS} дней</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Дата</th>
+            <th>Пользователи</th>
+            <th>Активны</th>
+            <th>Без активности</th>
+            <th>Рабочее окно</th>
+            <th>Покрытие, %</th>
+            <th>Действия</th>
+            <th>Critical</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(trend_html)}
+        </tbody>
+      </table>
+    </section>
+    <section class="section">
+      <h2>Очередь действий руководителя</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Приоритет</th>
+            <th>Сотрудник</th>
+            <th>Тип</th>
+            <th>Срок</th>
+            <th>Почему это важно</th>
+            <th>Что сделать</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(actions_html)}
+        </tbody>
+      </table>
+    </section>
+    <section class="section">
+      <h2>Покрытие по сотрудникам</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Сотрудник</th>
+            <th>Учётная запись</th>
+            <th>Ответственный</th>
+            <th>Подразделение</th>
+            <th>Активно в окне</th>
+            <th>Активно за день</th>
+            <th>Покрытие, %</th>
+            <th>Статус</th>
+            <th>Первая активность в окне</th>
+            <th>Последняя активность в окне</th>
+            <th>Сессии</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(roster_html)}
+        </tbody>
+      </table>
+    </section>
+    <section class="section">
+      <h2>Свежесть источников данных</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Источник</th>
+            <th>Статус</th>
+            <th>Бакет</th>
+            <th>Последнее событие UTC</th>
+            <th>Возраст, сек</th>
+            <th>Контекст</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(sources_html)}
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>"""
+
+
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -696,7 +1780,7 @@ class H(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
 
-        if parsed.path != "/reports/worktime/today":
+        if parsed.path not in {"/reports/worktime/today", "/reports/worktime/management"}:
             self.send_response(404)
             self.end_headers()
             return
@@ -711,9 +1795,27 @@ class H(BaseHTTPRequestHandler):
         day = params.get("day", ["today"])[0]
         date_text = params.get("date", [None])[0]
         report_date = resolve_report_date(day=day, date_text=date_text)
-        rows = report_for_date_fresh(host, report_date)
+        is_management = parsed.path == "/reports/worktime/management"
+        management_payload = management_report_for_date(host, report_date) if is_management else None
+        rows = report_for_date_fresh(host, report_date) if not is_management else management_payload["rows"]
 
         if fmt == "csv":
+            if is_management:
+                out = io.StringIO()
+                writer = csv.DictWriter(
+                    out,
+                    fieldnames=["priority", "owner", "user_id", "action_id", "deadline_hint", "reason", "recommended_action"],
+                    extrasaction="ignore",
+                )
+                writer.writeheader()
+                writer.writerows(management_payload["actions"])
+                data = out.getvalue().encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/csv; charset=utf-8")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                return
             out = io.StringIO()
             writer = csv.DictWriter(
                 out,
@@ -741,9 +1843,22 @@ class H(BaseHTTPRequestHandler):
             return
 
         if fmt == "html":
-            data = render_html(rows, host, report_date, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
+            if is_management:
+                data = render_management_html(management_payload, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
+            else:
+                data = render_html(rows, host, report_date, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return
+
+        if is_management:
+            obj = management_payload
+            data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)

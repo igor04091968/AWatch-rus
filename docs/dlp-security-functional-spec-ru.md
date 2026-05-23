@@ -264,7 +264,7 @@ Deployment/tooling:
 | ActivityWatch API | `5600` | основной API buckets/events/settings |
 | Policy Engine | `5601` | централизованная политика DLP |
 | Case Management | `5602` | кейсы расследования |
-| Worktime API | `5610` | отчёты worktime CSV/JSON |
+| Worktime API | `5610` | отчёты worktime CSV/JSON/HTML и management view `/reports/worktime/management` |
 
 ### 6.2 Systemd units
 
@@ -608,4 +608,3 @@ python3 scripts/dlp-admin-cli.py cases list --limit 50
 - `docs/windows/validation.md`
 - `docs/runbook.md`
 - `docs/worktime_aql_detmir.md`
-

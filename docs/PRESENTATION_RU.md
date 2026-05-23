@@ -62,6 +62,18 @@ Live endpoint:
 
 - `http://aw-local-server:5610/reports/worktime/today?format=html&date=2026-05-15`
 
+Дополнительно в management-only контуре есть отдельный управленческий отчёт:
+
+- `http://aw-local-server:5610/reports/worktime/management?format=html&day=today`
+
+Он показывает не только roster, но и:
+
+- `Что делать сегодня`;
+- покрытие рабочего окна против календарной активности;
+- очередь действий руководителя;
+- trend;
+- свежесть источников данных.
+
 ## 7. AW-rus: DLP review, rules и события
 
 Экран AW-rus по bucket `aw-dlp-endpoint-signals_*`: здесь видны живые DLP-события, review-вердикты, правила, case-management и нижняя лента событий. Это прямое доказательство, что данные реально приходят на сервер до агрегации в InfluxDB/Grafana.

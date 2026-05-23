@@ -80,6 +80,42 @@ ls -l /opt/activitywatch/webui-ru/js/
 Playbook вычисляет `durationDefault` автоматически (включая смены через полночь) и выставляет:
 `/api/0/settings/startOfDay` и `/api/0/settings/durationDefault`.
 
+### Management report API
+
+На `:5610` сейчас есть два server-side отчёта:
+
+- классический `RDP worktime`:
+  - `/reports/worktime/today`
+  - форматы: `json`, `csv`, `html`
+- управленческий `management`:
+  - `/reports/worktime/management`
+  - форматы: `json`, `csv`, `html`
+
+Управленческий отчёт дополнительно показывает:
+
+- рабочее окно отдельно от календарной активности;
+- очередь действий руководителя;
+- тренд за несколько дней;
+- свежесть источников данных;
+- executive summary `Что делать сегодня`.
+
+Практические проверки:
+
+```sh
+curl -fsS 'http://127.0.0.1:5610/reports/worktime/today?day=today' | jq '.[:5]'
+curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?day=today' | jq '.summary,.executive'
+curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?format=html&day=today' | head
+```
+
+Важно:
+
+- первый `management`-запрос после очистки cache может быть тяжёлым, потому что
+  API пересчитывает trend и source freshness;
+- повторные запросы должны быть быстрыми за счёт cache в
+  `/var/lib/activitywatch/worktime-cache`;
+- alias-файл для нормализации сотрудников по умолчанию:
+  `/etc/activitywatch/worktime-manager-aliases.json`.
+
 ## Типовые инциденты
 
 ### Hayabusa: операторский сценарий по умолчанию
