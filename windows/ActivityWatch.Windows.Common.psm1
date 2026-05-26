@@ -60,11 +60,37 @@ function Get-ActivityWatchArchive {
     }
 
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Get-ChildItem -LiteralPath $WorkingRoot -File -Filter 'activitywatch-*.zip' -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -Skip 2 |
+        ForEach-Object {
+            try { Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue } catch {}
+        }
     $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
     $suffix = ([guid]::NewGuid().Guid.Substring(0, 8))
     $archivePath = Join-Path $WorkingRoot ("activitywatch-{0}-{1}-{2}.zip" -f $Version.TrimStart('v'), $stamp, $suffix)
     Invoke-WebRequest -Uri $PackageUrl -OutFile $archivePath
     return $archivePath
+}
+
+function Remove-ActivityWatchOldInstallBackups {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BackupRoot,
+        [int]$Keep = 2
+    )
+
+    if (-not (Test-Path -LiteralPath $BackupRoot)) {
+        return
+    }
+
+    Get-ChildItem -LiteralPath $BackupRoot -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like 'install-*' } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -Skip $Keep |
+        ForEach-Object {
+            try { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+        }
 }
 
 function Get-ActivityWatchPackageRoot {
@@ -132,6 +158,7 @@ function Install-ActivityWatchPackage {
 
     New-ActivityWatchDirectory -Path $WorkingRoot
     New-ActivityWatchDirectory -Path $BackupRoot
+    Remove-ActivityWatchOldInstallBackups -BackupRoot $BackupRoot
 
     # Cleanup stale extraction directories from previous failed deployments.
     Get-ChildItem -LiteralPath $WorkingRoot -Directory -ErrorAction SilentlyContinue |
@@ -157,38 +184,64 @@ function Install-ActivityWatchPackage {
     New-ActivityWatchDirectory -Path $extractRoot
 
     $archiveSize = (Get-Item -LiteralPath $ArchivePath -ErrorAction Stop).Length
-    $workDrive = (Get-PSDrive -Name ([System.IO.Path]::GetPathRoot($WorkingRoot).TrimEnd('\').TrimEnd(':')) -ErrorAction SilentlyContinue)
-    if ($workDrive) {
+    $workDriveName = [System.IO.Path]::GetPathRoot($WorkingRoot).TrimEnd('\').TrimEnd(':')
+    $workDrive = Get-PSDrive -Name $workDriveName -ErrorAction SilentlyContinue
+    $freeBytes = $null
+    if ($workDrive -and $null -ne $workDrive.Free) {
+        $freeBytes = [int64]$workDrive.Free
+    }
+    elseif ($workDriveName) {
+        try {
+            $disk = Get-CimInstance Win32_LogicalDisk -Filter ("DeviceID='{0}:'" -f $workDriveName) -ErrorAction Stop
+            if ($disk -and $null -ne $disk.FreeSpace) {
+                $freeBytes = [int64]$disk.FreeSpace
+            }
+        }
+        catch {
+        }
+    }
+    if ($null -ne $freeBytes) {
         # Require at least ~2.5x archive size to handle extraction + copy safely.
         $required = [int64]([Math]::Ceiling($archiveSize * 2.5))
-        if ([int64]$workDrive.Free -lt $required) {
-            throw ("Недостаточно свободного места на {0}: free={1} bytes, required>={2} bytes" -f $workDrive.Name, $workDrive.Free, $required)
+        if ($freeBytes -lt $required) {
+            throw ("Недостаточно свободного места на {0}: free={1} bytes, required>={2} bytes" -f $workDriveName, $freeBytes, $required)
         }
     }
 
-    Expand-ActivityWatchArchiveSafe -ArchivePath $ArchivePath -DestinationPath $extractRoot
-    $packageRoot = Get-ActivityWatchPackageRoot -ExpandedRoot $extractRoot
+    try {
+        Expand-ActivityWatchArchiveSafe -ArchivePath $ArchivePath -DestinationPath $extractRoot
+        $packageRoot = Get-ActivityWatchPackageRoot -ExpandedRoot $extractRoot
 
-    if (Test-Path -LiteralPath $InstallRoot) {
-        $existingItems = Get-ChildItem -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue
-        if ($existingItems) {
-            $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-            $backupPath = Join-Path $BackupRoot ("install-$stamp")
-            New-ActivityWatchDirectory -Path $backupPath
-            Copy-Item -Path (Join-Path $InstallRoot '*') -Destination $backupPath -Recurse -Force
-            Get-ChildItem -LiteralPath $InstallRoot -Force | Remove-Item -Recurse -Force
+        if (Test-Path -LiteralPath $InstallRoot) {
+            $existingItems = Get-ChildItem -LiteralPath $InstallRoot -Force -ErrorAction SilentlyContinue
+            if ($existingItems) {
+                $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                $backupPath = Join-Path $BackupRoot ("install-$stamp")
+                New-ActivityWatchDirectory -Path $backupPath
+                Copy-Item -Path (Join-Path $InstallRoot '*') -Destination $backupPath -Recurse -Force
+                Get-ChildItem -LiteralPath $InstallRoot -Force | Remove-Item -Recurse -Force
+            }
+        }
+        else {
+            New-ActivityWatchDirectory -Path $InstallRoot
+        }
+
+        Copy-Item -Path (Join-Path $packageRoot '*') -Destination $InstallRoot -Recurse -Force
+
+        return [pscustomobject]@{
+            PackageRoot = $packageRoot
+            ExtractRoot = $extractRoot
+            BackupRoot  = $BackupRoot
         }
     }
-    else {
-        New-ActivityWatchDirectory -Path $InstallRoot
-    }
-
-    Copy-Item -Path (Join-Path $packageRoot '*') -Destination $InstallRoot -Recurse -Force
-
-    return [pscustomobject]@{
-        PackageRoot = $packageRoot
-        ExtractRoot = $extractRoot
-        BackupRoot  = $BackupRoot
+    finally {
+        if (Test-Path -LiteralPath $extractRoot) {
+            try { Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        if ((Test-Path -LiteralPath $ArchivePath) -and ($ArchivePath -like (Join-Path $WorkingRoot 'activitywatch-*.zip'))) {
+            try { Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        Remove-ActivityWatchOldInstallBackups -BackupRoot $BackupRoot
     }
 }
 

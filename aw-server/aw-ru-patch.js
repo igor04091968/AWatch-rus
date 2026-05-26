@@ -957,11 +957,9 @@
         {
           id: "virtual-infra",
           name: "Virtual servers + Proxmox",
-          description: "Инфраструктурные VM, Proxmox и сетевые узлы.",
-          patterns: ["^(PFSENSE|PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"],
+          description: "Инфраструктурные VM и узлы Proxmox.",
+          patterns: ["^(PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"],
           links: [
-            { label: "pfSense health", type: "bucket", bucket_prefix: "aw-pfsense-health_" },
-            { label: "pfSense gateways", type: "bucket", bucket_prefix: "aw-pfsense-gateways_" },
             { label: "Все бакеты", type: "buckets" }
           ]
         }
@@ -1024,9 +1022,6 @@
       "aw-pve-webadmin-events_",
       "aw-pve-task-events_",
       "aw-dlp-incidents_",
-      "aw-pfsense-health_",
-      "aw-pfsense-gateways_",
-      "aw-pfsense-interfaces_"
     ];
     for (const prefix of prefixes) {
       if (bucketId.indexOf(prefix) === 0) {
