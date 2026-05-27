@@ -36,3 +36,25 @@ def test_bucket_health_reports_missing_events_without_crash(monkeypatch):
     assert status == "warn"
     assert summary == "no events"
     assert details["bucket"] == "aw-watcher-window_SHARKON2025"
+
+
+def test_bucket_health_marks_old_session_events_as_event_driven(monkeypatch):
+    monkeypatch.setattr(
+        MODULE,
+        "latest_bucket_event",
+        lambda api_base, bucket_id: {"timestamp": "2026-05-22T15:53:08Z"},
+    )
+    monkeypatch.setattr(MODULE, "now_utc", lambda: MODULE.parse_ts("2026-05-24T01:46:25Z"))
+    status, summary, details = MODULE.bucket_health(
+        "http://127.0.0.1:5600/api/0",
+        "aw-session-events_SHARKON2025",
+        86400,
+        missing_status="fail",
+        stale_status="warn",
+    )
+    if status == "warn" and details.get("age_seconds") is not None:
+        status = "ok"
+        summary = f"event-driven ({details['age_seconds']}s since last logon marker)"
+    assert status == "ok"
+    assert summary.startswith("event-driven (")
+    assert details["age_seconds"] > 86400

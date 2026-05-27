@@ -113,6 +113,21 @@ $effectiveFile1CAutoUploadTaskName = if ($existingConfig -and $existingConfig.PS
 $effectiveFile1CTargetHost = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetHost') { [string]$existingConfig.analytics.file1cAutomation.targetHost } else { '' }
 $effectiveFile1CTargetUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetUser') { [string]$existingConfig.analytics.file1cAutomation.targetUser } else { 'igor' }
 
+if ([string]::IsNullOrWhiteSpace($effectiveFile1CTargetHost)) {
+    $file1cLogPath = Join-Path $effectiveLogsRoot 'file1c-telemetry.log'
+    if (Test-Path -LiteralPath $file1cLogPath) {
+        $recoveredFile1CHost = ''
+        foreach ($line in Get-Content -LiteralPath $file1cLogPath -Encoding UTF8) {
+            if ([string]$line -match 'upload complete analyticsHost=([^\s]+)') {
+                $recoveredFile1CHost = [string]$Matches[1]
+            }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($recoveredFile1CHost)) {
+            $effectiveFile1CTargetHost = $recoveredFile1CHost
+        }
+    }
+}
+
 $effectiveUsers = if ($Users -or $UserListPath) {
     Normalize-ActivityWatchUsers -Users $Users -UserListPath $UserListPath -Domain $Domain
 }

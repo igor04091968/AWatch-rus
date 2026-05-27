@@ -18,6 +18,7 @@ $ErrorActionPreference = 'Stop'
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Net.Http
 
 Add-Type @"
 using System;
@@ -46,6 +47,35 @@ function Get-DeploymentConfig {
     }
 
     return $null
+}
+
+function Invoke-AwJsonPost {
+    param(
+        [Parameter(Mandatory = $true)][string]$Uri,
+        [Parameter(Mandatory = $true)][string]$Json
+    )
+
+    $httpClient = $null
+    $content = $null
+    try {
+        $httpClient = New-Object System.Net.Http.HttpClient
+        $content = New-Object System.Net.Http.StringContent($Json, [System.Text.Encoding]::UTF8, "application/json")
+        $response = $httpClient.PostAsync($Uri, $content).Result
+        if (-not $response.IsSuccessStatusCode) {
+            $status = [int]$response.StatusCode
+            $reason = [string]$response.ReasonPhrase
+            $body = $response.Content.ReadAsStringAsync().Result
+            throw "HTTP POST failed status=$status reason=$reason body=$body"
+        }
+    }
+    finally {
+        if ($null -ne $content) {
+            $content.Dispose()
+        }
+        if ($null -ne $httpClient) {
+            $httpClient.Dispose()
+        }
+    }
 }
 
 $deploymentConfig = Get-DeploymentConfig -Path $ConfigPath
@@ -542,7 +572,7 @@ function Send-DlpIncidentHeartbeat {
         } + $captureData
     } | ConvertTo-Json -Depth 5 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
 }
 
 function Get-FileSha256Hex {
@@ -717,7 +747,7 @@ function Ensure-Bucket {
     } | ConvertTo-Json -Compress
 
     try {
-        Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($body)) | Out-Null
+        Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId" -Json $body
     }
     catch {
         Invoke-RestMethod -Method Get -Uri "$($script:ApiBase)/buckets/$BucketId" | Out-Null
@@ -747,7 +777,7 @@ function Send-Heartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
 }
 
 function Send-CategoryHeartbeat {
@@ -784,19 +814,59 @@ function Send-CategoryHeartbeat {
         }
     } | ConvertTo-Json -Depth 4 -Compress
 
-    Invoke-RestMethod -Method Post -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -ContentType 'application/json' -Body $event -TimeoutSec 15 -DisableKeepAlive | Out-Null
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
+}
+
+function Send-CollectorHealthHeartbeat {
+    param(
+        $Context = $null,
+        [string]$DetectedUrl = $null
+    )
+
+    $bucketId = 'aw-detmir-web-category_' + $script:Hostname
+    Ensure-Bucket -BucketId $bucketId -ClientName 'aw-detmir-web-category' -BucketType 'aw.web.category'
+
+    $foregroundProcess = ''
+    $foregroundTitle = ''
+    $browserDetected = $false
+    if ($Context) {
+        $foregroundProcess = [string]$Context.ProcessName
+        $foregroundTitle = [string]$Context.Title
+        $browserDetected = $script:BrowserMap.ContainsKey($foregroundProcess)
+    }
+
+    $event = @{
+        timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        duration  = 0
+        data      = @{
+            signalType        = 'collector_health'
+            username          = $env:USERNAME
+            hostname          = $script:Hostname
+            sessionId         = $script:SessionId
+            foregroundProcess = $foregroundProcess
+            foregroundTitle   = $foregroundTitle
+            browserDetected   = $browserDetected
+            urlDetected       = -not [string]::IsNullOrWhiteSpace($DetectedUrl)
+        }
+    } | ConvertTo-Json -Depth 5 -Compress
+
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
 }
 
 Load-CustomCategoryRules -Path $resolvedRulesPath
 Load-DlpPolicy -Path $resolvedPolicyPath
 Write-CollectorLog ("коллектор запущен для {0}" -f $script:ApiBase)
 
+$lastHealth = [datetime]::MinValue
 while ($true) {
+    $context = $null
+    $detectedUrl = $null
     try {
         $context = Get-ForegroundWindowContext
         if ($context -and $script:BrowserMap.ContainsKey($context.ProcessName)) {
             $url = Get-BrowserUrlFromWindow -Handle $context.Handle
             if ($url) {
+                $detectedUrl = $url
                 $browserKey = $script:BrowserMap[$context.ProcessName]
                 $domain = Get-HostFromUrl -Url $url
                 if (-not $domain) {
@@ -830,6 +900,17 @@ while ($true) {
     }
     catch {
         Write-CollectorLog ("ошибка коллектора: {0}" -f $_.Exception.Message)
+    }
+
+    $nowUtc = (Get-Date).ToUniversalTime()
+    if (($nowUtc - $lastHealth).TotalSeconds -ge [Math]::Max($resolvedPulseSeconds, $resolvedPollSeconds)) {
+        try {
+            Send-CollectorHealthHeartbeat -Context $context -DetectedUrl $detectedUrl
+            $lastHealth = $nowUtc
+        }
+        catch {
+            Write-CollectorLog ("ошибка heartbeat: {0}" -f $_.Exception.Message)
+        }
     }
 
     Start-Sleep -Seconds $resolvedPollSeconds

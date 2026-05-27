@@ -8,6 +8,30 @@ HOSTNAME_FILTER="SHARKON2025"
 RDP_HOST="192.168.100.18"
 NOW=$(date -u +%s)
 
+classify_bucket_age() {
+    local bucket="$1"
+    local age_sec="$2"
+
+    case "$bucket" in
+        aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
+            if [ "$age_sec" -lt 86400 ]; then
+                printf 'FRESH|%s' "${GREEN}FRESH${NC}"
+            else
+                printf 'EVENT|%s' "${CYAN}EVENT-DRIVEN${NC}"
+            fi
+            ;;
+        *)
+            if [ "$age_sec" -lt 3600 ]; then
+                printf 'FRESH|%s' "${GREEN}FRESH${NC}"
+            elif [ "$age_sec" -lt 86400 ]; then
+                printf 'STALE|%s' "${YELLOW}STALE${NC}"
+            else
+                printf 'DEAD|%s' "${RED}DEAD${NC}"
+            fi
+            ;;
+    esac
+}
+
 # Цвета
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -70,22 +94,24 @@ for entry in "${BUCKETS[@]}"; do
       AGE_SEC=$((NOW - EVENT_EPOCH))
       if [ $AGE_SEC -lt 3600 ]; then
         AGE="$((AGE_SEC / 60))m"
-        STATUS="${GREEN}FRESH${NC}"
       elif [ $AGE_SEC -lt 86400 ]; then
         AGE="$((AGE_SEC / 3600))h"
-        STATUS="${YELLOW}STALE${NC}"
       else
         AGE="$((AGE_SEC / 86400))d"
-        STATUS="${RED}DEAD${NC}"
       fi
+      CLASSIFICATION="$(classify_bucket_age "$bucket" "$AGE_SEC")"
+      STATUS_KEY="${CLASSIFICATION%%|*}"
+      STATUS="${CLASSIFICATION#*|}"
     else
       AGE="?"
       STATUS="${RED}?${NC}"
+      STATUS_KEY="UNKNOWN"
     fi
   else
     AGE="none"
     LAST_ID="0"
     STATUS="${RED}EMPTY${NC}"
+    STATUS_KEY="DEAD"
   fi
   
   printf "  %-42s %-8s %-20s %b\n" "$label" "$LAST_ID" "$AGE" "$STATUS"
@@ -128,16 +154,29 @@ for entry in "${BUCKETS[@]}"; do
     EVENT_EPOCH=$(date -d "$LAST_TS" +%s 2>/dev/null || echo 0)
     if [ "$EVENT_EPOCH" -gt 0 ]; then
       AGE_SEC=$((NOW - EVENT_EPOCH))
-      if [ $AGE_SEC -lt 3600 ]; then
-        FRESH_COUNT=$((FRESH_COUNT + 1))
-      elif [ $AGE_SEC -lt 86400 ]; then
-        STALE_COUNT=$((STALE_COUNT + 1))
-      else
-        DEAD_COUNT=$((DEAD_COUNT + 1))
-      fi
+      CLASSIFICATION="$(classify_bucket_age "$bucket" "$AGE_SEC")"
+      STATUS_KEY="${CLASSIFICATION%%|*}"
+      case "$STATUS_KEY" in
+        FRESH|EVENT)
+          FRESH_COUNT=$((FRESH_COUNT + 1))
+          ;;
+        STALE)
+          STALE_COUNT=$((STALE_COUNT + 1))
+          ;;
+        *)
+          DEAD_COUNT=$((DEAD_COUNT + 1))
+          ;;
+      esac
     fi
   else
-    DEAD_COUNT=$((DEAD_COUNT + 1))
+    case "$bucket" in
+      aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
+        STALE_COUNT=$((STALE_COUNT + 1))
+        ;;
+      *)
+        DEAD_COUNT=$((DEAD_COUNT + 1))
+        ;;
+    esac
   fi
 done
 

@@ -11,6 +11,10 @@ from typing import Any, Iterator
 from evidence_chain import evidence_sha256, normalize_evidence_chain
 
 
+class ForensicsHostMismatchError(ValueError):
+    pass
+
+
 class CaseStorage:
     def __init__(self, db_path: Path) -> None:
         self.db_path = db_path
@@ -85,6 +89,10 @@ class CaseStorage:
     @staticmethod
     def _now() -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    @staticmethod
+    def _normalize_host(value: Any) -> str:
+        return str(value or "").strip().lower()
 
     @staticmethod
     def _load_json_field(raw: Any) -> dict[str, Any] | None:
@@ -228,6 +236,12 @@ class CaseStorage:
         now = self._now()
         with self.conn() as c:
             existing = self.get_case(case_id, c)
+            case_host = self._normalize_host(existing.get("host"))
+            forensic_host = self._normalize_host(payload.get("host"))
+            if case_host and forensic_host and case_host != forensic_host:
+                raise ForensicsHostMismatchError(
+                    f"hayabusa host mismatch: case host={existing.get('host')} payload host={payload.get('host')}"
+                )
             forensics = existing.get("forensics") or {}
             forensics["hayabusa"] = {
                 "tool": "hayabusa",

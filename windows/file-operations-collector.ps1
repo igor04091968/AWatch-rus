@@ -24,6 +24,7 @@ $script:Hostname = $env:COMPUTERNAME
 $script:SessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
 $script:TransportQueuePath = $null
 $script:TransportQueueLockPath = $null
+$script:StartupTracePath = if ($LogPath) { $LogPath } else { $null }
 $script:TransportMetrics = @{
     eventsEnqueued = 0
     eventsFlushed  = 0
@@ -32,8 +33,8 @@ $script:TransportMetrics = @{
 }
 
 # Настройка логирования
-$script:LogPath = $LogPath
-$script:LocalAgentLogsEnabled = [bool]$LogPath
+$script:LogPath = $null
+$script:LocalAgentLogsEnabled = $false
 
 function Get-DeploymentConfig {
     param([string]$Path)
@@ -49,6 +50,20 @@ function Write-FileCollectorLog {
     try {
         Add-Content -LiteralPath $script:LogPath -Value ('{0} [FileCollector] {1}' -f (Get-Date -Format s), $Message)
     } catch {}
+}
+
+function Write-StartupTrace {
+    param([string]$Message)
+    if ([string]::IsNullOrWhiteSpace($script:StartupTracePath)) { return }
+    try {
+        $dir = Split-Path -Parent $script:StartupTracePath
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+            New-Item -Path $dir -ItemType Directory -Force | Out-Null
+        }
+        [System.IO.File]::AppendAllText($script:StartupTracePath, ('{0} [startup] {1}{2}' -f (Get-Date -Format s), $Message, [Environment]::NewLine), [System.Text.Encoding]::UTF8)
+    }
+    catch {
+    }
 }
 
 function Invoke-AwJsonPost {
@@ -250,6 +265,7 @@ function Send-FileOperationEvent {
         data      = $data
     } | ConvertTo-Json -Depth 5 -Compress
 
+    Write-FileCollectorLog ("Queue file event: op={0} path={1}" -f $Operation, $FilePath)
     Add-TransportQueueItem -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=15" -Payload $payload -Kind 'file_op'
     Flush-TransportQueue -MaxItems 20
 }
@@ -275,19 +291,86 @@ function Send-CollectorHealthEvent {
     Flush-TransportQueue -MaxItems 50
 }
 
+function Handle-FileWatcherEvent {
+    param(
+        [Parameter(Mandatory = $true)]$EventRecord
+    )
+
+    try {
+        $args = $EventRecord.SourceEventArgs
+        $eventName = $null
+        if ($args -and $args.PSObject.Properties.Name -contains 'ChangeType' -and $args.ChangeType) {
+            $eventName = [string]$args.ChangeType
+        }
+        elseif ($EventRecord.SourceIdentifier -match '-created$') {
+            $eventName = 'Created'
+        }
+        elseif ($EventRecord.SourceIdentifier -match '-deleted$') {
+            $eventName = 'Deleted'
+        }
+        elseif ($EventRecord.SourceIdentifier -match '-renamed$') {
+            $eventName = 'Renamed'
+        }
+
+        Write-FileCollectorLog ("Received event: src={0} type={1}" -f $EventRecord.SourceIdentifier, $eventName)
+
+        switch ($eventName) {
+            'Created' {
+                $path = [string]$args.FullPath
+                $size = 0
+                try {
+                    if (Test-Path -LiteralPath $path) {
+                        $size = (Get-Item -LiteralPath $path).Length
+                    }
+                }
+                catch {
+                }
+                Send-FileOperationEvent -Operation 'Created' -FilePath $path -Size $size
+            }
+            'Deleted' {
+                Send-FileOperationEvent -Operation 'Deleted' -FilePath ([string]$args.FullPath)
+            }
+            'Renamed' {
+                Send-FileOperationEvent -Operation 'Renamed' -FilePath ([string]$args.FullPath) -OldFilePath ([string]$args.OldFullPath)
+            }
+        }
+    }
+    catch {
+        Write-FileCollectorLog ("File watcher event failed: {0}" -f $_.Exception.Message)
+    }
+    finally {
+        if ($EventRecord.EventIdentifier) {
+            Remove-Event -EventIdentifier $EventRecord.EventIdentifier -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Write-StartupTrace "boot"
 $config = Get-DeploymentConfig -Path $ConfigPath
 if (-not $config) { throw "Configuration file not found: $ConfigPath" }
+Write-StartupTrace "config-loaded"
 $script:Hostname = if ($config.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$config.awHostname)) { [string]$config.awHostname } else { [string]$env:COMPUTERNAME }
 
 $scheme = if ($ServerScheme) { $ServerScheme } elseif ($config.server.scheme) { $config.server.scheme } else { 'http' }
-$hostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
+$serverHostName = if ($ServerHost) { $ServerHost } elseif ($config.server.host) { $config.server.host } else { 'localhost' }
 $port = if ($ServerPort) { $ServerPort } elseif ($config.server.port) { $config.server.port } else { 5600 }
-$script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $hostName, $port
+$script:ApiBase = "{0}://{1}:{2}/api/0" -f $scheme, $serverHostName, $port
 $stateRoot = if ($config.paths -and $config.paths.stateRoot) { [string]$config.paths.stateRoot } else { 'C:\ProgramData\AWatch-rus' }
+Write-StartupTrace ("api={0}" -f $script:ApiBase)
+$resolvedLogsRoot = if ($config.paths -and $config.paths.logsRoot) { [string]$config.paths.logsRoot } else { Join-Path $stateRoot 'logs' }
+$resolvedLocalAgentLogsEnabled = if ($config.PSObject.Properties.Name -contains 'logging' -and $config.logging -and $config.logging.PSObject.Properties.Name -contains 'localAgentLogsEnabled') { [bool]$config.logging.localAgentLogsEnabled } else { $true }
+$script:LogPath = if ($LogPath) { $LogPath } else { Join-Path $resolvedLogsRoot ("file-operations-{0}.log" -f $env:USERNAME) }
+$explicitLogPath = -not [string]::IsNullOrWhiteSpace($LogPath)
+$script:LocalAgentLogsEnabled = ($explicitLogPath -or $resolvedLocalAgentLogsEnabled) -and -not [string]::IsNullOrWhiteSpace($script:LogPath)
+if ($script:LocalAgentLogsEnabled -and -not (Test-Path -LiteralPath $resolvedLogsRoot)) {
+    New-Item -Path $resolvedLogsRoot -ItemType Directory -Force | Out-Null
+}
 Initialize-TransportQueue -StateRoot $stateRoot
+Write-StartupTrace "queue-ready"
 
 $bucketId = 'aw-file-operations_' + $script:Hostname
 Ensure-Bucket -BucketId $bucketId -ClientName 'aw-file-operations' -BucketType 'aw.file.operation'
+Write-StartupTrace ("bucket-ready={0}" -f $bucketId)
 
 # Resolve paths for monitoring
 $resolvedPaths = @()
@@ -304,6 +387,7 @@ foreach ($p in $WatchPaths) {
         $resolvedPaths += $fullPath
     }
 }
+Write-StartupTrace ("watch-paths={0}" -f ($resolvedPaths -join ';'))
 
 if ($resolvedPaths.Count -eq 0) {
     Write-FileCollectorLog "No valid watch paths found. Exiting."
@@ -314,27 +398,21 @@ Write-FileCollectorLog "Starting watch on paths: $($resolvedPaths -join ', ')"
 
 $watchers = @()
 $subscriptions = @()
+$eventPrefix = "aw-fileops-$PID"
+$watchIndex = 0
 foreach ($path in $resolvedPaths) {
     $watcher = New-Object System.IO.FileSystemWatcher
     $watcher.Path = $path
     $watcher.IncludeSubdirectories = $true
     $watcher.EnableRaisingEvents = $true
-    
-    $onChanged = Register-ObjectEvent $watcher "Created" -Action {
-        $path = $Event.SourceEventArgs.FullPath
-        $size = 0
-        try { if (Test-Path -LiteralPath $path) { $size = (Get-Item -LiteralPath $path).Length } } catch {}
-        Send-FileOperationEvent -Operation 'Created' -FilePath $path -Size $size
-    }
-    $onDeleted = Register-ObjectEvent $watcher "Deleted" -Action {
-        Send-FileOperationEvent -Operation 'Deleted' -FilePath $Event.SourceEventArgs.FullPath
-    }
-    $onRenamed = Register-ObjectEvent $watcher "Renamed" -Action {
-        Send-FileOperationEvent -Operation 'Renamed' -FilePath $Event.SourceEventArgs.FullPath -OldFilePath $Event.SourceEventArgs.OldFullPath
-    }
-    
+
+    $onChanged = Register-ObjectEvent -InputObject $watcher -EventName "Created" -SourceIdentifier ("{0}-{1}-created" -f $eventPrefix, $watchIndex)
+    $onDeleted = Register-ObjectEvent -InputObject $watcher -EventName "Deleted" -SourceIdentifier ("{0}-{1}-deleted" -f $eventPrefix, $watchIndex)
+    $onRenamed = Register-ObjectEvent -InputObject $watcher -EventName "Renamed" -SourceIdentifier ("{0}-{1}-renamed" -f $eventPrefix, $watchIndex)
+
     $watchers += $watcher
     $subscriptions += @($onChanged, $onDeleted, $onRenamed)
+    $watchIndex++
 }
 
 Write-FileCollectorLog "Collector started. Waiting for events..."
@@ -352,6 +430,20 @@ try {
     $lastHealth = [datetime]::UtcNow
     $backoffSeconds = 1
     while ($true) {
+        $eventRecord = Wait-Event -Timeout $PollSeconds -ErrorAction SilentlyContinue
+        if ($eventRecord) {
+            if ([string]$eventRecord.SourceIdentifier -like "$eventPrefix-*") {
+                Handle-FileWatcherEvent -EventRecord $eventRecord
+            }
+            else {
+                Remove-Event -EventIdentifier $eventRecord.EventIdentifier -ErrorAction SilentlyContinue
+            }
+
+            foreach ($pendingEvent in @(Get-Event | Where-Object { [string]$_.SourceIdentifier -like "$eventPrefix-*" })) {
+                Handle-FileWatcherEvent -EventRecord $pendingEvent
+            }
+        }
+
         try {
             Flush-TransportQueue -MaxItems 100
             $backoffSeconds = 1
@@ -373,16 +465,20 @@ try {
             }
             $lastHealth = [datetime]::UtcNow
         }
-
-        if ($backoffSeconds -gt $PollSeconds) {
+        elseif ($backoffSeconds -gt $PollSeconds) {
             Start-Sleep -Seconds $backoffSeconds
-            continue
         }
-        Start-Sleep -Seconds $PollSeconds
     }
 }
 finally {
     Write-FileCollectorLog "Stopping collector..."
+    foreach ($pendingEvent in @(Get-Event | Where-Object { [string]$_.SourceIdentifier -like "$eventPrefix-*" })) {
+        try {
+            Remove-Event -EventIdentifier $pendingEvent.EventIdentifier -ErrorAction SilentlyContinue
+        }
+        catch {
+        }
+    }
     foreach ($sub in @($subscriptions)) {
         try {
             if ($sub -and $sub.Id) {

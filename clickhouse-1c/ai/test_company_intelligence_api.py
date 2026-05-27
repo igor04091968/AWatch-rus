@@ -56,6 +56,19 @@ import company_intelligence_api as api
 
 
 class CompanyIntelligenceApiTests(unittest.TestCase):
+    def test_root_redirects_to_manager_brief(self) -> None:
+        response = api.root()
+        self.assertEqual(response.kwargs.get("status_code"), 307)
+        self.assertEqual(response.kwargs.get("headers", {}).get("Location"), "/manager/brief")
+
+    def test_api_health_alias_delegates_to_health(self) -> None:
+        original = api.health
+        try:
+            api.health = lambda: {"status": "ok", "source": "health"}
+            self.assertEqual(api.api_health(), {"status": "ok", "source": "health"})
+        finally:
+            api.health = original
+
     def test_render_manager_brief_includes_executive_regulation(self) -> None:
         payload = {
             "generated_at": "2026-05-22T12:00:00+00:00",
@@ -63,6 +76,22 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
             "brief": {
                 "headline": "Портфель 1С под давлением.",
                 "summary": ["Кейсы растут.", "Нужен triage.", "Manual-match требует осторожности."],
+                "manager_questions": [
+                    {
+                        "question": "Что происходит сейчас?",
+                        "answer": "Портфель под операционным давлением.",
+                        "recommended_action": "Взять 5 компаний первой очереди.",
+                    }
+                ],
+                "management_plan": [
+                    {
+                        "horizon": "today",
+                        "focus": "Остановить прирост проблем.",
+                        "action": "Разобрать компании первой очереди.",
+                        "expected_effect": "Остановить рост хвоста кейсов.",
+                        "metric": "open_cases_total к вечеру.",
+                    }
+                ],
                 "top_risks": [],
                 "top_forecasts": [],
                 "actions": ["Разобрать 5 компаний первой очереди."],
@@ -89,6 +118,10 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         self.assertIn("Регламент руководителя: утро", html_page)
         self.assertIn("Регламент руководителя: вечер", html_page)
         self.assertIn("Жёсткие правила управления", html_page)
+        self.assertIn("Простые ответы для руководителя", html_page)
+        self.assertIn("План действий руководителя", html_page)
+        self.assertIn("Что происходит сейчас?", html_page)
+        self.assertIn("Остановить прирост проблем.", html_page)
 
     def test_build_company_priority_context(self) -> None:
         latest_payload = {
@@ -183,6 +216,62 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         self.assertIn("Проблемные компании за 7 дней", html_page)
         self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
         self.assertIn("/manager/company/", html_page)
+
+    def test_render_management_actions_html(self) -> None:
+        html_page = api.render_management_actions_html(
+            [
+                {
+                    "company_entity_key": "baseid:test",
+                    "counterparty": "ФЕЛИЦТ ГРУПП 2026",
+                    "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                    "owner_name": "Иванов",
+                    "action_type": "case_triage",
+                    "priority_tier": "critical",
+                    "priority_score": 91,
+                    "deadline_hint": "today",
+                    "recommended_action": "Разобрать открытые кейсы.",
+                    "reason": "Открытых кейсов 6, active detections 9.",
+                    "evidence_summary": "severity=critical, cases=6",
+                }
+            ],
+            [
+                {
+                    "company_entity_key": "baseid:test",
+                    "counterparty": "ФЕЛИЦТ ГРУПП 2026",
+                    "infobase": "ФЕЛИЦТ ГРУПП 2026",
+                    "owner_names": "Иванов",
+                    "priority_tier": "critical",
+                    "actions_total": 1,
+                    "action_types_summary": "case_triage",
+                    "recommended_action_summary": "Разобрать открытые кейсы.",
+                    "reason_summary": "Открытых кейсов 6, active detections 9.",
+                }
+            ],
+            priority_tier="critical",
+        )
+        self.assertIn("Очередь управленческих действий по 1С", html_page)
+        self.assertIn("Что делать по предприятиям", html_page)
+        self.assertIn("JSON по предприятиям", html_page)
+        self.assertIn("Приоритет считается по риску предприятия.", html_page)
+        self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
+        self.assertIn("Разобрать открытые кейсы.", html_page)
+        self.assertIn("priority_tier=critical", html_page)
+
+    def test_manager_company_actions_api_marks_enterprise_priority_model(self) -> None:
+        original = api.management_company_actions
+        try:
+            api.management_company_actions = lambda priority_tier=None, owner=None, limit=100: [
+                {"counterparty": "ФЕЛИЦТ ГРУПП 2026", "priority_tier": "critical"}
+            ]
+            payload = api.manager_company_actions_api(priority_tier="critical", owner="Иванов", limit=10)
+        finally:
+            api.management_company_actions = original
+        self.assertEqual(payload["scope"], "companies")
+        self.assertEqual(payload["priority_model"], "enterprise_risk")
+        self.assertEqual(payload["owner_mode"], "secondary_operational_metadata")
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["priority_tier"], "critical")
+        self.assertEqual(payload["owner"], "Иванов")
 
     def test_load_brief_history_records_and_detail(self) -> None:
         payload = {
@@ -464,6 +553,14 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
                 "forecasts": [],
                 "signals": [],
                 "recent_documents": [],
+                "management_actions": [
+                    {
+                        "priority_tier": "critical",
+                        "recommended_action": "Разобрать открытые кейсы.",
+                        "deadline_hint": "today",
+                        "reason": "Открытых кейсов 6, active detections 9.",
+                    }
+                ],
                 "priority_context": {
                     "current_priority_tier": "critical",
                     "current_priority_score": 190,
@@ -484,6 +581,8 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         )
         self.assertIn("AI-план снятия проблемы", company_html)
         self.assertIn("Закрыть минимум 3 кейса.", company_html)
+        self.assertIn("Текущие управленческие действия по компании", company_html)
+        self.assertIn("Разобрать открытые кейсы.", company_html)
 
 
 if __name__ == "__main__":

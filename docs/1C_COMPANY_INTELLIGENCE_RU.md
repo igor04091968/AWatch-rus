@@ -87,10 +87,14 @@ Endpoints:
 - `GET /api/1/analytics-1c/companies/{counterparty}/summary`
 - `GET /api/1/analytics-1c/companies/{counterparty}/forecast`
 - `GET /api/1/analytics-1c/companies/{counterparty}/timeline`
+- `GET /api/1/analytics-1c/companies/{counterparty}/actions`
+- `GET /api/1/analytics-1c/manager/actions`
+- `GET /api/1/analytics-1c/manager/actions/companies`
 - `GET /api/1/analytics-1c/manager/brief/latest`
 - `GET /api/1/analytics-1c/manager/brief/latest.md`
 - `GET /api/1/analytics-1c/manager/brief/history`
 - `GET /manager/brief`
+- `GET /manager/actions`
 
 `/manager/brief` — это human-facing browser page для руководителя:
 
@@ -100,6 +104,21 @@ Endpoints:
 - показывает headline, человеческие комментарии, top risks, top forecasts,
   действия и свежесть источников;
 - даёт быстрые ссылки на raw JSON/Markdown и в Grafana.
+
+Отдельно появился deterministic слой `manager/actions`:
+
+- не зависит от LLM;
+- строится из `v_company_portfolio_overview`, `business_events`,
+  `document_change_events`, `cases`, `detections`;
+- показывает очередь действий вида `компания -> почему -> что делать -> кто
+  отвечает -> насколько срочно`.
+- верхний management-срез теперь enterprise-first:
+  сначала агрегирует необходимые действия по предприятиям, а текущий
+  `owner_name` оставляет вторичным operational metadata.
+- `GET /api/1/analytics-1c/manager/actions` и
+  `GET /api/1/analytics-1c/manager/actions/companies` теперь явно отдают
+  `priority_model=enterprise_risk` и
+  `owner_mode=secondary_operational_metadata`.
 
 ### Executive brief для руководителя
 

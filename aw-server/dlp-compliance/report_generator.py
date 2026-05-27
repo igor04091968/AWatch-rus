@@ -16,7 +16,14 @@ def _env(name: str, default: str) -> str:
     return value if value not in (None, "") else default
 
 
-AW_API_BASE = _env("AW_SERVER_URL", "http://127.0.0.1:5600/api/0").rstrip("/")
+def build_aw_api_base(raw_url: str | None) -> str:
+    url = (raw_url or "http://127.0.0.1:5600").strip().rstrip("/")
+    if url.endswith("/api/0"):
+        return url
+    return url + "/api/0"
+
+
+AW_API_BASE = build_aw_api_base(_env("AW_DLP_AW_API_BASE", _env("AW_SERVER_URL", "http://127.0.0.1:5600")))
 OUTPUT_DIR = Path(_env("AW_DLP_COMPLIANCE_REPORT_DIR", "/opt/activitywatch/dlp-compliance/reports"))
 BASE_DIR = Path(__file__).resolve().parent
 PROFILE_TEMPLATE_MAP = {

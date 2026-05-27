@@ -22,5 +22,23 @@
       "role": "Системный администратор",
       "exclude": false
     }
+  },
+  "owners": {
+    "Руководитель смены": {
+      "display_name": "Сменный руководитель",
+      "title": "Руководитель смены 1С",
+      "department": "Операторы 1С",
+      "contact": "@shift-lead",
+      "escalation_to": "Финансовый директор",
+      "notes": "Первый управленческий контур по очереди действий операторов 1С."
+    },
+    "Ops": {
+      "display_name": "Ops",
+      "title": "Инфраструктурный владелец",
+      "department": "Инфраструктура",
+      "contact": "@ops",
+      "escalation_to": "ИТ-руководитель",
+      "notes": "Отвечает за collectors, RDP bridge и server-side freshness."
+    }
   }
 }

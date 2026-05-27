@@ -13,6 +13,10 @@ if [[ -f /etc/activitywatch/aw-server.env ]]; then
     source /etc/activitywatch/aw-server.env
 fi
 
+WORKTIME_HEALTH_BASE="${AW_RUS_HEALTH_WORKTIME_API:-${AW_WORKTIME_REPORT_BASE:-http://127.0.0.1:5610}}"
+WORKTIME_HEALTH_URL="${WORKTIME_HEALTH_BASE%/}/health"
+WORKTIME_HEALTH_TIMEOUT_SECONDS="${AW_RUS_HEALTH_WORKTIME_TIMEOUT_SECONDS:-15}"
+
 check_service() {
     local service=$1
     if [[ "$service" == "aw-worktime-ui-bridge" ]]; then
@@ -35,13 +39,22 @@ check_service() {
 check_api_endpoint() {
     local url=$1
     local service_name=$2
-    
-    if curl -s --max-time 5 "$url" >/dev/null 2>&1; then
-        echo "✓ $service_name API endpoint is responding"
-    else
-        echo "✗ $service_name API endpoint is not responding"
-        UNHEALTHY_SERVICES+=("$service_name-api")
-    fi
+    local timeout_seconds=${3:-5}
+    local attempts=${4:-1}
+    local attempt
+
+    for ((attempt=1; attempt<=attempts; attempt++)); do
+        if curl -fsS --connect-timeout 3 --max-time "$timeout_seconds" "$url" >/dev/null 2>&1; then
+            echo "✓ $service_name API endpoint is responding"
+            return
+        fi
+        if (( attempt < attempts )); then
+            sleep 1
+        fi
+    done
+
+    echo "✗ $service_name API endpoint is not responding"
+    UNHEALTHY_SERVICES+=("$service_name-api")
 }
 
 read_setting_value() {
@@ -127,7 +140,7 @@ echo
 
 # Check API endpoints
 check_api_endpoint "http://127.0.0.1:5600/api/0/info" "activitywatch-server"
-check_api_endpoint "http://127.0.0.1:5610/reports/worktime/today" "aw-worktime-api"
+check_api_endpoint "$WORKTIME_HEALTH_URL" "aw-worktime-api" "$WORKTIME_HEALTH_TIMEOUT_SECONDS" 2
 check_dlp_transport_freshness "http://127.0.0.1:5600/api/0" "900" "${AW_HEALTH_STRICT_FILEOPS:-0}"
 check_expected_setting "startOfDay" "${AW_EXPECT_START_OF_DAY:-}" "startOfDay"
 check_expected_setting "always_active_pattern" "${AW_EXPECT_ALWAYS_ACTIVE_PATTERN:-}" "always_active_pattern"

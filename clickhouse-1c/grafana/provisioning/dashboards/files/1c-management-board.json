@@ -1,0 +1,898 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Manager Brief",
+      "url": "http://10.10.10.2:8710/manager/brief"
+    },
+    {
+      "title": "Manager Actions",
+      "url": "http://10.10.10.2:8710/manager/actions"
+    },
+    {
+      "title": "Weekly Digest",
+      "url": "http://10.10.10.2:8710/manager/digest/weekly"
+    },
+    {
+      "title": "Recovery",
+      "url": "http://10.10.10.2:8710/manager/recovery"
+    },
+    {
+      "title": "Company Intelligence",
+      "url": "/d/1c-file-companies/1c-file-company-intelligence"
+    },
+    {
+      "title": "Financial Reporting",
+      "url": "/d/1c-file-finance/1c-file-financial-reporting"
+    },
+    {
+      "title": "Telemetry Board",
+      "url": "/d/1c-file-telemetry/1c-file-telemetry-board"
+    },
+    {
+      "title": "Operations Health",
+      "url": "/d/1c-file-ops/1c-file-operations-health"
+    }
+  ],
+  "panels": [
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "### Управленческий экран по файловой 1С\n- Верхний ряд показывает масштаб портфеля и объём компаний, где нужен управленческий разбор.\n- Средний ряд отвечает на вопрос, где контур деградирует: stale-активность, lock/busy и пропущенный scheduler touch.\n- Нижний блок даёт короткую очередь действий: портфель приоритетов, последние AI-сигналы и переходы в brief/actions/digest.\n- `amount` в этом контуре — это activity score, а не деньги. Экран предназначен для management/risk oversight, а не для финансовой отчётности.",
+        "mode": "markdown"
+      },
+      "title": "Как читать экран",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT count() AS value FROM analytics_1c.v_companies_current",
+          "refId": "A"
+        }
+      ],
+      "title": "Компаний в контуре",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT round(sum(predicted_total), 2) AS value FROM analytics_1c.v_company_forecasts_current WHERE metric = 'amount_total' AND horizon_days = 30",
+          "refId": "A"
+        }
+      ],
+      "title": "Прогноз активности 30д",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countDistinct(counterparty) AS value FROM analytics_1c.v_company_health_current WHERE severity IN ('high', 'critical')",
+          "refId": "A"
+        }
+      ],
+      "title": "Компании с high/critical сигналами",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT count() AS value FROM analytics_1c.cases WHERE entity_type = 'counterparty' AND status != 'closed'",
+          "refId": "A"
+        }
+      ],
+      "title": "Открытые кейсы",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 9
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countIf(active_locks > 0) AS value FROM analytics_1c.v_company_portfolio_overview",
+          "refId": "A"
+        }
+      ],
+      "title": "Компании с lock/busy",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 9
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countIf(days_since_last_activity > 7) AS value FROM analytics_1c.v_company_portfolio_overview",
+          "refId": "A"
+        }
+      ],
+      "title": "Stale > 7 дней",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 9
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countIf(scheduler_touched = 0) AS value FROM analytics_1c.v_company_portfolio_overview",
+          "refId": "A"
+        }
+      ],
+      "title": "Без scheduler touch",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 9
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countIf(registry_match_mode = 'manual') AS value FROM analytics_1c.v_company_portfolio_overview",
+          "refId": "A"
+        }
+      ],
+      "title": "Manual matching",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT toDateTime(d) AS time, sum(amount_total) AS value FROM analytics_1c.v_counterparty_daily WHERE d >= today() - 30 GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Активность по компаниям",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT toDateTime(d) AS time, sum(docs_total) AS value FROM analytics_1c.v_counterparty_daily WHERE d >= today() - 30 GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Количество событий по компаниям",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 22
+      },
+      "id": 12,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "companies",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT signal_severity, count() AS companies FROM analytics_1c.v_company_portfolio_overview GROUP BY signal_severity ORDER BY companies DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Распределение по severity",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 22
+      },
+      "id": 13,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "score",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT generated_at, infobase, counterparty, severity, score, signal_type, summary FROM analytics_1c.v_company_health_current ORDER BY score DESC, generated_at DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Последние AI-сигналы",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 30
+      },
+      "id": 14,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "signal_score",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT infobase, company_name, owner_user, current_status, active_locks, days_since_last_activity, open_cases_total, detections_total, amount_30d, signal_severity, signal_score, top_signal, last_seen_at FROM analytics_1c.v_company_portfolio_overview ORDER BY signal_score DESC, open_cases_total DESC, active_locks DESC, amount_30d DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Портфель приоритетов",
+      "type": "table"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "1c",
+    "management",
+    "executive",
+    "clickhouse"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "1C File - Management Board",
+  "uid": "1c-file-mgmt",
+  "version": 1,
+  "weekStart": ""
+}

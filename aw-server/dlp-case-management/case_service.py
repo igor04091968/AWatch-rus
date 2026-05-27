@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from case_rules import is_self_test_case
 from case_schema import CaseCommentCreate, CaseCreate, CaseHayabusaLink, CaseUpdate
-from case_storage import CaseStorage
+from case_storage import CaseStorage, ForensicsHostMismatchError
 
 DB = Path(os.environ.get("AW_DLP_CASE_DB_PATH", "/opt/activitywatch/dlp-case-management/cases.db"))
 APP = FastAPI(title="AWatch DLP Case Management")
@@ -85,5 +85,7 @@ def list_comments(case_id: int, limit: int = Query(default=200, ge=1, le=2000)) 
 def link_hayabusa(case_id: int, payload: CaseHayabusaLink) -> dict[str, Any]:
     try:
         return STORE.link_hayabusa(case_id=case_id, payload=payload.model_dump(exclude_none=True), actor="api")
+    except ForensicsHostMismatchError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except KeyError:
         raise HTTPException(status_code=404, detail="case not found")

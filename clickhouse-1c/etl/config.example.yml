@@ -28,3 +28,91 @@ formats:
 
 archive_dir: ./archive
 delete_after_load: false
+mcp_toolkit:
+  base_url: http://127.0.0.1:6003
+  channel: prod-file-1c
+  timeout_seconds: 120
+  verify_tls: true
+  state_dir: ./state/1c-mcp-toolkit
+  datasets:
+    companies:
+      enabled: false
+      # Placeholder query: replace metadata objects/fields with the real
+      # registry or report available in the target 1C configuration.
+      query: |
+        ВЫБРАТЬ
+          Базы.Имя КАК infobase,
+          Базы.Организация КАК organization,
+          Базы.Владелец КАК owner_user,
+          Базы.BaseID КАК base_id,
+          Базы.Путь КАК base_path,
+          Базы.АктивныеБлокировки КАК active_locks,
+          Базы.БаллАктивности КАК activity_score
+        ИЗ РегистрСведений.ВАШ_РЕЕСТР_БАЗ КАК Базы
+      limit: 1000
+      static_fields:
+        status: live
+        scheduler_touched: 1
+    documents:
+      enabled: false
+      # Placeholder query: alias output columns to landing-schema field names.
+      query: |
+        ВЫБРАТЬ
+          Док.Дата КАК ts,
+          Док.База КАК infobase,
+          Док.Организация КАК organization,
+          Док.Подразделение КАК department,
+          Док.Ссылка КАК doc_id,
+          Док.Номер КАК doc_number,
+          Док.ВидДокумента КАК doc_type,
+          Док.Ответственный КАК author,
+          Док.Контрагент КАК counterparty,
+          Док.Операция КАК operation_type,
+          Док.СуммаДокумента КАК amount
+        ИЗ Документ.ВАШ_ЭКСПОРТ_ДОКУМЕНТОВ КАК Док
+        ГДЕ Док.Дата >= &since_ts И Док.Дата < &until_ts
+      limit: 1000
+      incremental:
+        since_param: since_ts
+        until_param: until_ts
+        initial_since: 2026-01-01T00:00:00Z
+        lookback_seconds: 120
+    postings:
+      enabled: false
+      # Placeholder query: replace with the real accounting register export.
+      query: |
+        ВЫБРАТЬ
+          Движ.Дата КАК ts,
+          Движ.База КАК infobase,
+          Движ.Регистратор КАК registrar,
+          Движ.Операция КАК operation_type,
+          Движ.СчетДт КАК account_dt,
+          Движ.СчетКт КАК account_ct,
+          Движ.Сумма КАК amount,
+          Движ.BaseID КАК base_id
+        ИЗ РегистрБухгалтерии.ВАШ_ЭКСПОРТ_ПРОВОДОК КАК Движ
+        ГДЕ Движ.Дата >= &since_ts И Движ.Дата < &until_ts
+      limit: 5000
+      incremental:
+        since_param: since_ts
+        until_param: until_ts
+        initial_since: 2026-01-01T00:00:00Z
+        lookback_seconds: 120
+    business_events:
+      enabled: false
+      query: ""
+      limit: 5000
+    document_changes:
+      enabled: false
+      query: ""
+      limit: 5000
+  event_log:
+    enabled: false
+    initial_start_date: 2026-01-01T00:00:00Z
+    lookback_seconds: 120
+    limit: 500
+    levels:
+      - Error
+      - Warning
+    static_fields:
+      infobase: FILE-1C

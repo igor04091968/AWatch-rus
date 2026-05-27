@@ -7,6 +7,10 @@ import urllib.error
 import urllib.request
 
 
+def normalize_host(value):
+    return str(value or '').strip().lower()
+
+
 def build_payload(intake, mode, link_source):
     report_dir = pathlib.Path(intake['report_dir'])
     return {
@@ -50,6 +54,13 @@ def main():
     if not intake_path.is_file():
         raise SystemExit(f'intake json not found: {intake_path}')
     intake = json.loads(intake_path.read_text(encoding='utf-8'))
+    case = get_json(f"{args.case_api_base.rstrip('/')}/api/0/dlp/cases/{args.case_id}")
+    case_host = normalize_host(case.get('host'))
+    intake_host = normalize_host(intake.get('host'))
+    if case_host and intake_host and case_host != intake_host:
+        raise SystemExit(
+            f"hayabusa host mismatch: case host={case.get('host')} intake host={intake.get('host')}"
+        )
     payload = build_payload(intake, args.mode, args.link_source)
     case_url = f"{args.case_api_base.rstrip('/')}/api/0/dlp/cases/{args.case_id}/forensics/hayabusa"
     try:

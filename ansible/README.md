@@ -89,6 +89,12 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 
 ## Windows/RDP rollout (WinRM)
 
+Важно:
+
+- `WinRM` здесь остаётся транспортом для `Ansible deploy` и `validation`;
+- для интерактивной PowerShell-работы из Linux/Codex по DetMir используйте project MCP-over-SSH путь, а не `WSMan`;
+- каноника лежит в `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md` и `scripts/install_detmir_powershell_mcp.sh`.
+
 1. Подготовьте inventory и vars:
    - `cp ansible/inventory.example.ini ansible/inventory.ini`
    - `cp ansible/group_vars/windows.example.yml ansible/group_vars/windows.yml`

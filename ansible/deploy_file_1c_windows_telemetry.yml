@@ -11,6 +11,7 @@
     aw_windows_file_1c_auto_upload_interval_hours: 6
     aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
     aw_windows_file_1c_remote_root: "/opt/activitywatch/clickhouse-1c/landing"
+    aw_windows_file_1c_remote_key_path: ""
     aw_windows_file_1c_registry_workbook_path: "E:\\USER1\\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx"
     aw_windows_upload_key_private_path: /tmp/awops_ed25519
     aw_windows_upload_key_public_path: /tmp/awops_ed25519.pub
@@ -51,6 +52,16 @@
         - "{{ aw_windows_deploy_root }}\\windows"
         - "{{ aw_windows_state_root }}\\ssh"
 
+    - name: Установить private key для Windows file-1C uploader
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_upload_key_private_path }}"
+        dest: "{{ aw_windows_state_root }}\\ssh\\awops_ed25519"
+
+    - name: Установить public key для Windows file-1C uploader
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_upload_key_public_path }}"
+        dest: "{{ aw_windows_state_root }}\\ssh\\awops_ed25519.pub"
+
     - name: Загрузить file-1C telemetry script в toolkit
       ansible.windows.win_copy:
         src: "{{ aw_windows_repo_root }}/windows/export-upload-file-1c-telemetry.ps1"
@@ -89,6 +100,7 @@
             targetUser = "{{ aw_windows_file_1c_target_user }}"
             remoteRoot = "{{ aw_windows_file_1c_remote_root }}"
             registryWorkbookPath = "{{ aw_windows_file_1c_registry_workbook_path }}"
+            remoteKeyPath = "{{ aw_windows_file_1c_remote_key_path }}"
           }
 
           if ($config.analytics.PSObject.Properties.Name -contains 'file1cAutomation') {
@@ -99,6 +111,43 @@
 
           $json = $config | ConvertTo-Json -Depth 12
           Set-Content -LiteralPath $configPath -Value $json -Encoding UTF8
+
+    - name: Разложить file-1C upload key по локальным пользовательским профилям
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $src = "{{ aw_windows_state_root }}\ssh\awops_ed25519"
+          if (-not (Test-Path -LiteralPath $src)) {
+            throw "Не найден private key uploader: $src"
+          }
+
+          $statePath = "{{ aw_windows_state_root }}\file1c-telemetry-state.json"
+          if (-not (Test-Path -LiteralPath $statePath)) {
+            '{}' | Set-Content -LiteralPath $statePath -Encoding UTF8
+          }
+
+          $profiles = Get-CimInstance Win32_UserProfile |
+            Where-Object { -not $_.Special -and $_.LocalPath -like 'C:\Users\*' } |
+            Sort-Object LocalPath
+
+          foreach ($profile in $profiles) {
+            $user = Split-Path $profile.LocalPath -Leaf
+            $sshDir = Join-Path $profile.LocalPath '.ssh'
+            $dst = Join-Path $sshDir 'awops_ed25519'
+            $grantDir = 'SHARKON2025\' + $user + ':(OI)(CI)(F)'
+            $grantRead = 'SHARKON2025\' + $user + ':(R)'
+            $grantModify = 'SHARKON2025\' + $user + ':(M)'
+
+            New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
+            & icacls.exe $sshDir /grant $grantDir | Out-Null
+            & icacls.exe $statePath /grant $grantModify | Out-Null
+
+            if (-not (Test-Path -LiteralPath $dst)) {
+              Copy-Item -LiteralPath $src -Destination $dst -Force
+            }
+
+            & icacls.exe $dst /inheritance:r /grant:r $grantRead '*S-1-5-18:(R)' '*S-1-5-32-544:(R)' | Out-Null
+          }
 
     - name: Создать scheduled task file-1C upload
       ansible.windows.win_powershell:

@@ -1,5 +1,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$script:ActivityWatchBuiltInAdministratorName = $null
 
 function Assert-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -265,6 +266,85 @@ function Get-ActivityWatchExecutableMap {
     return [pscustomobject]$map
 }
 
+function Repair-ActivityWatchPotentialMojibake {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $Value
+    }
+
+    if ($Value -notmatch '[\u0400-\u04FF]') {
+        return $Value
+    }
+
+    try {
+        $bytes = [Text.Encoding]::GetEncoding(1251).GetBytes($Value)
+        $repaired = [Text.Encoding]::UTF8.GetString($bytes)
+        if (-not [string]::IsNullOrWhiteSpace($repaired) -and $repaired -match '[\u0400-\u04FF]') {
+            return $repaired
+        }
+    }
+    catch {
+    }
+
+    return $Value
+}
+
+function Get-ActivityWatchBuiltInAdministratorName {
+    if ($script:ActivityWatchBuiltInAdministratorName) {
+        return $script:ActivityWatchBuiltInAdministratorName
+    }
+
+    try {
+        $account = Get-CimInstance Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop |
+            Where-Object { [string]$_.SID -match '-500$' } |
+            Select-Object -First 1
+        if ($account -and -not [string]::IsNullOrWhiteSpace([string]$account.Name)) {
+            $script:ActivityWatchBuiltInAdministratorName = [string]$account.Name
+            return $script:ActivityWatchBuiltInAdministratorName
+        }
+    }
+    catch {
+    }
+
+    $script:ActivityWatchBuiltInAdministratorName = 'Administrator'
+    return $script:ActivityWatchBuiltInAdministratorName
+}
+
+function Normalize-ActivityWatchUserId {
+    param(
+        [string]$UserId,
+        [string]$Domain
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserId)) {
+        return $null
+    }
+
+    $normalized = Repair-ActivityWatchPotentialMojibake -Value $UserId.Trim()
+    $resolvedDomain = $null
+    $leafUser = $normalized
+
+    if ($normalized -match '^([^\\]+)\\(.+)$') {
+        $resolvedDomain = Repair-ActivityWatchPotentialMojibake -Value $Matches[1]
+        $leafUser = Repair-ActivityWatchPotentialMojibake -Value $Matches[2]
+    }
+
+    if ($leafUser -match '^(?i:administrator|администратор)$') {
+        $leafUser = Get-ActivityWatchBuiltInAdministratorName
+    }
+
+    if ([string]::IsNullOrWhiteSpace($resolvedDomain) -and -not [string]::IsNullOrWhiteSpace($Domain)) {
+        $resolvedDomain = Repair-ActivityWatchPotentialMojibake -Value $Domain.Trim()
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($resolvedDomain)) {
+        return ('{0}\{1}' -f $resolvedDomain, $leafUser)
+    }
+
+    return $leafUser
+}
+
 function Normalize-ActivityWatchUsers {
     param(
         [string[]]$Users,
@@ -311,14 +391,8 @@ function Normalize-ActivityWatchUsers {
 
     $normalized = $collected |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-        ForEach-Object {
-            if ($Domain -and ($_ -notmatch '[\\@]')) {
-                '{0}\{1}' -f $Domain, $_
-            }
-            else {
-                $_
-            }
-        } |
+        ForEach-Object { Normalize-ActivityWatchUserId -UserId $_ -Domain $Domain } |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         Sort-Object -Unique
 
     if (-not $normalized -or $normalized.Count -eq 0) {
@@ -354,9 +428,10 @@ function New-ActivityWatchUserTaskDefinitions {
     )
 
     $result = foreach ($user in $Users) {
-        $token = Get-ActivityWatchTaskNameToken -UserId $user
+        $normalizedUser = Normalize-ActivityWatchUserId -UserId $user
+        $token = Get-ActivityWatchTaskNameToken -UserId $normalizedUser
         [pscustomobject]@{
-            UserId         = $user
+            UserId         = $normalizedUser
             LaunchTaskName = "ActivityWatch Launch [$token]"
         }
     }
@@ -482,10 +557,11 @@ function Resolve-ActivityWatchUserCandidates {
         [string]$UserId
     )
 
+    $normalizedUserId = Normalize-ActivityWatchUserId -UserId $UserId
     $candidateIds = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    [void]$candidateIds.Add($UserId)
+    [void]$candidateIds.Add($normalizedUserId)
 
-    $leafUser = $UserId
+    $leafUser = $normalizedUserId
     if ($leafUser -match '^[^\\]+\\(.+)$') {
         $leafUser = $Matches[1]
         [void]$candidateIds.Add($leafUser)
@@ -739,6 +815,9 @@ function New-ActivityWatchDeploymentConfig {
     }
     $effectivePolicyEngineHost = if ([string]::IsNullOrWhiteSpace($PolicyEngineHost)) { $ServerHost } else { $PolicyEngineHost }
     $effectivePolicyCachePath = if ([string]::IsNullOrWhiteSpace($PolicyCachePath)) { Join-Path $StateRoot 'dlp-policy-cache.json' } else { $PolicyCachePath }
+    if ($File1CAutoUploadEnabled -and [string]::IsNullOrWhiteSpace($File1CTargetHost)) {
+        throw 'File1CTargetHost is required when File1CAutoUploadEnabled is true.'
+    }
 
     return [pscustomobject]@{
         version  = 1
@@ -1068,11 +1147,11 @@ function Send-LogonMarkerIfNeeded {
 
     `$stateRoot = [string]`$Config.paths.stateRoot
     `$markerRoots = New-Object System.Collections.Generic.List[string]
-    if (-not [string]::IsNullOrWhiteSpace(`$env:LOCALAPPDATA)) {
-        `$markerRoots.Add((Join-Path `$env:LOCALAPPDATA 'AWatch-rus\markers'))
-    }
     if (-not [string]::IsNullOrWhiteSpace(`$stateRoot)) {
         `$markerRoots.Add((Join-Path `$stateRoot 'markers'))
+    }
+    if (-not [string]::IsNullOrWhiteSpace(`$env:LOCALAPPDATA)) {
+        `$markerRoots.Add((Join-Path `$env:LOCALAPPDATA 'AWatch-rus\markers'))
     }
 
     `$markerDir = `$null
@@ -1289,7 +1368,7 @@ function Get-ActivityWatchRecoveryTaskDefinitions {
             $config = Read-ActivityWatchDeploymentConfig -Path $candidatePath
             foreach ($task in @($config.userTasks)) {
                 $taskName = [string]$task.launchTaskName
-                $userId = [string]$task.userId
+                $userId = Normalize-ActivityWatchUserId -UserId ([string]$task.userId)
                 if (-not [string]::IsNullOrWhiteSpace($taskName) -and -not $taskMap.Contains($taskName)) {
                     $taskMap[$taskName] = [pscustomobject]@{
                         taskName = $taskName
@@ -1493,6 +1572,123 @@ function Get-ActivityWatchDisconnectedInteractiveSessions {
     return @($result | Sort-Object SessionId -Unique)
 }
 
+function Get-ActivityWatchMarkerDirectories {
+    param([string]$StateRoot)
+
+    $roots = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    if (-not [string]::IsNullOrWhiteSpace($StateRoot)) {
+        [void]$roots.Add((Join-Path $StateRoot 'markers'))
+    }
+
+    $usersRoot = Join-Path $env:SystemDrive 'Users'
+    if (Test-Path -LiteralPath $usersRoot) {
+        foreach ($dir in @(Get-ChildItem -LiteralPath $usersRoot -Directory -ErrorAction SilentlyContinue)) {
+            [void]$roots.Add((Join-Path $dir.FullName 'AppData\Local\AWatch-rus\markers'))
+        }
+    }
+
+    return @($roots)
+}
+
+function Remove-ActivityWatchLogonMarkersForSession {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$StateRoot,
+        [int]$SessionId,
+        [string]$UserName
+    )
+
+    $userCandidates = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    if (-not [string]::IsNullOrWhiteSpace($UserName)) {
+        [void]$userCandidates.Add($UserName)
+        if ($UserName -match '^[^\\]+\\(.+)$') {
+            [void]$userCandidates.Add($Matches[1])
+        }
+    }
+
+    foreach ($markerDir in @(Get-ActivityWatchMarkerDirectories -StateRoot $StateRoot)) {
+        if (-not (Test-Path -LiteralPath $markerDir)) {
+            continue
+        }
+
+        foreach ($marker in @(Get-ChildItem -LiteralPath $markerDir -Filter '*.marker' -File -ErrorAction SilentlyContinue)) {
+            $name = [string]$marker.BaseName
+            if ($name -notmatch '^logon-(.+)-(\d+)-') {
+                continue
+            }
+
+            $markerUser = [string]$Matches[1]
+            $markerSessionId = [int]$Matches[2]
+            if ($markerSessionId -ne $SessionId) {
+                continue
+            }
+
+            if ($userCandidates.Count -gt 0 -and -not $userCandidates.Contains($markerUser)) {
+                continue
+            }
+
+            Remove-Item -LiteralPath $marker.FullName -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Stop-ActivityWatchProcessesInNonLiveSessions {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$SessionRecords,
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Config
+    )
+
+    $stateRoot = if ($Config.paths.PSObject.Properties.Name -contains 'stateRoot') { [string]$Config.paths.stateRoot } else { Join-Path $env:ProgramData 'AWatch-rus' }
+    $sessionIds = @(
+        $SessionRecords |
+            Where-Object { -not $_.IsLive -and $_.SessionId -gt 0 } |
+            ForEach-Object { [int]$_.SessionId } |
+            Sort-Object -Unique
+    )
+
+    if (-not $sessionIds -or $sessionIds.Count -eq 0) {
+        return
+    }
+
+    $sessionScopedScripts = New-Object System.Collections.Generic.List[string]
+    foreach ($propertyName in @('collectorScript', 'endpointCollectorScript', 'fileCollectorScript', 'emailCollectorScript', 'launchScript')) {
+        if ($Config.paths.PSObject.Properties.Name -contains $propertyName) {
+            $candidatePath = [string]$Config.paths.$propertyName
+            if (-not [string]::IsNullOrWhiteSpace($candidatePath)) {
+                $sessionScopedScripts.Add($candidatePath) | Out-Null
+            }
+        }
+    }
+
+    foreach ($session in @($SessionRecords | Where-Object { -not $_.IsLive -and $_.SessionId -gt 0 })) {
+        Remove-ActivityWatchLogonMarkersForSession -StateRoot $stateRoot -SessionId ([int]$session.SessionId) -UserName ([string]$session.UserName)
+    }
+
+    Get-Process -Name 'aw-watcher-afk','aw-watcher-window' -ErrorAction SilentlyContinue |
+        Where-Object { $sessionIds -contains [int]$_.SessionId } |
+        ForEach-Object {
+            Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue
+        }
+
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and
+            ($sessionIds -contains [int]$_.SessionId)
+        } |
+        ForEach-Object {
+            $commandLine = [string]$_.CommandLine
+            foreach ($scriptPath in $sessionScopedScripts) {
+                if (-not [string]::IsNullOrWhiteSpace($scriptPath) -and $commandLine -match [Regex]::Escape($scriptPath)) {
+                    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+                    break
+                }
+            }
+        }
+}
+
 function Promote-ActivityWatchDisconnectedSessionToConsole {
     param(
         [pscustomobject[]]$TaskDefinitions,
@@ -1648,6 +1844,8 @@ function Invoke-ActivityWatchRecoveryLoop {
                 $config = Read-ActivityWatchDeploymentConfig -Path $ConfigPath
                 $taskDefs = Get-ActivityWatchRecoveryTaskDefinitions -ConfigPaths $configPaths
                 $sessionRecords = Get-ActivityWatchSessionRecords
+                Stop-ActivityWatchProcessesInNonLiveSessions -SessionRecords $sessionRecords -Config $config
+                $sessionRecords = Get-ActivityWatchSessionRecords
                 $stateRoot = [string]$config.paths.stateRoot
                 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
                 Start-ActivityWatchCollectorScriptGlobalIfNeeded -ScriptPath $sessionCollectorScript -ConfigPath $ConfigPath
@@ -1721,11 +1919,58 @@ function Remove-LegacyActivityWatchEntries {
     $legacyTaskNames = @(
         'ActivityWatch Watchers',
         'ActivityWatch Guard',
-        'ActivityWatch Heal'
+        'ActivityWatch Heal',
+        'AWatchRusStandaloneAgent',
+        'AWatch Worktime Collector',
+        'AW DLP Endpoint ADMIN',
+        'AW DLP Endpoint USER1'
     )
 
     foreach ($taskName in $legacyTaskNames) {
         Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+
+    $legacyTaskPatterns = @(
+        'browser-domains-native-collector.ps1',
+        'file-operations-collector.ps1',
+        'dlp-endpoint-signals-collector.ps1',
+        'worktime-session-collector.ps1',
+        'aw-standalone-service.ps1'
+    )
+    $managedTaskNames = @(
+        'ActivityWatch Recovery',
+        'ActivityWatch Hayabusa Upload',
+        'ActivityWatch File1C Upload'
+    )
+
+    foreach ($task in @(Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+        $taskName = [string]$task.TaskName
+        if ([string]::IsNullOrWhiteSpace($taskName) -or $managedTaskNames -contains $taskName -or $taskName -like 'ActivityWatch Launch *') {
+            continue
+        }
+
+        $isLegacyCollectorTask = $false
+        foreach ($action in @($task.Actions)) {
+            $execute = if ($action.PSObject.Properties.Name -contains 'Execute') { [string]$action.Execute } else { '' }
+            $arguments = if ($action.PSObject.Properties.Name -contains 'Arguments') { [string]$action.Arguments } else { '' }
+            $commandLine = ('{0} {1}' -f $execute, $arguments).Trim()
+            if ([string]::IsNullOrWhiteSpace($commandLine)) {
+                continue
+            }
+            foreach ($pattern in $legacyTaskPatterns) {
+                if ($commandLine -match [Regex]::Escape($pattern)) {
+                    $isLegacyCollectorTask = $true
+                    break
+                }
+            }
+            if ($isLegacyCollectorTask) {
+                break
+            }
+        }
+
+        if ($isLegacyCollectorTask) {
+            Remove-ActivityWatchScheduledTask -TaskName $taskName
+        }
     }
 
     $runKey = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run'
@@ -1778,7 +2023,8 @@ function Set-ActivityWatchScheduledTaskAction {
         $taskCommand = ('"{0}" {1}' -f $Execute, $Arguments)
         & schtasks.exe /Change /TN $TaskName /TR $taskCommand | Out-Null
         if ($LASTEXITCODE -ne 0) {
-            throw "Не удалось обновить action задачи ${TaskName}: $($_.Exception.Message)"
+            Write-Host "skip task action update for $TaskName because the existing principal/action cannot be updated non-interactively: $($_.Exception.Message)"
+            return $false
         }
         return $true
     }
@@ -1973,13 +2219,28 @@ function Register-ActivityWatchFile1CAutoUploadTask {
     $intervalHours = [Math]::Max(1, [int]$automation.intervalHours)
     $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`""
-
-    if (Set-ActivityWatchScheduledTaskAction -TaskName $taskName -Execute $powerShellExe -Arguments "-NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`"") {
-        return
+    $runnerUserId = $null
+    if ($automation.PSObject.Properties.Name -contains 'runAsUser' -and -not [string]::IsNullOrWhiteSpace([string]$automation.runAsUser)) {
+        $runnerUserId = [string]$automation.runAsUser
+    }
+    if ([string]::IsNullOrWhiteSpace($runnerUserId) -and $config.PSObject.Properties.Name -contains 'userTasks') {
+        $runnerUserId = @(
+            @($config.userTasks | ForEach-Object { [string]$_.userId }) |
+                Where-Object { $_ -match '(^|\\)(Администратор|Administrator)$' } |
+                Select-Object -First 1
+        ) | Select-Object -First 1
+    }
+    if ([string]::IsNullOrWhiteSpace($runnerUserId) -and $config.PSObject.Properties.Name -contains 'userTasks') {
+        $runnerUserId = @($config.userTasks | ForEach-Object { [string]$_.userId } | Select-Object -First 1) | Select-Object -First 1
     }
 
     Remove-ActivityWatchScheduledTask -TaskName $taskName
-    & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($runnerUserId)) {
+        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU $runnerUserId /RL HIGHEST /F | Out-Null
+    }
+    else {
+        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Не удалось создать scheduled task $taskName через schtasks.exe"
     }
@@ -2004,7 +2265,7 @@ function Set-ActivityWatchAcl {
         throw "icacls завершился с ошибкой для $InstallRoot"
     }
 
-    & icacls $StateRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(RX)' | Out-Null
+    & icacls $StateRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)(F)' '*S-1-5-32-544:(OI)(CI)(F)' '*S-1-5-32-545:(OI)(CI)(M)' | Out-Null
     if ($LASTEXITCODE -ne 0) {
         throw "icacls завершился с ошибкой для $StateRoot"
     }

@@ -340,8 +340,10 @@
               AW_HEALTH_STRICT_FILEOPS={{ aw_health_strict_fileops | default(0) }}
               AW_MONITORED_WINDOWS_HOST={{ aw_monitored_windows_host }}
               AW_MONITORED_WINDOWS_HOSTNAME={{ aw_monitored_windows_hostname }}
+              AW_RUS_HEALTH_WORKTIME_API={{ aw_rus_health_worktime_api_base | default('http://127.0.0.1:5610') }}
               AW_RUS_HEALTH_STATE_DIR={{ aw_rus_health_state_dir }}
               AW_RUS_HEALTH_VALIDATION_DIR={{ aw_rus_health_validation_dir }}
+              AW_RUS_HEALTH_SESSION_EVENTS_MAX_AGE_SECONDS={{ aw_rus_health_session_events_max_age_seconds | default(86400) }}
               AW_HAYABUSA_AUTO_CASE_ENABLED={{ 'true' if (aw_hayabusa_auto_case_enabled | default(true) | bool) else 'false' }}
               AW_HAYABUSA_AUTO_CASE_MIN_SEVERITY={{ aw_hayabusa_auto_case_min_severity | default('medium') }}
               AW_HAYABUSA_TELEGRAM_ENABLED={{ 'true' if (aw_hayabusa_telegram_enabled | default(false) | bool) else 'false' }}

@@ -42,17 +42,21 @@ def http_json(url, method="GET", headers=None, body=None, timeout=15, ssl_contex
 
 
 def ensure_bucket(aw_base_url, bucket_id, client_name, bucket_type, hostname, timeout, ssl_context):
-    http_json(
-        f"{aw_base_url}/buckets/{urllib.parse.quote(bucket_id, safe='')}",
-        method="POST",
-        body={
-            "client": client_name,
-            "type": bucket_type,
-            "hostname": hostname,
-        },
-        timeout=timeout,
-        ssl_context=ssl_context,
-    )
+    try:
+        http_json(
+            f"{aw_base_url}/buckets/{urllib.parse.quote(bucket_id, safe='')}",
+            method="POST",
+            body={
+                "client": client_name,
+                "type": bucket_type,
+                "hostname": hostname,
+            },
+            timeout=timeout,
+            ssl_context=ssl_context,
+        )
+    except urllib.error.HTTPError as error:
+        if error.code not in (304, 409):
+            raise
 
 
 def send_heartbeat(aw_base_url, bucket_id, event, pulse_time, timeout, ssl_context):
@@ -70,8 +74,14 @@ def normalize_headers(config):
     auth = config.get("auth") or {}
     bearer_token = auth.get("bearer_token")
     basic = auth.get("basic")
+    api_key = auth.get("api_key")
+    api_secret = auth.get("api_secret")
     if bearer_token:
         headers["Authorization"] = f"Bearer {bearer_token}"
+    elif api_key:
+        headers["X-API-Key"] = api_key
+        if api_secret:
+            headers["X-API-Secret"] = api_secret
     elif basic and basic.get("username") and basic.get("password"):
         import base64
         token = base64.b64encode(f"{basic['username']}:{basic['password']}".encode("utf-8")).decode("ascii")

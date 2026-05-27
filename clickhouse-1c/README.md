@@ -48,6 +48,8 @@ File 1C + reglog + host telemetry
 - `etl/load_1c_exports.py` — loader CSV/JSON выгрузок в raw/core таблицы.
 - `etl/build_business_event_exports.py` — read-only normalizer из
   `documents/postings/audit` в canonical `business_events/document_changes`.
+- `etl/extract_1c_mcp_toolkit.py` — read-only extractor из
+  `1c-mcp-toolkit` REST API в `landing/*`.
 - `etl/config.example.yml` — пример ETL-конфига.
 - `docs/1C_BUSINESS_EVENT_LAYER_RU.md` — production contract следующего шага:
   canonical business-event слой для документов/проводок/изменений.
@@ -57,6 +59,9 @@ File 1C + reglog + host telemetry
 - `grafana/query-pack.sql` — базовые SQL-запросы для панелей.
 - `grafana/provisioning/datasources/clickhouse.yml` — provisioned datasource для Grafana.
 - `grafana/provisioning/dashboards/files/1c-company-intelligence.json` — source dashboard для анализа и прогноза по компаниям.
+- `grafana/provisioning/dashboards/files/1c-management-board.json` — management dashboard для руководителя с links на brief/actions/digest/recovery.
+- `grafana/provisioning/dashboards/files/1c-financial-reporting.json` — первый financial board с разделением `ledger` и `proxy`.
+- `grafana/provisioning/dashboards/files/1c-telemetry-board.json` — telemetry dashboard по состоянию файловых баз, reglog growth, busy markers и host load.
 - `detections/build_entity_timeline.sql` — сборка единого timeline слоя.
 - `detections/open_cases_from_detections.sql` — шаблон открытия cases из detections.
 - `ops/etl-cron.example` — пример расписания каждые 6 часов.
@@ -111,6 +116,9 @@ cp etl/config.example.yml etl/config.yml
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r etl/requirements.txt
+python etl/extract_1c_mcp_toolkit.py --config etl/config.yml --validate-config
+python etl/extract_1c_mcp_toolkit.py --config etl/config.yml --dataset documents --dry-run
+python etl/extract_1c_mcp_toolkit.py --config etl/config.yml
 python etl/build_business_event_exports.py --config etl/config.yml
 python etl/load_1c_exports.py --config etl/config.yml
 ```
@@ -169,6 +177,8 @@ Read-only API для руководителя:
 - журнал регистрации 1С;
 - audit/export критичных изменений;
 - host telemetry с Windows/RDP host.
+- `1c-mcp-toolkit` REST API (`execute_query` + `get_event_log`) в
+  строго read-only режиме.
 - для company intelligence в file-based Detmir контуре `counterparty`
   наполняется read-only telemetry слоем как `counterparty = infobase`, а
   `amount` используется как интегральный `activity score`.
@@ -204,5 +214,50 @@ Read-only API для руководителя:
   `landing/document_changes`;
 - built-in normalizer уже умеет собирать этот слой из существующих read-only
   выгрузок `documents/postings/audit`;
+- extractor scaffold уже умеет забирать read-only snapshots/events через
+  `1c-mcp-toolkit` и писать их в те же `landing/*`;
 - дальше нужен только более богатый extractor из 1С или внешних безопасных
   выгрузок, если нужна большая бухгалтерская детализация.
+- в `05_financial_reporting.sql` уже заложены первые financial marts и board,
+  которые честно показывают `proxy_only`, пока настоящие `postings` ещё не
+  поступают в live-ingest.
+
+## `1c-mcp-toolkit` extractor
+
+Этот extractor нужен не вместо ClickHouse ETL, а перед ним:
+
+```text
+1C + 1c-mcp-toolkit REST
+          ↓
+etl/extract_1c_mcp_toolkit.py
+          ↓
+landing/{documents,postings,business_events,document_changes,companies,reglog}
+          ↓
+etl/build_business_event_exports.py
+          ↓
+etl/load_1c_exports.py
+```
+
+Что он умеет:
+
+- читать `execute_query` для `companies`, `documents`, `postings`,
+  `business_events`, `document_changes`;
+- читать `get_event_log` для `reglog`;
+- вести локальный checkpoint в `state/1c-mcp-toolkit/extract_state.json`;
+- поддерживать `channel` isolation;
+- работать только по read-only endpoint'ам без `execute_code`.
+- включаться в общий ingest-cycle через
+  `AW_1C_MCP_TOOLKIT_EXTRACT_BEFORE_INGEST=1`.
+- перед live rollout поддерживает:
+  - `--validate-config`
+  - `--dry-run`
+  - `--dataset <name>`
+
+Минимальный production-контракт:
+
+- в 1С-запросах желательно сразу алиасить колонки под поля landing-схемы;
+- если это неудобно, использовать `field_map` в `mcp_toolkit.datasets.*`;
+- для incremental-query datasets задавать `incremental.since_param` /
+  `incremental.until_param`;
+- для `reglog` задавать `event_log.static_fields.infobase`, потому что
+  `get_event_log` сам по себе не всегда несёт имя базы.

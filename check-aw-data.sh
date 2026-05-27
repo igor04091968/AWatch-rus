@@ -7,6 +7,30 @@ SERVER="http://10.10.10.13:5600"
 HOSTNAME_FILTER="SHARKON2025"
 NOW=$(date -u +%s)
 
+classify_bucket_age() {
+    local bucket="$1"
+    local age_sec="$2"
+
+    case "$bucket" in
+        aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
+            if [ "$age_sec" -lt 86400 ]; then
+                printf '%s' "${GREEN}FRESH${NC}"
+            else
+                printf '%s' "${CYAN}EVENT-DRIVEN${NC}"
+            fi
+            ;;
+        *)
+            if [ "$age_sec" -lt 3600 ]; then
+                printf '%s' "${GREEN}FRESH${NC}"
+            elif [ "$age_sec" -lt 86400 ]; then
+                printf '%s' "${YELLOW}STALE${NC}"
+            else
+                printf '%s' "${RED}DEAD${NC}"
+            fi
+            ;;
+    esac
+}
+
 # Цвета
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -58,14 +82,12 @@ for bucket in "${BUCKETS[@]}"; do
       AGE_SEC=$((NOW - EVENT_EPOCH))
       if [ $AGE_SEC -lt 3600 ]; then
         AGE="$((AGE_SEC / 60))m ago"
-        STATUS="${GREEN}FRESH${NC}"
       elif [ $AGE_SEC -lt 86400 ]; then
         AGE="$((AGE_SEC / 3600))h ago"
-        STATUS="${YELLOW}STALE${NC}"
       else
         AGE="$((AGE_SEC / 86400))d ago"
-        STATUS="${RED}DEAD${NC}"
       fi
+      STATUS="$(classify_bucket_age "$bucket" "$AGE_SEC")"
     else
       AGE="unknown"
       STATUS="${RED}?${NC}"

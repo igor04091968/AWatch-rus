@@ -459,7 +459,7 @@ def build_company_recovery_context(summary_payload: dict[str, Any], infobase: st
 def grafana_company_dashboard_url() -> str:
     return os.getenv(
         "AW_1C_MANAGER_BRIEF_GRAFANA_URL",
-        "http://10.10.10.11:3000/d/1c-file-companies/1c-file-company-intelligence",
+        "http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board",
     )
 
 
@@ -530,6 +530,8 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     context = payload.get("context", {})
     summary = context.get("portfolio_summary", {})
     freshness = context.get("freshness", [])
+    manager_questions = brief.get("manager_questions", [])
+    management_plan = brief.get("management_plan", [])
     top_risks = brief.get("top_risks", [])
     top_forecasts = brief.get("top_forecasts", [])
     actions = brief.get("actions", [])
@@ -542,6 +544,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
     weekly_html_url = "/manager/trends/weekly"
     weekly_digest_url = "/manager/digest/weekly"
     recovery_html_url = "/manager/recovery"
+    actions_html_url = "/manager/actions"
     problematic_1d_url = "/manager/problematic?days=1"
     problematic_7d_url = "/manager/problematic?days=7"
     json_url = "/api/1/analytics-1c/manager/brief/latest"
@@ -580,6 +583,28 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
             f"<p class=\"metric-line\"><strong>Прогноз 30д:</strong> {html.escape(item.get('forecast_30d', '-'))}</p>"
             f"<p class=\"stack-card-body\">{html.escape(item.get('interpretation', '-'))}</p>"
             f"<a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or company), str(item.get('infobase') or '') or None)}\">Карточка компании</a>"
+            "</article>"
+        )
+
+    question_cards = []
+    for item in manager_questions:
+        question_cards.append(
+            "<article class=\"stack-card\">"
+            f"<div class=\"stack-card-head\"><h3>{html.escape(item.get('question', '-'))}</h3></div>"
+            f"<p class=\"stack-card-body\">{html.escape(item.get('answer', '-'))}</p>"
+            f"<p class=\"stack-card-action\"><strong>Рекомендация:</strong> {html.escape(item.get('recommended_action', '-'))}</p>"
+            "</article>"
+        )
+
+    horizon_label = {"today": "Сегодня", "week": "Неделя", "30d": "30 дней"}
+    plan_cards = []
+    for item in management_plan:
+        plan_cards.append(
+            "<article class=\"stack-card\">"
+            f"<div class=\"stack-card-head\"><h3>{html.escape(item.get('focus', '-'))}</h3><span class=\"freshness freshness-fresh\">{html.escape(horizon_label.get(str(item.get('horizon')), str(item.get('horizon', '-'))))}</span></div>"
+            f"<p class=\"stack-card-body\"><strong>Действие:</strong> {html.escape(item.get('action', '-'))}</p>"
+            f"<p class=\"stack-card-action\"><strong>Ожидаемый эффект:</strong> {html.escape(item.get('expected_effect', '-'))}</p>"
+            f"<p class=\"stack-card-action\"><strong>Метрика:</strong> {html.escape(item.get('metric', '-'))}</p>"
             "</article>"
         )
 
@@ -870,6 +895,7 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
           <a href="{html.escape(weekly_html_url)}">Неделя</a>
           <a href="{html.escape(weekly_digest_url)}">Weekly digest</a>
           <a href="{html.escape(recovery_html_url)}">AI recovery</a>
+          <a href="{html.escape(actions_html_url)}">Очередь действий</a>
           <a href="{html.escape(problematic_1d_url)}">Проблемные 1д</a>
           <a href="{html.escape(problematic_7d_url)}">Проблемные 7д</a>
           <a href="{html.escape(history_url)}">History API</a>
@@ -904,6 +930,20 @@ def render_manager_brief_html(payload: dict[str, Any]) -> str:
             <div class="stat-label">Прогноз 30д</div>
             <div class="stat-value">{fmt_number(summary.get("activity_forecast_30d_total"))}</div>
           </div>
+        </div>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Простые ответы для руководителя</h2>
+        <div class="stack">
+          {''.join(question_cards) or '<p>Нет данных.</p>'}
+        </div>
+      </article>
+
+      <article class="panel span-12">
+        <h2>План действий руководителя</h2>
+        <div class="stack">
+          {''.join(plan_cards) or '<p>Нет данных.</p>'}
         </div>
       </article>
 
@@ -1041,6 +1081,148 @@ def problematic_companies(days: int = 7, limit: int = 50) -> list[dict[str, Any]
     return items
 
 
+def management_actions(
+    priority_tier: str | None = None,
+    owner: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = ch_client()
+    where: list[str] = []
+    if priority_tier:
+        where.append(f"priority_tier = {q(priority_tier)}")
+    if owner:
+        where.append(f"owner_name = {q(owner)}")
+    sql = f"""
+    SELECT
+        generated_at,
+        action_id,
+        infobase,
+        company_entity_key,
+        counterparty,
+        company_name,
+        organization,
+        owner_name,
+        action_type,
+        priority_tier,
+        priority_score,
+        priority_rank,
+        deadline_hint,
+        reason,
+        recommended_action,
+        evidence_summary,
+        open_cases_total,
+        detections_total,
+        active_locks,
+        days_since_last_activity,
+        risky_changes_24h,
+        large_adjustments_24h,
+        max_large_adjustment_amount,
+        last_seen_at
+    FROM analytics_1c.v_company_management_actions_current
+    {"WHERE " + " AND ".join(where) if where else ""}
+    ORDER BY priority_rank DESC, priority_score DESC, counterparty, action_type
+    LIMIT {int(limit)}
+    """
+    return rows_to_dict(client.query(sql))
+
+
+def management_company_actions(
+    priority_tier: str | None = None,
+    owner: str | None = None,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    client = ch_client()
+    where: list[str] = []
+    if priority_tier:
+        where.append(f"priority_tier = {q(priority_tier)}")
+    if owner:
+        where.append(f"owner_names ILIKE {q('%' + owner + '%')}")
+    sql = f"""
+    SELECT
+        generated_at,
+        infobase,
+        company_entity_key,
+        counterparty,
+        company_name,
+        organization,
+        owner_names,
+        priority_tier,
+        priority_rank,
+        priority_score,
+        actions_total,
+        critical_actions_total,
+        high_actions_total,
+        medium_actions_total,
+        low_actions_total,
+        action_types_summary,
+        recommended_action_summary,
+        reason_summary,
+        evidence_summary,
+        open_cases_total,
+        detections_total,
+        active_locks,
+        days_since_last_activity,
+        risky_changes_24h,
+        large_adjustments_24h,
+        max_large_adjustment_amount,
+        last_seen_at
+    FROM analytics_1c.v_company_management_companies_current
+    {"WHERE " + " AND ".join(where) if where else ""}
+    ORDER BY priority_rank DESC, priority_score DESC, counterparty
+    LIMIT {int(limit)}
+    """
+    return rows_to_dict(client.query(sql))
+
+
+def company_management_actions(company_ref: str, infobase: str | None = None, limit: int = 20) -> list[dict[str, Any]]:
+    client = ch_client()
+    card = resolve_company_portfolio_card(company_ref, infobase)
+    filters = [f"company_entity_key = {q(str(card.get('company_entity_key') or company_ref))}"]
+    if card.get("infobase") or infobase:
+        filters.append(f"infobase = {q(str(card.get('infobase') or infobase))}")
+    sql = f"""
+    SELECT
+        generated_at,
+        action_id,
+        infobase,
+        company_entity_key,
+        counterparty,
+        company_name,
+        organization,
+        owner_name,
+        action_type,
+        priority_tier,
+        priority_score,
+        priority_rank,
+        deadline_hint,
+        reason,
+        recommended_action,
+        evidence_summary,
+        open_cases_total,
+        detections_total,
+        active_locks,
+        days_since_last_activity,
+        risky_changes_24h,
+        large_adjustments_24h,
+        max_large_adjustment_amount,
+        last_seen_at
+    FROM analytics_1c.v_company_management_actions_current
+    WHERE {' AND '.join(filters)}
+    ORDER BY priority_rank DESC, priority_score DESC, action_type
+    LIMIT {int(limit)}
+    """
+    return rows_to_dict(client.query(sql))
+
+
+def _actions_query_suffix(priority_tier: str | None = None, owner: str | None = None) -> str:
+    parts: list[str] = []
+    if priority_tier:
+        parts.append(f"priority_tier={quote(priority_tier)}")
+    if owner:
+        parts.append(f"owner={quote(owner)}")
+    return ("?" + "&".join(parts)) if parts else ""
+
+
 def render_brief_history_html(items: list[dict[str, Any]]) -> str:
     rows = []
     for item in items:
@@ -1089,6 +1271,7 @@ def render_brief_history_html(items: list[dict[str, Any]]) -> str:
         <a href="/manager/changes">Что изменилось</a>
         <a href="/manager/trends/weekly">Неделя</a>
         <a href="/manager/recovery">AI recovery</a>
+        <a href="/manager/actions">Очередь действий</a>
         <a href="/manager/problematic?days=1">Проблемные 1д</a>
         <a href="/manager/problematic?days=7">Проблемные 7д</a>
       </div>
@@ -1179,6 +1362,7 @@ def render_problematic_companies_html(items: list[dict[str, Any]], days: int) ->
         <a href="/manager/briefs">История brief</a>
         <a href="/manager/trends/weekly">Неделя</a>
         <a href="/manager/recovery">AI recovery</a>
+        <a href="/manager/actions">Очередь действий</a>
         <a href="/manager/problematic?days=1">Срез 1д</a>
         <a href="/manager/problematic?days=7">Срез 7д</a>
       </div>
@@ -1203,6 +1387,195 @@ def render_problematic_companies_html(items: list[dict[str, Any]], days: int) ->
           {''.join(rows) or '<tr><td colspan="10">Нет сигналов за выбранный период.</td></tr>'}
         </tbody>
       </table>
+    </section>
+  </main>
+</body>
+</html>"""
+
+
+def render_management_actions_html(
+    items: list[dict[str, Any]],
+    companies: list[dict[str, Any]],
+    priority_tier: str | None = None,
+    owner: str | None = None,
+) -> str:
+    rows = []
+    counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    owners: dict[str, int] = {}
+    for item in items:
+        tier = str(item.get("priority_tier") or "low").lower()
+        if tier in counts:
+            counts[tier] += 1
+        owner_name = str(item.get("owner_name") or "не назначен")
+        owners[owner_name] = owners.get(owner_name, 0) + 1
+        rows.append(
+            "<tr>"
+            f"<td>{severity_badge(str(item.get('priority_tier') or 'low'))}</td>"
+            f"<td>{html.escape(str(item.get('deadline_hint') or '-'))}</td>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or item.get('counterparty') or '-'), str(item.get('infobase') or '') or None)}\">{html.escape(str(item.get('counterparty') or '-'))}</a></td>"
+            f"<td>{html.escape(owner_name)}</td>"
+            f"<td>{html.escape(str(item.get('action_type') or '-'))}</td>"
+            f"<td>{html.escape(fmt_number(item.get('priority_score')))}</td>"
+            f"<td>{html.escape(str(item.get('recommended_action') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('reason') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('evidence_summary') or '-'))}</td>"
+            "</tr>"
+        )
+
+    company_rows = []
+    companies_critical = 0
+    companies_unassigned = 0
+    for item in companies:
+        tier = str(item.get("priority_tier") or "low").lower()
+        if tier == "critical":
+            companies_critical += 1
+        owner_names = str(item.get("owner_names") or "не назначен")
+        if owner_names == "не назначен":
+            companies_unassigned += 1
+        company_rows.append(
+            "<tr>"
+            f"<td>{severity_badge(tier)}</td>"
+            f"<td><a class=\"inline-link\" href=\"{company_detail_url(str(item.get('company_entity_key') or item.get('counterparty') or '-'), str(item.get('infobase') or '') or None)}\">{html.escape(str(item.get('counterparty') or '-'))}</a></td>"
+            f"<td>{html.escape(fmt_number(item.get('actions_total')))}</td>"
+            f"<td>{html.escape(str(item.get('action_types_summary') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('recommended_action_summary') or '-'))}</td>"
+            f"<td>{html.escape(str(item.get('reason_summary') or '-'))}</td>"
+            f"<td>{html.escape(owner_names)}</td>"
+            "</tr>"
+        )
+
+    top_owners = sorted(owners.items(), key=lambda pair: (-pair[1], pair[0]))[:5]
+    owner_items = "".join(
+        f"<li>{html.escape(name)}: {html.escape(fmt_number(total))} действий</li>"
+        for name, total in top_owners
+    )
+
+    filters: list[str] = []
+    if priority_tier:
+        filters.append(f"priority_tier={priority_tier}")
+    if owner:
+        filters.append(f"owner={owner}")
+    filter_line = ", ".join(filters) if filters else "без фильтра"
+    query_suffix = _actions_query_suffix(priority_tier=priority_tier, owner=owner)
+    raw_json_url = f"/api/1/analytics-1c/manager/actions{query_suffix}"
+    companies_json_url = f"/api/1/analytics-1c/manager/actions/companies{query_suffix}"
+
+    return f"""<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="300">
+  <title>1C Manager Actions</title>
+  <style>
+    :root {{
+      --bg: #f4f1ea; --paper: #fffdf8; --ink: #1c1a17; --muted: #6b655c; --line: #d8d0c4; --accent: #005f73; --shadow: 0 14px 40px rgba(28, 26, 23, 0.08);
+      --critical: #9b2226; --high: #bb3e03; --medium: #ca6702; --low: #4d7c0f; --none: #687076;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: linear-gradient(180deg, #faf7f2 0%, var(--bg) 100%); color: var(--ink); }}
+    .shell {{ max-width: 1560px; margin: 0 auto; padding: 28px 22px 60px; }}
+    .hero {{ background: linear-gradient(135deg, rgba(0,95,115,0.94), rgba(10,77,104,0.92)); color: #f8fbfc; border-radius: 24px; padding: 28px 30px; box-shadow: var(--shadow); }}
+    .hero h1 {{ margin: 0 0 10px; font-size: clamp(28px, 4vw, 42px); }}
+    .hero p {{ margin: 0 0 14px; line-height: 1.5; color: rgba(248,251,252,0.88); }}
+    .hero-links {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+    .hero-links a {{ text-decoration: none; color: #f8fbfc; border: 1px solid rgba(248, 251, 252, 0.28); padding: 9px 12px; border-radius: 999px; font-size: 14px; }}
+    .grid {{ display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 18px; margin-top: 22px; }}
+    .panel {{ background: var(--paper); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow); }}
+    .span-12 {{ grid-column: span 12; }} .span-8 {{ grid-column: span 8; }} .span-4 {{ grid-column: span 4; }}
+    .stats {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }}
+    .stat {{ padding: 16px; border-radius: 18px; background: linear-gradient(180deg, #fff 0%, #f7f4ee 100%); border: 1px solid var(--line); }}
+    .stat-label {{ color: var(--muted); font-size: 13px; margin-bottom: 8px; }}
+    .stat-value {{ font-size: 24px; font-weight: 700; letter-spacing: -0.03em; }}
+    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+    th, td {{ text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }}
+    th {{ color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }}
+    .inline-link {{ color: var(--accent); text-decoration: none; font-weight: 600; }}
+    .inline-link:hover {{ text-decoration: underline; }}
+    .badge {{
+      display: inline-flex; align-items: center; justify-content: center; padding: 6px 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #fff;
+    }}
+    .badge-critical {{ background: var(--critical); }}
+    .badge-high {{ background: var(--high); }}
+    .badge-medium {{ background: var(--medium); }}
+    .badge-low {{ background: var(--low); }}
+    .badge-none {{ background: var(--none); }}
+    ul {{ margin: 0; padding-left: 20px; line-height: 1.55; }}
+    @media (max-width: 1100px) {{ .span-8, .span-4 {{ grid-column: span 12; }} .stats {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
+    @media (max-width: 640px) {{ .shell {{ padding: 16px 14px 40px; }} .stats {{ grid-template-columns: 1fr; }} th:nth-child(8), td:nth-child(8), th:nth-child(9), td:nth-child(9) {{ display: none; }} }}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <h1>Очередь управленческих действий по 1С</h1>
+      <p>Детерминированный слой поверх portfolio/signals/business events/document changes. Фильтр: {html.escape(filter_line)}.</p>
+      <p>Приоритет считается по риску предприятия. Текущее назначение используется только как operational metadata и не меняет порядок очереди.</p>
+      <div class="hero-links">
+        <a href="/manager/brief">Текущий brief</a>
+        <a href="/manager/changes">Что изменилось</a>
+        <a href="/manager/trends/weekly">Неделя</a>
+        <a href="/manager/recovery">AI recovery</a>
+        <a href="/manager/problematic?days=7">Проблемные 7д</a>
+        <a href="{html.escape(companies_json_url)}">JSON по предприятиям</a>
+        <a href="{html.escape(raw_json_url)}">Raw actions JSON</a>
+      </div>
+    </section>
+    <section class="grid">
+      <article class="panel span-8">
+        <h2>Срез очереди</h2>
+        <div class="stats">
+          <div class="stat"><div class="stat-label">Всего действий</div><div class="stat-value">{html.escape(fmt_number(len(items)))}</div></div>
+          <div class="stat"><div class="stat-label">Предприятий</div><div class="stat-value">{html.escape(fmt_number(len(companies)))}</div></div>
+          <div class="stat"><div class="stat-label">Critical предприятий</div><div class="stat-value">{html.escape(fmt_number(companies_critical))}</div></div>
+          <div class="stat"><div class="stat-label">Без владельца</div><div class="stat-value">{html.escape(fmt_number(companies_unassigned))}</div></div>
+        </div>
+      </article>
+      <article class="panel span-4">
+        <h2>Текущее назначение</h2>
+        <ul>{owner_items or '<li>Нет назначенных действий.</li>'}</ul>
+      </article>
+      <article class="panel span-12">
+        <h2>Что делать по предприятиям</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Приоритет</th>
+              <th>Предприятие</th>
+              <th>Действий</th>
+              <th>Контур</th>
+              <th>Что сделать</th>
+              <th>Почему</th>
+              <th>Текущее назначение</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(company_rows) or '<tr><td colspan="7">Нет компаний с активными действиями.</td></tr>'}
+          </tbody>
+        </table>
+      </article>
+      <article class="panel span-12">
+        <h2>Детализация действий</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Приоритет</th>
+              <th>Срок</th>
+              <th>Компания</th>
+              <th>Ответственный</th>
+              <th>Тип</th>
+              <th>Score</th>
+              <th>Действие</th>
+              <th>Почему</th>
+              <th>Evidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {''.join(rows) or '<tr><td colspan="9">Действий не найдено.</td></tr>'}
+          </tbody>
+        </table>
+      </article>
     </section>
   </main>
 </body>
@@ -1786,6 +2159,11 @@ def render_recovery_brief_html(payload: dict[str, Any]) -> str:
 app = FastAPI(title="AW-rus 1C Company Intelligence API", version="1.0.0")
 
 
+@app.get("/")
+def root() -> Response:
+    return Response(status_code=307, headers={"Location": "/manager/brief"})
+
+
 @app.get("/favicon.ico")
 def favicon() -> Response:
     return Response(status_code=204)
@@ -1808,6 +2186,11 @@ def health() -> dict[str, Any]:
         )
     )[0]
     return {"status": "ok", "generated_at": datetime.now(UTC).isoformat(), **summary}
+
+
+@app.get("/api/health")
+def api_health() -> dict[str, Any]:
+    return health()
 
 
 @app.get("/api/1/analytics-1c/companies/overview")
@@ -1916,6 +2299,7 @@ def company_summary(counterparty: str, infobase: str | None = None) -> dict[str,
         "forecasts": forecasts,
         "signals": signals,
         "recent_documents": timeline,
+        "management_actions": company_management_actions(counterparty, infobase, limit=10),
     }
     payload["priority_context"] = build_company_priority_context(payload, infobase)
     payload["recovery_context"] = build_company_recovery_context(payload, infobase)
@@ -1963,6 +2347,12 @@ def company_timeline(
     """
     rows = rows_to_dict(client.query(sql))
     return {"items": rows, "count": len(rows)}
+
+
+@app.get("/api/1/analytics-1c/companies/{counterparty}/actions")
+def company_actions(counterparty: str, infobase: str | None = None, limit: int = Query(default=20, ge=1, le=100)) -> dict[str, Any]:
+    items = company_management_actions(counterparty, infobase, limit=limit)
+    return {"items": items, "count": len(items)}
 
 
 @app.get("/api/1/analytics-1c/manager/brief/latest")
@@ -2031,6 +2421,42 @@ def manager_recovery_latest_markdown() -> str:
     return latest_md.read_text(encoding="utf-8")
 
 
+@app.get("/api/1/analytics-1c/manager/actions")
+def manager_actions_api(
+    priority_tier: str | None = Query(default=None),
+    owner: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    items = management_actions(priority_tier=priority_tier, owner=owner, limit=limit)
+    return {
+        "scope": "action_items",
+        "priority_model": "enterprise_risk",
+        "owner_mode": "secondary_operational_metadata",
+        "items": items,
+        "count": len(items),
+        "priority_tier": priority_tier,
+        "owner": owner,
+    }
+
+
+@app.get("/api/1/analytics-1c/manager/actions/companies")
+def manager_company_actions_api(
+    priority_tier: str | None = Query(default=None),
+    owner: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> dict[str, Any]:
+    items = management_company_actions(priority_tier=priority_tier, owner=owner, limit=limit)
+    return {
+        "scope": "companies",
+        "priority_model": "enterprise_risk",
+        "owner_mode": "secondary_operational_metadata",
+        "items": items,
+        "count": len(items),
+        "priority_tier": priority_tier,
+        "owner": owner,
+    }
+
+
 @app.get("/api/1/analytics-1c/companies/problematic")
 def problematic_companies_api(
     days: int = Query(default=7, ge=1, le=30),
@@ -2065,6 +2491,20 @@ def manager_recovery_view() -> str:
     return render_recovery_brief_html(load_latest_recovery_brief())
 
 
+@app.get("/manager/actions", response_class=HTMLResponse)
+def manager_actions_view(
+    priority_tier: str | None = Query(default=None),
+    owner: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+) -> str:
+    return render_management_actions_html(
+        management_actions(priority_tier=priority_tier, owner=owner, limit=limit),
+        management_company_actions(priority_tier=priority_tier, owner=owner, limit=limit),
+        priority_tier=priority_tier,
+        owner=owner,
+    )
+
+
 @app.get("/manager/briefs", response_class=HTMLResponse)
 def manager_brief_history_view(limit: int = Query(default=40, ge=1, le=200)) -> str:
     return render_brief_history_html(load_brief_history_records(limit))
@@ -2094,6 +2534,7 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
     forecasts = summary_payload.get("forecasts") or []
     signals = summary_payload.get("signals") or []
     recent_documents = summary_payload.get("recent_documents") or []
+    management_actions_payload = summary_payload.get("management_actions") or []
     priority_context = summary_payload.get("priority_context") or build_company_priority_context(summary_payload, infobase)
     recovery_context = summary_payload.get("recovery_context") or build_company_recovery_context(summary_payload, infobase)
 
@@ -2110,6 +2551,9 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
     forecast_url = f"/api/1/analytics-1c/companies/{quote(company_ref)}/forecast"
     if infobase:
         forecast_url += f"?infobase={quote(infobase)}"
+    actions_url = f"/api/1/analytics-1c/companies/{quote(company_ref)}/actions"
+    if infobase:
+        actions_url += f"?infobase={quote(infobase)}"
 
     if card.get("signal_severity") == "critical":
         manager_comment = "Компания требует немедленного внимания: контур считает её operational-critical."
@@ -2145,6 +2589,16 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
         f"<li>{html.escape(str(item))}</li>"
         for item in recovery_context.get("actions", [])
     )
+    management_action_items = []
+    for item in management_actions_payload[:6]:
+        management_action_items.append(
+            "<li>"
+            f"{severity_badge(str(item.get('priority_tier') or 'low'))} "
+            f"<strong>{html.escape(str(item.get('recommended_action') or '-'))}</strong> "
+            f"({html.escape(str(item.get('deadline_hint') or '-'))})"
+            f"<br><span>{html.escape(str(item.get('reason') or '-'))}</span>"
+            "</li>"
+        )
 
     forecast_rows = []
     for item in forecasts:
@@ -2302,11 +2756,13 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
           <a href="/manager/trends/weekly">Неделя</a>
           <a href="/manager/digest/weekly">Weekly digest</a>
           <a href="/manager/recovery">AI recovery</a>
+          <a href="/manager/actions">Очередь действий</a>
           <a href="/manager/briefs">История brief</a>
           <a href="/manager/problematic?days=7">Проблемные компании</a>
           <a href="{html.escape(summary_url)}">JSON summary</a>
           <a href="{html.escape(forecast_url)}">JSON forecast</a>
           <a href="{html.escape(timeline_url)}">JSON timeline</a>
+          <a href="{html.escape(actions_url)}">JSON actions</a>
           <a href="{html.escape(grafana_url)}">Grafana</a>
         </nav>
       </div>
@@ -2343,6 +2799,11 @@ def render_company_detail_html(summary_payload: dict[str, Any], infobase: str | 
       <article class="panel span-4">
         <h2>Что проверить первым действием</h2>
         <ul class="meta-list">{action_items}</ul>
+      </article>
+
+      <article class="panel span-12">
+        <h2>Текущие управленческие действия по компании</h2>
+        <ul class="meta-list">{''.join(management_action_items) or '<li>По компании пока нет отдельных строк в action queue.</li>'}</ul>
       </article>
 
       <article class="panel span-12">

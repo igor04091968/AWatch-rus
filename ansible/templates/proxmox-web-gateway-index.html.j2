@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proxmox Web Gateway</title>
+  <style>
+    :root {
+      --bg: #f5efe7;
+      --panel: #fffdf8;
+      --ink: #1a1714;
+      --muted: #6d665f;
+      --line: #d9d0c4;
+      --accent: #005f73;
+      --accent-soft: #d8eef2;
+      --shadow: 0 18px 48px rgba(26, 23, 20, 0.08);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(0, 95, 115, 0.14), transparent 32%),
+        linear-gradient(180deg, #f7f1e8 0%, #efe6d8 100%);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 48px;
+    }
+    .hero {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      box-shadow: var(--shadow);
+      padding: 28px 28px 22px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(2rem, 4vw, 3.4rem);
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+    }
+    .lead {
+      margin: 0;
+      max-width: 760px;
+      color: var(--muted);
+      font-size: 1.02rem;
+      line-height: 1.55;
+    }
+    .meta {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      background: rgba(255, 253, 248, 0.96);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+      text-decoration: none;
+      color: inherit;
+      transition: transform 120ms ease, border-color 120ms ease;
+    }
+    .card:hover {
+      transform: translateY(-2px);
+      border-color: var(--accent);
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .title {
+      margin: 0;
+      font-size: 1.15rem;
+      line-height: 1.2;
+    }
+    .desc {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.95rem;
+      line-height: 1.45;
+      flex: 1;
+    }
+    .target {
+      padding-top: 10px;
+      border-top: 1px solid var(--line);
+      font-family: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+      font-size: 0.82rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+    .footnote {
+      margin-top: 18px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <h1>Proxmox Web Gateway</h1>
+      <p class="lead">
+        Единая стартовая точка для web-сервисов контура на Proxmox host
+        <strong>10.10.10.2</strong>. Gateway сознательно работает как
+        безопасный redirector: приложения не ломаются под subpath, а оператор
+        получает один адрес входа.
+      </p>
+      <p class="meta">
+        Публичное имя gateway: <strong>{{ proxmox_web_gateway_public_hostname }}</strong>
+      </p>
+      <p class="meta">
+        DLP-ветка сюда не включена намеренно. В списке только host, management,
+        dashboards и базовые operational/data web endpoints.
+      </p>
+    </section>
+
+    <section class="grid">
+{% for route in proxmox_web_gateway_routes %}
+      <a class="card" href="/go/{{ route.slug }}">
+        <span class="badge">{{ route.category }}</span>
+        <h2 class="title">{{ route.title }}</h2>
+        <p class="desc">{{ route.description }}</p>
+        <div class="target">{{ route.target_url }}</div>
+      </a>
+{% endfor %}
+    </section>
+
+    <p class="footnote">
+      Health endpoint gateway: <code>{{ proxmox_web_gateway_health_path }}</code>
+    </p>
+  </main>
+</body>
+</html>

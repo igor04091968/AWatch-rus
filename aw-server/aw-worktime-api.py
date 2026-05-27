@@ -9,7 +9,7 @@ import sys
 import tempfile
 import urllib.request
 from datetime import datetime, timezone, timedelta
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlparse
 from zoneinfo import ZoneInfo
@@ -42,12 +42,12 @@ MANAGER_WEB_SOURCE_MAX_AGE_SECONDS = max(3600, int(os.environ.get("AW_WORKTIME_M
 MANAGER_SESSION_SOURCE_MAX_AGE_SECONDS = max(3600, int(os.environ.get("AW_WORKTIME_MANAGER_SESSION_SOURCE_MAX_AGE_SECONDS", "604800")))
 MANAGER_INFRA_SOURCE_MAX_AGE_SECONDS = max(3600, int(os.environ.get("AW_WORKTIME_MANAGER_INFRA_SOURCE_MAX_AGE_SECONDS", "172800")))
 MANAGER_TREND_DAYS = max(3, min(31, int(os.environ.get("AW_WORKTIME_MANAGER_TREND_DAYS", "7"))))
-MANAGER_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_MANAGER_CACHE_TTL_SECONDS", "120")))
+MANAGER_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_MANAGER_CACHE_TTL_SECONDS", "300")))
 MANAGER_CACHE_DIR = Path(os.environ.get("AW_WORKTIME_MANAGER_CACHE_DIR", "/var/lib/activitywatch/worktime-cache"))
 MANAGER_ALIASES_JSON = Path(os.environ.get("AW_WORKTIME_MANAGER_ALIASES_JSON", "/etc/activitywatch/worktime-manager-aliases.json"))
 MANAGER_EXCLUDE_USERS = {item.strip().lower() for item in os.environ.get("AW_WORKTIME_MANAGER_EXCLUDE_USERS", "").split(",") if item.strip()}
 MODULE_PATH = Path(__file__).resolve()
-_ALIASES_CACHE = {"mtime": None, "payload": {}}
+_ALIASES_CACHE = {"mtime": None, "users": {}, "owners": {}, "raw": {}}
 
 
 def get(u):
@@ -80,6 +80,16 @@ def hhmm(total_seconds):
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+
+def worktime_health_payload():
+    return {
+        "ok": True,
+        "generated_at_utc": now_utc().isoformat().replace("+00:00", "Z"),
+        "report_timezone": str(REPORT_TZ),
+        "default_host": DEFAULT_HOST,
+        "aw_api_base": AW,
+    }
 
 
 def age_seconds(ts, now=None):
@@ -127,22 +137,29 @@ def _default_display_name(user, user_id):
     return base or str(user or "").strip()
 
 
-def load_manager_aliases():
+def _load_manager_directory():
     try:
         stat = MANAGER_ALIASES_JSON.stat()
     except FileNotFoundError:
         _ALIASES_CACHE["mtime"] = None
-        _ALIASES_CACHE["payload"] = {}
-        return {}
+        _ALIASES_CACHE["users"] = {}
+        _ALIASES_CACHE["owners"] = {}
+        _ALIASES_CACHE["raw"] = {}
+        return {"users": {}, "owners": {}, "raw": {}}
     mtime = stat.st_mtime
     if _ALIASES_CACHE["mtime"] == mtime:
-        return _ALIASES_CACHE["payload"]
+        return {
+            "users": _ALIASES_CACHE["users"],
+            "owners": _ALIASES_CACHE["owners"],
+            "raw": _ALIASES_CACHE["raw"],
+        }
     try:
         raw = json.loads(MANAGER_ALIASES_JSON.read_text(encoding="utf-8"))
     except Exception as exc:
         log_warning(f"failed to load manager aliases from {MANAGER_ALIASES_JSON}: {exc}")
         raw = {}
-    payload = {}
+    users_payload = {}
+    owners_payload = {}
     if isinstance(raw, dict):
         users = raw.get("users", raw)
         if isinstance(users, dict):
@@ -151,12 +168,36 @@ def load_manager_aliases():
                 if not norm_key:
                     continue
                 if isinstance(value, str):
-                    payload[norm_key] = {"display_name": value}
+                    users_payload[norm_key] = {"display_name": value}
                 elif isinstance(value, dict):
-                    payload[norm_key] = dict(value)
+                    users_payload[norm_key] = dict(value)
+        owners = raw.get("owners", {})
+        if isinstance(owners, dict):
+            for key, value in owners.items():
+                norm_key = _normalize_identity_key(key)
+                if not norm_key:
+                    continue
+                if isinstance(value, str):
+                    owners_payload[norm_key] = {"display_name": value}
+                elif isinstance(value, dict):
+                    owners_payload[norm_key] = dict(value)
     _ALIASES_CACHE["mtime"] = mtime
-    _ALIASES_CACHE["payload"] = payload
-    return payload
+    _ALIASES_CACHE["users"] = users_payload
+    _ALIASES_CACHE["owners"] = owners_payload
+    _ALIASES_CACHE["raw"] = raw if isinstance(raw, dict) else {}
+    return {
+        "users": users_payload,
+        "owners": owners_payload,
+        "raw": _ALIASES_CACHE["raw"],
+    }
+
+
+def load_manager_aliases():
+    return _load_manager_directory()["users"]
+
+
+def load_manager_owners():
+    return _load_manager_directory()["owners"]
 
 
 def resolve_user_alias(user, user_id, host):
@@ -186,6 +227,29 @@ def resolve_user_alias(user, user_id, host):
         "notes": notes,
         "canonical_user_id": canonical_user_id,
         "exclude": exclude,
+    }
+
+
+def resolve_owner_profile(owner_name):
+    owner_name = normalize_management_filter(owner_name)
+    if not owner_name:
+        owner_name = "unassigned"
+    owners = load_manager_owners()
+    profile = dict(owners.get(_normalize_identity_key(owner_name), {}))
+    display_name = str(profile.get("display_name") or profile.get("name") or owner_name).strip() or owner_name
+    title = str(profile.get("title") or profile.get("role") or "").strip()
+    department = str(profile.get("department") or "").strip()
+    escalation_to = str(profile.get("escalation_to") or profile.get("escalate_to") or "").strip()
+    contact = str(profile.get("contact") or profile.get("telegram") or profile.get("email") or "").strip()
+    notes = str(profile.get("notes") or "").strip()
+    return {
+        "owner_name": owner_name,
+        "display_name": display_name,
+        "title": title,
+        "department": department,
+        "escalation_to": escalation_to,
+        "contact": contact,
+        "notes": notes,
     }
 
 
@@ -578,6 +642,272 @@ def build_executive_summary(summary, actions, sources):
     }
 
 
+def _empty_rollup(name):
+    return {
+        "name": name or "unassigned",
+        "users_count": 0,
+        "active_users": 0,
+        "inactive_users": 0,
+        "below_target_users": 0,
+        "workday_total_active_seconds": 0,
+        "workday_total_active_hhmm": "00:00",
+        "portfolio_coverage_pct": 0.0,
+        "actions_count": 0,
+        "critical_actions_count": 0,
+        "high_actions_count": 0,
+        "medium_actions_count": 0,
+        "low_actions_count": 0,
+        "users": [],
+    }
+
+
+def normalize_management_filter(value):
+    if value is None:
+        return ""
+    return " ".join(str(value).split()).strip()
+
+
+def _filter_key(value):
+    return normalize_management_filter(value).casefold()
+
+
+def _matches_management_filters(alias, owner_filter="", department_filter=""):
+    if owner_filter and _filter_key(alias.get("manager_owner")) != _filter_key(owner_filter):
+        return False
+    if department_filter and _filter_key(alias.get("department")) != _filter_key(department_filter):
+        return False
+    return True
+
+
+def _action_department(action):
+    evidence = action.get("evidence") or {}
+    department = normalize_management_filter(evidence.get("department"))
+    if department:
+        return department
+    if normalize_management_filter(action.get("owner")) == "ops":
+        return "Инфраструктура"
+    return ""
+
+
+def filter_management_actions(actions, rows, owner_filter="", department_filter=""):
+    owner_filter = normalize_management_filter(owner_filter)
+    department_filter = normalize_management_filter(department_filter)
+    if not owner_filter and not department_filter:
+        return list(actions)
+    row_user_ids = {
+        normalize_management_filter(row.get("canonical_user_id") or row.get("user_id"))
+        for row in rows
+        if normalize_management_filter(row.get("canonical_user_id") or row.get("user_id"))
+    }
+    filtered = []
+    for action in actions:
+        if owner_filter and _filter_key(action.get("owner")) != _filter_key(owner_filter):
+            continue
+        if department_filter:
+            action_department = _action_department(action)
+            if action_department:
+                if _filter_key(action_department) != _filter_key(department_filter):
+                    continue
+            else:
+                user_id = normalize_management_filter(action.get("user_id"))
+                if not user_id or user_id not in row_user_ids:
+                    continue
+        filtered.append(action)
+    return filtered
+
+
+def _row_matches_payload_filters(row, owner_filter="", department_filter=""):
+    if owner_filter and _filter_key(row.get("manager_owner")) != _filter_key(owner_filter):
+        return False
+    if department_filter and _filter_key(row.get("department")) != _filter_key(department_filter):
+        return False
+    return True
+
+
+def summarize_management_rows(rows, actions, workday):
+    expected_seconds_per_user = int(workday.get("expected_seconds_per_user", 0) or 0)
+    workday_total_active_seconds = sum(int(row.get("workday_active_seconds", 0) or 0) for row in rows)
+    calendar_total_active_seconds = sum(int(row.get("calendar_active_seconds", 0) or 0) for row in rows)
+    active_users = sum(1 for row in rows if row.get("status") != "inactive")
+    inactive_users = sum(1 for row in rows if row.get("status") == "inactive")
+    below_target_users = sum(1 for row in rows if row.get("status") == "below_target")
+    on_target_users = sum(1 for row in rows if row.get("status") == "ok")
+    workday_first_values = sorted(str(row.get("workday_first_activity_local") or "") for row in rows if row.get("workday_first_activity_local"))
+    workday_last_values = sorted(str(row.get("workday_last_activity_local") or "") for row in rows if row.get("workday_last_activity_local"))
+    calendar_first_values = sorted(str(row.get("first_activity_local") or "") for row in rows if row.get("first_activity_local"))
+    calendar_last_values = sorted(str(row.get("last_activity_local") or "") for row in rows if row.get("last_activity_local"))
+    top_row = max(rows, key=lambda row: int(row.get("workday_active_seconds", 0) or 0), default=None)
+    portfolio_coverage_pct = _clamp_pct((workday_total_active_seconds / (expected_seconds_per_user * len(rows))) * 100.0) if rows and expected_seconds_per_user > 0 else 0.0
+    return {
+        "users_count": len(rows),
+        "active_users": active_users,
+        "inactive_users": inactive_users,
+        "on_target_users": on_target_users,
+        "below_target_users": below_target_users,
+        "portfolio_coverage_pct": portfolio_coverage_pct,
+        "actions_count": len(actions),
+        "critical_actions_count": sum(1 for action in actions if action.get("priority") == "critical"),
+        "high_actions_count": sum(1 for action in actions if action.get("priority") == "high"),
+        "calendar_total_active_seconds": calendar_total_active_seconds,
+        "calendar_total_active_hhmm": hhmm(calendar_total_active_seconds),
+        "calendar_first_activity": calendar_first_values[0] if calendar_first_values else "",
+        "calendar_last_activity": calendar_last_values[-1] if calendar_last_values else "",
+        "workday_total_active_seconds": workday_total_active_seconds,
+        "workday_total_active_hhmm": hhmm(workday_total_active_seconds),
+        "workday_first_activity": workday_first_values[0] if workday_first_values else "",
+        "workday_last_activity": workday_last_values[-1] if workday_last_values else "",
+        "total_active_seconds": workday_total_active_seconds,
+        "total_active_hhmm": hhmm(workday_total_active_seconds),
+        "first_activity": workday_first_values[0] if workday_first_values else "",
+        "last_activity": workday_last_values[-1] if workday_last_values else "",
+        "top_user": str((top_row or {}).get("user") or ""),
+        "top_user_active_hhmm": hhmm(int((top_row or {}).get("workday_active_seconds", 0) or 0)),
+    }
+
+
+def apply_management_filters_to_payload(payload, owner_filter="", department_filter="", include_sources=True, include_source_actions=True):
+    owner_filter = normalize_management_filter(owner_filter)
+    department_filter = normalize_management_filter(department_filter)
+    filtered_rows = [
+        dict(row)
+        for row in payload.get("rows", [])
+        if _row_matches_payload_filters(row, owner_filter=owner_filter, department_filter=department_filter)
+    ]
+    base_actions = list(payload.get("actions", []))
+    if not include_source_actions:
+        base_actions = [action for action in base_actions if action.get("action_id") != "source_freshness_review"]
+    filtered_actions = filter_management_actions(base_actions, filtered_rows, owner_filter=owner_filter, department_filter=department_filter)
+    filtered_payload = dict(payload)
+    filtered_payload["filters"] = {
+        "owner": owner_filter,
+        "department": department_filter,
+    }
+    filtered_payload["rows"] = filtered_rows
+    filtered_payload["actions"] = filtered_actions
+    filtered_payload["summary"] = summarize_management_rows(filtered_rows, filtered_actions, payload.get("workday") or {})
+    filtered_payload["owner_rollups"] = build_owner_rollups(filtered_rows, filtered_actions)
+    filtered_payload["department_rollups"] = build_department_rollups(filtered_rows, filtered_actions)
+    filtered_payload["owner_roster"] = build_owner_roster(filtered_rows, filtered_actions)
+    if include_sources:
+        filtered_payload["sources"] = list(payload.get("sources", []))
+    else:
+        filtered_payload["sources"] = []
+    filtered_payload["executive"] = build_executive_summary(filtered_payload["summary"], filtered_actions, filtered_payload["sources"])
+    return filtered_payload
+
+
+def build_owner_rollups(rows, actions):
+    groups = {}
+    for row in rows:
+        owner = str(row.get("manager_owner") or row.get("user") or "unassigned").strip() or "unassigned"
+        group = groups.setdefault(owner, _empty_rollup(owner))
+        group["users_count"] += 1
+        if row.get("status") == "inactive":
+            group["inactive_users"] += 1
+        else:
+            group["active_users"] += 1
+        if row.get("status") == "below_target":
+            group["below_target_users"] += 1
+        group["workday_total_active_seconds"] += int(row.get("workday_active_seconds", 0) or 0)
+        group["users"].append(row.get("user", "unknown"))
+
+    for action in actions:
+        owner = str(action.get("owner") or "unassigned").strip() or "unassigned"
+        group = groups.setdefault(owner, _empty_rollup(owner))
+        group["actions_count"] += 1
+        prio = str(action.get("priority") or "").lower()
+        if prio == "critical":
+            group["critical_actions_count"] += 1
+        elif prio == "high":
+            group["high_actions_count"] += 1
+        elif prio == "medium":
+            group["medium_actions_count"] += 1
+        elif prio == "low":
+            group["low_actions_count"] += 1
+
+    for group in groups.values():
+        expected = group["users_count"] * max(1, WORKDAY_END_HOUR - WORKDAY_START_HOUR) * 3600
+        group["workday_total_active_hhmm"] = hhmm(group["workday_total_active_seconds"])
+        group["portfolio_coverage_pct"] = _clamp_pct((group["workday_total_active_seconds"] / expected) * 100.0) if expected > 0 else 0.0
+        group["users"] = sorted(set(str(user or "").strip() for user in group["users"] if str(user or "").strip()))
+
+    return sorted(
+        groups.values(),
+        key=lambda item: (
+            -item["critical_actions_count"],
+            -item["high_actions_count"],
+            -item["inactive_users"],
+            item["name"].lower(),
+        ),
+    )
+
+
+def build_department_rollups(rows, actions):
+    groups = {}
+    for row in rows:
+        department = str(row.get("department") or "Без подразделения").strip() or "Без подразделения"
+        group = groups.setdefault(department, _empty_rollup(department))
+        group["users_count"] += 1
+        if row.get("status") == "inactive":
+            group["inactive_users"] += 1
+        else:
+            group["active_users"] += 1
+        if row.get("status") == "below_target":
+            group["below_target_users"] += 1
+        group["workday_total_active_seconds"] += int(row.get("workday_active_seconds", 0) or 0)
+        group["users"].append(row.get("user", "unknown"))
+
+    for action in actions:
+        evidence = action.get("evidence") or {}
+        department = str(evidence.get("department") or ("Инфраструктура" if str(action.get("owner") or "").strip().lower() == "ops" else "Без подразделения")).strip()
+        group = groups.setdefault(department, _empty_rollup(department))
+        group["actions_count"] += 1
+        prio = str(action.get("priority") or "").lower()
+        if prio == "critical":
+            group["critical_actions_count"] += 1
+        elif prio == "high":
+            group["high_actions_count"] += 1
+        elif prio == "medium":
+            group["medium_actions_count"] += 1
+        elif prio == "low":
+            group["low_actions_count"] += 1
+
+    for group in groups.values():
+        expected = group["users_count"] * max(1, WORKDAY_END_HOUR - WORKDAY_START_HOUR) * 3600
+        group["workday_total_active_hhmm"] = hhmm(group["workday_total_active_seconds"])
+        group["portfolio_coverage_pct"] = _clamp_pct((group["workday_total_active_seconds"] / expected) * 100.0) if expected > 0 else 0.0
+        group["users"] = sorted(set(str(user or "").strip() for user in group["users"] if str(user or "").strip()))
+
+    return sorted(
+        groups.values(),
+        key=lambda item: (
+            -item["critical_actions_count"],
+            -item["high_actions_count"],
+            -item["inactive_users"],
+            item["name"].lower(),
+        ),
+    )
+
+
+def build_owner_roster(rows, actions):
+    owner_rollups = build_owner_rollups(rows, actions)
+    roster = []
+    for item in owner_rollups:
+        profile = resolve_owner_profile(item["name"])
+        roster.append(
+            {
+                **item,
+                "display_name": profile["display_name"],
+                "title": profile["title"],
+                "department": profile["department"],
+                "contact": profile["contact"],
+                "escalation_to": profile["escalation_to"],
+                "notes": profile["notes"],
+            }
+        )
+    return roster
+
+
 def _interval_overlap_seconds(intervals, start, end):
     total = 0
     first = None
@@ -701,7 +1031,7 @@ def build_source_freshness(host):
         {
             "source_id": "file_operations",
             "label": "File operations collector",
-            "bucket_candidates": [f"aw-file-operations_{host}", "aw-file-operations_10.10.10.13"],
+            "bucket_candidates": [f"aw-file-operations_{host}"],
             "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
             "required": True,
             "owner": "ops",
@@ -798,8 +1128,9 @@ def build_source_freshness(host):
     return sources, actions
 
 
-def _build_management_core(rows, host, report_date):
-    calendar_summary = build_report_summary(rows)
+def _build_management_core(rows, host, report_date, owner_filter="", department_filter=""):
+    owner_filter = normalize_management_filter(owner_filter)
+    department_filter = normalize_management_filter(department_filter)
     report_bounds = get_report_bounds(report_date)
     workday = get_workday_bounds(report_date)
     now_local = datetime.now(REPORT_TZ)
@@ -824,11 +1155,15 @@ def _build_management_core(rows, host, report_date):
     workday_last_values = []
     top_workday_user = ""
     top_workday_seconds = -1
+    filtered_rows = []
 
     for row in rows:
         alias = resolve_user_alias(row.get("user", ""), row.get("user_id", ""), host)
         if alias["exclude"]:
             continue
+        if not _matches_management_filters(alias, owner_filter=owner_filter, department_filter=department_filter):
+            continue
+        filtered_rows.append(row)
         public_row = {key: value for key, value in row.items() if key != "_intervals"}
         calendar_active_seconds = int(row.get("active_seconds", 0) or 0)
         intervals = row.get("_intervals") or []
@@ -968,8 +1303,9 @@ def _build_management_core(rows, host, report_date):
             )
 
     actions.sort(key=lambda item: (_priority_rank(item["priority"]), item["owner"].lower(), item["action_id"]))
+    calendar_summary = build_report_summary(filtered_rows)
     inactive_users = sum(1 for row in roster if row["status"] == "inactive")
-    portfolio_coverage_pct = _clamp_pct((workday_total_active_seconds / (expected_seconds_per_user * len(rows))) * 100.0) if rows and expected_seconds_per_user > 0 else 0.0
+    portfolio_coverage_pct = _clamp_pct((workday_total_active_seconds / (expected_seconds_per_user * len(roster))) * 100.0) if roster and expected_seconds_per_user > 0 else 0.0
     calendar_first = calendar_summary.get("first_activity", "")
     calendar_last = calendar_summary.get("last_activity", "")
     return {
@@ -977,6 +1313,10 @@ def _build_management_core(rows, host, report_date):
         "host": resolve_host(host),
         "report_date": report_date.isoformat(),
         "report_timezone": str(REPORT_TZ),
+        "filters": {
+            "owner": owner_filter,
+            "department": department_filter,
+        },
         "workday": {
             "start_local": workday["start_local"].isoformat(),
             "end_local": workday["end_local"].isoformat(),
@@ -1020,13 +1360,13 @@ def _build_management_core(rows, host, report_date):
     }
 
 
-def build_management_trend(host, anchor_date):
+def build_management_trend(host, anchor_date, owner_filter="", department_filter=""):
     trend = []
     for offset in range(MANAGER_TREND_DAYS - 1, -1, -1):
         current_date = anchor_date - timedelta(days=offset)
         bounds, events = fetch_events_for_date(host, current_date)
         rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
-        payload = _build_management_core(rows, host, current_date)
+        payload = _build_management_core(rows, host, current_date, owner_filter=owner_filter, department_filter=department_filter)
         summary = payload["summary"]
         trend.append(
             {
@@ -1044,18 +1384,57 @@ def build_management_trend(host, anchor_date):
     return trend
 
 
-def build_management_payload(rows, host, report_date):
-    payload = _build_management_core(rows, host, report_date)
+def build_filtered_management_trend(host, anchor_date, owner_filter="", department_filter=""):
+    trend = []
+    for offset in range(MANAGER_TREND_DAYS - 1, -1, -1):
+        current_date = anchor_date - timedelta(days=offset)
+        base_payload = load_management_cache(host, current_date)
+        if base_payload is None:
+            bounds, events = fetch_events_for_date(host, current_date)
+            rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
+            base_payload = _build_management_core(rows, host, current_date)
+        filtered_payload = apply_management_filters_to_payload(
+            base_payload,
+            owner_filter=owner_filter,
+            department_filter=department_filter,
+            include_sources=False,
+            include_source_actions=False,
+        )
+        summary = filtered_payload["summary"]
+        trend.append(
+            {
+                "report_date": current_date.isoformat(),
+                "users_count": summary["users_count"],
+                "active_users": summary["active_users"],
+                "inactive_users": summary["inactive_users"],
+                "workday_total_active_seconds": summary["workday_total_active_seconds"],
+                "workday_total_active_hhmm": summary["workday_total_active_hhmm"],
+                "portfolio_coverage_pct": summary["portfolio_coverage_pct"],
+                "actions_count": summary["actions_count"],
+                "critical_actions_count": summary["critical_actions_count"],
+            }
+        )
+    return trend
+
+
+def build_management_payload(rows, host, report_date, owner_filter="", department_filter=""):
+    owner_filter = normalize_management_filter(owner_filter)
+    department_filter = normalize_management_filter(department_filter)
+    payload = _build_management_core(rows, host, report_date, owner_filter=owner_filter, department_filter=department_filter)
     source_freshness, source_actions = build_source_freshness(resolve_host(host))
     payload["sources"] = source_freshness
-    payload["trend"] = build_management_trend(resolve_host(host), report_date)
+    payload["trend"] = build_management_trend(resolve_host(host), report_date, owner_filter=owner_filter, department_filter=department_filter)
+    payload["trend_scope"] = "portfolio"
     if source_actions:
-        payload["actions"].extend(source_actions)
+        payload["actions"].extend(filter_management_actions(source_actions, payload["rows"], owner_filter=owner_filter, department_filter=department_filter))
         payload["actions"].sort(key=lambda item: (_priority_rank(item["priority"]), item["owner"].lower(), item["action_id"]))
         payload["summary"]["actions_count"] = len(payload["actions"])
         payload["summary"]["critical_actions_count"] = sum(1 for action in payload["actions"] if action["priority"] == "critical")
         payload["summary"]["high_actions_count"] = sum(1 for action in payload["actions"] if action["priority"] == "high")
     payload["executive"] = build_executive_summary(payload["summary"], payload["actions"], payload["sources"])
+    payload["owner_rollups"] = build_owner_rollups(payload["rows"], payload["actions"])
+    payload["department_rollups"] = build_department_rollups(payload["rows"], payload["actions"])
+    payload["owner_roster"] = build_owner_roster(payload["rows"], payload["actions"])
     return payload
 
 
@@ -1064,7 +1443,21 @@ def report_for_date(host, report_date):
     return aggregate_rows(events, bounds["start"], bounds["end"], host)
 
 
-def management_report_for_date(host, report_date):
+def management_report_for_date(host, report_date, owner_filter="", department_filter=""):
+    owner_filter = normalize_management_filter(owner_filter)
+    department_filter = normalize_management_filter(department_filter)
+    if owner_filter or department_filter:
+        base_payload = management_report_for_date(host, report_date)
+        filtered_payload = apply_management_filters_to_payload(
+            base_payload,
+            owner_filter=owner_filter,
+            department_filter=department_filter,
+            include_sources=True,
+            include_source_actions=True,
+        )
+        filtered_payload["trend"] = []
+        filtered_payload["trend_scope"] = "filtered_current_only"
+        return filtered_payload
     cached = load_management_cache(host, report_date)
     if cached is not None:
         return cached
@@ -1392,16 +1785,35 @@ def render_html(rows, host, report_date, selected_day=None):
 </html>"""
 
 
+def build_management_report_url(host, report_date, selected_day=None, fmt=None, owner_filter="", department_filter=""):
+    params = {"host": resolve_host(host)}
+    if fmt:
+        params["format"] = fmt
+    if selected_day in {"today", "yesterday"}:
+        params["day"] = selected_day
+    else:
+        params["date"] = report_date
+    if normalize_management_filter(owner_filter):
+        params["owner"] = normalize_management_filter(owner_filter)
+    if normalize_management_filter(department_filter):
+        params["department"] = normalize_management_filter(department_filter)
+    return "/reports/worktime/management?" + urlencode(params)
+
+
 def render_management_html(payload, selected_day=None):
     summary = payload["summary"]
     workday = payload["workday"]
     report_date = payload["report_date"]
     host = payload["host"]
     executive = payload.get("executive") or {}
-    today_url = "/reports/worktime/management?" + urlencode({"format": "html", "host": host, "day": "today"})
-    yesterday_url = "/reports/worktime/management?" + urlencode({"format": "html", "host": host, "day": "yesterday"})
-    json_url = "/reports/worktime/management?" + urlencode({"host": host, **({"day": selected_day} if selected_day in {"today", "yesterday"} else {"date": report_date})})
+    active_filters = payload.get("filters") or {}
+    owner_filter = normalize_management_filter(active_filters.get("owner"))
+    department_filter = normalize_management_filter(active_filters.get("department"))
+    today_url = build_management_report_url(host, report_date, selected_day="today", fmt="html", owner_filter=owner_filter, department_filter=department_filter)
+    yesterday_url = build_management_report_url(host, report_date, selected_day="yesterday", fmt="html", owner_filter=owner_filter, department_filter=department_filter)
+    json_url = build_management_report_url(host, report_date, selected_day=selected_day, owner_filter=owner_filter, department_filter=department_filter)
     classic_url = "/reports/worktime/today?" + urlencode({"format": "html", "host": host, **({"day": selected_day} if selected_day in {"today", "yesterday"} else {"date": report_date})})
+    reset_url = build_management_report_url(host, report_date, selected_day=selected_day, fmt="html")
     actions_html = []
     for action in payload["actions"]:
         actions_html.append(
@@ -1452,7 +1864,62 @@ def render_management_html(payload, selected_day=None):
             "</tr>"
         )
     if not trend_html:
-        trend_html.append("<tr><td colspan='8'>Тренд пока недоступен.</td></tr>")
+        trend_message = "Тренд по выбранному фильтру пока отключён, чтобы current-scope отчёт отвечал быстро." if (owner_filter or department_filter) else "Тренд пока недоступен."
+        trend_html.append(f"<tr><td colspan='8'>{html.escape(trend_message)}</td></tr>")
+
+    owner_rollup_html = []
+    for item in payload.get("owner_rollups", []):
+        owner_url = build_management_report_url(host, report_date, selected_day=selected_day, fmt="html", owner_filter=item["name"], department_filter=department_filter)
+        owner_rollup_html.append(
+            "<tr>"
+            f"<td><a href='{html.escape(owner_url)}'>{html.escape(item['name'])}</a></td>"
+            f"<td>{item['users_count']}</td>"
+            f"<td>{item['inactive_users']}</td>"
+            f"<td>{item['below_target_users']}</td>"
+            f"<td>{item['critical_actions_count']}</td>"
+            f"<td>{item['high_actions_count']}</td>"
+            f"<td>{html.escape(item['workday_total_active_hhmm'])}</td>"
+            f"<td>{item['portfolio_coverage_pct']}</td>"
+            f"<td>{html.escape(', '.join(item['users']) if item['users'] else '-')}</td>"
+            "</tr>"
+        )
+    if not owner_rollup_html:
+        owner_rollup_html.append("<tr><td colspan='9'>Нет данных по ответственным.</td></tr>")
+
+    department_rollup_html = []
+    for item in payload.get("department_rollups", []):
+        department_url = build_management_report_url(host, report_date, selected_day=selected_day, fmt="html", owner_filter=owner_filter, department_filter=item["name"])
+        department_rollup_html.append(
+            "<tr>"
+            f"<td><a href='{html.escape(department_url)}'>{html.escape(item['name'])}</a></td>"
+            f"<td>{item['users_count']}</td>"
+            f"<td>{item['inactive_users']}</td>"
+            f"<td>{item['below_target_users']}</td>"
+            f"<td>{item['critical_actions_count']}</td>"
+            f"<td>{item['high_actions_count']}</td>"
+            f"<td>{html.escape(item['workday_total_active_hhmm'])}</td>"
+            f"<td>{item['portfolio_coverage_pct']}</td>"
+            f"<td>{html.escape(', '.join(item['users']) if item['users'] else '-')}</td>"
+            "</tr>"
+        )
+    if not department_rollup_html:
+        department_rollup_html.append("<tr><td colspan='9'>Нет данных по подразделениям.</td></tr>")
+
+    owner_profile_html = []
+    for item in payload.get("owner_roster", []):
+        owner_profile_html.append(
+            "<article class='focus-card'>"
+            f"<div class='focus-priority prio prio-{'critical' if item['critical_actions_count'] > 0 else ('high' if item['high_actions_count'] > 0 else 'low')}'>{html.escape(item['display_name'])}</div>"
+            f"<h3>{html.escape(item['title'] or item['name'])}</h3>"
+            f"<div class='focus-owner'>Подразделение: {html.escape(item['department'] or '-')}</div>"
+            f"<p>Пользователи: {item['users_count']} · inactive: {item['inactive_users']} · actions: {item['actions_count']}</p>"
+            f"<p>Контакт: <strong>{html.escape(item['contact'] or '-')}</strong></p>"
+            f"<p>Эскалация: <strong>{html.escape(item['escalation_to'] or '-')}</strong></p>"
+            f"<p>{html.escape(item['notes'] or 'Без дополнительных заметок.')}</p>"
+            "</article>"
+        )
+    if not owner_profile_html:
+        owner_profile_html.append("<article class='focus-card'><h3>Каталог ответственных пуст</h3><p>Добавьте блок owners в worktime-manager-aliases.json, чтобы отчёт показывал роли, контакты и эскалацию.</p></article>")
 
     sources_html = []
     for source in payload.get("sources", []):
@@ -1495,6 +1962,16 @@ def render_management_html(payload, selected_day=None):
         + "".join(stale_html)
         + "</ul></div>"
     ) if stale_html else ""
+    filter_parts = []
+    if owner_filter:
+        filter_parts.append(f"ответственный: {html.escape(owner_filter)}")
+    if department_filter:
+        filter_parts.append(f"подразделение: {html.escape(department_filter)}")
+    filter_block = (
+        "<div class='note note-light'><strong>Фильтр:</strong> "
+        + " · ".join(filter_parts)
+        + f" <a href='{html.escape(reset_url)}'>Сбросить</a></div>"
+    ) if filter_parts else ""
 
     cards = [
         ("Пользователи", str(summary["users_count"])),
@@ -1661,6 +2138,7 @@ def render_management_html(payload, selected_day=None):
       <div class="section-body">
         <strong>{html.escape(executive.get('headline') or 'Сводка недоступна')}</strong>
         <p>{html.escape(executive.get('message') or '')}</p>
+        {filter_block}
         {stale_block}
       </div>
       <div class="focus-grid">
@@ -1684,6 +2162,54 @@ def render_management_html(payload, selected_day=None):
         </thead>
         <tbody>
           {''.join(trend_html)}
+        </tbody>
+      </table>
+    </section>
+    <section class="section">
+      <h2>По ответственным</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Ответственный</th>
+            <th>Сотрудники</th>
+            <th>Без активности</th>
+            <th>Ниже цели</th>
+            <th>Critical</th>
+            <th>High</th>
+            <th>Рабочее окно</th>
+            <th>Покрытие, %</th>
+            <th>Кого затрагивает</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(owner_rollup_html)}
+        </tbody>
+      </table>
+    </section>
+    <section class="section">
+      <h2>Ответственные и эскалация</h2>
+      <div class="focus-grid">
+        {''.join(owner_profile_html)}
+      </div>
+    </section>
+    <section class="section">
+      <h2>По подразделениям</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Подразделение</th>
+            <th>Сотрудники</th>
+            <th>Без активности</th>
+            <th>Ниже цели</th>
+            <th>Critical</th>
+            <th>High</th>
+            <th>Рабочее окно</th>
+            <th>Покрытие, %</th>
+            <th>Кого затрагивает</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(department_rollup_html)}
         </tbody>
       </table>
     </section>
@@ -1751,9 +2277,26 @@ def render_management_html(payload, selected_day=None):
 </html>"""
 
 
+def send_bytes(handler, data, content_type, status=200):
+    handler.send_response(status)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(data)))
+    handler.end_headers()
+    try:
+        handler.wfile.write(data)
+    except (BrokenPipeError, ConnectionResetError):
+        return False
+    return True
+
+
 class H(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path in {"/health", "/api/health"}:
+            data = json.dumps(worktime_health_payload(), ensure_ascii=False, indent=2).encode("utf-8")
+            send_bytes(self, data, "application/json; charset=utf-8")
+            return
+
         if parsed.path.startswith("/dlp-ioc/"):
             name = parsed.path.rsplit("/", 1)[-1]
             if name not in {"ioc_blacklist.json", "ioc_blacklist.csv", "ioc_blacklist.sql"}:
@@ -1773,11 +2316,7 @@ class H(BaseHTTPRequestHandler):
                 ctype = "text/csv; charset=utf-8"
             else:
                 ctype = "text/plain; charset=utf-8"
-            self.send_response(200)
-            self.send_header("Content-Type", ctype)
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            send_bytes(self, data, ctype)
             return
 
         if parsed.path not in {"/reports/worktime/today", "/reports/worktime/management"}:
@@ -1794,9 +2333,11 @@ class H(BaseHTTPRequestHandler):
         host = resolve_host(params.get("host", [DEFAULT_HOST])[0])
         day = params.get("day", ["today"])[0]
         date_text = params.get("date", [None])[0]
+        owner_filter = normalize_management_filter(params.get("owner", [""])[0])
+        department_filter = normalize_management_filter(params.get("department", [""])[0])
         report_date = resolve_report_date(day=day, date_text=date_text)
         is_management = parsed.path == "/reports/worktime/management"
-        management_payload = management_report_for_date(host, report_date) if is_management else None
+        management_payload = management_report_for_date(host, report_date, owner_filter=owner_filter, department_filter=department_filter) if is_management else None
         rows = report_for_date_fresh(host, report_date) if not is_management else management_payload["rows"]
 
         if fmt == "csv":
@@ -1810,11 +2351,7 @@ class H(BaseHTTPRequestHandler):
                 writer.writeheader()
                 writer.writerows(management_payload["actions"])
                 data = out.getvalue().encode()
-                self.send_response(200)
-                self.send_header("Content-Type", "text/csv; charset=utf-8")
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
+                send_bytes(self, data, "text/csv; charset=utf-8")
                 return
             out = io.StringIO()
             writer = csv.DictWriter(
@@ -1835,11 +2372,7 @@ class H(BaseHTTPRequestHandler):
             writer.writeheader()
             writer.writerows(rows)
             data = out.getvalue().encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/csv; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            send_bytes(self, data, "text/csv; charset=utf-8")
             return
 
         if fmt == "html":
@@ -1847,21 +2380,13 @@ class H(BaseHTTPRequestHandler):
                 data = render_management_html(management_payload, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
             else:
                 data = render_html(rows, host, report_date, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            send_bytes(self, data, "text/html; charset=utf-8")
             return
 
         if is_management:
             obj = management_payload
             data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            send_bytes(self, data, "application/json; charset=utf-8")
             return
 
         obj = {
@@ -1873,15 +2398,16 @@ class H(BaseHTTPRequestHandler):
             "rows": rows,
         }
         data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+        send_bytes(self, data, "application/json; charset=utf-8")
+
+
+class WorktimeHTTPServer(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 64
 
 
 def main():
-    HTTPServer((LISTEN_HOST, LISTEN_PORT), H).serve_forever()
+    WorktimeHTTPServer((LISTEN_HOST, LISTEN_PORT), H).serve_forever(poll_interval=0.5)
 
 
 if __name__ == "__main__":

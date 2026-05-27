@@ -10,7 +10,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import clickhouse_connect
 import yaml
 from dateutil import parser as date_parser
 
@@ -67,6 +66,8 @@ def load_config(path: str) -> Config:
 
 
 def ch_client(conf: Config):
+    import clickhouse_connect
+
     return clickhouse_connect.get_client(
         host=conf.clickhouse["host"],
         port=conf.clickhouse.get("port", 8123),

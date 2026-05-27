@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import base64
+import csv
 import hashlib
 import json
 import os
@@ -6,6 +8,7 @@ import re
 import secrets
 import shlex
 import ssl
+import socket
 import subprocess
 import sys
 import tempfile
@@ -220,6 +223,11 @@ class TelegramAPI:
             raise RuntimeError(f"Telegram API error on {method}: {parsed}")
         return parsed
 
+    def _requests_proxies(self) -> Optional[Dict[str, str]]:
+        if not self.proxy_url:
+            return None
+        return {"http": self.proxy_url, "https": self.proxy_url}
+
     def get_updates(self, offset: int, timeout: int = 15) -> List[Dict]:
         r = self._call("getUpdates", {"offset": offset, "timeout": timeout})
         return r.get("result", [])
@@ -231,43 +239,42 @@ class TelegramAPI:
         self._call("sendMessage", payload)
 
     def send_document(self, chat_id: int, filename: str, content: bytes, caption: str = "") -> None:
-        boundary = f"----codex{secrets.token_hex(12)}"
-        parts: List[bytes] = []
+        if not filename.strip():
+            raise RuntimeError("sendDocument requires a non-empty filename")
+        if not content:
+            raise RuntimeError(f"Refusing to send empty document: {filename}")
 
-        def add_field(name: str, value: str) -> None:
-            parts.append(
-                (
-                    f"--{boundary}\r\n"
-                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'
-                    f"{value}\r\n"
-                ).encode("utf-8")
-            )
-
-        add_field("chat_id", str(chat_id))
+        data = {"chat_id": str(chat_id)}
         if caption:
-            add_field("caption", caption)
+            data["caption"] = caption
+        files = {"document": (filename, content, "application/octet-stream")}
 
-        parts.append(
-            (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="document"; filename="{filename}"\r\n'
-                "Content-Type: application/octet-stream\r\n\r\n"
-            ).encode("utf-8")
-        )
-        parts.append(content)
-        parts.append(f"\r\n--{boundary}--\r\n".encode("utf-8"))
-
-        req = Request(
-            f"{self.base}/sendDocument",
-            data=b"".join(parts),
-            method="POST",
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        )
-        with self.opener.open(req, timeout=self.timeout_sec + 10) as resp:
-            body = resp.read().decode("utf-8")
-        parsed = json.loads(body)
-        if not parsed.get("ok"):
-            raise RuntimeError(f"Telegram API error on sendDocument: {parsed}")
+        last_exc: Optional[Exception] = None
+        attempts = 6 if self.proxy_url else 3
+        for attempt in range(1, attempts + 1):
+            try:
+                resp = requests.post(
+                    f"{self.base}/sendDocument",
+                    data=data,
+                    files=files,
+                    proxies=self._requests_proxies(),
+                    timeout=self.timeout_sec + 10,
+                )
+                resp.raise_for_status()
+                parsed = resp.json()
+                if not parsed.get("ok"):
+                    raise RuntimeError(f"Telegram API error on sendDocument: {parsed}")
+                return
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= attempts or not self._should_retry(exc):
+                    raise
+                print(
+                    f"{time.strftime('%Y-%m-%d %H:%M:%S')} [WARN] Telegram API sendDocument attempt {attempt}/{attempts} failed: {exc}",
+                    flush=True,
+                )
+                time.sleep(min(attempt * 2, 10))
+        raise last_exc if last_exc else RuntimeError("Telegram API sendDocument failed")
 
     def send_long_message(
         self,
@@ -319,10 +326,13 @@ class TSJGuardianBot:
     BTN_PFSENSE_CONFIRM = "Подтвердить pfSense: шаг 1"
     BTN_PFSENSE_CANCEL = "Отменить pfSense изменение"
     BTN_AW_DLP_CHECK = "Проверка AW-Rus + DLP"
-    BTN_AW_DFIR = "Hayabusa DFIR"
+    BTN_DLP_MODE_TOGGLE = "DLP режим: переключить"
+    BTN_AW_DFIR = "Форензика Windows логов"
+    BTN_AW_DFIR_LEGACY = "Hayabusa DFIR"
     BTN_AI_CHAT_ALIASES = ("AI чат", "Чат с поддержкой", "Техподдержка", "Тех поддержка")
     BTN_OVPN_CERTS_ALIASES = ("OpenVPN certs", "OpenVPN cert", "OpenVPN серты", "OpenVPN сертификат")
-    PFSENSE_ENV_PATH = "/home/codex/infra-admin/vendor/pfsense-mcp-server/.env.readonly"
+    PFSENSE_ENV_PATH = "/home/igor/.config/tsj-bot/pfsense.env.readonly"
+    PFSENSE_INVENTORY_PATH = "/home/igor/.config/tsj-bot/inventory.md"
 
     HUMAN_OPERATOR_STYLE = (
         "Ты отвечаешь оператору как реальный инженер техподдержки проекта DetMir. "
@@ -353,10 +363,12 @@ class TSJGuardianBot:
         )
         self.aw_rus_api_base = os.getenv("AW_RUS_API_BASE", "http://10.10.10.13:5600/api/0").strip()
         self.aw_rus_worktime_base = os.getenv("AW_RUS_WORKTIME_BASE", "http://10.10.10.13:5610").strip()
+        self.aw_dlp_policy_api_base = os.getenv("AW_DLP_POLICY_API_BASE", "http://10.10.10.13:5601/api/0").strip()
+        self.aw_dlp_policy_actor = os.getenv("AW_DLP_POLICY_ACTOR", "tsj-guardian-bot").strip() or "tsj-guardian-bot"
         self.aw_rus_worktime_heal_cmd = os.getenv(
             "AW_RUS_WORKTIME_HEAL_CMD",
             "sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 "
-            "'sudo -S systemctl restart aw-worktime-api.service'",
+            "'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl reset-failed aw-worktime-ui-bridge.service && sudo -S systemctl start aw-worktime-ui-bridge.service'",
         ).strip()
         self.aw_rus_dlp_heal_cmd = os.getenv(
             "AW_RUS_DLP_HEAL_CMD",
@@ -371,6 +383,33 @@ class TSJGuardianBot:
         self.aw_rus_host = os.getenv("AW_RUS_HOST", "SHARKON2025").strip()
         self.aw_rus_primary_user = os.getenv("AW_RUS_PRIMARY_USER", "USER1").strip()
         self.aw_rus_stale_sec = max(60, env_int("AW_RUS_STALE_SEC", 900))
+        self.aw_rus_windows_host = os.getenv("AW_RUS_WINDOWS_HOST", "192.168.100.18").strip() or "192.168.100.18"
+        self.aw_rus_windows_ssh_user = os.getenv("AW_RUS_WINDOWS_SSH_USER", "Администратор").strip() or "Администратор"
+        self.aw_rus_windows_ssh_password = os.getenv("AW_RUS_WINDOWS_SSH_PASSWORD", "").strip()
+        self.aw_rus_windows_config_path = os.getenv(
+            "AW_RUS_WINDOWS_CONFIG_PATH",
+            r"C:\ProgramData\AWatch-rus\deployment-config.json",
+        ).strip() or r"C:\ProgramData\AWatch-rus\deployment-config.json"
+        self.aw_rus_windows_hardening_recovery_path = os.getenv(
+            "AW_RUS_WINDOWS_HARDENING_RECOVERY_PATH",
+            r"C:\Program Files\AWatch-rus\windows\hardening-recovery.ps1",
+        ).strip() or r"C:\Program Files\AWatch-rus\windows\hardening-recovery.ps1"
+        self.aw_rus_windows_session_collector_path = os.getenv(
+            "AW_RUS_WINDOWS_SESSION_COLLECTOR_PATH",
+            r"C:\ProgramData\AWatch-rus\worktime-session-collector.ps1",
+        ).strip() or r"C:\ProgramData\AWatch-rus\worktime-session-collector.ps1"
+        self.aw_rus_windows_policy_path = os.getenv(
+            "AW_RUS_WINDOWS_POLICY_PATH",
+            r"C:\ProgramData\AWatch-rus\dlp-policy.json",
+        ).strip() or r"C:\ProgramData\AWatch-rus\dlp-policy.json"
+        self.aw_rus_windows_browser_collector_path = os.getenv(
+            "AW_RUS_WINDOWS_BROWSER_COLLECTOR_PATH",
+            r"C:\ProgramData\AWatch-rus\browser-domains-native-collector.ps1",
+        ).strip() or r"C:\ProgramData\AWatch-rus\browser-domains-native-collector.ps1"
+        self.aw_rus_windows_email_collector_path = os.getenv(
+            "AW_RUS_WINDOWS_EMAIL_COLLECTOR_PATH",
+            r"C:\ProgramData\AWatch-rus\email-outbound-collector.ps1",
+        ).strip() or r"C:\ProgramData\AWatch-rus\email-outbound-collector.ps1"
         self.heal_script = os.getenv(
             "HEAL_SCRIPT", "/home/codex/infra-admin/scripts/system_self_support.sh --heal"
         )
@@ -389,7 +428,7 @@ class TSJGuardianBot:
         self.exit_on_autoheal_success = env_bool("EXIT_ON_AUTORECOVERY_SUCCESS", True)
 
         self.ai_escalation_mode = os.getenv("AI_ESCALATION_MODE", "codex_exec").strip().lower() or "codex_exec"
-        self.ai_exec_user = os.getenv("AI_EXEC_USER", os.getenv("TMUX_USER", "codex")).strip() or "codex"
+        self.ai_exec_user = os.getenv("AI_EXEC_USER", os.getenv("TMUX_USER", "igor")).strip() or "igor"
         self.codex_model = os.getenv("CODEX_MODEL", "gpt-5.3-codex").strip() or "gpt-5.3-codex"
         fallback_models_raw = os.getenv("CODEX_FALLBACK_MODELS", "gpt-5.4-mini").strip()
         self.codex_fallback_models = [
@@ -405,7 +444,7 @@ class TSJGuardianBot:
         self.fs_immediate_ai_on_critical = env_bool("FS_IMMEDIATE_AI_ON_CRITICAL", True)
         self.ai_chat_enabled = env_bool("AI_CHAT_ENABLED", True)
         self.ai_chat_timeout_sec = env_int("AI_CHAT_TIMEOUT_SEC", 1800)
-        self.ai_chat_workdir = os.getenv("AI_CHAT_WORKDIR", "/home/codex/infra-admin").strip()
+        self.ai_chat_workdir = os.getenv("AI_CHAT_WORKDIR", "/home/igor").strip()
         self.ai_chat_sandbox = os.getenv("AI_CHAT_SANDBOX", "workspace-write").strip() or "workspace-write"
         self.openvpn_cert_check_timeout_sec = max(30, env_int("OPENVPN_CERT_CHECK_TIMEOUT_SEC", 240))
         self.openvpn_expiry_warn_timeout_sec = max(30, env_int("OPENVPN_EXPIRY_WARN_TIMEOUT_SEC", 120))
@@ -416,6 +455,15 @@ class TSJGuardianBot:
         self.openvpn_expiry_warn_enabled = env_bool("OPENVPN_EXPIRY_WARN_ENABLED", True)
         self.openvpn_expiry_warn_days = env_int("OPENVPN_EXPIRY_WARN_DAYS", 30)
         self.openvpn_expiry_warn_interval_sec = max(300, env_int("OPENVPN_EXPIRY_WARN_INTERVAL_SEC", 21600))
+        self.openvpn_config_server_id = max(1, env_int("OPENVPN_CONFIG_SERVER_ID", 1))
+        self.openvpn_first_host_offset = max(1, env_int("OPENVPN_CONFIG_FIRST_HOST_OFFSET", 13))
+        self.openvpn_helper_path = (
+            os.getenv("OPENVPN_CONFIG_HELPER_PATH", f"{self.ai_chat_workdir.rstrip('/')}/tsj-bot/pfsense_openvpn_client_export.php").strip()
+        )
+        self.pfsense_env_path = os.getenv("PFSENSE_ENV_PATH", self.PFSENSE_ENV_PATH).strip()
+        self.pfsense_inventory_path = os.getenv("PFSENSE_INVENTORY_PATH", self.PFSENSE_INVENTORY_PATH).strip()
+        self.pfsense_ssh_bin = os.getenv("PFSENSE_SSH_BIN", "/usr/bin/ssh").strip() or "/usr/bin/ssh"
+        self.sshpass_bin = os.getenv("SSHPASS_BIN", "/usr/bin/sshpass").strip() or "/usr/bin/sshpass"
         self.telegram_proxy_url = (
             os.getenv("TELEGRAM_PROXY_URL", "").strip()
             or os.getenv("HTTPS_PROXY", "").strip()
@@ -493,11 +541,38 @@ class TSJGuardianBot:
         except Exception as exc:
             self._log("ERROR", f"Failed to send Telegram message: {exc}")
 
+    def _aw_dlp_toggle_button_text(self, current_mode: Optional[str] = None) -> str:
+        mode = (current_mode or "").strip().lower()
+        if mode not in {"monitor", "enforce", "mixed"}:
+            try:
+                active = self._aw_dlp_policy_request("GET", "/dlp/policies/active", timeout_sec=5)
+                policy = active.get("policy") or {}
+                if isinstance(policy, dict):
+                    mode = self._aw_dlp_mode_from_policy(policy)
+            except Exception:
+                mode = ""
+
+        if mode == "monitor":
+            return "DLP сейчас: наблюдение | включить блокировку"
+        if mode == "enforce":
+            return "DLP сейчас: блокировка | включить наблюдение"
+        if mode == "mixed":
+            return "DLP сейчас: смешанный | выровнять в блокировку"
+        return self.BTN_DLP_MODE_TOGGLE
+
+    def _is_dlp_toggle_button(self, text: str) -> bool:
+        normalized = (text or "").strip()
+        return normalized == self.BTN_DLP_MODE_TOGGLE or normalized.startswith("DLP")
+
+    def _is_dfir_button(self, text: str) -> bool:
+        normalized = (text or "").strip()
+        return normalized in {self.BTN_AW_DFIR, self.BTN_AW_DFIR_LEGACY}
+
     def _menu_markup(self) -> Dict:
         return {
             "keyboard": [
                 [self.BTN_STATUS, self.BTN_CHECK, self.BTN_HEAL],
-                [self.BTN_AW_DLP_CHECK],
+                [self.BTN_AW_DLP_CHECK, self._aw_dlp_toggle_button_text()],
                 [self.BTN_AW_DFIR],
                 [self.BTN_ACK, self.BTN_RESOLVE],
                 [self.BTN_AI, self.BTN_FALLBACK],
@@ -518,8 +593,11 @@ class TSJGuardianBot:
     def _send_menu(self, chat_id: int, text: str) -> None:
         self.api.send_long_message(chat_id, text, reply_markup=self._menu_markup())
 
-    def _send_text(self, chat_id: int, text: str) -> None:
-        self.api.send_long_message(chat_id, text)
+    def _send_text(self, chat_id: int, text: str, reply_markup: Optional[Dict] = None) -> None:
+        self.api.send_long_message(chat_id, text, reply_markup=reply_markup)
+
+    def _send_text_with_menu(self, chat_id: int, text: str) -> None:
+        self._send_text(chat_id, text, reply_markup=self._menu_markup())
 
     def _local_time_text(self) -> str:
         return datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
@@ -717,12 +795,111 @@ class TSJGuardianBot:
         p = subprocess.run(
             ["bash", "-lc", cmd],
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout_sec,
             check=False,
         )
         out = (p.stdout or "") + (("\n" + p.stderr) if p.stderr else "")
         return p.returncode, out.strip()
+
+    @staticmethod
+    def _decode_process_output(data: Optional[bytes]) -> str:
+        if not data:
+            return ""
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            pass
+
+        def score_text(text: str) -> int:
+            score = 0
+            for ch in text:
+                code = ord(ch)
+                if ch in "\r\n\t":
+                    score += 1
+                elif 32 <= code <= 126:
+                    score += 1
+                elif 0x0400 <= code <= 0x04FF or code == 0x2116:
+                    score += 3
+                else:
+                    score -= 2
+            return score
+
+        candidates: List[Tuple[int, str]] = []
+        for encoding in ("cp866", "cp1251"):
+            try:
+                decoded = data.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+            candidates.append((score_text(decoded), decoded))
+        if candidates:
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            return candidates[0][1]
+        return data.decode("utf-8", errors="replace")
+
+    @staticmethod
+    def _parse_worktime_today_csv(csv_text: str) -> List[Dict[str, Optional[int]]]:
+        rows: List[Dict[str, Optional[int]]] = []
+        for raw_row in csv.DictReader(csv_text.splitlines()):
+            user = (raw_row.get("user") or raw_row.get("username") or "").strip()
+            active_raw = raw_row.get("active_seconds")
+            if active_raw is None:
+                values = list(raw_row.values())
+                active_raw = values[1] if len(values) > 1 else None
+            try:
+                active_seconds = int(float((active_raw or "").strip()))
+            except Exception:
+                active_seconds = None
+            rows.append(
+                {
+                    "user": user,
+                    "active_seconds": active_seconds,
+                }
+            )
+        return rows
+
+    def _fetch_worktime_today_csv(self, timeout_sec: int = 20, attempts: int = 2) -> str:
+        probe_url = f"{self.aw_rus_worktime_base.rstrip('/')}/reports/worktime/today?format=csv"
+        last_exc: Optional[Exception] = None
+        for attempt in range(max(1, attempts)):
+            try:
+                r = requests.get(probe_url, timeout=timeout_sec)
+                r.raise_for_status()
+                return r.text
+            except Exception as exc:
+                last_exc = exc
+                if attempt + 1 >= max(1, attempts):
+                    raise
+                time.sleep(1)
+        raise last_exc or RuntimeError("worktime report fetch failed")
+
+    def _run_argv(
+        self,
+        argv: List[str],
+        timeout_sec: int = 180,
+        input_text: str = "",
+        env_extra: Optional[Dict[str, str]] = None,
+    ) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        if env_extra:
+            env.update(env_extra)
+        proc = subprocess.run(
+            argv,
+            text=False,
+            input=input_text.encode("utf-8"),
+            capture_output=True,
+            timeout=timeout_sec,
+            check=False,
+            env=env,
+        )
+        return subprocess.CompletedProcess(
+            proc.args,
+            proc.returncode,
+            self._decode_process_output(proc.stdout),
+            self._decode_process_output(proc.stderr),
+        )
 
     def _get_proxmox_guest_lock(self, kind: str, guest_id: str) -> str:
         if kind == "qemu":
@@ -1027,7 +1204,7 @@ class TSJGuardianBot:
         return header + "\n" + "\n".join(lines[:80])
 
     def _load_pfsense_readonly_env(self) -> Tuple[str, str, bool]:
-        env_raw = Path(self.PFSENSE_ENV_PATH).read_text(encoding="utf-8")
+        env_raw = Path(self.pfsense_env_path).read_text(encoding="utf-8")
         env_map: Dict[str, str] = {}
         for line in env_raw.splitlines():
             line = line.strip()
@@ -1549,36 +1726,220 @@ class TSJGuardianBot:
         line = text.split(marker, 1)[1].splitlines()[0].strip()
         return self._sanitize_filename(line or "openvpn-client", ".ovpn")
 
-    def _run_openvpn_config_codex_exec(self, povpn: PendingOpenVpnConfig) -> Tuple[str, str, str]:
-        prompt = (
-            f"{self.HUMAN_OPERATOR_STYLE}"
-            "Этот запуск имеет отдельное двойное подтверждение оператора на выпуск нового OpenVPN client config для одного пользователя. "
-            "Разрешено выполнить только действия, необходимые для одного common name, и не более. "
-            "Нужно: проверить пользовательский OpenVPN certificate, при необходимости сгенерировать или обновить его, "
-            "затем экспортировать свежий OpenVPN client config для этого common name. "
-            "Используй локальный MCP `pfsense-enhanced`, а если он read-only, разрешено использовать прямой pfSense API/SSH доступ из локального окружения только для этой подтверждённой операции. "
-            "Верни ответ СТРОГО в формате без markdown:\n"
-            "OVPN_FILENAME: <filename>.ovpn\n"
-            "OVPN_SUMMARY_BEGIN\n"
-            "<короткий отчёт>\n"
-            "OVPN_SUMMARY_END\n"
-            "OVPN_CONFIG_BEGIN\n"
-            "<raw ovpn config>\n"
-            "OVPN_CONFIG_END\n"
-            f"common_name: {povpn.common_name}"
+    def _load_pfsense_inventory_access(self) -> Tuple[str, int, str, str]:
+        text = Path(self.pfsense_inventory_path).read_text(encoding="utf-8")
+        section = re.search(r"### 2\. pfSense(.*?)(?:### 3\.|\Z)", text, re.S)
+        if not section:
+            raise RuntimeError("pfSense section not found in inventory")
+        section_text = section.group(1)
+        ssh_match = re.search(r"- SSH LAN: `([^`:]+)(?::(\d+))?`", section_text)
+        user_match = re.search(r"- Root login: `([^`]+)`", section_text)
+        pass_match = re.search(r"- Root password: `([^`]+)`", section_text)
+        if not ssh_match or not user_match or not pass_match:
+            raise RuntimeError("pfSense root SSH credentials not found in inventory")
+        host = ssh_match.group(1).strip()
+        port = int((ssh_match.group(2) or "22").strip())
+        user = user_match.group(1).strip()
+        password = pass_match.group(1).strip()
+        if not host or not user or not password:
+            raise RuntimeError("pfSense SSH inventory values are empty")
+        return host, port, user, password
+
+    def _load_pfsense_web_access(self) -> Tuple[str, str, str]:
+        text = Path(self.pfsense_inventory_path).read_text(encoding="utf-8")
+        section = re.search(r"### 2\. pfSense(.*?)(?:### 3\.|\Z)", text, re.S)
+        if not section:
+            raise RuntimeError("pfSense section not found in inventory")
+        section_text = section.group(1)
+        web_match = re.search(r"- Web UI: `([^`]+)`", section_text)
+        user_match = re.search(r"- Admin login: `([^`]+)`", section_text)
+        pass_match = re.search(r"- Admin password: `([^`]+)`", section_text)
+        if not web_match or not user_match or not pass_match:
+            raise RuntimeError("pfSense web credentials not found in inventory")
+        host_port = web_match.group(1).strip()
+        user = user_match.group(1).strip()
+        password = pass_match.group(1).strip()
+        if not host_port or not user or not password:
+            raise RuntimeError("pfSense web inventory values are empty")
+        return f"https://{host_port}", user, password
+
+    @staticmethod
+    def _extract_pfsense_csrf_token(page: str) -> str:
+        match = re.search(r'var csrfMagicToken = "([^"]+)"', page or "")
+        if not match:
+            raise RuntimeError("pfSense csrf token not found")
+        return match.group(1)
+
+    def _pfsense_ssh_reachable(self, host: str, port: int, timeout_sec: float = 3.0) -> bool:
+        try:
+            with socket.create_connection((host, port), timeout=timeout_sec):
+                return True
+        except OSError:
+            return False
+
+    def _parse_openvpn_helper_result(self, payload: str, common_name: str) -> Tuple[str, str, bytes]:
+        data = json.loads(payload)
+        filename = self._sanitize_filename(str(data.get("filename") or common_name), ".ovpn")
+        config_b64 = str(data.get("config_b64") or "").strip()
+        if not config_b64:
+            raise RuntimeError("OpenVPN export returned empty config payload")
+        try:
+            config_bytes = base64.b64decode(config_b64, validate=True)
+        except Exception as exc:
+            raise RuntimeError(f"Invalid base64 in OpenVPN export payload: {exc}") from exc
+        if not config_bytes.strip():
+            raise RuntimeError("OpenVPN export returned empty decoded config")
+
+        config_text = config_bytes.decode("utf-8", errors="replace")
+        required_markers = ("client", "remote ", "<ca>")
+        missing = [marker for marker in required_markers if marker not in config_text]
+        if missing:
+            raise RuntimeError(f"OpenVPN export does not look valid; missing markers: {', '.join(missing)}")
+
+        summary_lines = [f"Новый OpenVPN конфиг подготовлен для {data.get('common_name') or common_name}."]
+        tunnel_network = str(data.get("tunnel_network") or "").strip()
+        if tunnel_network:
+            summary_lines.append(f"- VPN IP: {tunnel_network}")
+        summary_lines.append(f"- сертификат создан: {'да' if data.get('cert_created') else 'нет'}")
+        summary_lines.append(f"- client-specific config создан: {'да' if data.get('csc_created') else 'нет'}")
+        summary = "\n".join(summary_lines)
+        return filename, summary, config_bytes
+
+    def _run_openvpn_config_helper(self, povpn: PendingOpenVpnConfig) -> Tuple[str, str, bytes]:
+        helper_script = Path(self.openvpn_helper_path).read_text(encoding="utf-8")
+        if not helper_script.strip():
+            raise RuntimeError(f"OpenVPN helper is empty: {self.openvpn_helper_path}")
+
+        host, port, user, password = self._load_pfsense_inventory_access()
+        remote_cmd = (
+            "tmp=$(mktemp /tmp/tsj-ovpn-helper.XXXXXX.php) || exit 1; "
+            "cat > \"$tmp\" || { rc=$?; rm -f \"$tmp\"; exit $rc; }; "
+            f"php \"$tmp\" -- --common-name {shlex.quote(povpn.common_name)} "
+            f"--server-id {shlex.quote(str(self.openvpn_config_server_id))} "
+            f"--first-host-offset {shlex.quote(str(self.openvpn_first_host_offset))}; "
+            "rc=$?; rm -f \"$tmp\"; exit $rc"
         )
-        rc, out, reply = self._run_codex_exec_prompt(prompt, timeout_sec=self.ai_chat_timeout_sec)
-        payload = reply or out
-        summary = self._extract_tag_block(payload, "OVPN_SUMMARY_BEGIN", "OVPN_SUMMARY_END")
-        config = self._extract_tag_block(payload, "OVPN_CONFIG_BEGIN", "OVPN_CONFIG_END")
-        filename = self._extract_openvpn_filename(payload) or self._sanitize_filename(povpn.common_name, ".ovpn")
-        if rc != 0 and not config:
-            self._log("ERROR", f"OpenVPN config generation failed rc={rc}: {out[-2000:]}")
-            raise RuntimeError(f"OpenVPN config generation failed rc={rc}")
-        if not config:
-            self._log("ERROR", f"OpenVPN config generation produced no config payload: {payload[-2000:]}")
-            raise RuntimeError("OpenVPN config payload not found in response")
-        return filename, self._sanitize_operator_reply(summary or f"Новый OpenVPN конфиг подготовлен для {povpn.common_name}."), config
+        argv = [
+            self.sshpass_bin,
+            "-e",
+            self.pfsense_ssh_bin,
+            "-o",
+            "PubkeyAuthentication=no",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-p",
+            str(port),
+            f"{user}@{host}",
+            remote_cmd,
+        ]
+        proc = self._run_argv(
+            argv,
+            timeout_sec=self.ai_chat_timeout_sec,
+            input_text=helper_script,
+            env_extra={"SSHPASS": password},
+        )
+        stdout = (proc.stdout or "").strip()
+        stderr = (proc.stderr or "").strip()
+        if proc.returncode != 0:
+            details = stderr or stdout or f"rc={proc.returncode}"
+            self._log("ERROR", f"OpenVPN helper failed rc={proc.returncode}: {details[-2000:]}")
+            raise RuntimeError(f"OpenVPN helper failed: {details}")
+        if not stdout:
+            raise RuntimeError("OpenVPN helper returned no stdout payload")
+        return self._parse_openvpn_helper_result(stdout, povpn.common_name)
+
+    def _run_openvpn_config_web_export(self, common_name: str) -> Tuple[str, str, bytes]:
+        base_url, user, password = self._load_pfsense_web_access()
+        requests.packages.urllib3.disable_warnings()
+        web = requests.Session()
+        web.verify = False
+        web.trust_env = False
+
+        login_page = web.get(f"{base_url}/", timeout=20).text
+        csrf_token = self._extract_pfsense_csrf_token(login_page)
+        login_resp = web.post(
+            f"{base_url}/",
+            data={
+                "__csrf_magic": csrf_token,
+                "usernamefld": user,
+                "passwordfld": password,
+                "login": "Sign In",
+            },
+            timeout=20,
+        )
+        if "usernamefld" in login_resp.text:
+            raise RuntimeError("pfSense web login failed")
+
+        export_page = web.get(f"{base_url}/vpn_openvpn_export.php", timeout=20).text
+        export_csrf = self._extract_pfsense_csrf_token(export_page)
+        cert_pairs = re.findall(
+            r"servers\[(\d+)\]\[3\]\[(\d+)\]\[0\] = '([^']*)';\s*"
+            r"servers\[\1\]\[3\]\[\2\]\[1\] = '([^']*)';",
+            export_page,
+        )
+        cert_id = ""
+        for server_id, _, crtid, name in cert_pairs:
+            if int(server_id) == self.openvpn_config_server_id and name == common_name:
+                cert_id = crtid
+                break
+        if not cert_id:
+            raise RuntimeError(f"OpenVPN certificate `{common_name}` is not present on pfSense export page")
+
+        payload = {
+            "__csrf_magic": export_csrf,
+            "act": "confinline",
+            "srvid": str(self.openvpn_config_server_id),
+            "usrid": "",
+            "crtid": cert_id,
+            "useaddr": "serveraddr",
+            "verifyservercn": "auto",
+            "blockoutsidedns": "0",
+            "legacy": "1",
+            "silent": "0",
+            "bindmode": "nobind",
+            "usetoken": "0",
+            "usepkcs11": "0",
+            "pkcs11providers": "",
+            "pkcs11id": "",
+            "p12encryption": "high",
+            "advancedoptions": "",
+        }
+        resp = web.post(f"{base_url}/vpn_openvpn_export.php", data=payload, timeout=30)
+        if resp.status_code != 200:
+            raise RuntimeError(f"pfSense export returned HTTP {resp.status_code}")
+        config_bytes = resp.content or b""
+        if not config_bytes.strip():
+            raise RuntimeError("pfSense web export returned empty payload")
+        config_text = config_bytes.decode("utf-8", errors="replace")
+        required_markers = ("client", "remote ", "<ca>")
+        missing = [marker for marker in required_markers if marker not in config_text]
+        if missing:
+            raise RuntimeError(f"pfSense web export does not look valid; missing markers: {', '.join(missing)}")
+
+        disposition = resp.headers.get("content-disposition", "")
+        filename_match = re.search(r'filename="?([^";]+)"?', disposition)
+        filename = self._sanitize_filename(
+            filename_match.group(1) if filename_match else common_name,
+            ".ovpn",
+        )
+        summary = (
+            f"OpenVPN конфиг экспортирован для {common_name}.\n"
+            "- режим: pfSense web export\n"
+            "- сертификат создан: нет\n"
+            "- client-specific config создан: нет"
+        )
+        return filename, summary, config_bytes
+
+    def _prepare_openvpn_config(self, povpn: PendingOpenVpnConfig) -> Tuple[str, str, bytes]:
+        host, port, _, _ = self._load_pfsense_inventory_access()
+        if self._pfsense_ssh_reachable(host, port, timeout_sec=3.0):
+            try:
+                return self._run_openvpn_config_helper(povpn)
+            except Exception as exc:
+                self._log("WARN", f"OpenVPN SSH helper failed, falling back to web export: {exc}")
+        else:
+            self._log("WARN", f"pfSense SSH is not reachable from bot host, using web export for {povpn.common_name}")
+        return self._run_openvpn_config_web_export(povpn.common_name)
 
     def _apply_openvpn_config(self, chat_id: int, code: str) -> None:
         self._expire_pending_openvpn_config_if_needed()
@@ -1594,11 +1955,12 @@ class TSJGuardianBot:
             return
 
         try:
-            filename, summary, config = self._run_openvpn_config_codex_exec(povpn)
+            filename, summary, config_bytes = self._prepare_openvpn_config(povpn)
+            self._log("INFO", f"Prepared OpenVPN config {filename} ({len(config_bytes)} bytes) for {povpn.common_name}")
             self.api.send_document(
                 chat_id,
                 filename,
-                config.encode("utf-8"),
+                config_bytes,
                 caption=summary[:900],
             )
             self._send_text(chat_id, f"OpenVPN конфиг отправлен как файл `{filename}`.")
@@ -1697,6 +2059,45 @@ class TSJGuardianBot:
     def _has_filesystem_critical(self, failures: List[str]) -> bool:
         return bool(self._filesystem_failures(failures))
 
+    def _is_aw_rus_failure_line(self, line: str) -> bool:
+        return line.strip().lower().startswith("[fail] aw-rus:")
+
+    def _extract_aw_rus_failure_keys(self, failures: List[str]) -> List[str]:
+        keys: List[str] = []
+        for line in failures:
+            match = re.match(r"\[FAIL\]\s+aw-rus:([a-z0-9\-]+):", line.strip(), re.IGNORECASE)
+            if match:
+                key = match.group(1).lower()
+                if key not in keys:
+                    keys.append(key)
+        return keys
+
+    def _aw_rus_probe_should_run(self, failures: List[str]) -> bool:
+        lowered = "\n".join(failures).lower()
+        return "node_13" not in lowered
+
+    def _aw_rus_failure_line_matches(self, line: str, key: str) -> bool:
+        text = line.strip().lower()
+        if not text.startswith("- "):
+            return False
+        if key == "worktime":
+            return text.startswith("- worktime(") or text.startswith("- worktime:")
+        return text.startswith(f"- {key}:")
+
+    def _aw_rus_failure_log_lines(self, lines: List[str], failures: List[str]) -> List[str]:
+        rendered: List[str] = []
+        for key in failures:
+            matching_line = next((line for line in lines if self._aw_rus_failure_line_matches(line, key)), "")
+            summary = matching_line[2:].strip() if matching_line.startswith("- ") else key
+            rendered.append(f"[FAIL] aw-rus:{key}: {summary}")
+        return rendered
+
+    def _background_aw_rus_failures(self, failures: List[str]) -> Tuple[List[str], List[str]]:
+        if not self._aw_rus_probe_should_run(failures):
+            return [], []
+        lines, aw_failures = self._aw_rus_dlp_probe()
+        return self._aw_rus_failure_log_lines(lines, aw_failures), aw_failures
+
     def _suggestions_from_failures(self, failures: List[str]) -> List[str]:
         suggestions = []
         text = "\n".join(failures).lower()
@@ -1712,6 +2113,11 @@ class TSJGuardianBot:
             suggestions.append("Проверить grafana-server и NO_PROXY для 10.10.10.0/24.")
         if "loki" in text or "alloy" in text:
             suggestions.append("Проверить LXC логов и restart сервисов loki/alloy.")
+        if "aw-rus:watcher-" in text or "aw-rus:worktime:" in text:
+            suggestions.append("Проверить Windows collector recovery: worktime-session-collector, ActivityWatch Recovery и Launch tasks на 192.168.100.18.")
+            suggestions.append("После Windows recovery проверить server-side aw-worktime-autoheal/ui-bridge для пересборки afk/window bucket'ов.")
+        if "aw-rus:dlp-" in text:
+            suggestions.append("Проверить DLP endpoint/fileops collectors и server-side DLP transport на 10.10.10.13.")
         if "filesystem_usage" in text:
             suggestions.append("Проверить самые большие каталоги: du -x /var /srv /home, журналы в /var/log и apt cache.")
             suggestions.append("Проверить давление по снапшотам/хранилищу Proxmox и решить: очистка, ротация или расширение диска.")
@@ -1785,8 +2191,10 @@ class TSJGuardianBot:
         if not started:
             self._log("WARN", "Skipping check cycle because previous check is still running")
             return
-        failures = self._parse_failures(out)
+        main_failures = self._parse_failures(out)
         warnings = self._parse_warnings(out)
+        aw_failure_lines, _ = self._background_aw_rus_failures(main_failures)
+        failures = main_failures + aw_failure_lines
         if rc == 0 and not failures:
             if self.state.pending_incident:
                 self._notify("Инцидент закрыт: система снова в норме.")
@@ -1796,7 +2204,7 @@ class TSJGuardianBot:
             self._log("INFO", "Check OK")
             return
 
-        if rc != 0 and not failures:
+        if rc != 0 and not main_failures and not aw_failure_lines:
             self._log(
                 "WARN",
                 "Check command returned non-zero without explicit [FAIL] markers; suppressing empty incident",
@@ -1809,6 +2217,7 @@ class TSJGuardianBot:
 
         self._sync_warning_state([])
         now = int(time.time())
+        new_incident_created = False
         if not self.state.pending_incident:
             incident_id = time.strftime("%Y%m%d-%H%M%S")
             suggestions = self._suggestions_from_failures(failures)
@@ -1823,7 +2232,7 @@ class TSJGuardianBot:
                 escalated_to_ai=False,
                 fallback_executed=False,
             )
-            self._notify(self._incident_text(failures, suggestions))
+            new_incident_created = True
         else:
             self.state.pending_incident.failures = failures or self.state.pending_incident.failures
             self.state.pending_incident.suggestions = self._suggestions_from_failures(
@@ -1846,9 +2255,32 @@ class TSJGuardianBot:
             else:
                 self._notify("Критическое заполнение ФС: немедленная эскалация не удалась.")
 
-        self._attempt_autoheal(force=False)
+        autoheal_ok = self._attempt_autoheal(
+            force=False,
+            notify_success=not new_incident_created,
+            notify_failure=not new_incident_created,
+            exit_on_success=not new_incident_created,
+        )
+        if autoheal_ok:
+            if new_incident_created:
+                self._log("INFO", "Incident auto-resolved before operator notification")
+            return
 
-    def _attempt_autoheal(self, force: bool) -> bool:
+        if new_incident_created and self.state.pending_incident:
+            pi = self.state.pending_incident
+            self._notify(self._incident_text(pi.failures, pi.suggestions))
+            self._notify(
+                f"Авто-лечение неуспешно (attempt={pi.autoheal_attempts}). "
+                f"Ожидаю реакцию оператора до {self.operator_timeout // 60} минут."
+            )
+
+    def _attempt_autoheal(
+        self,
+        force: bool,
+        notify_success: bool = True,
+        notify_failure: bool = True,
+        exit_on_success: bool = True,
+    ) -> bool:
         pi = self.state.pending_incident
         if not pi:
             return True
@@ -1861,19 +2293,38 @@ class TSJGuardianBot:
         pi.autoheal_attempts += 1
         self.state.save()
 
-        rc, out = self._run_shell(self.heal_script, timeout_sec=420)
-        failures = self._parse_failures(out)
-        if rc == 0 and not failures:
+        main_failures = [line for line in pi.failures if not self._is_aw_rus_failure_line(line)]
+        aw_failure_keys = self._extract_aw_rus_failure_keys(pi.failures)
+
+        generic_ok = True
+        if main_failures:
+            rc, out = self._run_shell(self.heal_script, timeout_sec=420)
+            generic_ok = rc == 0 and not self._parse_failures(out)
+
+        aw_ok = True
+        if aw_failure_keys:
+            aw_ok, aw_report, _, _ = self._perform_aw_rus_autoheal(aw_failure_keys)
+            for line in aw_report:
+                self._log("INFO" if "FAIL" not in line else "WARN", line)
+
+        recheck_rc, recheck_out = self._run_shell(self.check_script, timeout_sec=240)
+        recheck_main_failures = self._parse_failures(recheck_out)
+        recheck_aw_lines, _ = self._background_aw_rus_failures(recheck_main_failures)
+        failures = recheck_main_failures + recheck_aw_lines
+
+        if recheck_rc == 0 and not failures and generic_ok and aw_ok:
             msg = (
                 f"Авто-лечение успешно (attempt={pi.autoheal_attempts}). "
                 "Инцидент закрыт."
             )
-            self._notify(msg)
+            if notify_success:
+                self._notify(msg)
             self.state.pending_incident = None
             self.state.save()
             self._log("INFO", msg)
-            if self.exit_on_autoheal_success:
-                self._notify("По сценарию: успешное авто-лечение, процесс завершается.")
+            if self.exit_on_autoheal_success and exit_on_success:
+                if notify_success:
+                    self._notify("По сценарию: успешное авто-лечение, процесс завершается.")
                 raise SystemExit(0)
             return True
 
@@ -1881,10 +2332,11 @@ class TSJGuardianBot:
         pi.failures = failures or pi.failures
         pi.suggestions = self._suggestions_from_failures(pi.failures)
         self.state.save()
-        self._notify(
-            f"Авто-лечение неуспешно (attempt={pi.autoheal_attempts}). "
-            f"Ожидаю реакцию оператора до {self.operator_timeout // 60} минут."
-        )
+        if notify_failure:
+            self._notify(
+                f"Авто-лечение неуспешно (attempt={pi.autoheal_attempts}). "
+                f"Ожидаю реакцию оператора до {self.operator_timeout // 60} минут."
+            )
         return False
 
     def _tmux_session_exists(self) -> bool:
@@ -1981,6 +2433,7 @@ class TSJGuardianBot:
                 self._notify("Автономный fallback-план сервера выполнен с ошибками, требуется оператор.")
 
     def _cmd_help(self) -> str:
+        dlp_toggle_label = self._aw_dlp_toggle_button_text()
         return (
             "Помощь по кнопкам:\n"
             "\n"
@@ -1996,8 +2449,13 @@ class TSJGuardianBot:
             "- Проверяет AW-Rus и DLP по свежести bucket-данных и сегодняшнему worktime.\n"
             "- Формирует операторский итог OK/DEGRADED прямо в чате.\n"
             "\n"
+            f"{dlp_toggle_label}\n"
+            "- Одной кнопкой переключает endpoint/email DLP между monitor и enforce.\n"
+            "- Меняет активную policy на сервере, синхронизирует `dlp-policy.json` на Windows и перезапускает DLP collectors.\n"
+            "- Web-правила остаются наблюдающими: этот toggle не превращает браузерный DLP в настоящий web-block.\n"
+            "\n"
             f"{self.BTN_AW_DFIR}\n"
-            "- Показывает, как запустить bounded DFIR-путь через Hayabusa.\n"
+            "- Показывает, как запустить ограниченный forensic-разбор журналов Windows через Hayabusa.\n"
             "- Рабочий формат: `/aw_dfir /path/to/package.zip HOST [CASE_ID] [MODE]`.\n"
             "- В кейс пишется только metadata/linkage, без raw Sigma output.\n"
             "\n"
@@ -2021,7 +2479,7 @@ class TSJGuardianBot:
             "- Полезно, если авто-лечение не помогло.\n"
             "\n"
             f"{self.BTN_AI_CHAT}\n"
-            "- Любое свободное текстовое сообщение отправляется в тех.поддержку через `codex exec` от пользователя `codex`.\n"
+            f"- Любое свободное текстовое сообщение отправляется в тех.поддержку через `codex exec` от пользователя `{self.ai_exec_user}`.\n"
             "- Этот путь используется для нормального диалога с тех.поддержкой и не зависит от tmux.\n"
             "- Кнопка эскалации использует тот же прямой запуск `codex exec`.\n"
             "\n"
@@ -2101,7 +2559,7 @@ class TSJGuardianBot:
             "1) Нажмите кнопку создания/восстановления или используйте `/proxmox_snapshot TARGET`.\n"
             "2) Для восстановления после выбора узла отправьте `/proxmox_restore_apply CODE`.\n"
             "\n"
-            "Резервные slash-команды: /status /check /aw_dlp_check /aw_dfir PACKAGE HOST [CASE_ID] [MODE] /heal /ack /resolve /run ... /openvpn_certs [filter] /openvpn_expiring /openvpn_config USER /openvpn_config_confirm /openvpn_config_cancel /openvpn_config_apply CODE /pfsense_confirm /pfsense_cancel /pfsense_apply CODE /proxmox_snapshot TARGET /proxmox_restore TARGET /proxmox_restore_apply CODE /proxmox_restore_cancel /proxmox_selection_cancel"
+            "Резервные slash-команды: /status /check /aw_dlp_check /dlp_mode /dlp_mode_toggle /aw_dfir PACKAGE HOST [CASE_ID] [MODE] /heal /ack /resolve /run ... /openvpn_certs [filter] /openvpn_expiring /openvpn_config USER /openvpn_config_confirm /openvpn_config_cancel /openvpn_config_apply CODE /pfsense_confirm /pfsense_cancel /pfsense_apply CODE /proxmox_snapshot TARGET /proxmox_restore TARGET /proxmox_restore_apply CODE /proxmox_restore_cancel /proxmox_selection_cancel"
         )
 
     def _cmd_status(self) -> str:
@@ -2267,27 +2725,40 @@ class TSJGuardianBot:
 
             return activity, None
 
+        lines = ["Проверка AW-Rus + DLP:"]
+        failures: List[str] = []
+        worktime_activity, worktime_error = load_worktime_activity()
+        current_host_activity = worktime_activity.get(host) if worktime_activity else None
+        interactive_required = bool(current_host_activity and current_host_activity.get("active"))
+
         checks = [
             (f"aw-watcher-window_{host}", "watcher-window"),
             (f"aw-watcher-afk_{host}", "watcher-afk"),
             (f"aw-dlp-endpoint-signals_{host}", "dlp-endpoint"),
         ]
-
-        lines = ["Проверка AW-Rus + DLP:"]
-        failures: List[str] = []
+        bucket_status: Dict[str, Dict[str, Optional[int] | str | bool]] = {}
+        endpoint_line_index: Optional[int] = None
         for bucket_id, label in checks:
             age, tail = bucket_age(bucket_id)
+            bucket_status[label] = {"age": age, "tail": tail, "fresh": bool(age is not None and age <= self.aw_rus_stale_sec)}
+            if label == "dlp-endpoint":
+                endpoint_line_index = len(lines)
             if age is None:
-                lines.append(f"- {label}: FAIL ({tail})")
-                failures.append(label)
+                if label.startswith("watcher-") and not interactive_required:
+                    lines.append(f"- {label}: WARN ({tail}; host inactive)")
+                else:
+                    lines.append(f"- {label}: FAIL ({tail})")
+                    failures.append(label)
                 continue
             if age > self.aw_rus_stale_sec:
-                lines.append(f"- {label}: STALE age={age}s end={tail}")
-                failures.append(label)
+                if label.startswith("watcher-") and not interactive_required:
+                    lines.append(f"- {label}: WARN age={age}s end={tail} (host inactive)")
+                else:
+                    lines.append(f"- {label}: STALE age={age}s end={tail}")
+                    failures.append(label)
             else:
                 lines.append(f"- {label}: OK age={age}s end={tail}")
 
-        worktime_activity, worktime_error = load_worktime_activity()
         fileops_checks = [
             (f"aw-file-operations_{host}", "dlp-fileops-host", host),
             ("aw-file-operations_10.10.10.13", "dlp-fileops-server", "10.10.10.13"),
@@ -2317,59 +2788,67 @@ class TSJGuardianBot:
                 continue
 
             age, tail = bucket_age(bucket_id)
+            bucket_status[label] = {"age": age, "tail": tail, "fresh": bool(age is not None and age <= self.aw_rus_stale_sec)}
             if age is None:
                 lines.append(f"- {label}: FAIL (active host bucket missing or unreadable: {tail})")
                 failures.append(label)
                 continue
             if age > self.aw_rus_stale_sec:
+                if label == "dlp-fileops-host" and bool((bucket_status.get("dlp-endpoint") or {}).get("fresh")):
+                    lines.append(f"- {label}: OK event-driven age={age}s end={tail} (endpoint fresh)")
+                    continue
                 lines.append(f"- {label}: STALE age={age}s end={tail}")
                 failures.append(label)
             else:
                 lines.append(f"- {label}: OK age={age}s end={tail}")
 
+        endpoint_status = bucket_status.get("dlp-endpoint") or {}
+        if (
+            endpoint_line_index is not None
+            and "dlp-endpoint" in failures
+            and bool((bucket_status.get("dlp-fileops-host") or {}).get("fresh"))
+            and endpoint_status.get("age") is not None
+        ):
+            endpoint_age = int(endpoint_status["age"])
+            endpoint_tail = str(endpoint_status.get("tail") or "unknown")
+            failures = [item for item in failures if item != "dlp-endpoint"]
+            lines[endpoint_line_index] = (
+                f"- dlp-endpoint: WARN age={endpoint_age}s end={endpoint_tail} "
+                "(file-operations fresh; endpoint collector degraded)"
+            )
+
         try:
-            r = requests.get(f"{worktime_base}/reports/worktime/today?format=csv", timeout=20)
-            r.raise_for_status()
-            csv_text = r.text
+            csv_text = self._fetch_worktime_today_csv(timeout_sec=20, attempts=2)
             target = self.aw_rus_primary_user.upper()
             active_sec = None
-            session_rows = []
-            for raw in csv_text.splitlines()[1:]:
-                parts = [x.strip() for x in raw.split(",")]
-                if len(parts) < 2:
-                    continue
-                try:
-                    row_active_sec = int(float(parts[1]))
-                except Exception:
-                    row_active_sec = None
-                session_rows.append(
-                    {
-                        "user": parts[0],
-                        "active_seconds": row_active_sec,
-                    }
-                )
-                if parts[0].upper() == target:
-                    active_sec = row_active_sec
-                    break
-            if active_sec is None:
-                lines.append(f"- worktime({target}): FAIL (user row not found)")
-                failures.append("worktime")
-            elif active_sec <= 0:
-                non_machine_rows = [
-                    row for row in session_rows
-                    if row.get("user") and not row["user"].endswith("$")
-                ]
-                any_positive = any(
-                    (row.get("active_seconds") or 0) > 0
-                    for row in non_machine_rows
-                )
-                if any_positive:
-                    lines.append(f"- worktime({target}): STALE active_seconds=0")
-                    failures.append("worktime")
+            session_rows = self._parse_worktime_today_csv(csv_text)
+            for row in session_rows:
+                user = (row.get("user") or "").upper()
+                if user == target:
+                    active_sec = row.get("active_seconds")
+
+            non_machine_rows = [
+                row for row in session_rows
+                if row.get("user") and not row["user"].endswith("$")
+            ]
+            positive_rows = [
+                row for row in non_machine_rows
+                if (row.get("active_seconds") or 0) > 0
+            ]
+            if positive_rows:
+                if active_sec is not None and active_sec > 0:
+                    lines.append(f"- worktime({target}): OK active_seconds={active_sec}")
+                elif active_sec is not None:
+                    users = ", ".join(str(row["user"]) for row in positive_rows[:3])
+                    lines.append(f"- worktime({target}): OK target idle, other active users={users}")
                 else:
-                    lines.append(f"- worktime({target}): OK active_seconds=0 (no active sessions)")
+                    users = ", ".join(str(row["user"]) for row in positive_rows[:3])
+                    lines.append(f"- worktime({target}): OK active users present={users}")
+            elif current_host_activity and current_host_activity.get("active"):
+                lines.append(f"- worktime({target}): STALE active sessions present but report has no positive rows")
+                failures.append("worktime")
             else:
-                lines.append(f"- worktime({target}): OK active_seconds={active_sec}")
+                lines.append(f"- worktime({target}): OK active_seconds=0 (no active sessions)")
         except Exception as exc:
             lines.append(f"- worktime: FAIL ({exc})")
             failures.append("worktime")
@@ -2466,21 +2945,123 @@ class TSJGuardianBot:
 
         time.sleep(2)
         try:
-            probe_url = f"{self.aw_rus_worktime_base.rstrip('/')}/reports/worktime/today?format=csv"
-            r = requests.get(probe_url, timeout=8)
-            r.raise_for_status()
+            self._fetch_worktime_today_csv(timeout_sec=8, attempts=2)
             report.append("- worktime-heal: probe OK")
             return True, report
         except Exception as exc:
             report.append(f"- worktime-heal: probe FAIL ({exc})")
             return False, report
 
+    def _run_aw_rus_windows_powershell(self, script: str, timeout_sec: int = 180) -> Tuple[int, str]:
+        encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        argv = [
+            self.sshpass_bin,
+            "-e",
+            "ssh",
+            "-o",
+            "PubkeyAuthentication=no",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "ConnectTimeout=12",
+            f"{self.aw_rus_windows_ssh_user}@{self.aw_rus_windows_host}",
+            f"powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -OutputFormat Text -EncodedCommand {encoded}",
+        ]
+        proc = self._run_argv(
+            argv,
+            timeout_sec=timeout_sec,
+            env_extra={"SSHPASS": self.aw_rus_windows_ssh_password},
+        )
+        out = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
+        return proc.returncode, out.strip()
+
+    def _aw_rus_windows_collectors_heal(self, include_watchers: bool, include_worktime: bool) -> Tuple[bool, List[str]]:
+        report: List[str] = []
+        if not (include_watchers or include_worktime):
+            report.append("- windows-heal: skipped (no watcher/worktime targets)")
+            return True, report
+        if not self.aw_rus_windows_ssh_password:
+            report.append("- windows-heal: FAIL (AW_RUS_WINDOWS_SSH_PASSWORD not configured)")
+            return False, report
+
+        script = (
+            "$ErrorActionPreference = 'Stop'\n"
+            "$ProgressPreference = 'SilentlyContinue'\n"
+            f"$sessionCollectorScript = '{self.aw_rus_windows_session_collector_path}'\n"
+            "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |\n"
+            "  Where-Object { ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and $_.CommandLine -and $_.CommandLine -match [Regex]::Escape($sessionCollectorScript) } |\n"
+            "  ForEach-Object { Stop-Process -Id ([int]$_.ProcessId) -Force -ErrorAction SilentlyContinue }\n"
+            f"if (Test-Path '{self.aw_rus_windows_hardening_recovery_path}') {{ try {{ & '{self.aw_rus_windows_hardening_recovery_path}' -ConfigPath '{self.aw_rus_windows_config_path}' }} catch {{ Write-Output ('HARDENING_RECOVERY_WARN: ' + $_.Exception.Message) }} }}\n"
+            "Start-Sleep -Seconds 2\n"
+            "schtasks /Run /TN 'ActivityWatch Recovery' | Out-Null\n"
+            "Start-Sleep -Seconds 2\n"
+            "Get-ScheduledTask -ErrorAction SilentlyContinue |\n"
+            "  Where-Object { $_.TaskName -like 'ActivityWatch Launch *' } |\n"
+            "  ForEach-Object { try { Start-ScheduledTask -TaskName $_.TaskName -ErrorAction Stop } catch {} }\n"
+            "Start-Sleep -Seconds 8\n"
+            "Write-Output 'WATCHERS'\n"
+            "Get-Process aw-watcher-afk,aw-watcher-window -ErrorAction SilentlyContinue |\n"
+            "  Select-Object Name, Id, SessionId, StartTime |\n"
+            "  Sort-Object SessionId, Name |\n"
+            "  Format-Table -AutoSize\n"
+            "Write-Output 'WORKTIME'\n"
+            "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |\n"
+            "  Where-Object { ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and $_.CommandLine -and $_.CommandLine -match [Regex]::Escape($sessionCollectorScript) } |\n"
+            "  Select-Object Name, ProcessId, SessionId, CommandLine |\n"
+            "  Format-List\n"
+        )
+
+        try:
+            rc, out = self._run_aw_rus_windows_powershell(script, timeout_sec=180)
+        except Exception as exc:
+            report.append(f"- windows-heal: FAIL ({exc})")
+            return False, report
+        if rc != 0:
+            tail = (out or "").strip().splitlines()[-8:]
+            report.append(f"- windows-heal: FAIL ({'; '.join(tail) if tail else f'rc={rc}'})")
+            return False, report
+        report.append("- windows-heal: recovery command OK")
+        return True, report
+
+    def _perform_aw_rus_autoheal(self, failures: List[str]) -> Tuple[bool, List[str], List[str], List[str]]:
+        watcher_failures = [item for item in failures if item.startswith("watcher-")]
+        dlp_failures = [item for item in failures if item.startswith("dlp-")]
+        worktime_failed = "worktime" in failures
+        report: List[str] = []
+        heal_ok = True
+
+        if watcher_failures or worktime_failed:
+            windows_ok, windows_lines = self._aw_rus_windows_collectors_heal(
+                include_watchers=bool(watcher_failures),
+                include_worktime=worktime_failed,
+            )
+            heal_ok = heal_ok and windows_ok
+            report.append("- heal trigger: Windows session collectors degraded, starting remediation")
+            report.extend(windows_lines)
+
+        if dlp_failures:
+            dlp_ok, dlp_lines = self._aw_rus_dlp_heal(dlp_failures)
+            heal_ok = heal_ok and dlp_ok
+            report.append("- heal trigger: DLP degraded, starting remediation")
+            report.extend(dlp_lines)
+
+        if watcher_failures or worktime_failed:
+            wt_ok, wt_lines = self._aw_rus_worktime_heal()
+            heal_ok = heal_ok and wt_ok
+            report.append("- heal trigger: worktime/watchers degraded, rebuilding server-side worktime views")
+            report.extend(wt_lines)
+
+        time.sleep(5)
+        after_lines, after_failures = self._aw_rus_dlp_probe()
+        return heal_ok and not after_failures, report, after_lines, after_failures
+
     def _aw_rus_dlp_check_and_heal_text(self) -> str:
         before_lines, failures = self._aw_rus_dlp_probe()
+        watcher_failures = [x for x in failures if x.startswith("watcher-")]
         dlp_failures = [x for x in failures if x.startswith("dlp-")]
         worktime_failed = "worktime" in failures
 
-        if not dlp_failures and not worktime_failed:
+        if not watcher_failures and not dlp_failures and not worktime_failed:
             verdict = "OK" if not failures else f"DEGRADED ({', '.join(failures)})"
             before_lines.append(f"Итог: {verdict}")
             return "\n".join(before_lines)
@@ -2488,21 +3069,8 @@ class TSJGuardianBot:
         out = []
         out.extend(before_lines)
 
-        heal_ok = True
-        if dlp_failures:
-            dlp_ok, dlp_lines = self._aw_rus_dlp_heal(dlp_failures)
-            heal_ok = heal_ok and dlp_ok
-            out.append("- heal trigger: DLP degraded, starting remediation")
-            out.extend(dlp_lines)
-
-        if worktime_failed:
-            wt_ok, wt_lines = self._aw_rus_worktime_heal()
-            heal_ok = heal_ok and wt_ok
-            out.append("- heal trigger: worktime degraded, starting remediation")
-            out.extend(wt_lines)
-
-        time.sleep(3)
-        after_lines, after_failures = self._aw_rus_dlp_probe()
+        heal_ok, heal_lines, after_lines, after_failures = self._perform_aw_rus_autoheal(failures)
+        out.extend(heal_lines)
         verdict_after = "OK" if not after_failures else f"DEGRADED ({', '.join(after_failures)})"
         after_lines.append(f"Итог: {verdict_after}")
 
@@ -2513,8 +3081,8 @@ class TSJGuardianBot:
 
     def _aw_rus_hayabusa_usage_text(self) -> str:
         return (
-            "Hayabusa DFIR:\n"
-            "- bounded forensic path для EVTX package -> Hayabusa -> case linkage.\n"
+            "Форензика Windows логов:\n"
+            "- ограниченный forensic-путь для EVTX package -> Hayabusa -> case linkage.\n"
             "- рабочий запуск: /aw_dfir /path/to/package.zip HOST [CASE_ID] [MODE]\n"
             "- MODE по умолчанию: incident\n"
             "- в кейс пишутся только metadata и ссылки на артефакты, без raw Sigma output."
@@ -2629,6 +3197,222 @@ class TSJGuardianBot:
             return f"- pfsense_security: status unavailable ({err})"
         return "\n".join(lines)
 
+    def _aw_dlp_policy_request(
+        self,
+        method: str,
+        path: str,
+        payload: Optional[Dict] = None,
+        timeout_sec: int = 20,
+    ) -> Dict:
+        base = self.aw_dlp_policy_api_base.rstrip("/")
+        if not base:
+            raise RuntimeError("AW_DLP_POLICY_API_BASE is not configured")
+        url = f"{base}/{path.lstrip('/')}"
+        response = requests.request(method.upper(), url, json=payload, timeout=timeout_sec)
+        response.raise_for_status()
+        if not (response.text or "").strip():
+            return {}
+        return response.json()
+
+    @staticmethod
+    def _aw_dlp_toggle_rule_groups(policy: Dict) -> List[Tuple[str, List[Dict]]]:
+        endpoint = policy.get("endpoint")
+        if not isinstance(endpoint, dict):
+            return []
+        groups: List[Tuple[str, List[Dict]]] = []
+        for key in ("clipboard", "usb", "print", "email"):
+            rules = endpoint.get(key)
+            if isinstance(rules, list):
+                groups.append((f"endpoint.{key}", rules))
+        return groups
+
+    @classmethod
+    def _aw_dlp_mode_from_policy(cls, policy: Dict) -> str:
+        meta = policy.get("_tsj_meta")
+        if isinstance(meta, dict):
+            mode = str(meta.get("dlp_mode") or "").strip().lower()
+            if mode in {"monitor", "enforce"}:
+                return mode
+
+        total = 0
+        blocked = 0
+        for _, rules in cls._aw_dlp_toggle_rule_groups(policy):
+            for rule in rules:
+                if not isinstance(rule, dict) or rule.get("enabled") is False:
+                    continue
+                action = str(rule.get("action") or "").strip().lower()
+                if not action:
+                    continue
+                total += 1
+                if action == "block":
+                    blocked += 1
+        if blocked == 0:
+            return "monitor"
+        if blocked == total:
+            return "enforce"
+        return "mixed"
+
+    @classmethod
+    def _aw_dlp_policy_for_mode(cls, policy: Dict, target_mode: str) -> Tuple[Dict, int, List[str]]:
+        if target_mode not in {"monitor", "enforce"}:
+            raise ValueError(f"Unsupported DLP mode: {target_mode}")
+
+        updated = json.loads(json.dumps(policy, ensure_ascii=False))
+        changed = 0
+        changed_rules: List[str] = []
+        for group_name, rules in cls._aw_dlp_toggle_rule_groups(updated):
+            for rule in rules:
+                if not isinstance(rule, dict) or rule.get("enabled") is False:
+                    continue
+                old_action = str(rule.get("action") or "").strip().lower() or "alert"
+                new_action = old_action
+                if target_mode == "monitor":
+                    if old_action == "block":
+                        new_action = "alert"
+                else:
+                    if old_action in {"log", "alert"}:
+                        new_action = "block"
+                if new_action == old_action:
+                    continue
+                rule["action"] = new_action
+                changed += 1
+                if len(changed_rules) < 10:
+                    changed_rules.append(f"{group_name}:{rule.get('id') or '?'} {old_action}->{new_action}")
+
+        meta = updated.get("_tsj_meta")
+        if not isinstance(meta, dict):
+            meta = {}
+        meta["dlp_mode"] = target_mode
+        meta["updated_by"] = "tsj-guardian-bot"
+        meta["updated_at_utc"] = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        updated["_tsj_meta"] = meta
+        return updated, changed, changed_rules
+
+    def _aw_rus_windows_sync_dlp_policy(self, policy: Dict) -> Tuple[bool, List[str]]:
+        report: List[str] = []
+        if not self.aw_rus_windows_ssh_password:
+            report.append("- windows-policy-sync: FAIL (AW_RUS_WINDOWS_SSH_PASSWORD not configured)")
+            return False, report
+        script = (
+            "$ErrorActionPreference = 'Stop'\n"
+            "$ProgressPreference = 'SilentlyContinue'\n"
+            f"$policyPath = '{self.aw_rus_windows_policy_path}'\n"
+            f"$policyApiBase = '{self.aw_dlp_policy_api_base.rstrip('/')}'\n"
+            f"$browserCollector = '{self.aw_rus_windows_browser_collector_path}'\n"
+            "$dlpEndpointCollector = 'C:\\ProgramData\\AWatch-rus\\dlp-endpoint-signals-collector.ps1'\n"
+            f"$emailCollector = '{self.aw_rus_windows_email_collector_path}'\n"
+            "$bundle = Invoke-RestMethod -Uri ($policyApiBase + '/dlp/policies/active') -TimeoutSec 20 -Method Get\n"
+            "if (-not $bundle.policy) { throw 'Active policy payload is empty' }\n"
+            "$json = $bundle.policy | ConvertTo-Json -Depth 20\n"
+            "$dir = Split-Path -Path $policyPath -Parent\n"
+            "if ($dir -and -not (Test-Path -LiteralPath $dir)) { New-Item -Path $dir -ItemType Directory -Force | Out-Null }\n"
+            "Set-Content -LiteralPath $policyPath -Value $json -Encoding UTF8\n"
+            "$collectorScripts = @($browserCollector, $emailCollector, $dlpEndpointCollector)\n"
+            "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |\n"
+            "  Where-Object { ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and $_.CommandLine } |\n"
+            "  ForEach-Object {\n"
+            "    $commandLine = [string]$_.CommandLine\n"
+            "    foreach ($scriptPath in $collectorScripts) {\n"
+            "      if (-not [string]::IsNullOrWhiteSpace($scriptPath) -and $commandLine -match [Regex]::Escape($scriptPath)) {\n"
+            "        Stop-Process -Id ([int]$_.ProcessId) -Force -ErrorAction SilentlyContinue\n"
+            "        break\n"
+            "      }\n"
+            "    }\n"
+            "  }\n"
+            f"if (Test-Path '{self.aw_rus_windows_hardening_recovery_path}') {{ try {{ & '{self.aw_rus_windows_hardening_recovery_path}' -ConfigPath '{self.aw_rus_windows_config_path}' }} catch {{ Write-Output ('HARDENING_RECOVERY_WARN: ' + $_.Exception.Message) }} }}\n"
+            "Start-Sleep -Seconds 2\n"
+            "schtasks /Run /TN 'ActivityWatch Recovery' | Out-Null\n"
+            "Start-Sleep -Seconds 2\n"
+            "Get-ScheduledTask -ErrorAction SilentlyContinue |\n"
+            "  Where-Object { $_.TaskName -like 'ActivityWatch Launch *' } |\n"
+            "  ForEach-Object { try { Start-ScheduledTask -TaskName $_.TaskName -ErrorAction Stop } catch {} }\n"
+            "Write-Output ('POLICY_SYNC_OK ' + $policyPath)\n"
+        )
+        try:
+            rc, out = self._run_aw_rus_windows_powershell(script, timeout_sec=240)
+            if rc != 0:
+                tail = (out or "").strip().splitlines()[-1:] or [f"rc={rc}"]
+                report.append(f"- windows-policy-sync: FAIL ({tail[0]})")
+                return False, report
+            report.append("- windows-policy-sync: OK")
+            return True, report
+        except Exception as exc:
+            report.append(f"- windows-policy-sync: FAIL ({exc})")
+            return False, report
+
+    def _aw_dlp_policy_mode_text(self) -> str:
+        active = self._aw_dlp_policy_request("GET", "/dlp/policies/active", timeout_sec=15)
+        policy = active.get("policy") or {}
+        mode = self._aw_dlp_mode_from_policy(policy if isinstance(policy, dict) else {})
+        details = []
+        for group_name, rules in self._aw_dlp_toggle_rule_groups(policy if isinstance(policy, dict) else {}):
+            block_count = 0
+            total_count = 0
+            for rule in rules:
+                if not isinstance(rule, dict) or rule.get("enabled") is False:
+                    continue
+                total_count += 1
+                if str(rule.get("action") or "").strip().lower() == "block":
+                    block_count += 1
+            details.append(f"- {group_name}: block={block_count}/{total_count}")
+        lines = [
+            "DLP режим:",
+            f"- policy: {active.get('name') or '-'} (id={active.get('policyId') or '-'})",
+            f"- mode: {mode}",
+            f"- version: {active.get('version') or '-'}",
+            "- web rules не блокируют доступ и остаются incident/alert-only.",
+        ]
+        lines.extend(details or ["- endpoint rules: n/a"])
+        return "\n".join(lines)
+
+    def _aw_dlp_policy_toggle_text(self) -> str:
+        active = self._aw_dlp_policy_request("GET", "/dlp/policies/active", timeout_sec=20)
+        policy_id = int(active.get("policyId") or 0)
+        if policy_id <= 0:
+            raise RuntimeError("DLP policy engine returned invalid policyId")
+        policy = active.get("policy") or {}
+        if not isinstance(policy, dict):
+            raise RuntimeError("Active DLP policy payload is invalid")
+
+        current_mode = self._aw_dlp_mode_from_policy(policy)
+        target_mode = "monitor" if current_mode in {"enforce", "mixed"} else "enforce"
+        updated_policy, changed_count, changed_rules = self._aw_dlp_policy_for_mode(policy, target_mode)
+        if changed_count == 0:
+            return (
+                "DLP режим не изменён.\n"
+                f"- current_mode: {current_mode}\n"
+                "- Подходящих endpoint/email правил для переключения не найдено."
+            )
+
+        updated = self._aw_dlp_policy_request(
+            "PUT",
+            f"/dlp/policies/{policy_id}",
+            payload={
+                "policy": updated_policy,
+                "activate": True,
+                "actor": self.aw_dlp_policy_actor,
+            },
+            timeout_sec=30,
+        )
+        item = updated.get("item") or {}
+        sync_ok, sync_lines = self._aw_rus_windows_sync_dlp_policy(updated_policy)
+        lines = [
+            "DLP режим переключён.",
+            f"- policy: {active.get('name') or '-'} (id={policy_id})",
+            f"- mode: {current_mode} -> {target_mode}",
+            f"- version: {active.get('version') or '-'} -> {item.get('current_version') or '-'}",
+            f"- changed_rules: {changed_count}",
+            "- scope: clipboard/usb/print/email; web rules не переводятся в block этим toggle.",
+        ]
+        if changed_rules:
+            lines.append("- sample changes:")
+            lines.extend(f"  {entry}" for entry in changed_rules[:6])
+        lines.extend(sync_lines)
+        lines.append(f"- menu button: {self._aw_dlp_toggle_button_text(current_mode=target_mode)}")
+        if not sync_ok:
+            lines.append("- note: server-side policy уже активирована; endpoint agents подтянут её сами при следующем refresh.")
+        return "\n".join(lines)
+
     def _run_operator_action(self, action: str) -> str:
         action = action.strip().lower()
         if action == "check":
@@ -2639,6 +3423,16 @@ class TSJGuardianBot:
             return f"/run check rc={rc}\n{summary}"
         if action in ("aw-dlp-check", "awrus-dlp-check"):
             return self._aw_rus_dlp_check_and_heal_text()
+        if action in ("dlp-mode", "dlp-policy-mode"):
+            try:
+                return self._aw_dlp_policy_mode_text()
+            except Exception as exc:
+                return f"DLP режим: status unavailable ({exc})"
+        if action in ("dlp-mode-toggle", "dlp-policy-toggle"):
+            try:
+                return self._aw_dlp_policy_toggle_text()
+            except Exception as exc:
+                return f"DLP режим: переключение не выполнено ({exc})"
         if action == "heal":
             ok = self._attempt_autoheal(force=True)
             return f"/run heal result={'ok' if ok else 'failed'}"
@@ -2716,19 +3510,25 @@ class TSJGuardianBot:
             self._send_menu(chat_id, self._cmd_help())
             return
         if text.startswith("/status") or text == self.BTN_STATUS:
-            self._send_text(chat_id, self._cmd_status())
+            self._send_text_with_menu(chat_id, self._cmd_status())
             return
         if text.startswith("/check") or text == self.BTN_CHECK:
-            self._send_text(chat_id, self._run_operator_action("check"))
+            self._send_text_with_menu(chat_id, self._run_operator_action("check"))
             return
         if text.startswith("/aw_dlp_check") or text == self.BTN_AW_DLP_CHECK:
-            self._send_text(chat_id, self._run_operator_action("aw-dlp-check"))
+            self._send_text_with_menu(chat_id, self._run_operator_action("aw-dlp-check"))
             return
-        if text == self.BTN_AW_DFIR:
-            self._send_text(chat_id, self._aw_rus_hayabusa_usage_text())
+        if text.startswith("/dlp_mode_toggle") or self._is_dlp_toggle_button(text):
+            self._send_text_with_menu(chat_id, self._run_operator_action("dlp-mode-toggle"))
+            return
+        if text.startswith("/dlp_mode"):
+            self._send_text_with_menu(chat_id, self._run_operator_action("dlp-mode"))
+            return
+        if self._is_dfir_button(text):
+            self._send_text_with_menu(chat_id, self._aw_rus_hayabusa_usage_text())
             return
         if text.strip() == "/aw_dfir":
-            self._send_text(chat_id, self._aw_rus_hayabusa_usage_text())
+            self._send_text_with_menu(chat_id, self._aw_rus_hayabusa_usage_text())
             return
         if text.startswith("/aw_dfir "):
             parts = text.split()

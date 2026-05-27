@@ -2,6 +2,26 @@
 
 ## Быстрый health-check
 
+### Proxmox web gateway
+
+Если на host `10.10.10.2` развёрнут `nginx` gateway, базовые проверки такие:
+
+```sh
+systemctl status nginx --no-pager
+nginx -t
+curl -I -sS -H 'Host: dm.iri1968.dpdns.org' http://127.0.0.1/
+curl -k -fsS -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/healthz
+curl -k -I -sS -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/go/proxmox-gui
+curl -k -H 'Host: dm.iri1968.dpdns.org' -fsS https://127.0.0.1/ | grep -F 'dm.iri1968.dpdns.org'
+```
+
+Playbook для повторного rollout:
+
+```sh
+ANSIBLE_HOST_KEY_CHECKING=False \
+ansible-playbook -i ansible/inventory.ini ansible/deploy_proxmox_web_gateway.yml
+```
+
 ### На Proxmox
 
 ```sh
@@ -59,6 +79,35 @@ grep -n 'aw-ru-patch\|aw-sw-cleanup' /opt/activitywatch/webui-ru/index.html
 ls -l /opt/activitywatch/webui-ru/js/
 ```
 
+## Telegram bot: DLP режим и форензика
+
+Для оператора `DetMirAuto` каноническое поведение такое:
+
+- Кнопка DLP должна явно показывать текущий режим и целевое действие:
+- `DLP сейчас: наблюдение | включить блокировку`
+- `DLP сейчас: блокировка | включить наблюдение`
+- `DLP сейчас: смешанный | выровнять в блокировку`
+- Slash-путь для проверки без переключения: `/dlp_mode`
+- Slash-путь для переключения: `/dlp_mode_toggle`
+
+Интерпретация:
+
+- `наблюдение` = endpoint/email правила работают в monitor-поведении (`alert/log`), без жёсткого `block`;
+- `блокировка` = endpoint/email правила переведены в `block`;
+- `смешанный` = часть endpoint/email правил уже `block`, часть ещё monitor-like; нормальный следующий ход — выровнять policy.
+
+Форензика:
+
+- Кнопка в меню называется `Форензика Windows логов`;
+- Это человеко-понятный операторский вход в bounded Hayabusa path;
+- Slash-команда остаётся прежней: `/aw_dfir /path/to/package.zip HOST [CASE_ID] [MODE]`
+
+Если Telegram показывает старую клавиатуру:
+
+- Нажать `Статус` или `/start`;
+- Бот обязан прислать свежую custom-keyboard с актуальным DLP label;
+- Старая кнопка в чате может ещё приходить как текст, но бот должен её принять и после ответа вернуть свежую клавиатуру.
+
 Проверить:
 
 - есть `aw-ru-patch.js`;
@@ -105,6 +154,8 @@ Playbook вычисляет `durationDefault` автоматически (вкл
 curl -fsS 'http://127.0.0.1:5610/reports/worktime/today?day=today' | jq '.[:5]'
 curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?day=today' | jq '.summary,.executive'
 curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?format=html&day=today' | head
+curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?day=today&owner=Сменный%20руководитель' | jq '.filters,.summary,.owner_rollups'
+curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?day=today&department=Операторы%201С' | jq '.filters,.summary,.department_rollups'
 ```
 
 Важно:
@@ -113,6 +164,21 @@ curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?format=html&day=tod
   API пересчитывает trend и source freshness;
 - повторные запросы должны быть быстрыми за счёт cache в
   `/var/lib/activitywatch/worktime-cache`;
+- по умолчанию cache живёт `300` секунд и прогревается локально через
+  `aw-worktime-autoheal.service`, чтобы manager-страницы не висели на cold-start;
+- default warm-path должен ходить в `format=json`, потому что этого достаточно
+  для наполнения cache и это заметно легче, чем cold HTML render;
+- warm timeout по умолчанию `70` секунд и задаётся через
+  `AW_WORKTIME_MANAGEMENT_WARM_TIMEOUT_SECONDS`;
+- management report поддерживает scope-фильтры `owner` и `department`; они
+  пересчитывают `summary`, `rows`, `actions` и rollups под выбранный срез, а не
+  просто прячут строки в HTML;
+- `trend` в filtered-view сейчас сознательно отключён: это удерживает latency в
+  рабочем диапазоне и не заставляет сервер заново пересчитывать исторический
+  ряд на каждый менеджерский клик;
+- alias-файл теперь может содержать не только `users`, но и `owners`;
+  блок `owners` нужен для manager-facing каталога ответственных:
+  `display_name`, `title`, `department`, `contact`, `escalation_to`, `notes`;
 - alias-файл для нормализации сотрудников по умолчанию:
   `/etc/activitywatch/worktime-manager-aliases.json`.
 
@@ -382,6 +448,34 @@ curl -fsS 'http://10.10.10.13:5600/api/0/buckets/aw-file-operations_10.10.10.13/
 ```powershell
 Remove-NetFirewallRule -DisplayName 'AWatch WAL Test Block 5600' -ErrorAction SilentlyContinue
 ```
+
+### PowerShell MCP на DetMir Windows host
+
+Для `DetMir` Windows host `192.168.100.18` интерактивный путь из Linux/Codex закреплён через `SSH`, а не через `WSMan`.
+
+Быстрый вход:
+
+```bash
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+bash scripts/install_detmir_powershell_mcp.sh
+```
+
+После переоткрытия `pwsh` или новой Codex-session:
+
+```powershell
+detmir-win-test
+detmir-win-ps 'hostname; Get-Date -Format o'
+detmir-win-shell
+```
+
+Канонический документ:
+
+- `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md`
+
+Правило:
+
+- `WinRM` использовать для `ansible aw_windows` и playbook-ов;
+- `SSH` использовать для `powershell-windows` MCP, operator PowerShell и ad-hoc remote execution.
 
 ### У пользователей всплывает окно PowerShell
 

@@ -1,0 +1,834 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Management Board",
+      "url": "/d/1c-file-mgmt/1c-file-management-board"
+    },
+    {
+      "title": "Company Intelligence",
+      "url": "/d/1c-file-companies/1c-file-company-intelligence"
+    },
+    {
+      "title": "Manager Brief",
+      "url": "http://10.10.10.2:8710/manager/brief"
+    }
+  ],
+  "panels": [
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "### Финансовая отчетность v1\n- Этот экран отделяет **настоящие ledger-данные** от текущего **proxy слоя**.\n- `ledger` строится только по `posting`/account lines. Если они не приходят, экран честно показывает `proxy_only`.\n- `proxy` сейчас основан на `CompanyActivitySnapshot` и помогает оценить масштаб базы, но не заменяет бухгалтерскую отчетность.\n- Как только в landing начнут поступать реальные `postings`, те же панели автоматически станут финансово содержательными без смены дашборда.",
+        "mode": "markdown"
+      },
+      "title": "Как читать экран",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 2
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "options": {
+                "empty": {
+                  "text": "EMPTY"
+                },
+                "ledger_ready": {
+                  "text": "LEDGER READY"
+                },
+                "proxy_only": {
+                  "text": "PROXY ONLY"
+                }
+              },
+              "type": "value"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 4
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT readiness_status AS value FROM analytics_1c.v_financial_reporting_readiness",
+          "refId": "A"
+        }
+      ],
+      "title": "Готовность финансового слоя",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 4
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT round(sumIf(amount_total, source_kind = 'ledger' AND d >= today() - 30), 2) AS value FROM analytics_1c.v_financial_daily",
+          "refId": "A"
+        }
+      ],
+      "title": "Ledger amount 30д",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 4
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT round(sumIf(amount_total, source_kind = 'proxy' AND d >= today() - 30), 2) AS value FROM analytics_1c.v_financial_daily",
+          "refId": "A"
+        }
+      ],
+      "title": "Proxy amount 30д",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countIf(readiness_status = 'ledger_ready') AS value FROM analytics_1c.v_financial_company_current",
+          "refId": "A"
+        }
+      ],
+      "title": "Компании с ledger-данными",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 9
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT ledger_events_total AS value FROM analytics_1c.v_financial_reporting_readiness",
+          "refId": "A"
+        }
+      ],
+      "title": "Ledger events total",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 9
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT account_lines_total AS value FROM analytics_1c.v_financial_reporting_readiness",
+          "refId": "A"
+        }
+      ],
+      "title": "Account lines total",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 9
+      },
+      "id": 8,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT postings_table_rows AS value FROM analytics_1c.v_financial_reporting_readiness",
+          "refId": "A"
+        }
+      ],
+      "title": "Rows in postings table",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 9
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT count() AS value FROM analytics_1c.document_change_events WHERE ts >= now() - INTERVAL 30 DAY AND risk_tag != ''",
+          "refId": "A"
+        }
+      ],
+      "title": "Risk-tag changes 30д",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 10,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT toDateTime(d) AS time, source_kind AS metric, sum(amount_total) AS value FROM analytics_1c.v_financial_daily WHERE d >= today() - 30 GROUP BY time, metric ORDER BY time, metric",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily amount: ledger vs proxy",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 4,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "id": 11,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT toDateTime(d) AS time, source_kind AS metric, sum(events_total) AS value FROM analytics_1c.v_financial_daily WHERE d >= today() - 30 GROUP BY time, metric ORDER BY time, metric",
+          "refId": "A"
+        }
+      ],
+      "title": "Daily events: ledger vs proxy",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 14,
+        "x": 0,
+        "y": 22
+      },
+      "id": 12,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ledger_amount_30d",
+            "desc": true
+          },
+          {
+            "displayName": "proxy_amount_30d",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT infobase, company_name, organization, owner_user, readiness_status, ledger_amount_30d, ledger_events_30d, proxy_amount_30d, proxy_events_30d, risky_changes_30d, changes_30d, last_financial_day FROM analytics_1c.v_financial_company_current ORDER BY ledger_amount_30d DESC, proxy_amount_30d DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Компании: финансовый контур 30д",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 10,
+        "x": 14,
+        "y": 22
+      },
+      "id": 13,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "amount_total",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT source_kind, document_type, operation_type, events_total, infobases_total, amount_total FROM analytics_1c.v_financial_document_types_30d ORDER BY amount_total DESC, events_total DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Document types 30д",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "id": 14,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "amount_total",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT side, account, entries_total, infobases_total, amount_total FROM analytics_1c.v_financial_accounts_30d ORDER BY amount_total DESC, entries_total DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Accounts turnover 30д",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "id": 15,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ts",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT ts, infobase, document_type, change_kind, field_name, user, risk_tag FROM analytics_1c.document_change_events WHERE ts >= now() - INTERVAL 30 DAY ORDER BY ts DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Последние изменения документов",
+      "type": "table"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "1c",
+    "financial",
+    "clickhouse",
+    "management"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-30d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "1C File - Financial Reporting",
+  "uid": "1c-file-finance",
+  "version": 1,
+  "weekStart": ""
+}

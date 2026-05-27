@@ -10,6 +10,34 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
+class _FakeWriter:
+    def __init__(self, exc=None):
+        self.exc = exc
+        self.data = b""
+
+    def write(self, data):
+        if self.exc is not None:
+            raise self.exc
+        self.data += data
+
+
+class _FakeHandler:
+    def __init__(self, exc=None):
+        self.wfile = _FakeWriter(exc=exc)
+        self.status = None
+        self.headers = {}
+        self.ended = False
+
+    def send_response(self, status):
+        self.status = status
+
+    def send_header(self, key, value):
+        self.headers[key] = value
+
+    def end_headers(self):
+        self.ended = True
+
+
 def _event(ts, username, session_id, active, **extra):
     data = {
         "username": username,
@@ -73,6 +101,15 @@ def test_build_aw_api_base_accepts_root_and_api_urls():
     assert MODULE.build_aw_api_base("http://127.0.0.1:5600/api/0") == "http://127.0.0.1:5600/api/0"
 
 
+def test_worktime_health_payload_is_lightweight_and_ok():
+    payload = MODULE.worktime_health_payload()
+    assert payload["ok"] is True
+    assert payload["default_host"] == MODULE.DEFAULT_HOST
+    assert payload["aw_api_base"] == MODULE.AW
+    assert payload["report_timezone"] == str(MODULE.REPORT_TZ)
+    assert payload["generated_at_utc"].endswith("Z")
+
+
 def test_aggregate_hourly_rows_splits_interval_by_local_hour():
     start = datetime(2026, 5, 14, 6, 0, 0, tzinfo=timezone.utc)
     end = datetime(2026, 5, 14, 8, 59, 59, tzinfo=timezone.utc)
@@ -86,7 +123,7 @@ def test_aggregate_hourly_rows_splits_interval_by_local_hour():
         "SHARKON2025",
     )
     assert [row["hour_local"] for row in rows] == ["09:00", "10:00"]
-    assert [row["active_seconds"] for row in rows] == [600, 3000]
+    assert [row["active_seconds"] for row in rows] == [300, 300]
 
 
 def test_build_management_payload_creates_actions_for_missing_and_late_users():
@@ -157,14 +194,17 @@ def test_build_management_payload_uses_workday_window_not_midnight_activity():
     payload = MODULE.build_management_payload(rows, "SHARKON2025", datetime(2026, 5, 14, tzinfo=timezone.utc).date())
     roster = payload["rows"][0]
     assert roster["calendar_active_hhmm"] == "11:00"
-    assert roster["workday_active_hhmm"] == "02:00"
-    assert roster["coverage_pct"] == 22.22
+    assert roster["workday_active_hhmm"] == "05:00"
+    assert roster["coverage_pct"] == 55.56
     assert payload["summary"]["calendar_total_active_hhmm"] == "11:00"
-    assert payload["summary"]["workday_total_active_hhmm"] == "02:00"
+    assert payload["summary"]["workday_total_active_hhmm"] == "05:00"
 
 
 def test_build_management_payload_applies_alias_and_executive_summary():
     original = MODULE.load_manager_aliases
+    original_owners = MODULE.load_manager_owners
+    original_sources = MODULE.build_source_freshness
+    original_trend = MODULE.build_management_trend
     try:
         MODULE.load_manager_aliases = lambda: {
             "sharkon2025\\user1": {
@@ -174,6 +214,18 @@ def test_build_management_payload_applies_alias_and_executive_summary():
                 "role": "Оператор 1С",
             }
         }
+        MODULE.load_manager_owners = lambda: {
+            "руководитель смены": {
+                "display_name": "Сменный руководитель",
+                "title": "Руководитель смены 1С",
+                "department": "Операторы 1С",
+                "contact": "@shift-lead",
+                "escalation_to": "Финансовый директор",
+                "notes": "Дневной контур",
+            }
+        }
+        MODULE.build_source_freshness = lambda host: ([], [])
+        MODULE.build_management_trend = lambda host, report_date, owner_filter="", department_filter="": []
         rows = [
             {
                 "user": "user1",
@@ -197,8 +249,97 @@ def test_build_management_payload_applies_alias_and_executive_summary():
         assert payload["actions"][0]["owner"] == "Руководитель смены"
         assert payload["executive"]["portfolio_state"] == "critical"
         assert payload["executive"]["focus_items"][0]["owner"] == "Руководитель смены"
+        assert payload["owner_rollups"][0]["name"] == "Руководитель смены"
+        assert payload["owner_rollups"][0]["critical_actions_count"] >= 1
+        assert payload["department_rollups"][0]["name"] == "Бухгалтерия"
+        assert payload["owner_roster"][0]["display_name"] == "Сменный руководитель"
+        assert payload["owner_roster"][0]["contact"] == "@shift-lead"
     finally:
         MODULE.load_manager_aliases = original
+        MODULE.load_manager_owners = original_owners
+        MODULE.build_source_freshness = original_sources
+        MODULE.build_management_trend = original_trend
+
+
+def test_build_management_payload_filters_by_owner():
+    original_aliases = MODULE.load_manager_aliases
+    original_owners = MODULE.load_manager_owners
+    original_trend = MODULE.build_management_trend
+    original_sources = MODULE.build_source_freshness
+    try:
+        MODULE.load_manager_aliases = lambda: {
+            "sharkon2025\\user1": {
+                "display_name": "Иван Петров",
+                "manager": "Руководитель смены",
+                "department": "Бухгалтерия",
+                "role": "Оператор 1С",
+            },
+            "sharkon2025\\user2": {
+                "display_name": "Мария Соколова",
+                "manager": "Финансовый директор",
+                "department": "Финансы",
+                "role": "Главбух",
+            },
+        }
+        MODULE.load_manager_owners = lambda: {
+            "руководитель смены": {"display_name": "Сменный руководитель", "title": "Руководитель смены 1С"}
+        }
+        MODULE.build_management_trend = lambda *args, **kwargs: []
+        MODULE.build_source_freshness = lambda host: ([], [])
+        rows = [
+            {
+                "user": "user1",
+                "user_id": "SHARKON2025\\user1",
+                "active_seconds": 0,
+                "active_hhmm": "00:00",
+                "first_activity": "",
+                "last_activity": "",
+                "idle_seconds": 86400,
+                "sessions_count": 1,
+                "samples_count": 10,
+                "active_samples": 0,
+                "_intervals": [],
+            },
+            {
+                "user": "user2",
+                "user_id": "SHARKON2025\\user2",
+                "active_seconds": 3600,
+                "active_hhmm": "01:00",
+                "first_activity": "2026-05-14T07:00:00Z",
+                "last_activity": "2026-05-14T08:00:00Z",
+                "idle_seconds": 82800,
+                "sessions_count": 1,
+                "samples_count": 120,
+                "active_samples": 120,
+                "_intervals": [
+                    (
+                        datetime(2026, 5, 14, 7, 0, 0, tzinfo=timezone.utc),
+                        datetime(2026, 5, 14, 8, 0, 0, tzinfo=timezone.utc),
+                    )
+                ],
+            },
+        ]
+        payload = MODULE.build_management_payload(
+            rows,
+            "SHARKON2025",
+            datetime(2026, 5, 14, tzinfo=timezone.utc).date(),
+            owner_filter="Руководитель смены",
+        )
+        assert payload["filters"]["owner"] == "Руководитель смены"
+        assert payload["filters"]["department"] == ""
+        assert payload["summary"]["users_count"] == 1
+        assert [row["user"] for row in payload["rows"]] == ["Иван Петров"]
+        assert len(payload["owner_rollups"]) == 1
+        assert payload["owner_rollups"][0]["name"] == "Руководитель смены"
+        assert len(payload["department_rollups"]) == 1
+        assert payload["department_rollups"][0]["name"] == "Бухгалтерия"
+        assert payload["owner_roster"][0]["display_name"] == "Сменный руководитель"
+        assert all(action["owner"] == "Руководитель смены" for action in payload["actions"])
+    finally:
+        MODULE.load_manager_aliases = original_aliases
+        MODULE.load_manager_owners = original_owners
+        MODULE.build_management_trend = original_trend
+        MODULE.build_source_freshness = original_sources
 
 
 def test_render_management_html_contains_action_queue():
@@ -207,6 +348,10 @@ def test_render_management_html_contains_action_queue():
         "host": "SHARKON2025",
         "report_date": "2026-05-14",
         "report_timezone": "Europe/Moscow",
+        "filters": {
+            "owner": "Руководитель смены",
+            "department": "Бухгалтерия",
+        },
         "workday": {
             "start_local": "2026-05-14T09:00:00+03:00",
             "end_local": "2026-05-14T18:00:00+03:00",
@@ -280,6 +425,66 @@ def test_render_management_html_contains_action_queue():
             ],
             "stale_sources": [],
         },
+        "owner_rollups": [
+            {
+                "name": "Руководитель смены",
+                "users_count": 1,
+                "active_users": 0,
+                "inactive_users": 1,
+                "below_target_users": 0,
+                "workday_total_active_seconds": 0,
+                "workday_total_active_hhmm": "00:00",
+                "portfolio_coverage_pct": 0.0,
+                "actions_count": 1,
+                "critical_actions_count": 1,
+                "high_actions_count": 0,
+                "medium_actions_count": 0,
+                "low_actions_count": 0,
+                "users": ["Иван Петров"],
+            }
+        ],
+        "department_rollups": [
+            {
+                "name": "Бухгалтерия",
+                "users_count": 1,
+                "active_users": 0,
+                "inactive_users": 1,
+                "below_target_users": 0,
+                "workday_total_active_seconds": 0,
+                "workday_total_active_hhmm": "00:00",
+                "portfolio_coverage_pct": 0.0,
+                "actions_count": 1,
+                "critical_actions_count": 1,
+                "high_actions_count": 0,
+                "medium_actions_count": 0,
+                "low_actions_count": 0,
+                "users": ["Иван Петров"],
+            }
+        ],
+        "owner_roster": [
+            {
+                "name": "Руководитель смены",
+                "display_name": "Сменный руководитель",
+                "title": "Руководитель смены 1С",
+                "department": "Операторы 1С",
+                "contact": "@shift-lead",
+                "escalation_to": "Финансовый директор",
+                "notes": "Дневной контур",
+                "users_count": 1,
+                "active_users": 0,
+                "inactive_users": 1,
+                "below_target_users": 0,
+                "workday_total_active_seconds": 0,
+                "workday_total_active_hhmm": "00:00",
+                "portfolio_coverage_pct": 0.0,
+                "actions_count": 1,
+                "critical_actions_count": 1,
+                "high_actions_count": 0,
+                "medium_actions_count": 0,
+                "low_actions_count": 0,
+                "users": ["Иван Петров"]
+            }
+        ],
         "trend": [
             {
                 "report_date": "2026-05-14",
@@ -316,22 +521,24 @@ def test_render_management_html_contains_action_queue():
     assert "Очередь действий руководителя" in html
     assert "missing_activity" in html
     assert "Тренд за" in html
+    assert "По ответственным" in html
+    assert "Ответственные и эскалация" in html
+    assert "По подразделениям" in html
     assert "Свежесть источников данных" in html
     assert "Что делать сегодня" in html
+    assert "Фильтр:" in html
+    assert "Сбросить" in html
+    assert "@shift-lead" in html
     assert "Иван Петров" in html
     assert "Руководитель смены" in html
 
 
-def test_build_source_freshness_uses_freshest_candidate_bucket():
+def test_build_source_freshness_uses_host_fileops_bucket_only():
     original = MODULE.latest_bucket_event
+    original_now_utc = MODULE.now_utc
     try:
         def fake_latest(bucket_id):
             if bucket_id == "aw-file-operations_SHARKON2025":
-                return {
-                    "timestamp": "2026-05-14T12:00:00Z",
-                    "data": {"signalType": "collector_health", "queueDepth": 9, "sendFailures": 3, "eventsFlushed": 10},
-                }
-            if bucket_id == "aw-file-operations_10.10.10.13":
                 return {
                     "timestamp": "2026-05-23T12:00:00Z",
                     "data": {"signalType": "collector_health", "queueDepth": 0, "sendFailures": 0, "eventsFlushed": 50},
@@ -339,10 +546,31 @@ def test_build_source_freshness_uses_freshest_candidate_bucket():
             return None
 
         MODULE.latest_bucket_event = fake_latest
+        MODULE.now_utc = lambda: datetime(2026, 5, 23, 12, 5, 0, tzinfo=timezone.utc)
         sources, actions = MODULE.build_source_freshness("SHARKON2025")
         file_source = next(source for source in sources if source["source_id"] == "file_operations")
-        assert file_source["bucket_id"] == "aw-file-operations_10.10.10.13"
+        assert file_source["bucket_id"] == "aw-file-operations_SHARKON2025"
         assert file_source["status"] == "ok"
         assert not any(action["evidence"].get("source_id") == "file_operations" for action in actions)
     finally:
         MODULE.latest_bucket_event = original
+        MODULE.now_utc = original_now_utc
+
+
+def test_send_bytes_returns_false_on_broken_pipe():
+    handler = _FakeHandler(exc=BrokenPipeError())
+    ok = MODULE.send_bytes(handler, b"{}", "application/json; charset=utf-8")
+    assert ok is False
+    assert handler.status == 200
+    assert handler.headers["Content-Type"] == "application/json; charset=utf-8"
+    assert handler.headers["Content-Length"] == "2"
+    assert handler.ended is True
+
+
+def test_send_bytes_writes_payload_when_client_is_connected():
+    handler = _FakeHandler()
+    ok = MODULE.send_bytes(handler, b"payload", "text/plain; charset=utf-8", status=201)
+    assert ok is True
+    assert handler.status == 201
+    assert handler.headers["Content-Length"] == "7"
+    assert handler.wfile.data == b"payload"

@@ -40,6 +40,18 @@
               )
           }}
 
+    - name: Вычислить effective каталог health validation на AW server
+      ansible.builtin.set_fact:
+        aw_windows_health_validation_dir_effective: >-
+          {{
+            (
+              hostvars[aw_server_inventory_host_effective].aw_rus_health_validation_dir
+              | default('/var/lib/activitywatch/health/windows-validation', true)
+            )
+            if (aw_server_inventory_host_effective | length) > 0
+            else ''
+          }}
+
     - name: Аккуратно запустить ActivityWatch recovery и launch tasks, если они не в Running
       when: aw_windows_force_task_restart | bool
       ansible.windows.win_powershell:
@@ -119,6 +131,26 @@
         src: "{{ aw_windows_validation_remote_path }}"
         dest: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
         flat: true
+
+    - name: Убедиться, что каталог Windows validation существует на AW server
+      when:
+        - aw_server_inventory_host_effective | length > 0
+        - aw_windows_health_validation_dir_effective | length > 0
+      ansible.builtin.file:
+        path: "{{ aw_windows_health_validation_dir_effective }}"
+        state: directory
+        mode: "0755"
+      delegate_to: "{{ aw_server_inventory_host_effective }}"
+
+    - name: Опубликовать validation report на AW server для aw-rus-healthd
+      when:
+        - aw_server_inventory_host_effective | length > 0
+        - aw_windows_health_validation_dir_effective | length > 0
+      ansible.builtin.copy:
+        src: "{{ aw_windows_validation_local_dir }}/{{ inventory_hostname }}-aw_validate_ansible.json"
+        dest: "{{ aw_windows_health_validation_dir_effective }}/{{ inventory_hostname }}-aw_validate_ansible.json"
+        mode: "0644"
+      delegate_to: "{{ aw_server_inventory_host_effective }}"
 
     - name: Показать путь к отчёту
       ansible.builtin.debug:

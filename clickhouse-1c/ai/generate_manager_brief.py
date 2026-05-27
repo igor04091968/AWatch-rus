@@ -641,6 +641,67 @@ def render_deterministic_payload(context: dict[str, Any]) -> dict[str, Any]:
     else:
         summary_lines.append("Свежесть источников укладывается в заданный порог.")
 
+    primary_risk = top_risks[0] if top_risks else {}
+    primary_risk_company = primary_risk.get("counterparty") or "лидирующие компании риска"
+    primary_risk_reason = primary_risk.get("top_signal") or "рост operational severity"
+    activity_30d_total = float(summary.get("activity_30d_total") or 0)
+    activity_forecast_30d_total = float(summary.get("activity_forecast_30d_total") or 0)
+    if activity_30d_total > 0:
+        activity_ratio = activity_forecast_30d_total / activity_30d_total
+    else:
+        activity_ratio = 1.0
+    if activity_ratio < 0.95:
+        activity_outlook = "Есть риск спада активности в ближайшие 30 дней."
+        activity_effect = "Проверить, не перейдёт ли операционный спад в падение выручки и прибыли по топ-компаниям."
+    elif activity_ratio > 1.05:
+        activity_outlook = "Есть потенциал роста активности в ближайшие 30 дней."
+        activity_effect = "Важно не потерять рост из-за кейсов, блокировок и ручных несоответствий."
+    else:
+        activity_outlook = "По активности на 30 дней картина близка к стабильной."
+        activity_effect = "Резкого сигнала на рост или падение по активности сейчас нет."
+    primary_risk_load = []
+    if int(primary_risk.get("open_cases_total") or 0) > 0:
+        primary_risk_load.append(f"кейсы {int(primary_risk['open_cases_total'])}")
+    if int(primary_risk.get("detections_total") or 0) > 0:
+        primary_risk_load.append(f"detections {int(primary_risk['detections_total'])}")
+    if int(primary_risk.get("active_locks") or 0) > 0:
+        primary_risk_load.append(f"блокировки {int(primary_risk['active_locks'])}")
+    primary_risk_tail = f" ({', '.join(primary_risk_load)})" if primary_risk_load else ""
+
+    delta_summary = delta.get("summary", {}) if delta.get("available") else {}
+    if delta.get("available"):
+        change_answer = (
+            "С прошлого запуска "
+            f"critical {delta_summary.get('critical_total_delta', 0):+d}, "
+            f"busy {delta_summary.get('busy_total_delta', 0):+d}, "
+            f"кейсы {delta_summary.get('open_cases_total_delta', 0):+d}, "
+            f"detections {delta_summary.get('detections_total_delta', 0):+d}."
+        )
+        change_action = (
+            f"Сначала разобрать новые critical: {', '.join(delta.get('new_critical', [])[:3])}."
+            if delta.get("new_critical")
+            else "Проверить компании с самым большим ухудшением и подтвердить владельцев на закрытие."
+        )
+    else:
+        change_answer = "Сравнение с прошлым запуском сейчас недоступно, поэтому смотреть нужно на текущие кейсы, блокировки и свежесть источников."
+        change_action = "После следующего запуска включить сравнение и отслеживать не только уровень риска, но и его динамику."
+
+    trust_parts = []
+    if stale_sources:
+        trust_parts.append(f"есть просрочка по источникам: {', '.join(stale_sources)}")
+    if summary["manual_total"] > 0:
+        trust_parts.append(f"manual-match компаний: {summary['manual_total']}")
+    trust_answer = (
+        "Выводы рабочие, но требуют осторожности: " + "; ".join(trust_parts) + "."
+        if trust_parts
+        else "Выводам можно доверять как operational-картине: источники свежие, явных ограничений по данным нет."
+    )
+    trust_action = (
+        "Перед жёсткими оргвыводами вручную перепроверить manual-match и просроченные источники."
+        if trust_parts
+        else "Использовать brief как основу для управленческого разбора без дополнительного технического triage."
+    )
+
     risk_items = [
         {
             "company": item["counterparty"],
@@ -678,9 +739,85 @@ def render_deterministic_payload(context: dict[str, Any]) -> dict[str, Any]:
             f"Проверить watchlist: {', '.join(item['counterparty'] for item in watchlist[:3])}."
         )
 
+    manager_questions = [
+        {
+            "question": "Что происходит сейчас?",
+            "answer": (
+                f"Портфель под операционным давлением: critical {summary['critical_total']}, "
+                f"high {summary['high_total']}, открытых кейсов {summary['open_cases_total']}."
+            ),
+            "recommended_action": "Не распыляться: взять в первую очередь не больше 5 компаний с максимальной нагрузкой по кейсам и блокировкам.",
+        },
+        {
+            "question": "Где главный риск?",
+            "answer": (
+                f"Главный риск сейчас в {primary_risk_company}: {primary_risk_reason}{primary_risk_tail}."
+                if primary_risk
+                else "Главный риск не выделен: в данных нет явного лидера по severity."
+            ),
+            "recommended_action": (
+                f"Сразу назначить владельца на {primary_risk_company} и проверить кейсы, блокировки и фактическую активность."
+                if primary_risk
+                else "Сначала вручную выделить 1-3 компании с самым высоким operational pressure."
+            ),
+        },
+        {
+            "question": "Что изменилось с прошлого запуска?",
+            "answer": change_answer,
+            "recommended_action": change_action,
+        },
+        {
+            "question": "Есть ли риск падения прибыли в ближайшие 30 дней?",
+            "answer": (
+                "Прямого прогноза прибыли в этих данных нет. "
+                f"{activity_outlook} {activity_effect}"
+            ),
+            "recommended_action": "Сверить top-10 компаний по активности с выручкой, маржой и прибылью, чтобы отделить operational-шум от реального финансового риска.",
+        },
+        {
+            "question": "Что делать сегодня?",
+            "answer": "Нужен короткий управленческий triage: подтвердить причину проблемы, владельца, срок и измеримый результат по каждой компании первой очереди.",
+            "recommended_action": actions[0] if actions else "Разобрать компании с максимальным signal score и открытыми кейсами.",
+        },
+        {
+            "question": "Насколько этим выводам можно доверять?",
+            "answer": trust_answer,
+            "recommended_action": trust_action,
+        },
+    ]
+
+    management_plan = [
+        {
+            "horizon": "today",
+            "focus": "Остановить прирост проблем по компаниям первой очереди.",
+            "action": actions[0] if actions else "Разобрать компании с максимальным signal score и открытыми кейсами.",
+            "expected_effect": "Снять главный операционный тормоз и не допустить роста хвоста кейсов до следующего цикла.",
+            "metric": "open_cases_total и active_locks по 5 приоритетным компаниям к вечеру.",
+        },
+        {
+            "horizon": "week",
+            "focus": "Вернуть управляемость по спорным и зависшим предприятиям.",
+            "action": (
+                f"{actions[1]} {actions[2]}"
+                if len(actions) >= 3
+                else "Проверить watchlist, manual-match и причины повторного попадания компаний в риск."
+            ),
+            "expected_effect": "Очистить ложный шум, снять ручные ошибки и сосредоточить команду на реальных потерях.",
+            "metric": "watchlist, manual-match и повторные critical по неделе.",
+        },
+        {
+            "horizon": "30d",
+            "focus": "Понять, где риск для прибыли, а где точка роста.",
+            "action": "Сверить top-10 компаний по активности и forecast с выручкой, маржой и прибылью; закрепить 3 предприятия, где снятие кейсов должно дать самый быстрый бизнес-эффект.",
+            "expected_effect": "Отделить операционный риск от финансового и направить усилия туда, где можно удержать или нарастить прибыль.",
+            "metric": "связка activity_forecast_30d_total с выручкой/маржой/прибылью по топ-компаниям.",
+        },
+    ]
+
     caveats = [
         "Показатель amount здесь трактуется как activity score, а не как деньги или выручка.",
         "Severity operational-driven: high/critical отражают кейсы, detections и занятость базы, а не автоматически финансовый риск.",
+        "Без прямых финансовых данных brief не должен трактоваться как готовый прогноз прибыли.",
     ]
     if summary["manual_total"] > 0:
         caveats.append("Компании с registry_match_mode=manual требуют осторожности при юридической интерпретации реестра.")
@@ -688,6 +825,8 @@ def render_deterministic_payload(context: dict[str, Any]) -> dict[str, Any]:
     return {
         "headline": headline,
         "summary": summary_lines[:6],
+        "manager_questions": manager_questions[:6],
+        "management_plan": management_plan[:5],
         "top_risks": risk_items[:5],
         "top_forecasts": forecast_items[:5],
         "actions": actions[:5],
@@ -708,6 +847,16 @@ def render_markdown(payload: dict[str, Any], generated_at: str) -> str:
     ]
     for item in payload["summary"]:
         lines.append(f"- {item}")
+    lines.extend(["", "## Простые ответы для руководителя"])
+    for idx, item in enumerate(payload.get("manager_questions", []), start=1):
+        lines.append(
+            f"{idx}. {item['question']} — {item['answer']} Действие: {item['recommended_action']}"
+        )
+    lines.extend(["", "## План действий руководителя"])
+    for idx, item in enumerate(payload.get("management_plan", []), start=1):
+        lines.append(
+            f"{idx}. [{item['horizon']}] {item['focus']} Действие: {item['action']} Эффект: {item['expected_effect']} Метрика: {item['metric']}"
+        )
     lines.extend(["", "## Компании риска"])
     for idx, item in enumerate(payload["top_risks"], start=1):
         lines.append(
@@ -726,6 +875,49 @@ def render_markdown(payload: dict[str, Any], generated_at: str) -> str:
         lines.append(f"- {item}")
     lines.append("")
     return "\n".join(lines)
+
+
+def normalize_brief_payload(payload: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+    fallback = render_deterministic_payload(context)
+    normalized = dict(payload)
+
+    manager_questions = [
+        dict(item) for item in normalized.get("manager_questions", []) if isinstance(item, dict)
+    ]
+    if not manager_questions:
+        manager_questions = [dict(item) for item in fallback["manager_questions"]]
+    profit_question = next(
+        item for item in fallback["manager_questions"] if "прибыл" in item["question"].lower()
+    )
+    if not any(
+        any(marker in str(item.get("question", "")).lower() for marker in ("прибыл", "финанс"))
+        for item in manager_questions
+    ):
+        if len(manager_questions) >= 6:
+            manager_questions[-1] = dict(profit_question)
+        else:
+            manager_questions.insert(min(3, len(manager_questions)), dict(profit_question))
+    normalized["manager_questions"] = manager_questions[:6]
+
+    management_plan = [
+        dict(item) for item in normalized.get("management_plan", []) if isinstance(item, dict)
+    ]
+    by_horizon = {str(item.get("horizon")): item for item in management_plan if item.get("horizon")}
+    for item in fallback["management_plan"]:
+        by_horizon.setdefault(str(item["horizon"]), dict(item))
+    normalized["management_plan"] = [
+        by_horizon[horizon]
+        for horizon in ("today", "week", "30d")
+        if horizon in by_horizon
+    ][:5]
+
+    caveats = [str(item) for item in normalized.get("caveats", []) if str(item).strip()]
+    profit_caveat = next(item for item in fallback["caveats"] if "прибыл" in item.lower())
+    if not any("прибыл" in item.lower() for item in caveats):
+        caveats.append(profit_caveat)
+    normalized["caveats"] = caveats[:4] or list(fallback["caveats"])
+
+    return normalized
 
 
 def run_codex(prompt: str, args: argparse.Namespace) -> tuple[int, str, str]:
@@ -817,6 +1009,8 @@ def main() -> int:
         payload = render_deterministic_payload(context)
         codex_output = f"{codex_output}\nFALLBACK: {exc}".strip()
         render_mode = "deterministic"
+
+    payload = normalize_brief_payload(payload, context)
 
     generated_at = datetime.now(UTC).replace(microsecond=0).isoformat()
     markdown = render_markdown(payload, generated_at)

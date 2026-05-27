@@ -12,16 +12,16 @@ aw_pfsense_poller_config:
     scheme: "https"
     verify_tls: false
     timeout_seconds: 15
-    headers:
-      X-API-Key: "replace-me"
-      X-API-Secret: "replace-me"
+    auth:
+      api_key: "replace-me"
+      api_secret: "replace-me"
   endpoints:
     - name: "system-status"
       path: "/api/v2/status/system"
       bucket_prefix: "aw-pfsense-health"
       bucket_type: "aw.pfsense.health"
     - name: "interfaces"
-      path: "/api/v2/interface"
+      path: "/api/v2/interfaces"
       bucket_prefix: "aw-pfsense-interfaces"
       bucket_type: "aw.pfsense.interfaces"
     - name: "gateways"

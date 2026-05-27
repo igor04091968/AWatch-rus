@@ -4,6 +4,8 @@
   "required": [
     "headline",
     "summary",
+    "manager_questions",
+    "management_plan",
     "top_risks",
     "top_forecasts",
     "actions",
@@ -23,6 +25,79 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 260
+      }
+    },
+    "manager_questions": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "question",
+          "answer",
+          "recommended_action"
+        ],
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "answer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320
+          },
+          "recommended_action": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 220
+          }
+        }
+      }
+    },
+    "management_plan": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "horizon",
+          "focus",
+          "action",
+          "expected_effect",
+          "metric"
+        ],
+        "properties": {
+          "horizon": {
+            "type": "string",
+            "enum": ["today", "week", "30d"]
+          },
+          "focus": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 280
+          },
+          "expected_effect": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 220
+          },
+          "metric": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          }
+        }
       }
     },
     "top_risks": {

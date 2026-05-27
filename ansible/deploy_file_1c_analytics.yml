@@ -14,16 +14,14 @@
     aw_file_1c_clickhouse_password: change-me
     aw_file_1c_clickhouse_port: 8123
     aw_file_1c_clickhouse_native_port: 9000
-    aw_file_1c_grafana_admin_user: admin
-    aw_file_1c_grafana_admin_password: change-me
-    aw_file_1c_grafana_port: 3300
     aw_file_1c_company_api_host: "{{ ansible_host | default('127.0.0.1') }}"
     aw_file_1c_company_api_port: 8710
+    aw_file_1c_manager_brief_grafana_url: "http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board?orgId=1"
     aw_file_1c_manager_brief_state_dir: /opt/activitywatch/clickhouse-1c/state/manager-brief
     aw_file_1c_manager_brief_model: gpt-5.3-codex
-    aw_file_1c_manager_brief_codex_user: codex
+    aw_file_1c_manager_brief_codex_user: igor
     aw_file_1c_manager_brief_codex_bin: codex
-    aw_file_1c_manager_brief_workdir: /home/codex/infra-admin
+    aw_file_1c_manager_brief_workdir: /home/igor
     aw_file_1c_manager_brief_top_limit: 5
     aw_file_1c_manager_brief_freshness_hours: 8
     aw_file_1c_manager_brief_timeout_sec: 300
@@ -131,12 +129,10 @@
           CLICKHOUSE_PASSWORD={{ aw_file_1c_clickhouse_password }}
           CLICKHOUSE_PORT={{ aw_file_1c_clickhouse_port }}
           CLICKHOUSE_NATIVE_PORT={{ aw_file_1c_clickhouse_native_port }}
-          GRAFANA_ADMIN_USER={{ aw_file_1c_grafana_admin_user }}
-          GRAFANA_ADMIN_PASSWORD={{ aw_file_1c_grafana_admin_password }}
-          GRAFANA_PORT={{ aw_file_1c_grafana_port }}
           CLICKHOUSE_HOST=clickhouse
           AW_1C_COMPANY_API_HOST={{ aw_file_1c_company_api_host }}
           AW_1C_COMPANY_API_PORT={{ aw_file_1c_company_api_port }}
+          AW_1C_MANAGER_BRIEF_GRAFANA_URL={{ aw_file_1c_manager_brief_grafana_url }}
           AW_1C_MANAGER_BRIEF_STATE_DIR={{ aw_file_1c_manager_brief_state_dir }}
           AW_1C_MANAGER_BRIEF_MODEL={{ aw_file_1c_manager_brief_model }}
           AW_1C_MANAGER_BRIEF_CODEX_USER={{ aw_file_1c_manager_brief_codex_user }}
@@ -232,6 +228,7 @@
         - 02_core_tables.sql
         - 03_views.sql
         - 04_company_intelligence.sql
+        - 05_financial_reporting.sql
 
     - name: Установить systemd unit aw-1c-ingest.service
       ansible.builtin.copy:

@@ -98,6 +98,7 @@ File 1C / Windows RDP host
 На `10.10.10.2:8710` уже работают human-facing страницы:
 
 - `/manager/brief`
+- `/manager/actions`
 - `/manager/changes`
 - `/manager/trends/weekly`
 - `/manager/digest/weekly`
@@ -112,6 +113,7 @@ File 1C / Windows RDP host
 Это страницы для руководителя с:
 
 - headline;
+- очередью конкретных действий по компаниям;
 - summary;
 - top risks;
 - top changes;
@@ -216,6 +218,12 @@ File 1C / Windows RDP host
 ### Grafana
 
 - `http://10.10.10.11:3000/dashboards/f/file-1c/?orgId=1`
+- management board:
+  - `http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board`
+- financial reporting:
+  - `http://10.10.10.11:3000/d/1c-file-finance/1c-file-financial-reporting`
+- telemetry board:
+  - `http://10.10.10.11:3000/d/1c-file-telemetry/1c-file-telemetry-board`
 - company intelligence:
   - `http://10.10.10.11:3000/d/1c-file-companies/1c-file-company-intelligence`
 
@@ -233,11 +241,19 @@ File 1C / Windows RDP host
 - `GET /api/1/analytics-1c/companies/overview`
 - `GET /api/1/analytics-1c/companies/{company}/summary`
 - `GET /api/1/analytics-1c/companies/{company}/forecast`
+- `GET /api/1/analytics-1c/companies/{company}/actions`
+- `GET /api/1/analytics-1c/manager/actions`
+- `GET /api/1/analytics-1c/manager/actions/companies`
 - `GET /api/1/analytics-1c/manager/brief/latest`
 - `GET /api/1/analytics-1c/manager/brief/delta/latest`
 - `GET /api/1/analytics-1c/manager/trends/weekly`
 - `GET /api/1/analytics-1c/manager/digest/weekly/latest`
 - `GET /api/1/analytics-1c/manager/recovery/latest`
+
+Manager action API работает в enterprise-first режиме:
+
+- `priority_model=enterprise_risk`
+- `owner_mode=secondary_operational_metadata`
 
 ## Главная граница
 

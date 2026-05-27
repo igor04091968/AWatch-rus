@@ -10,6 +10,7 @@ LOCK_FILE="${ROOT}/.ingest.lock"
 RUN_MANAGER_BRIEF_AFTER_INGEST="${AW_1C_MANAGER_BRIEF_RUN_AFTER_INGEST:-1}"
 RUN_RECOVERY_BRIEF_AFTER_INGEST="${AW_1C_RECOVERY_BRIEF_RUN_AFTER_INGEST:-1}"
 RUN_PROOFCHECK_AFTER_INGEST="${AW_1C_PROOFCHECK_RUN_AFTER_INGEST:-1}"
+RUN_MCP_TOOLKIT_EXTRACT_BEFORE_INGEST="${AW_1C_MCP_TOOLKIT_EXTRACT_BEFORE_INGEST:-0}"
 
 if [[ ! -f "${ENV_FILE}" ]]; then
   echo "missing env file: ${ENV_FILE}" >&2
@@ -39,6 +40,10 @@ fi
 
 # shellcheck disable=SC1090
 . "${ENV_FILE}"
+
+if [[ "${RUN_MCP_TOOLKIT_EXTRACT_BEFORE_INGEST}" == "1" ]]; then
+  "${VENV}/bin/python" "${ROOT}/etl/extract_1c_mcp_toolkit.py" --config "${CONFIG}"
+fi
 
 "${VENV}/bin/python" "${ROOT}/etl/build_business_event_exports.py" --config "${CONFIG}"
 "${VENV}/bin/python" "${ROOT}/etl/load_1c_exports.py" --config "${CONFIG}"

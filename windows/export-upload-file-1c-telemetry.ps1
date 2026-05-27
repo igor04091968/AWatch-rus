@@ -28,6 +28,38 @@ function Write-RunLog {
     Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
 }
 
+function Save-DeploymentConfig {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$Config,
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $json = $Config | ConvertTo-Json -Depth 12
+    Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
+}
+
+function Get-LastSuccessfulAnalyticsHostFromRunLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return ''
+    }
+
+    $matchedHost = ''
+    foreach ($line in Get-Content -LiteralPath $Path -Encoding UTF8) {
+        if ([string]$line -match 'upload complete analyticsHost=([^\s]+)') {
+            $matchedHost = [string]$Matches[1]
+        }
+    }
+
+    return $matchedHost
+}
+
 trap {
     Write-RunLog ("ERROR: " + ($_ | Out-String).Trim())
     exit 1
@@ -42,20 +74,57 @@ function New-TemporarySshKeyCopy {
     $tempDir = Join-Path $env:TEMP 'aw-rus-1c-ssh'
     New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
     $tempKeyPath = Join-Path $tempDir 'awops_ed25519'
-    Copy-Item -LiteralPath $SourceKeyPath -Destination $tempKeyPath -Force
+    $candidates = New-Object System.Collections.Generic.List[string]
+    foreach ($candidate in @(
+        $SourceKeyPath,
+        (Join-Path $env:USERPROFILE '.ssh\awops_ed25519'),
+        (Join-Path ([System.Environment]::GetFolderPath('UserProfile')) '.ssh\awops_ed25519')
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and -not $candidates.Contains($candidate)) {
+            $candidates.Add($candidate)
+        }
+    }
 
-    & icacls.exe $tempKeyPath /inheritance:r | Out-Null
-    & icacls.exe $tempKeyPath /grant:r "$($env:USERNAME):(F)" | Out-Null
-    & icacls.exe $tempKeyPath /remove:g 'Users' 'Authenticated Users' 'Everyone' 'BUILTIN\Users' 'BUILTIN\Administrators' 'NT AUTHORITY\SYSTEM' 2>$null | Out-Null
+    foreach ($candidate in $candidates) {
+        $pathError = $null
+        $exists = Test-Path -LiteralPath $candidate -ErrorAction SilentlyContinue -ErrorVariable pathError
+        if ($pathError) {
+            Write-RunLog ("skip unusable ssh key path={0} reason={1}" -f $candidate, $pathError[0].Exception.Message)
+            continue
+        }
+        if (-not $exists) {
+            continue
+        }
 
-    return $tempKeyPath
+        & cmd.exe /d /c "copy /Y `"$candidate`" `"$tempKeyPath`" >nul"
+        if ($LASTEXITCODE -ne 0) {
+            Write-RunLog ("skip unusable ssh key path={0} reason=copy command failed rc={1}" -f $candidate, $LASTEXITCODE)
+            continue
+        }
+
+        & icacls.exe $tempKeyPath /inheritance:r | Out-Null
+        & icacls.exe $tempKeyPath /grant:r "$($env:USERNAME):(F)" | Out-Null
+        & icacls.exe $tempKeyPath /remove:g 'Users' 'Authenticated Users' 'Everyone' 'BUILTIN\Users' 'BUILTIN\Administrators' 'NT AUTHORITY\SYSTEM' 2>$null | Out-Null
+        return $tempKeyPath
+    }
+
+    throw "No usable SSH private key found. checked={0}" -f ($candidates -join ', ')
 }
 
 function Get-1CFileInfobases {
     $results = New-Object System.Collections.Generic.List[object]
-    $launcherFiles = Get-ChildItem -Path 'C:\Users' -Directory -ErrorAction SilentlyContinue |
-        ForEach-Object { Join-Path $_.FullName 'AppData\Roaming\1C\1CEStart\ibases.v8i' } |
-        Where-Object { Test-Path -LiteralPath $_ }
+    $launcherFiles = New-Object System.Collections.Generic.List[string]
+    Get-ChildItem -Path 'C:\Users' -Directory -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            $launcherFile = Join-Path $_.FullName 'AppData\Roaming\1C\1CEStart\ibases.v8i'
+            try {
+                if (Test-Path -LiteralPath $launcherFile -ErrorAction Stop) {
+                    $launcherFiles.Add($launcherFile)
+                }
+            } catch {
+                Write-RunLog ("skip inaccessible launcher file={0} reason={1}" -f $launcherFile, $_.Exception.Message)
+            }
+        }
 
     foreach ($file in $launcherFiles) {
         $userName = 'unknown'
@@ -64,7 +133,15 @@ function Get-1CFileInfobases {
         }
         $currentName = $null
         $currentId = $null
-        foreach ($lineRaw in Get-Content -LiteralPath $file -Encoding UTF8) {
+        $fileLines = $null
+        try {
+            $fileLines = Get-Content -LiteralPath $file -Encoding UTF8 -ErrorAction Stop
+        } catch {
+            Write-RunLog ("skip unreadable launcher file={0} reason={1}" -f $file, $_.Exception.Message)
+            continue
+        }
+
+        foreach ($lineRaw in $fileLines) {
             $line = [string]$lineRaw
             if ($line -match '^\[(.+)\]$') {
                 $currentName = $Matches[1]
@@ -196,7 +273,11 @@ function Save-ExporterState {
     if ($directory) {
         New-Item -ItemType Directory -Path $directory -Force | Out-Null
     }
-    $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding UTF8
+    try {
+        $State | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Path -Encoding UTF8
+    } catch {
+        Write-RunLog ("warning: failed to persist exporter state path={0} reason={1}" -f $Path, $_.Exception.Message)
+    }
 }
 
 function Get-CompanyActivityScore {
@@ -237,11 +318,13 @@ if (-not (Test-Path -LiteralPath $ScpExe)) {
     throw "scp client not found: $ScpExe"
 }
 
-if (-not (Test-Path -LiteralPath $RemoteKeyPath)) {
-    throw "SSH private key not found: $RemoteKeyPath"
-}
-
 $config = Get-Content -Raw -LiteralPath $ConfigPath | ConvertFrom-Json
+if ($config.PSObject.Properties.Name -contains 'analytics' -and
+    $config.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and
+    $config.analytics.file1cAutomation.PSObject.Properties.Name -contains 'remoteKeyPath' -and
+    -not [string]::IsNullOrWhiteSpace([string]$config.analytics.file1cAutomation.remoteKeyPath)) {
+    $RemoteKeyPath = [string]$config.analytics.file1cAutomation.remoteKeyPath
+}
 if ([string]::IsNullOrWhiteSpace($AnalyticsHost)) {
     if ($config.PSObject.Properties.Name -contains 'analytics' -and
         $config.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and
@@ -250,7 +333,37 @@ if ([string]::IsNullOrWhiteSpace($AnalyticsHost)) {
     }
 }
 if ([string]::IsNullOrWhiteSpace($AnalyticsHost)) {
-    throw "AnalyticsHost is empty and deployment-config has no analytics.file1cAutomation.targetHost"
+    $AnalyticsHost = Get-LastSuccessfulAnalyticsHostFromRunLog -Path $LogPath
+    if (-not [string]::IsNullOrWhiteSpace($AnalyticsHost)) {
+        Write-RunLog "recovered analyticsHost=$AnalyticsHost from previous successful uploader log"
+        try {
+            if ($config.PSObject.Properties.Name -notcontains 'analytics' -or $null -eq $config.analytics) {
+                if ($config.PSObject.Properties.Name -contains 'analytics') {
+                    $config.analytics = [pscustomobject]@{}
+                } else {
+                    $config | Add-Member -NotePropertyName 'analytics' -NotePropertyValue ([pscustomobject]@{})
+                }
+            }
+            if ($config.analytics.PSObject.Properties.Name -notcontains 'file1cAutomation' -or $null -eq $config.analytics.file1cAutomation) {
+                if ($config.analytics.PSObject.Properties.Name -contains 'file1cAutomation') {
+                    $config.analytics.file1cAutomation = [pscustomobject]@{}
+                } else {
+                    $config.analytics | Add-Member -NotePropertyName 'file1cAutomation' -NotePropertyValue ([pscustomobject]@{})
+                }
+            }
+            if ($config.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetHost') {
+                $config.analytics.file1cAutomation.targetHost = $AnalyticsHost
+            } else {
+                $config.analytics.file1cAutomation | Add-Member -NotePropertyName 'targetHost' -NotePropertyValue $AnalyticsHost
+            }
+            Save-DeploymentConfig -Config $config -Path $ConfigPath
+        } catch {
+            Write-RunLog ("warning: failed to persist recovered analyticsHost into deployment-config: " + $_.Exception.Message)
+        }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($AnalyticsHost)) {
+    throw "AnalyticsHost is empty, deployment-config has no analytics.file1cAutomation.targetHost, and no previous successful uploader log was found"
 }
 if ($config.PSObject.Properties.Name -contains 'analytics' -and
     $config.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and

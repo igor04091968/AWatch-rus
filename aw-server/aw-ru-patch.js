@@ -3,8 +3,8 @@
     return;
   }
   window.__awRuPatchBootstrapped = true;
-  window.__awRuPatchVersion = "template-v13-category-builder-early-fix";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v13-category-builder-early-fix");
+  window.__awRuPatchVersion = "template-v14-dlp-route-lite";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v14-dlp-route-lite");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -1363,7 +1363,9 @@
         try {
           await saveDlpReview(host, event, row);
           state.reviews = collapseReviewEvents(await loadBucketEvents("aw-dlp-review_" + host, 200));
-          renderDlpTableRows(center, host);
+          renderDlpReviewManager(center, host);
+          center.querySelector("[data-aw-ru-dlp-status]").textContent =
+            "Событий: " + state.events.length + " · правил: " + state.activeRules.length + "/" + state.rules.length + " · review: " + state.reviews.filter(function (review) { return !(review.data && review.data.review && review.data.review.archived); }).length + "/" + state.reviews.length;
           message.textContent = "Review сохранен.";
         } catch (error) {
           message.textContent = "Ошибка сохранения review: " + error.message;
@@ -1404,8 +1406,17 @@
         if (!hayabusa) return "";
         const status = String(hayabusa.status || "");
         const mode = String(hayabusa.mode || "");
+        const caseHost = normalizeText(c && c.host);
+        const forensicHost = normalizeText(hayabusa.host);
         const reportDir = String(hayabusa.report_dir || "");
-        const title = reportDir ? ' title="' + escapeHtml(reportDir) + '"' : "";
+        const hostMismatch = caseHost && forensicHost && caseHost !== forensicHost;
+        const titleParts = [];
+        if (reportDir) titleParts.push(reportDir);
+        if (hostMismatch) titleParts.push("host mismatch: case=" + caseHost + " forensic=" + forensicHost);
+        const title = titleParts.length ? ' title="' + escapeHtml(titleParts.join(" | ")) + '"' : "";
+        if (hostMismatch) {
+          return '<span' + title + '>Hayabusa host-mismatch · ' + escapeHtml(forensicHost) + '</span>';
+        }
         return '<span' + title + '>Hayabusa ' + escapeHtml(status) + (mode ? " · " + escapeHtml(mode) : "") + '</span>';
       }
       const rows = (cases || []).map(function (c) {
@@ -2121,12 +2132,28 @@
     try {
       const routeKey = window.location.hash || "#";
       const routeChanged = routeKey !== staticPatchRouteKey;
+      const dlpRoute = isDlpSignalBucketRoute();
+      installCategoryBuilderNetworkPatch();
+      injectStyles();
+      if (dlpRoute) {
+        ensureSettingsHost();
+        injectDlpNavigation(document.body);
+        if (dlpOverlayFailureCount === 0) {
+          try {
+            injectDlpReviewCenter(document.body);
+          } catch (error) {
+            dlpOverlayFailureCount += 1;
+            const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
+            if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+          }
+        }
+        staticPatchRouteKey = routeKey;
+        return;
+      }
       enforceSafeActivityViewForPveHost();
       ensureSettingsHost();
       ensureHostGroupsData().catch(function () {});
       normalizeCategoryBuilderUnknownHostRefs();
-      installCategoryBuilderNetworkPatch();
-      injectStyles();
       if (routeChanged) {
         walk(document.body);
         translateAttributes(document.body);
@@ -2139,17 +2166,7 @@
       injectPveAuditCenter(document.body);
       injectRdpWorktimeCenter(document.body).catch(function () {});
       injectDlpNavigation(document.body);
-      if (isDlpSignalBucketRoute() && dlpOverlayFailureCount === 0) {
-        try {
-          injectDlpReviewCenter(document.body);
-        } catch (error) {
-          dlpOverlayFailureCount += 1;
-          const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
-          if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
-        }
-      } else if (!isDlpSignalBucketRoute()) {
-        injectDlpReviewCenter(document.body);
-      }
+      injectDlpReviewCenter(document.body);
       injectDlpAlertsCenter(document.body);
       injectHostGroupsCenter(document.body).catch(function () {});
       redirectBareTrendsRoute();
@@ -2170,6 +2187,7 @@
 
   const observer = new MutationObserver(function () {
     if (applyPatchInFlight) return;
+    if (isDlpSignalBucketRoute() && document.body && document.body.querySelector("[data-aw-ru-dlp-center='1']")) return;
     scheduleApplyPatch();
   });
 
@@ -2182,6 +2200,7 @@
   });
   window.addEventListener("hashchange", function () {
     redirectBareTrendsRoute();
+    dlpOverlayFailureCount = 0;
     staticPatchRouteKey = "";
     scheduleApplyPatch();
   });

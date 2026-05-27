@@ -1,0 +1,49 @@
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name {{ proxmox_web_gateway_public_hostname }} 10.10.10.2 192.168.63.213 _;
+
+    access_log /var/log/nginx/proxmox-web-gateway.access.log;
+    error_log /var/log/nginx/proxmox-web-gateway.error.log;
+
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2 default_server;
+    listen [::]:443 ssl http2 default_server;
+    server_name {{ proxmox_web_gateway_public_hostname }} 10.10.10.2 192.168.63.213 _;
+
+    access_log /var/log/nginx/proxmox-web-gateway.access.log;
+    error_log /var/log/nginx/proxmox-web-gateway.error.log;
+
+    ssl_certificate {{ proxmox_web_gateway_tls_cert_path }};
+    ssl_certificate_key {{ proxmox_web_gateway_tls_key_path }};
+    ssl_session_cache shared:ProxmoxWebGatewaySSL:10m;
+    ssl_session_timeout 1d;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+
+    root {{ proxmox_web_gateway_root }};
+    index index.html;
+
+    location = {{ proxmox_web_gateway_health_path }} {
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location = /robots.txt {
+        default_type text/plain;
+        return 200 "User-agent: *\nDisallow: /\n";
+    }
+
+{% for route in proxmox_web_gateway_routes %}
+    location = /go/{{ route.slug }} {
+        return 302 {{ route.target_url }};
+    }
+{% endfor %}
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

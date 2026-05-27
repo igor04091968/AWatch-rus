@@ -1,4 +1,4 @@
-# Hayabusa AW-rus Integration 2026-05-14
+# Hayabusa / "Форензика Windows логов" AW-rus Integration 2026-05-14
 
 This document defines the bounded integration between Hayabusa DFIR and the normal AW-rus operator path.
 
@@ -39,6 +39,12 @@ or from Telegram bot:
 ```
 
 Default mode is `incident`.
+
+Operator-facing note:
+
+- In Telegram menu the button is named `Форензика Windows логов`.
+- Legacy button text `Hayabusa DFIR` may still appear in stale chat keyboards, but the bot must continue to accept it.
+- This path remains bounded DFIR follow-up, not a primary runtime health/DLP control.
 
 ## What gets linked to a case
 

@@ -23,6 +23,7 @@
 - `docs/dlp-aggregator.md` — прототип централизованной агрегации DLP/file-operation событий.
 - `docs/dlp-reliability-roadmap.md` — roadmap повышения надёжности DLP-коллекторов.
 - `docs/powershell-analysis.md` — статический анализ работоспособности DLP PowerShell-скриптов.
+- `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md` — канонический MCP/PowerShell remote path для DetMir Windows host через `SSH`, а не `WSMan`.
 - `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
 - `aw-server/` — установочные скрипты, env-шаблон, systemd unit, RU patch для Web UI и server-side worktime/management report API на `:5610`.
 - `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
@@ -36,6 +37,7 @@
 - `scripts/install_aw_console_ssh_logger.sh` — user-space установка console/ssh logger.
 - `scripts/install_aw_linux_web_category_logger.sh` — user-space классификация browser admin UI по title/class.
 - `scripts/install_aw_linux_remote_worker.sh` — полный Linux remote-worker installer.
+- `scripts/install_detmir_powershell_mcp.sh` — привязка локального `powershell-windows`/`pwsh` к DetMir Windows host `192.168.100.18`.
 
 ## Базовый сценарий
 
@@ -82,6 +84,11 @@ powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-up
 
 - `ansible/deploy_aw_windows.yml`
 
+Для интерактивной PowerShell/MCP-работы с DetMir Windows host из Linux:
+
+- `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md`
+- `scripts/install_detmir_powershell_mcp.sh`
+
 Для внешнего pfSense poller'а:
 
 - `ansible/deploy_aw_pfsense_poller.yml`
@@ -89,6 +96,7 @@ powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-up
 Для импорта Grafana dashboard'ов через HTTP API:
 
 - `ansible/deploy_grafana_dashboards.yml`
+- `ansible/deploy_proxmox_web_gateway.yml`
 - `docs/GRAFANA_DASHBOARDS_RU.md`
 - `docs/1C_FILE_ANALYTICS_STACK_RU.md`
 

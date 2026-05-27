@@ -1,0 +1,227 @@
+---
+- name: Развернуть nginx web gateway на Proxmox host
+  hosts: proxmox
+  become: true
+  gather_facts: true
+
+  vars:
+    proxmox_web_gateway_public_hostname: "dm.iri1968.dpdns.org"
+    proxmox_web_gateway_root: "/var/www/proxmox-web-gateway"
+    proxmox_web_gateway_site_name: "proxmox-web-gateway.conf"
+    proxmox_web_gateway_site_path: "/etc/nginx/sites-available/{{ proxmox_web_gateway_site_name }}"
+    proxmox_web_gateway_site_enabled_path: "/etc/nginx/sites-enabled/{{ proxmox_web_gateway_site_name }}"
+    proxmox_web_gateway_tls_dir: "/etc/nginx/ssl/proxmox-web-gateway"
+    proxmox_web_gateway_tls_cert_path: "{{ proxmox_web_gateway_tls_dir }}/fullchain.pem"
+    proxmox_web_gateway_tls_key_path: "{{ proxmox_web_gateway_tls_dir }}/privkey.pem"
+    proxmox_web_gateway_health_path: "/healthz"
+    proxmox_web_gateway_routes:
+      - slug: "proxmox-gui"
+        title: "Proxmox VE"
+        category: "Host"
+        description: "Основная панель управления Proxmox VE."
+        target_url: "https://10.10.10.2:8006/"
+      - slug: "file1c-brief"
+        title: "1C Executive Brief"
+        category: "Management"
+        description: "Сводка по предприятиям и рискам 1С."
+        target_url: "http://10.10.10.2:8710/manager/brief"
+      - slug: "file1c-actions"
+        title: "1C Management Actions"
+        category: "Management"
+        description: "Очередь действий по предприятиям в 1С."
+        target_url: "http://10.10.10.2:8710/manager/actions"
+      - slug: "file1c-finance"
+        title: "1C Financial Reporting"
+        category: "Management"
+        description: "Первый financial board по файловой 1С с разделением ledger/proxy."
+        target_url: "http://10.10.10.11:3000/d/1c-file-finance/1c-file-financial-reporting?orgId=1"
+      - slug: "file1c-telemetry"
+        title: "1C Telemetry Board"
+        category: "Dashboards"
+        description: "Read-only telemetry экран по состоянию файловых баз, reglog и host."
+        target_url: "http://10.10.10.11:3000/d/1c-file-telemetry/1c-file-telemetry-board?orgId=1"
+      - slug: "grafana-1c"
+        title: "Grafana 1C"
+        category: "Dashboards"
+        description: "Рабочий file-1c dashboard contour в внешней Grafana."
+        target_url: "http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board?orgId=1"
+      - slug: "clickhouse-http"
+        title: "ClickHouse HTTP"
+        category: "Data"
+        description: "HTTP endpoint ClickHouse для file-1C analytics."
+        target_url: "http://10.10.10.2:8123/"
+      - slug: "influxdb"
+        title: "InfluxDB"
+        category: "Data"
+        description: "InfluxDB LXC на CT 200."
+        target_url: "http://10.10.10.10:8086/"
+      - slug: "grafana-core"
+        title: "Grafana Core"
+        category: "Dashboards"
+        description: "Отдельный Grafana CT 201."
+        target_url: "http://10.10.10.11:3000/"
+      - slug: "loki-alloy"
+        title: "Grafana Alloy"
+        category: "Logs"
+        description: "Web UI Alloy на CT 202."
+        target_url: "http://10.10.10.12:12345/"
+      - slug: "aw-ui"
+        title: "AW-rus UI"
+        category: "Operations"
+        description: "Основной ActivityWatch-Russian Web UI на CT 203."
+        target_url: "http://10.10.10.13:5600/"
+      - slug: "aw-worktime"
+        title: "AW-rus Management Report"
+        category: "Operations"
+        description: "Управленческий worktime/report API на CT 203."
+        target_url: "http://10.10.10.13:5610/reports/worktime/management?day=today"
+
+  tasks:
+    - name: Установить nginx
+      ansible.builtin.package:
+        name:
+          - nginx
+          - openssl
+        state: present
+
+    - name: Создать web root gateway
+      ansible.builtin.file:
+        path: "{{ proxmox_web_gateway_root }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Создать каталог TLS gateway
+      ansible.builtin.file:
+        path: "{{ proxmox_web_gateway_tls_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Сгенерировать self-signed TLS сертификат gateway
+      ansible.builtin.command:
+        argv:
+          - openssl
+          - req
+          - -x509
+          - -nodes
+          - -newkey
+          - rsa:2048
+          - -sha256
+          - -days
+          - "3650"
+          - -keyout
+          - "{{ proxmox_web_gateway_tls_key_path }}"
+          - -out
+          - "{{ proxmox_web_gateway_tls_cert_path }}"
+          - -subj
+          - "/CN={{ proxmox_web_gateway_public_hostname }}"
+          - -addext
+          - "subjectAltName=DNS:{{ proxmox_web_gateway_public_hostname }}"
+      args:
+        creates: "{{ proxmox_web_gateway_tls_cert_path }}"
+
+    - name: Развернуть index.html gateway
+      ansible.builtin.template:
+        src: "templates/proxmox-web-gateway-index.html.j2"
+        dest: "{{ proxmox_web_gateway_root }}/index.html"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Развернуть nginx site gateway
+      ansible.builtin.template:
+        src: "templates/proxmox-web-gateway.conf.j2"
+        dest: "{{ proxmox_web_gateway_site_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Reload nginx
+
+    - name: Отключить default nginx site
+      ansible.builtin.file:
+        path: "/etc/nginx/sites-enabled/default"
+        state: absent
+      notify: Reload nginx
+
+    - name: Включить proxmox web gateway site
+      ansible.builtin.file:
+        src: "{{ proxmox_web_gateway_site_path }}"
+        dest: "{{ proxmox_web_gateway_site_enabled_path }}"
+        state: link
+      notify: Reload nginx
+
+    - name: Включить и запустить nginx
+      ansible.builtin.systemd:
+        name: nginx
+        enabled: true
+        state: started
+
+    - name: Применить handlers до проверок
+      ansible.builtin.meta: flush_handlers
+
+    - name: Проверить синтаксис nginx после выкладки site
+      ansible.builtin.command: "/usr/sbin/nginx -t"
+      register: proxmox_web_gateway_nginx_test
+      changed_when: false
+
+    - name: Проверить локальный HTTP redirect на HTTPS
+      ansible.builtin.uri:
+        url: "http://127.0.0.1/"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        follow_redirects: none
+        status_code: 301
+      register: proxmox_web_gateway_http_redirect
+      failed_when:
+        - proxmox_web_gateway_http_redirect.status != 301
+        - proxmox_web_gateway_http_redirect.location != "https://{{ proxmox_web_gateway_public_hostname }}/"
+      changed_when: false
+
+    - name: Проверить redirect на Proxmox GUI
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/go/proxmox-gui"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        validate_certs: false
+        follow_redirects: none
+        status_code: 302
+      register: proxmox_web_gateway_redirect
+      failed_when:
+        - proxmox_web_gateway_redirect.status != 302
+        - proxmox_web_gateway_redirect.location != "https://10.10.10.2:8006/"
+      changed_when: false
+
+    - name: Проверить index по public hostname
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        return_content: true
+        validate_certs: false
+      register: proxmox_web_gateway_named_index
+      failed_when:
+        - proxmox_web_gateway_named_index.status != 200
+        - proxmox_web_gateway_public_hostname not in proxmox_web_gateway_named_index.content
+      changed_when: false
+
+    - name: Проверить локальный HTTPS health endpoint gateway
+      ansible.builtin.uri:
+        url: "https://127.0.0.1{{ proxmox_web_gateway_health_path }}"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        return_content: true
+        validate_certs: false
+      register: proxmox_web_gateway_https_health
+      failed_when:
+        - proxmox_web_gateway_https_health.status != 200
+        - "'ok' not in proxmox_web_gateway_https_health.content"
+      changed_when: false
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded

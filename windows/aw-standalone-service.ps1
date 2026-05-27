@@ -72,8 +72,8 @@ while ($true) {
         $collectors = $cfg.collectors
         $isSession0 = ([System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0)
 
-        # In Session 0 (SYSTEM) many collectors that rely on interactive user context (browsers, Outlook)
-        # will crash/exit immediately. Default to starting only collectors that can run headless.
+        # In Session 0 (SYSTEM) collectors that depend on interactive desktop/user profile
+        # will crash/exit or spin in useless restart loops. Keep only headless-safe collectors here.
         $startBrowser = $true
         $startFileOps = $true
         $startEmail   = $true
@@ -84,6 +84,7 @@ while ($true) {
         }
         if ($isSession0) {
             $startBrowser = $false
+            $startFileOps = $false
             $startEmail = $false
         }
 

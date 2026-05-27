@@ -64,15 +64,54 @@ class ManagerBriefTests(unittest.TestCase):
         payload = gmb.render_deterministic_payload(self.context)
         self.assertIn("headline", payload)
         self.assertGreaterEqual(len(payload["summary"]), 3)
+        self.assertGreaterEqual(len(payload["manager_questions"]), 4)
+        self.assertGreaterEqual(len(payload["management_plan"]), 3)
+        self.assertEqual(payload["manager_questions"][0]["question"], "Что происходит сейчас?")
+        self.assertEqual(payload["management_plan"][0]["horizon"], "today")
         self.assertEqual(payload["top_risks"][0]["company"], "ФЕЛИЦТ ГРУПП 2026")
         self.assertIn("manual", " ".join(payload["caveats"]).lower())
+        self.assertTrue(any("прибыл" in item.lower() for item in payload["caveats"]))
 
     def test_markdown_render(self) -> None:
         payload = gmb.render_deterministic_payload(self.context)
         md = gmb.render_markdown(payload, "2026-05-22T12:00:00+00:00")
         self.assertIn("# Executive Brief 1C", md)
+        self.assertIn("## Простые ответы для руководителя", md)
+        self.assertIn("## План действий руководителя", md)
         self.assertIn("## Компании риска", md)
+        self.assertIn("Есть ли риск падения прибыли в ближайшие 30 дней?", md)
+        self.assertIn("Что делать сегодня?", md)
         self.assertIn("ФЕЛИЦТ ГРУПП 2026", md)
+
+    def test_normalize_brief_payload_adds_profit_question_and_plan(self) -> None:
+        payload = {
+            "headline": "Тест",
+            "summary": ["a", "b", "c"],
+            "manager_questions": [
+                {
+                    "question": "Что происходит сейчас?",
+                    "answer": "Есть нагрузка.",
+                    "recommended_action": "Сфокусироваться на top-компаниях.",
+                }
+            ],
+            "management_plan": [
+                {
+                    "horizon": "today",
+                    "focus": "Снять острый риск.",
+                    "action": "Разобрать top-5.",
+                    "expected_effect": "Остановить рост проблем.",
+                    "metric": "open_cases_total",
+                }
+            ],
+            "top_risks": [],
+            "top_forecasts": [],
+            "actions": ["Разобрать top-5."],
+            "caveats": ["Operational severity не равна финансам."],
+        }
+        normalized = gmb.normalize_brief_payload(payload, self.context)
+        self.assertTrue(any("прибыл" in item["question"].lower() for item in normalized["manager_questions"]))
+        self.assertEqual([item["horizon"] for item in normalized["management_plan"]], ["today", "week", "30d"])
+        self.assertTrue(any("прибыл" in item.lower() for item in normalized["caveats"]))
 
     def test_compute_delta_context(self) -> None:
         previous_artifact = {

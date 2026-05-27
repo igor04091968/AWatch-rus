@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from case_storage import CaseStorage
+from case_storage import CaseStorage, ForensicsHostMismatchError
 
 
 class CaseStorageHayabusaLinkTest(unittest.TestCase):
@@ -61,6 +61,32 @@ class CaseStorageHayabusaLinkTest(unittest.TestCase):
             self.assertEqual(created["id"], duplicate["id"])
             cases = storage.list_cases(host="SHARKON2025", limit=10)
             self.assertEqual(len(cases), 1)
+
+    def test_link_hayabusa_rejects_host_mismatch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "cases.db"
+            storage = CaseStorage(db_path)
+            created = storage.create_case(
+                {
+                    "incident_id": "inc-2",
+                    "host": "SHARKON2025",
+                    "title": "DLP print incident",
+                    "severity": "high",
+                },
+                actor="test",
+            )
+            with self.assertRaises(ForensicsHostMismatchError):
+                storage.link_hayabusa(
+                    case_id=int(created["id"]),
+                    payload={
+                        "host": "stability",
+                        "mode": "incident",
+                        "status": "ok",
+                        "intake_id": "pkg-2",
+                        "report_dir": "/opt/hayabusa/reports/stability/run-1",
+                    },
+                    actor="test",
+                )
 
 
 if __name__ == "__main__":

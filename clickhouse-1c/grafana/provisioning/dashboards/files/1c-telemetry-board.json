@@ -1,0 +1,784 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Management Board",
+      "url": "/d/1c-file-mgmt/1c-file-management-board"
+    },
+    {
+      "title": "Operations Health",
+      "url": "/d/1c-file-ops/1c-file-operations-health"
+    },
+    {
+      "title": "Financial Reporting",
+      "url": "/d/1c-file-finance/1c-file-financial-reporting"
+    },
+    {
+      "title": "Manager Brief",
+      "url": "http://10.10.10.2:8710/manager/brief"
+    }
+  ],
+  "panels": [
+    {
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "### Telemetry Board по файловой 1С\n- Экран показывает только уже доступный read-only telemetry слой: состояние баз, размеры, busy markers, рост reglog и состояние Windows host.\n- Это не бухгалтерский ledger и не финансовая отчётность. Если нужны реальные проводки, они должны прийти отдельным sanctioned export path.\n- Практический смысл экрана: быстро увидеть, какие базы живы, заняты, растут по журналу регистрации и за кем они закреплены.",
+        "mode": "markdown"
+      },
+      "title": "Как читать экран",
+      "transparent": true,
+      "type": "text"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT count() AS value FROM analytics_1c.v_companies_current",
+          "refId": "A"
+        }
+      ],
+      "title": "Баз в контуре",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 200
+              }
+            ]
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 4
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT round(sum(db_size_bytes) / 1073741824, 2) AS value FROM analytics_1c.v_companies_current",
+          "refId": "A"
+        }
+      ],
+      "title": "Суммарный размер баз",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 4
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT sum(active_locks) AS value FROM analytics_1c.v_companies_current",
+          "refId": "A"
+        }
+      ],
+      "title": "Активные locks",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT countIf(current_status = 'busy' OR active_locks > 0 OR temp_db_present = 1) AS value FROM analytics_1c.v_companies_current",
+          "refId": "A"
+        }
+      ],
+      "title": "Базы busy/risk",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 4
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT round(sum(reglog_size_bytes) / 1073741824, 2) AS value FROM analytics_1c.v_companies_current",
+          "refId": "A"
+        }
+      ],
+      "title": "Reglog общий",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 4
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT sum(rdp_sessions) AS value FROM (SELECT host, argMax(rdp_sessions, ts) AS rdp_sessions FROM analytics_1c.host_events GROUP BY host)",
+          "refId": "A"
+        }
+      ],
+      "title": "RDP sessions now",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT ts AS time, infobase AS metric, activity_score AS value FROM analytics_1c.companies WHERE $__timeFilter(ts) ORDER BY time, metric",
+          "refId": "A"
+        }
+      ],
+      "title": "Activity score по базам",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "unit": "gbytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT ts AS time, infobase AS metric, round(reglog_size_bytes / 1073741824, 2) AS value FROM analytics_1c.companies WHERE $__timeFilter(ts) ORDER BY time, metric",
+          "refId": "A"
+        }
+      ],
+      "title": "Рост reglog по базам",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 10,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "activity_score",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT last_company_snapshot_at, infobase, owner_user, base_path, current_status, round(db_size_bytes / 1073741824, 2) AS db_size_gb, round(reglog_size_bytes / 1073741824, 2) AS reglog_size_gb, active_locks, temp_db_present, scheduler_touched, round(current_activity_score, 2) AS activity_score FROM analytics_1c.v_companies_current ORDER BY current_activity_score DESC, active_locks DESC, reglog_size_bytes DESC",
+          "refId": "A"
+        }
+      ],
+      "title": "Текущее состояние баз",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 14,
+        "x": 0,
+        "y": 28
+      },
+      "id": 11,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "ts",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT ts, infobase, user, event_name, level, message FROM analytics_1c.reglog_events WHERE event_name IN ('CompanyActivitySnapshot', 'FileBaseBusy', 'RegLogInventory', 'JobSchedulerActivity') AND $__timeFilter(ts) ORDER BY ts DESC LIMIT 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Последние operational signals",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 10,
+        "x": 14,
+        "y": 28
+      },
+      "id": 12,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "timeSeries",
+          "rawSql": "SELECT ts AS time, cpu_pct AS cpu_pct, ram_pct AS ram_pct, rdp_sessions AS rdp_sessions FROM analytics_1c.host_events WHERE $__timeFilter(ts) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "title": "Host load / RDP",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "id": 13,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "owner_user",
+            "desc": false
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT owner_user, infobase, company_name, base_path, current_status, active_locks, last_company_snapshot_at FROM analytics_1c.v_companies_current ORDER BY owner_user, infobase",
+          "refId": "A"
+        }
+      ],
+      "title": "Пользователь -> база",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse-1c"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "id": 14,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "displayName": "last_seen_at",
+            "desc": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse-1c"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "pluginVersion": "11.2.2",
+          "queryType": "table",
+          "rawSql": "SELECT host, argMax(cpu_pct, ts) AS cpu_pct, argMax(ram_pct, ts) AS ram_pct, argMax(disk_free_gb, ts) AS disk_free_gb, argMax(rdp_sessions, ts) AS rdp_sessions, argMax(backup_ok, ts) AS backup_ok, max(ts) AS last_seen_at FROM analytics_1c.host_events GROUP BY host ORDER BY host",
+          "refId": "A"
+        }
+      ],
+      "title": "Последнее состояние host",
+      "type": "table"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "1c",
+    "telemetry",
+    "ops",
+    "clickhouse"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "1C File - Telemetry Board",
+  "uid": "1c-file-telemetry",
+  "version": 1,
+  "weekStart": ""
+}

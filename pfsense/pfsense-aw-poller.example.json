@@ -27,7 +27,7 @@
     },
     {
       "name": "interfaces",
-      "path": "/api/v2/interface",
+      "path": "/api/v2/interfaces",
       "bucket_prefix": "aw-pfsense-interfaces",
       "bucket_type": "aw.pfsense.interfaces"
     },

@@ -122,6 +122,7 @@
 - внешние реестры и справочники;
 - audit/export критичных изменений;
 - отдельные read-only файлы, формируемые рядом с 1С.
+- `1c-mcp-toolkit` REST API через `execute_query` и `get_event_log`.
 
 Не подходящие по умолчанию:
 
@@ -183,6 +184,12 @@
   - `etl/build_business_event_exports.py`
   - собирает canonical events из существующих read-only выгрузок
     `documents/postings/audit`
+- read-only extractor scaffold:
+  - `etl/extract_1c_mcp_toolkit.py`
+  - забирает `companies/documents/postings/business_events/document_changes`
+    через `execute_query`
+  - забирает `reglog` через `get_event_log`
+  - пишет в те же `landing/*`, которые уже понимает loader
 - ingest wiring:
   - normalizer запускается перед `load_1c_exports.py`
 - timeline/detection wiring:
@@ -195,9 +202,33 @@
 Это уже рабочий v1 normalizer, но ещё не конечный extractor со всей
 бухгалтерской глубиной.
 
+## Контракт `1c-mcp-toolkit` extractor
+
+На текущем шаге extractor сознательно ограничен:
+
+- только read-only endpoint'ы;
+- без `execute_code`;
+- с локальным checkpoint state;
+- с `channel` isolation для разделения `dev/prod`.
+
+Практический контракт такой:
+
+1. `execute_query` должен возвращать колонки, алиаснутые под landing-схему.
+2. Если это неудобно, используется `field_map` в `etl/config.yml`.
+3. Для query-datasets можно включать incremental-window через
+   `incremental.since_param` / `incremental.until_param`.
+4. Для `reglog` extractor хранит курсор `last_date +
+   same_second_offset`.
+5. `company_entity_key` достраивается extractor'ом по той же логике,
+   что уже используется в built-in normalizer.
+6. Перед включением live-ingest query-pack должен проходить:
+   - `--validate-config`
+   - `--dry-run`
+   - targeted `--dataset <name>` probe
+
 ## Что делать дальше
 
-1. Реализовать read-only extractor в отдельном модуле.
+1. Подключить production queries под конкретную конфигурацию 1С.
 2. Стабильно наполнять `company_entity_key`.
 3. Добавить первые SQL detections на `business_events`.
 4. Обогащать `entity_timeline` уже не только telemetry/audit, но и
