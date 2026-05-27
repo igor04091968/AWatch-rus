@@ -526,7 +526,7 @@ function Get-ActivityWatchSessionRecords {
 
             $sessionId = [int]$columns[$sessionIdIndex]
             $state = if ($columns.Count -gt ($sessionIdIndex + 1)) { [string]$columns[$sessionIdIndex + 1] } else { '' }
-            $isLive = $state -match '^(Active|Conn)$'
+            $isLive = $state -match '^(Active|Conn|Активно|Подкл\w*)$'
 
             $sessions.Add([pscustomobject]@{
                     SessionName = $sessionName

@@ -27,6 +27,8 @@ AFK_BUCKET = f"aw-rdp-afk_{HOST}"
 WINDOW_BUCKET = f"aw-rdp-window_{HOST}"
 WATCHER_AFK_BUCKET = f"aw-watcher-afk_{HOST}"
 WATCHER_WINDOW_BUCKET = f"aw-watcher-window_{HOST}"
+WEB_CATEGORY_BUCKET = f"aw-detmir-web-category_{HOST}"
+COLLECTOR_HEALTH_MAX_AGE_SECONDS = float(os.environ.get("AW_WORKTIME_UI_BRIDGE_COLLECTOR_HEALTH_MAX_AGE_SECONDS", "300"))
 
 
 def _req(method: str, path: str, payload=None):
@@ -52,7 +54,7 @@ def ensure_bucket(bucket_id: str, event_type: str, client: str):
             raise
 
 
-def get_latest_bucket_event_ts(bucket_id: str):
+def get_latest_bucket_event(bucket_id: str):
     try:
         events = _req("GET", f"/api/0/buckets/{bucket_id}/events?limit=1") or []
     except urllib.error.HTTPError as e:
@@ -61,7 +63,14 @@ def get_latest_bucket_event_ts(bucket_id: str):
         raise
     if not events:
         return None
-    ts = events[0].get("timestamp")
+    return events[0]
+
+
+def get_latest_bucket_event_ts(bucket_id: str):
+    event = get_latest_bucket_event(bucket_id)
+    if not event:
+        return None
+    ts = event.get("timestamp")
     if not ts:
         return None
     try:
@@ -75,6 +84,29 @@ def bucket_needs_fallback(bucket_id: str, now_utc: datetime, stale_after_seconds
     if latest_dt is None:
         return True
     return (now_utc - latest_dt).total_seconds() >= stale_after_seconds
+
+
+def watcher_window_needs_bridge_sync(now_utc: datetime):
+    latest_event = get_latest_bucket_event(WATCHER_WINDOW_BUCKET)
+    if latest_event is None:
+        return True
+    latest_dt = get_latest_bucket_event_ts(WATCHER_WINDOW_BUCKET)
+    if latest_dt is None:
+        return True
+    if (now_utc - latest_dt).total_seconds() >= WATCHER_FALLBACK_STALE_SECONDS:
+        return True
+
+    data = latest_event.get("data") or {}
+    source = str(data.get("source", "")).strip().lower()
+    app = str(data.get("app", "")).strip()
+    title = str(data.get("title", "")).strip()
+    if source != "aw-worktime-ui-bridge":
+        return False
+    if app.upper() == "RDP":
+        return True
+    if title == "RDP idle" or title.startswith("RDP active"):
+        return True
+    return False
 
 
 def load_state():
@@ -116,6 +148,39 @@ def build_window_title(users, active_count):
     return f"RDP active ({active_count}): " + ", ".join(users)
 
 
+def get_latest_foreground_context(now_utc: datetime):
+    try:
+        events = _req("GET", f"/api/0/buckets/{WEB_CATEGORY_BUCKET}/events?limit=20") or []
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+    for event in events:
+        data = event.get("data") or {}
+        if str(data.get("signalType", "")).strip().lower() != "collector_health":
+            continue
+        foreground_process = str(data.get("foregroundProcess", "")).strip()
+        foreground_title = str(data.get("foregroundTitle", "")).strip()
+        if not foreground_process and not foreground_title:
+            continue
+        ts = event.get("timestamp")
+        if not ts:
+            continue
+        try:
+            event_dt = parse_iso_utc(ts)
+        except Exception:
+            continue
+        if (now_utc - event_dt).total_seconds() > COLLECTOR_HEALTH_MAX_AGE_SECONDS:
+            continue
+        return {
+            "app": foreground_process if foreground_process.endswith(".exe") else f"{foreground_process}.exe",
+            "title": foreground_title or foreground_process,
+        }
+
+    return None
+
+
 def _is_session_active(row_data):
     if isinstance(row_data.get("active"), bool):
         if row_data.get("active"):
@@ -136,7 +201,7 @@ def _is_session_active(row_data):
     return False
 
 
-def transform(events):
+def transform(events, foreground_context=None):
     out_afk = []
     out_win = []
     last_ts = None
@@ -185,11 +250,21 @@ def transform(events):
         afk_data = {"status": "not-afk" if is_active else "afk", "source": "aw-worktime-ui-bridge"}
         out_afk.append({"timestamp": ts, "duration": duration, "data": afk_data})
 
-        win_data = {
-            "app": "RDP",
-            "title": build_window_title(active_users, active_count),
-            "source": "aw-worktime-ui-bridge",
-        }
+        if is_active and foreground_context:
+            title = str(foreground_context.get("title") or "").strip()
+            if active_count > 1:
+                title = f"{title} | {build_window_title(active_users, active_count)}" if title else build_window_title(active_users, active_count)
+            win_data = {
+                "app": str(foreground_context.get("app") or "RDP"),
+                "title": title or build_window_title(active_users, active_count),
+                "source": "aw-worktime-ui-bridge",
+            }
+        else:
+            win_data = {
+                "app": "RDP",
+                "title": build_window_title(active_users, active_count),
+                "source": "aw-worktime-ui-bridge",
+            }
         out_win.append({"timestamp": ts, "duration": duration, "data": win_data})
         last_ts = ts
 
@@ -226,7 +301,8 @@ def main():
     if not events:
         return
 
-    afk_events, win_events, new_last_ts = transform(events)
+    foreground_context = get_latest_foreground_context(now_utc)
+    afk_events, win_events, new_last_ts = transform(events, foreground_context=foreground_context)
     if not afk_events or not win_events or not new_last_ts:
         return
 
@@ -236,7 +312,7 @@ def main():
         if bucket_needs_fallback(WATCHER_AFK_BUCKET, now_utc, WATCHER_FALLBACK_STALE_SECONDS):
             ensure_bucket(WATCHER_AFK_BUCKET, "afkstatus", "aw-watcher-afk")
             _req("POST", f"/api/0/buckets/{WATCHER_AFK_BUCKET}/events", afk_events)
-        if bucket_needs_fallback(WATCHER_WINDOW_BUCKET, now_utc, WATCHER_FALLBACK_STALE_SECONDS):
+        if watcher_window_needs_bridge_sync(now_utc):
             ensure_bucket(WATCHER_WINDOW_BUCKET, "currentwindow", "aw-watcher-window")
             _req("POST", f"/api/0/buckets/{WATCHER_WINDOW_BUCKET}/events", win_events)
     save_state({"last_ts": new_last_ts})

@@ -780,6 +780,39 @@ function Send-Heartbeat {
     Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$BucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
 }
 
+function Send-WindowHeartbeat {
+    param(
+        [Parameter(Mandatory = $true)]
+        [pscustomobject]$Context
+    )
+
+    if (-not $Context) {
+        return
+    }
+
+    $processName = [string]$Context.ProcessName
+    $title = [string]$Context.Title
+    if ([string]::IsNullOrWhiteSpace($processName) -and [string]::IsNullOrWhiteSpace($title)) {
+        return
+    }
+
+    $bucketId = 'aw-watcher-window_' + $script:Hostname
+    Ensure-Bucket -BucketId $bucketId -ClientName 'aw-watcher-window' -BucketType 'currentwindow'
+
+    $event = @{
+        timestamp = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        duration  = 0
+        data      = @{
+            app       = if ([string]::IsNullOrWhiteSpace($processName)) { 'unknown.exe' } else { "$processName.exe" }
+            title     = $title
+            source    = 'uia-native'
+            sessionId = $script:SessionId
+        }
+    } | ConvertTo-Json -Depth 4 -Compress
+
+    Invoke-AwJsonPost -Uri "$($script:ApiBase)/buckets/$bucketId/heartbeat?pulsetime=$resolvedPulseSeconds" -Json $event
+}
+
 function Send-CategoryHeartbeat {
     param(
         [string]$Url,
@@ -863,6 +896,9 @@ while ($true) {
     $detectedUrl = $null
     try {
         $context = Get-ForegroundWindowContext
+        if ($context) {
+            Send-WindowHeartbeat -Context $context
+        }
         if ($context -and $script:BrowserMap.ContainsKey($context.ProcessName)) {
             $url = Get-BrowserUrlFromWindow -Handle $context.Handle
             if ($url) {
