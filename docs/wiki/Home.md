@@ -4,6 +4,15 @@
 
 ## 📚 Содержание
 
+### Production guide
+- [1.2 Getting Started and Prerequisites](Getting-Started-and-Prerequisites) - обязательные env-переменные, Influx token'ы и preflight validation
+- [2.2 Server Infrastructure](Server-Infrastructure) - retention, journald limits и `aw-prune-local-state`
+- [2.3 Russian WebUI Patch and Localization](Russian-WebUI-Patch-and-Localization) - runtime RU patch, DLP links и navigation fixes
+- [2.4 Worktime API and UI Bridge](Worktime-API-and-UI-Bridge) - cache, build locks, trend optimization и foreground context
+- [3 Windows Collector Suite](Windows-Collector-Suite) - RDP/session/process collectors, recovery и локализованный Administrator
+- [7 Grafana and Prometheus Monitoring Stack](Grafana-and-Prometheus-Monitoring-Stack) - Influx exporters, token validation и Grafana checks
+- [8 Operations, CI/CD, and Quality Assurance](Operations-CI-CD-and-Quality-Assurance) - тесты, autoheal и rollout checks
+
 ### Архитектура
 - [Обзор архитектуры](Architecture) - высокоуровневая архитектура системы
 - [Компоненты системы](Components) - описание всех компонентов
