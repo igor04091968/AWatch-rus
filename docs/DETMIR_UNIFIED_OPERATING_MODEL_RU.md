@@ -2,6 +2,8 @@
 
 Дата фиксации: `2026-05-24`
 
+Последнее runtime-уточнение: `2026-05-28`
+
 Этот файл предназначен как единая рабочая опора по `DetMir`: что именно входит в систему, где это живет, каким инструментарием проект надо планировать и сопровождать, и какой операционный контур считать промышленным.
 
 Если старые документы расходятся с этим файлом по адресам или runtime-ролям, для текущей эксплуатации приоритет у этого файла.
@@ -42,6 +44,75 @@
 - серверный путь `AW-rus` сейчас должен считаться `10.10.10.13`;
 - операторский и gateway-контур должен считаться `10.10.10.2`;
 - Windows production-host для `DetMir` сейчас `192.168.100.18`, а не старые упоминания `192.168.100.21`.
+
+### 2.1 Runtime snapshot после полной проверки 2026-05-28
+
+Проверка выполнялась как production-contour test, а не только как HTTP ping.
+Покрыты:
+
+- `AW-rus` API/WebUI на `10.10.10.13:5600`;
+- worktime/management API на `10.10.10.13:5610`;
+- Windows/RDP host `192.168.100.18` через WinRM/SSH/Scheduled Tasks;
+- `1C/file analytics` backend на `10.10.10.2:8710`;
+- Proxmox/nginx gateway на `10.10.10.2`;
+- Grafana на `10.10.10.11:3000`;
+- browser smoke через Playwright по operator-facing страницам.
+
+Фактический результат после стабилизации:
+
+| Проверка | Результат |
+|---|---|
+| `./check-aw-full.sh` | `FRESH=8 STALE=0 DEAD=0` |
+| `aw-rus-healthd.py --json` | `ok=13 warn=0 fail=0` |
+| `dlp-health-check --json` | `ok=20 warn=0 fail=0` |
+| `systemctl --failed` на `10.10.10.13` | `0 loaded units listed` |
+| Playwright browser smoke | `14/14` страниц открылись |
+| Grafana authenticated API/UI smoke | login OK, `19` dashboards в `/api/search`, все ключевые `1C File`/`DetMir` dashboards открылись |
+| Grafana datasource health | `OK` для `clickhouse-1c`, `InfluxDB-AW`, `loki`, Proxmox/pfSense Influx datasources |
+| Python unit tests по AW server/worktime/DLP/exporters | `36 passed` |
+| `proxmox.test_tsj_guardian_bot` | `25 tests OK` |
+| Windows `ActivityWatch Recovery` | `Last Result: 0` |
+
+Ключевые runtime-факты на момент фиксации:
+
+- `activitywatch-server`, `aw-worktime-api`, `aw-worktime-ui-bridge.timer`, `aw-worktime-autoheal.timer` активны;
+- свежие buckets: `aw-watcher-afk_*`, `aw-watcher-window_*`, `aw-worktime-sessions_*`, `aw-dlp-endpoint-signals_*`;
+- `aw-dlp-incidents_*`, `aw-dlp-review_*`, `aw-dlp-rules_*` могут быть event-driven и не обязаны двигаться каждую минуту;
+- Grafana dashboards без авторизации корректно редиректят на login, это не считается отказом; с сохраненной admin-учеткой проверены фактические страницы и datasource health;
+- gateway `/go/file1c-brief`, `/go/file1c-actions`, `/go/aw-ui` ведет на рабочие внутренние surface.
+
+### 2.2 Стабилизация management report, bridge и recovery от 2026-05-28
+
+До стабилизации слабые места были такими:
+
+- холодный `management report` на `:5610` занимал примерно `38-58s`;
+- `aw-worktime-autoheal` мог считать тяжелый management warm частью health-check и перезапускать `aw-worktime-api`;
+- `aw-worktime-ui-bridge.service` периодически ловил `start-limit-hit`, хотя затем восстанавливался;
+- Windows task `ActivityWatch Recovery` оставался с `Last Result: 1`, несмотря на зеленый основной сбор данных.
+
+Что изменено:
+
+| Компонент | Файл | Решение |
+|---|---|---|
+| Management report API | `aw-server/aw-worktime-api.py` | Добавлены in-process events cache, build lock на `(host, report_date)`, переиспользование уже построенного payload для trend и чтение historical cache без TTL. |
+| Autoheal | `aw-server/aw-worktime-autoheal.sh` | Management warm больше не является обязательным health probe; timeout warm увеличен до `60s`. |
+| Worktime UI bridge | `aw-server/aw-worktime-ui-bridge.service` | `StartLimitBurst` поднят до `20`, чтобы штатные timer-запуски не переводили unit в `start-limit-hit`. |
+| Windows recovery | `windows/ActivityWatch.Windows.Common.psm1` | Усилен hidden wrapper, добавлен fallback через `schtasks.exe`, recovery task выбирает live interactive user, если SYSTEM path на хосте проблемный. |
+
+Измеренный эффект:
+
+| Сценарий | До | После |
+|---|---:|---:|
+| Cold/cold-ish management JSON | `38-58s` | около `11s` на сервере |
+| Повторный management JSON из cache | нестабильно | около `0.006s` на сервере |
+| Внешний первый request | до `58s` | около `18.9s` |
+| Внешний повторный request | нестабильно | около `0.215s` |
+
+Операционное ограничение:
+
+- полный `hardening-recovery.ps1` на Windows host может упираться в CIM/ScheduledTasks `message filter`;
+- для текущего production recovery закреплен рабочий путь через `schtasks.exe` и live interactive admin principal;
+- не запускать полный hardening-прогон без причины, если buckets свежие и `ActivityWatch Recovery` уже `Last Result: 0`.
 
 ## 3. Полный функциональный состав DetMir
 

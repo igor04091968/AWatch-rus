@@ -5,9 +5,10 @@
   gather_facts: true
 
   vars:
-    tsj_bot_user: "codex"
+    tsj_bot_runtime_root: "/opt/infra-admin"
+    tsj_bot_user: "root"
     tsj_bot_group: "admin"
-    tsj_bot_root: "/home/codex/infra-admin/tsj-bot"
+    tsj_bot_root: "{{ tsj_bot_runtime_root }}/tsj-bot"
     tsj_bot_script_name: "tsj_guardian_bot.py"
     tsj_bot_script_dest: "{{ tsj_bot_root }}/{{ tsj_bot_script_name }}"
     tsj_bot_source_local_path: "{{ aw_repo_root }}/proxmox/tsj_guardian_bot.py"
@@ -16,8 +17,8 @@
     tsj_bot_openvpn_helper_source_local_path: "{{ aw_repo_root }}/proxmox/{{ tsj_bot_openvpn_helper_name }}"
     tsj_bot_service_name: "tsj-guardian-bot.service"
     tsj_bot_env_path: "{{ tsj_bot_root }}/.env"
-    tsj_bot_state_dir: "/home/codex/infra-admin/.state"
-    tsj_bot_logs_dir: "/home/codex/infra-admin/logs"
+    tsj_bot_state_dir: "{{ tsj_bot_runtime_root }}/.state"
+    tsj_bot_logs_dir: "{{ tsj_bot_runtime_root }}/logs"
     tsj_bot_default_chat_id: "{{ telegram_default_chat_id | default(telegram_allowed_chat_ids.split(',')[0]) }}"
 
   pre_tasks:
@@ -130,15 +131,16 @@
           NODE_13_URL={{ tsj_bot_node_13_url | default('http://10.10.10.13:5600/api/0/info') }}
           NODE_16_URL={{ tsj_bot_node_16_url | default('http://10.10.10.16/') }}
           NODE_16_ENABLED={{ tsj_bot_node_16_enabled | default('false') }}
-          CHECK_SCRIPT={{ tsj_bot_check_script | default('/home/codex/infra-admin/scripts/system_self_support.sh --check') }}
-          HEAL_SCRIPT={{ tsj_bot_heal_script | default('/home/codex/infra-admin/scripts/system_self_support.sh --heal') }}
+          INFRA_ADMIN_ROOT={{ tsj_bot_runtime_root }}
+          CHECK_SCRIPT={{ tsj_bot_check_script | default(tsj_bot_runtime_root + '/scripts/system_self_support.sh --check') }}
+          HEAL_SCRIPT={{ tsj_bot_heal_script | default(tsj_bot_runtime_root + '/scripts/system_self_support.sh --heal') }}
           FS_WARN_PCT={{ tsj_bot_fs_warn_pct | default(85) }}
           FS_CRIT_PCT={{ tsj_bot_fs_crit_pct | default(92) }}
           FS_TARGETS={{ tsj_bot_fs_targets | default('host,200,201,202,203') }}
           FS_EXCLUDE_TYPES={{ tsj_bot_fs_exclude_types | default('tmpfs,devtmpfs,proc,sysfs,cgroup,cgroup2,overlay,squashfs,nsfs,tracefs,debugfs,securityfs,configfs,fusectl,mqueue,hugetlbfs,ramfs') }}
-          STATE_FILE={{ tsj_bot_state_file | default('/home/codex/infra-admin/.state/tsj_guardian_state.json') }}
-          LOG_FILE={{ tsj_bot_log_file | default('/home/codex/infra-admin/logs/tsj_guardian_bot.log') }}
-          HEARTBEAT_FILE={{ tsj_bot_heartbeat_file | default('/home/codex/infra-admin/.state/tsj_guardian_heartbeat') }}
+          STATE_FILE={{ tsj_bot_state_file | default(tsj_bot_runtime_root + '/.state/tsj_guardian_state.json') }}
+          LOG_FILE={{ tsj_bot_log_file | default(tsj_bot_runtime_root + '/logs/tsj_guardian_bot.log') }}
+          HEARTBEAT_FILE={{ tsj_bot_heartbeat_file | default(tsj_bot_runtime_root + '/.state/tsj_guardian_heartbeat') }}
           CHECK_INTERVAL_SEC={{ tsj_bot_check_interval_sec | default(60) }}
           OPERATOR_TIMEOUT_SEC={{ tsj_bot_operator_timeout_sec | default(900) }}
           RETRY_AUTORECOVERY_EVERY_SEC={{ tsj_bot_retry_autorecovery_every_sec | default(300) }}
@@ -170,8 +172,8 @@
           OPENVPN_EXPIRY_WARN_TIMEOUT_SEC={{ tsj_bot_openvpn_expiry_warn_timeout_sec | default(120) }}
           OPENVPN_EXPIRY_WARN_INTERVAL_SEC={{ tsj_bot_openvpn_expiry_warn_interval_sec | default(21600) }}
           PFSENSE_MCP_BEARER={{ tsj_bot_pfsense_mcp_bearer | default(pfsense_mcp_bearer | default('')) }}
-          SERVER_FALLBACK_COMMANDS={{ tsj_bot_server_fallback_commands | default('/home/codex/infra-admin/scripts/system_self_support.sh --heal') }}
-          UPDATES_SCRIPT={{ tsj_bot_updates_script | default('/usr/bin/python3 /home/codex/infra-admin/scripts/proxmox_lxc_critical_updates.py') }}
+          SERVER_FALLBACK_COMMANDS={{ tsj_bot_server_fallback_commands | default(tsj_bot_runtime_root + '/scripts/system_self_support.sh --heal') }}
+          UPDATES_SCRIPT={{ tsj_bot_updates_script | default('/usr/bin/python3 ' + tsj_bot_runtime_root + '/scripts/proxmox_lxc_critical_updates.py') }}
           UPDATE_TARGETS={{ tsj_bot_update_targets | default('auto') }}
           AW_RUS_API_BASE={{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}
           AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}
@@ -257,7 +259,7 @@
           [Service]
           Type=simple
           User=root
-          WorkingDirectory=/home/codex/infra-admin
+          WorkingDirectory={{ tsj_bot_runtime_root }}
           EnvironmentFile={{ tsj_bot_env_path }}
           ExecStart=/usr/bin/python3 {{ tsj_bot_script_dest }}
           Restart=always

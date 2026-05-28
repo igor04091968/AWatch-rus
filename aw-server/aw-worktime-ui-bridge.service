@@ -2,7 +2,7 @@
 Description=AW Worktime UI bridge (sessions -> afk/window)
 After=network-online.target activitywatch-server.service
 Wants=network-online.target
-StartLimitBurst=3
+StartLimitBurst=20
 StartLimitIntervalSec=120
 
 [Service]

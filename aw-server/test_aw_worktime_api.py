@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import importlib.util
+import json
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -225,7 +227,7 @@ def test_build_management_payload_applies_alias_and_executive_summary():
             }
         }
         MODULE.build_source_freshness = lambda host: ([], [])
-        MODULE.build_management_trend = lambda host, report_date, owner_filter="", department_filter="": []
+        MODULE.build_management_trend = lambda host, report_date, owner_filter="", department_filter="", **kwargs: []
         rows = [
             {
                 "user": "user1",
@@ -340,6 +342,81 @@ def test_build_management_payload_filters_by_owner():
         MODULE.load_manager_owners = original_owners
         MODULE.build_management_trend = original_trend
         MODULE.build_source_freshness = original_sources
+
+
+def _minimal_management_payload(report_date, users_count=1):
+    return {
+        "summary": {
+            "users_count": users_count,
+            "active_users": users_count,
+            "inactive_users": 0,
+            "workday_total_active_seconds": 3600 * users_count,
+            "workday_total_active_hhmm": f"0{users_count}:00",
+            "portfolio_coverage_pct": 100.0,
+            "actions_count": 0,
+            "critical_actions_count": 0,
+        },
+        "rows": [],
+        "actions": [],
+        "sources": [],
+        "filters": {"owner": "", "department": ""},
+    }
+
+
+def test_load_management_cache_keeps_historical_reports_after_ttl():
+    original_dir = MODULE.MANAGER_CACHE_DIR
+    original_ttl = MODULE.MANAGER_CACHE_TTL_SECONDS
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            MODULE.MANAGER_CACHE_DIR = Path(tmp)
+            MODULE.MANAGER_CACHE_TTL_SECONDS = 1
+            report_date = datetime(2026, 5, 14, tzinfo=timezone.utc).date()
+            payload = _minimal_management_payload(report_date)
+            path = MODULE.management_cache_path("SHARKON2025", report_date)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            loaded = MODULE.load_management_cache("SHARKON2025", report_date)
+        assert loaded["summary"]["users_count"] == 1
+    finally:
+        MODULE.MANAGER_CACHE_DIR = original_dir
+        MODULE.MANAGER_CACHE_TTL_SECONDS = original_ttl
+
+
+def test_build_management_trend_reuses_precomputed_anchor_payload():
+    original_trend_days = MODULE.MANAGER_TREND_DAYS
+    original_load = MODULE.load_management_cache
+    original_fetch = MODULE.fetch_events_for_date
+    original_aggregate = MODULE.aggregate_rows_with_intervals
+    fetch_dates = []
+    try:
+        MODULE.MANAGER_TREND_DAYS = 3
+        anchor = datetime(2026, 5, 14, tzinfo=timezone.utc).date()
+
+        def fake_load(host, report_date):
+            if report_date < anchor:
+                return _minimal_management_payload(report_date)
+            return None
+
+        def fake_fetch(host, report_date):
+            fetch_dates.append(report_date)
+            return MODULE.get_report_bounds(report_date), []
+
+        MODULE.load_management_cache = fake_load
+        MODULE.fetch_events_for_date = fake_fetch
+        MODULE.aggregate_rows_with_intervals = lambda events, start, end, host: []
+        trend = MODULE.build_management_trend(
+            "SHARKON2025",
+            anchor,
+            precomputed_payloads={anchor: _minimal_management_payload(anchor, users_count=2)},
+        )
+        assert [item["report_date"] for item in trend] == ["2026-05-12", "2026-05-13", "2026-05-14"]
+        assert trend[-1]["users_count"] == 2
+        assert fetch_dates == []
+    finally:
+        MODULE.MANAGER_TREND_DAYS = original_trend_days
+        MODULE.load_management_cache = original_load
+        MODULE.fetch_events_for_date = original_fetch
+        MODULE.aggregate_rows_with_intervals = original_aggregate
 
 
 def test_render_management_html_contains_action_queue():

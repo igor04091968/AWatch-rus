@@ -94,6 +94,89 @@
         - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
 
+    - name: Установить prune script для локального state
+      ansible.builtin.copy:
+        src: "{{ aw_repo_root }}/aw-server/aw-prune-local-state.sh"
+        dest: /usr/local/bin/aw-prune-local-state.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ограничить рост journald на aw-server
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/aw-rus-retention.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Journal]
+          SystemMaxUse={{ aw_server_journal_system_max_use }}
+          RuntimeMaxUse={{ aw_server_journal_runtime_max_use }}
+          SystemKeepFree={{ aw_server_journal_system_keep_free }}
+      register: aw_journald_dropin
+
+    - name: Установить systemd service prune локального state
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/aw-prune-local-state.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Prune ActivityWatch local backups and temp state
+
+          [Service]
+          Type=oneshot
+          Environment=AW_DATA_DIR={{ aw_server_data_dir }}
+          Environment=AW_BACKUP_RETENTION_DAYS={{ aw_server_backup_retention_days }}
+          Environment=AW_BACKUP_KEEP_LAST_DB={{ aw_server_backup_keep_last_db }}
+          Environment=AW_BACKUP_KEEP_LAST_JSON={{ aw_server_backup_keep_last_json }}
+          ExecStart=/usr/local/bin/aw-prune-local-state.sh
+
+    - name: Установить systemd timer prune локального state
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/aw-prune-local-state.timer
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily prune of ActivityWatch local backups and temp state
+
+          [Timer]
+          OnCalendar=*-*-* 04:40:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Перечитать systemd после retention unit/drop-in
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Включить и запустить timer prune локального state
+      ansible.builtin.systemd:
+        name: aw-prune-local-state.timer
+        enabled: true
+        state: started
+
+    - name: Применить journald retention без простоя
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - restart
+          - systemd-journald
+      when: aw_journald_dropin.changed
+      failed_when: false
+
+    - name: Сжать существующий journald до нового лимита
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - --vacuum-size={{ aw_server_journal_system_max_use }}
+      changed_when: true
+      failed_when: false
+
     - name: (Check mode) Пропустить установку релиза ActivityWatch
       ansible.builtin.debug:
         msg: "ansible_check_mode=true: download/unarchive/install of ActivityWatch release is skipped."
@@ -114,6 +197,11 @@
             dest: "{{ aw_release_dir }}"
             remote_src: true
             extra_opts: ["-o"]
+
+        - name: Удалить временный архив ActivityWatch после распаковки
+          ansible.builtin.file:
+            path: "{{ aw_archive_path }}"
+            state: absent
 
         - name: Найти распакованный каталог ActivityWatch
           ansible.builtin.find:
@@ -287,6 +375,22 @@
             src: "{{ aw_repo_root }}/aw-server/apply_webui_ru_patch.sh"
             dest: /opt/activitywatch/aw-server/apply_webui_ru_patch.sh
             mode: "0755"
+
+        - name: Проверить Influx token для AW worktime exporter
+          ansible.builtin.assert:
+            that:
+              - aw_worktime_influx_token is defined
+              - aw_worktime_influx_token | length > 0
+            fail_msg: "aw_worktime_influx_enabled=true, но aw_worktime_influx_token пуст. Exporter будет падать и Grafana не получит worktime-ряды."
+          when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Проверить Influx token для AW DLP exporter
+          ansible.builtin.assert:
+            that:
+              - aw_dlp_influx_token is defined
+              - aw_dlp_influx_token | length > 0
+            fail_msg: "aw_dlp_influx_enabled=true, но aw_dlp_influx_token пуст. Exporter будет падать и Grafana не получит DLP-ряды."
+          when: aw_dlp_influx_enabled | default(false) | bool
 
         - name: Записать /etc/activitywatch/aw-server.env перед хотфиксами
           ansible.builtin.copy:
@@ -922,7 +1026,6 @@
           ansible.builtin.systemd:
             name: aw-worktime-influx-exporter.service
             state: started
-          failed_when: false
           when: aw_worktime_influx_enabled | default(false) | bool
 
         - name: Включить и перезапустить AW DLP Influx exporter timer
@@ -936,7 +1039,6 @@
           ansible.builtin.systemd:
             name: aw-dlp-influx-exporter.service
             state: started
-          failed_when: false
           when: aw_dlp_influx_enabled | default(false) | bool
 
         - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
@@ -1513,6 +1615,11 @@
             dest: "{{ aw_hayabusa_release_dir }}"
             remote_src: true
             creates: "{{ aw_hayabusa_release_dir }}/{{ aw_hayabusa_binary_name }}"
+
+        - name: Удалить временный архив Hayabusa после распаковки
+          ansible.builtin.file:
+            path: "{{ aw_hayabusa_archive_path }}"
+            state: absent
 
         - name: Нормализовать права release Hayabusa
           ansible.builtin.file:

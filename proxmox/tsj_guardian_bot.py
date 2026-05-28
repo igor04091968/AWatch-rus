@@ -331,6 +331,7 @@ class TSJGuardianBot:
     BTN_AW_DFIR_LEGACY = "Hayabusa DFIR"
     BTN_AI_CHAT_ALIASES = ("AI чат", "Чат с поддержкой", "Техподдержка", "Тех поддержка")
     BTN_OVPN_CERTS_ALIASES = ("OpenVPN certs", "OpenVPN cert", "OpenVPN серты", "OpenVPN сертификат")
+    INFRA_ADMIN_ROOT = "/opt/infra-admin"
     PFSENSE_ENV_PATH = "/home/igor/.config/tsj-bot/pfsense.env.readonly"
     PFSENSE_INVENTORY_PATH = "/home/igor/.config/tsj-bot/inventory.md"
 
@@ -358,8 +359,9 @@ class TSJGuardianBot:
         self.allowed_chats = {int(x.strip()) for x in chats_raw.split(",") if x.strip()}
 
         self.default_chat_id = int(os.getenv("TELEGRAM_DEFAULT_CHAT_ID", str(min(self.allowed_chats))))
+        self.infra_admin_root = os.getenv("INFRA_ADMIN_ROOT", self.INFRA_ADMIN_ROOT).strip() or self.INFRA_ADMIN_ROOT
         self.check_script = os.getenv(
-            "CHECK_SCRIPT", "/home/codex/infra-admin/scripts/system_self_support.sh --check"
+            "CHECK_SCRIPT", f"{self.infra_admin_root}/scripts/system_self_support.sh --check"
         )
         self.aw_rus_api_base = os.getenv("AW_RUS_API_BASE", "http://10.10.10.13:5600/api/0").strip()
         self.aw_rus_worktime_base = os.getenv("AW_RUS_WORKTIME_BASE", "http://10.10.10.13:5610").strip()
@@ -411,16 +413,16 @@ class TSJGuardianBot:
             r"C:\ProgramData\AWatch-rus\email-outbound-collector.ps1",
         ).strip() or r"C:\ProgramData\AWatch-rus\email-outbound-collector.ps1"
         self.heal_script = os.getenv(
-            "HEAL_SCRIPT", "/home/codex/infra-admin/scripts/system_self_support.sh --heal"
+            "HEAL_SCRIPT", f"{self.infra_admin_root}/scripts/system_self_support.sh --heal"
         )
         self.state_file = os.getenv(
-            "STATE_FILE", "/home/codex/infra-admin/.state/tsj_guardian_state.json"
+            "STATE_FILE", f"{self.infra_admin_root}/.state/tsj_guardian_state.json"
         )
         self.log_file = os.getenv(
-            "LOG_FILE", "/home/codex/infra-admin/logs/tsj_guardian_bot.log"
+            "LOG_FILE", f"{self.infra_admin_root}/logs/tsj_guardian_bot.log"
         )
         self.heartbeat_file = os.getenv(
-            "HEARTBEAT_FILE", "/home/codex/infra-admin/.state/tsj_guardian_heartbeat"
+            "HEARTBEAT_FILE", f"{self.infra_admin_root}/.state/tsj_guardian_heartbeat"
         )
         self.check_interval = env_int("CHECK_INTERVAL_SEC", 60)
         self.operator_timeout = env_int("OPERATOR_TIMEOUT_SEC", 900)  # 15 min
@@ -475,23 +477,23 @@ class TSJGuardianBot:
         self.server_fallback_commands = [
             x.strip() for x in os.getenv(
                 "SERVER_FALLBACK_COMMANDS",
-                "/home/codex/infra-admin/scripts/system_self_support.sh --heal"
+                f"{self.infra_admin_root}/scripts/system_self_support.sh --heal"
             ).split(";;") if x.strip()
         ]
         self.updates_script = os.getenv(
             "UPDATES_SCRIPT",
-            "/usr/bin/python3 /home/codex/infra-admin/scripts/proxmox_lxc_critical_updates.py",
+            f"/usr/bin/python3 {self.infra_admin_root}/scripts/proxmox_lxc_critical_updates.py",
         )
         self.updates_status_file = Path(
             os.getenv(
                 "UPDATES_STATUS_FILE",
-                "/home/codex/infra-admin/.state/proxmox_lxc_critical_updates.json",
+                f"{self.infra_admin_root}/.state/proxmox_lxc_critical_updates.json",
             )
         )
         self.updates_rollback_file = Path(
             os.getenv(
                 "UPDATES_ROLLBACK_FILE",
-                "/home/codex/infra-admin/.state/proxmox_lxc_pending_rollback.json",
+                f"{self.infra_admin_root}/.state/proxmox_lxc_pending_rollback.json",
             )
         )
         self.proxmox_selection_ttl_sec = env_int("PROXMOX_SELECTION_TTL_SEC", 900)

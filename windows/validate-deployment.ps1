@@ -36,6 +36,15 @@ $queueMaxDepth = 1000
 $afkExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$config.collectors.afkEnabled } else { $true }
 $windowExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$config.collectors.windowEnabled } else { $true }
 $fileOpsExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]$config.collectors.fileOpsEnabled } else { $true }
+$sessionEventsConfig = if ($config.PSObject.Properties.Name -contains 'sessionEvents') { $config.sessionEvents } else { $null }
+$sessionLogonEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$sessionEventsConfig.logonEnabled } else { $false }
+$sessionProcessEventsEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'processEventsEnabled') { [bool]$sessionEventsConfig.processEventsEnabled } else { $true }
+$sessionEventsBucketId = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'bucketPrefix' -and -not [string]::IsNullOrWhiteSpace([string]$sessionEventsConfig.bucketPrefix)) {
+    ('{0}_{1}' -f [string]$sessionEventsConfig.bucketPrefix, $awHostname)
+}
+else {
+    'aw-session-events_' + $awHostname
+}
 
 function Get-LoggedOnUsers {
     param(
@@ -534,6 +543,12 @@ $result = [ordered]@{
         operationalLogEnabled = $printServiceOperationalEnabled
         jobTitlePolicyEnabled = $printJobTitlePolicyEnabled
         ok = [bool]($printServiceOperationalEnabled -and $printJobTitlePolicyEnabled)
+    }
+    sessionEvents = [ordered]@{
+        bucketId = $sessionEventsBucketId
+        logonEnabled = [bool]$sessionLogonEnabled
+        processEventsEnabled = [bool]$sessionProcessEventsEnabled
+        ok = $true
     }
     forensics = [ordered]@{
         evtxExportRoot = if ($config.PSObject.Properties.Name -contains 'forensics' -and $config.forensics.PSObject.Properties.Name -contains 'evtxExportRoot') { [string]$config.forensics.evtxExportRoot } else { $null }

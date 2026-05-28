@@ -170,10 +170,19 @@ function Get-1CFileInfobases {
 }
 
 function Get-HostSample {
-    $os = Get-CimInstance Win32_OperatingSystem
-    $cpuSample = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue |
-        Measure-Object -Property LoadPercentage -Average
-    $cpu = if ($cpuSample.Count -gt 0 -and $null -ne $cpuSample.Average) { [double]$cpuSample.Average } else { 0 }
+    $cpu = 0.0
+    $ramPct = 0.0
+    try {
+        Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop
+        $computerInfo = New-Object Microsoft.VisualBasic.Devices.ComputerInfo
+        $totalMemory = [double]$computerInfo.TotalPhysicalMemory
+        $availableMemory = [double]$computerInfo.AvailablePhysicalMemory
+        if ($totalMemory -gt 0) {
+            $ramPct = (($totalMemory - $availableMemory) / $totalMemory) * 100
+        }
+    } catch {
+        Write-RunLog ("warning: host memory sample fallback reason={0}" -f $_.Exception.Message)
+    }
     $disk = Get-PSDrive -Name E -ErrorAction SilentlyContinue
     $rdp = (quser 2>$null | Select-Object -Skip 1 | Measure-Object).Count
 
@@ -181,7 +190,7 @@ function Get-HostSample {
         ts = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
         host = $env:COMPUTERNAME
         cpu_pct = [math]::Round($cpu, 2)
-        ram_pct = [math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 2)
+        ram_pct = [math]::Round($ramPct, 2)
         disk_free_gb = if ($disk) { [math]::Round($disk.Free / 1GB, 2) } else { 0 }
         disk_latency_ms = 0
         smb_errors = 0

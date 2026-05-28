@@ -14,6 +14,7 @@
     aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
     aw_windows_package_zip_path: ""
     aw_windows_domain: "SHARKON2025"
+    aw_windows_builtin_administrator_name: "Администратор"
     aw_windows_users:
       - Администратор
       - user1
@@ -49,6 +50,7 @@
     aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
     aw_windows_forensics_root: "{{ aw_windows_state_root }}\\forensics\\evtx-exports"
     aw_windows_logon_marker_enabled: true
+    aw_windows_process_events_enabled: true
     aw_windows_skip_hardening: false
     aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
     aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
@@ -137,6 +139,8 @@
           - aw_windows_server_port is defined
           - aw_windows_server_scheme is defined
           - aw_windows_domain is defined
+          - aw_windows_builtin_administrator_name is defined
+          - aw_windows_builtin_administrator_name | length > 0
           - aw_windows_users_effective | length > 0
           - aw_windows_install_root is defined
           - aw_windows_state_root is defined
@@ -228,6 +232,7 @@
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
+          $env:AWATCH_RUS_BUILTIN_ADMINISTRATOR_NAME = "{{ aw_windows_builtin_administrator_name }}"
           $params = @{
             ServerScheme = "{{ aw_windows_server_scheme }}"
             ServerHost = "{{ aw_windows_server_host_effective }}"
@@ -247,6 +252,7 @@
             EvtxExportRoot = "{{ aw_windows_forensics_root }}"
             EvtxRetentionDays = {{ aw_windows_evtx_retention_days | int }}
             LogonMarkerEnabled = {{ '$true' if (aw_windows_logon_marker_enabled | bool) else '$false' }}
+            ProcessEventsEnabled = {{ '$true' if (aw_windows_process_events_enabled | bool) else '$false' }}
             PolicyMode = "{{ aw_windows_policy_mode }}"
             PolicyEngineEnabled = {{ '$true' if (aw_windows_policy_engine_enabled | bool) else '$false' }}
             PolicyEngineHost = "{{ aw_windows_policy_engine_host_effective }}"

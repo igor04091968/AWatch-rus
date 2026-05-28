@@ -27,6 +27,7 @@ param(
     [int]$EvtxRetentionDays = 14,
     [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
+    [bool]$ProcessEventsEnabled = $true,
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
@@ -140,6 +141,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -EvtxRetentionDays $EvtxRetentionDays `
     -EvtxChannels $EvtxChannels `
     -LogonMarkerEnabled $LogonMarkerEnabled `
+    -ProcessEventsEnabled $ProcessEventsEnabled `
     -AwHostname $AwHostname `
     -PolicyMode $PolicyMode `
     -PolicyEngineEnabled $PolicyEngineEnabled `

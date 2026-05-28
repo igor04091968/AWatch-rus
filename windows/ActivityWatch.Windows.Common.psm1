@@ -295,6 +295,11 @@ function Get-ActivityWatchBuiltInAdministratorName {
         return $script:ActivityWatchBuiltInAdministratorName
     }
 
+    if (-not [string]::IsNullOrWhiteSpace($env:AWATCH_RUS_BUILTIN_ADMINISTRATOR_NAME)) {
+        $script:ActivityWatchBuiltInAdministratorName = [string]$env:AWATCH_RUS_BUILTIN_ADMINISTRATOR_NAME
+        return $script:ActivityWatchBuiltInAdministratorName
+    }
+
     try {
         $account = Get-CimInstance Win32_UserAccount -Filter "LocalAccount=True" -ErrorAction Stop |
             Where-Object { [string]$_.SID -match '-500$' } |
@@ -305,6 +310,11 @@ function Get-ActivityWatchBuiltInAdministratorName {
         }
     }
     catch {
+    }
+
+    if ([string]$env:COMPUTERNAME -ieq 'SHARKON2025') {
+        $script:ActivityWatchBuiltInAdministratorName = 'Администратор'
+        return $script:ActivityWatchBuiltInAdministratorName
     }
 
     $script:ActivityWatchBuiltInAdministratorName = 'Administrator'
@@ -389,11 +399,11 @@ function Normalize-ActivityWatchUsers {
         }
     }
 
-    $normalized = $collected |
+    $normalized = @($collected |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
         ForEach-Object { Normalize-ActivityWatchUserId -UserId $_ -Domain $Domain } |
         Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
-        Sort-Object -Unique
+        Sort-Object -Unique)
 
     if (-not $normalized -or $normalized.Count -eq 0) {
         throw 'Не удалось определить целевых пользователей. Укажите -Users или -UserListPath.'
@@ -767,6 +777,7 @@ function New-ActivityWatchDeploymentConfig {
         [int]$EvtxRetentionDays = 14,
         [string[]]$EvtxChannels = @(),
         [bool]$LogonMarkerEnabled = $true,
+        [bool]$ProcessEventsEnabled = $true,
         [Parameter(Mandatory = $true)]
         [string]$LaunchScriptPath,
         [Parameter(Mandatory = $true)]
@@ -888,8 +899,9 @@ function New-ActivityWatchDeploymentConfig {
             }
         }
         sessionEvents = [pscustomobject]@{
-            logonEnabled = $LogonMarkerEnabled
-            bucketPrefix = 'aw-session-events'
+            logonEnabled        = $LogonMarkerEnabled
+            processEventsEnabled = $ProcessEventsEnabled
+            bucketPrefix        = 'aw-session-events'
         }
         recovery = [pscustomobject]@{
             intervalSeconds = $RecoveryIntervalSeconds
@@ -964,7 +976,9 @@ Set-StrictMode -Version Latest
 
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 Add-Type -AssemblyName System.Net.Http
-`$script:MaxCollectorPowerShellProcesses = 24
+`$script:MaxCollectorPowerShellProcesses = 48
+`$script:CollectorProcessSnapshotLoaded = `$false
+`$script:CollectorProcessSnapshot = @()
 
 function Get-DeploymentConfig {
     param([string]`$Path)
@@ -980,6 +994,41 @@ function Test-ProcessInSession {
     return [bool](Get-Process -Name `$Name -ErrorAction SilentlyContinue | Where-Object { `$_.SessionId -eq `$SessionId } | Select-Object -First 1)
 }
 
+function Get-CollectorProcessSnapshot {
+    if (`$script:CollectorProcessSnapshotLoaded) {
+        return @(`$script:CollectorProcessSnapshot)
+    }
+
+    `$script:CollectorProcessSnapshotLoaded = `$true
+    `$script:CollectorProcessSnapshot = @()
+    `$job = `$null
+    try {
+        `$job = Start-Job -ScriptBlock {
+            Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'pwsh.exe'" -ErrorAction SilentlyContinue |
+                Where-Object {
+                    `$_.CommandLine -match 'AWatch-rus' -and
+                    `$_.CommandLine -match '\.ps1'
+                } |
+                Select-Object ProcessId, SessionId, CommandLine
+        }
+
+        if (Wait-Job -Job `$job -Timeout 4) {
+            `$script:CollectorProcessSnapshot = @(Receive-Job -Job `$job -ErrorAction SilentlyContinue)
+        }
+    }
+    catch {
+        `$script:CollectorProcessSnapshot = @()
+    }
+    finally {
+        if (`$job) {
+            Stop-Job -Job `$job -ErrorAction SilentlyContinue | Out-Null
+            Remove-Job -Job `$job -Force -ErrorAction SilentlyContinue | Out-Null
+        }
+    }
+
+    return @(`$script:CollectorProcessSnapshot)
+}
+
 function Test-CollectorRunning {
     param(
         [string]`$ScriptPath,
@@ -987,9 +1036,8 @@ function Test-CollectorRunning {
     )
 
     `$escapedCollector = [Regex]::Escape(`$ScriptPath)
-    `$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+    `$processes = Get-CollectorProcessSnapshot |
         Where-Object {
-            (`$_.Name -ieq 'powershell.exe' -or `$_.Name -ieq 'pwsh.exe') -and
             `$_.SessionId -eq `$SessionId -and
             `$_.CommandLine -match `$escapedCollector
         }
@@ -998,14 +1046,7 @@ function Test-CollectorRunning {
 }
 
 function Get-CollectorPowerShellProcessCount {
-    `$processes = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
-        Where-Object {
-            (`$_.Name -ieq 'powershell.exe' -or `$_.Name -ieq 'pwsh.exe') -and
-            `$_.CommandLine -match 'AWatch-rus' -and
-            `$_.CommandLine -match '\.ps1'
-        }
-
-    return @(`$processes).Count
+    return @(Get-CollectorProcessSnapshot).Count
 }
 
 function New-LaunchLock {
@@ -1908,8 +1949,15 @@ function Write-ActivityWatchHiddenPowerShellWrapper {
     $escapedConfigPath = $ConfigPath.Replace('"', '""')
 
     $content = @"
+On Error Resume Next
 Set shell = CreateObject("WScript.Shell")
-shell.Run """$escapedPowerShellExe"" -NoProfile -ExecutionPolicy Bypass -File ""$escapedScriptPath"" -ConfigPath ""$escapedConfigPath""", 0, False
+q = Chr(34)
+command = q & "$escapedPowerShellExe" & q & " -NoProfile -ExecutionPolicy Bypass -File " & q & "$escapedScriptPath" & q & " -ConfigPath " & q & "$escapedConfigPath" & q
+shell.Run command, 0, False
+If Err.Number <> 0 Then
+    WScript.Quit 1
+End If
+WScript.Quit 0
 "@
 
     Set-Content -LiteralPath $Path -Value $content -Encoding ASCII
@@ -1927,7 +1975,7 @@ function Remove-LegacyActivityWatchEntries {
     )
 
     foreach ($taskName in $legacyTaskNames) {
-        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-ActivityWatchScheduledTask -TaskName $taskName
     }
 
     $legacyTaskPatterns = @(
@@ -1943,7 +1991,15 @@ function Remove-LegacyActivityWatchEntries {
         'ActivityWatch File1C Upload'
     )
 
-    foreach ($task in @(Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+    $scheduledTasks = @()
+    try {
+        $scheduledTasks = @(Get-ScheduledTask -ErrorAction Stop)
+    }
+    catch {
+        $scheduledTasks = @()
+    }
+
+    foreach ($task in $scheduledTasks) {
         $taskName = [string]$task.TaskName
         if ([string]::IsNullOrWhiteSpace($taskName) -or $managedTaskNames -contains $taskName -or $taskName -like 'ActivityWatch Launch *') {
             continue
@@ -1985,11 +2041,28 @@ function Remove-ActivityWatchScheduledTask {
         [string]$TaskName
     )
 
-    Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+    try {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Stop
+    }
+    catch {
+    }
+
     & cmd.exe /c "schtasks /Delete /TN `"$TaskName`" /F >nul 2>&1" | Out-Null
+    if ($LASTEXITCODE -eq 0) {
+        return
+    }
 
     for ($attempt = 0; $attempt -lt 10; $attempt++) {
-        $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+        $task = $null
+        try {
+            $task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
+        }
+        catch {
+            & cmd.exe /c "schtasks /Query /TN `"$TaskName`" >nul 2>&1" | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                return
+            }
+        }
         if (-not $task) {
             return
         }
@@ -2138,11 +2211,45 @@ function Register-ActivityWatchRecoveryTask {
     $launcherPath = Get-ActivityWatchHiddenLauncherPath -ScriptPath $RecoveryScriptPath
     Write-ActivityWatchHiddenPowerShellWrapper -Path $launcherPath -ScriptPath $RecoveryScriptPath -ConfigPath $ConfigPath
     $action = New-ScheduledTaskAction -Execute $wscriptExe -Argument "//B //NoLogo `"$launcherPath`""
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    $sessionRecords = @()
+    try {
+        $sessionRecords = @(Get-ActivityWatchSessionRecords)
+    }
+    catch {
+        $sessionRecords = @()
+    }
+    $liveSession = @(Get-ActivityWatchLiveInteractiveSessions -SessionRecords $sessionRecords) | Select-Object -First 1
+    $interactiveUserId = $null
+    if ($liveSession -and -not [string]::IsNullOrWhiteSpace([string]$liveSession.UserName)) {
+        $rawUser = [string]$liveSession.UserName
+        $interactiveUserId = if ($rawUser -match '^[^\\]+\\') { $rawUser } else { ('{0}\{1}' -f $env:COMPUTERNAME, $rawUser) }
+    }
+
+    if ($interactiveUserId) {
+        $trigger = New-ScheduledTaskTrigger -AtLogOn -User $interactiveUserId
+        $principal = New-ScheduledTaskPrincipal -UserId $interactiveUserId -LogonType Interactive -RunLevel Highest
+    }
+    else {
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    }
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -Hidden -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 
-    Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+    try {
+        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -ErrorAction Stop | Out-Null
+    }
+    catch {
+        $taskCommand = ('"{0}" {1}' -f $wscriptExe, $action.Arguments)
+        if ($interactiveUserId) {
+            & schtasks.exe /Create /TN $TaskName /SC ONLOGON /RU $interactiveUserId /IT /RL HIGHEST /F /TR $taskCommand | Out-Null
+        }
+        else {
+            & schtasks.exe /Create /TN $TaskName /SC ONSTART /RU SYSTEM /RL HIGHEST /F /TR $taskCommand | Out-Null
+        }
+        if ($LASTEXITCODE -ne 0) {
+            throw
+        }
+    }
 }
 
 function Register-ActivityWatchHayabusaAutoUploadTask {

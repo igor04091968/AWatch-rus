@@ -27,6 +27,7 @@ param(
     [int]$EvtxRetentionDays = 14,
     [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
+    [bool]$ProcessEventsEnabled = $true,
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
@@ -99,6 +100,7 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -EvtxRetentionDays $EvtxRetentionDays `
     -EvtxChannels $EvtxChannels `
     -LogonMarkerEnabled $LogonMarkerEnabled `
+    -ProcessEventsEnabled $ProcessEventsEnabled `
     -AwHostname $AwHostname `
     -CustomRulesPath $CustomRulesPath `
     -CustomPolicyPath $CustomPolicyPath `
@@ -145,6 +147,7 @@ if (-not $SkipHardening) {
         -EvtxRetentionDays $EvtxRetentionDays `
         -EvtxChannels $EvtxChannels `
         -LogonMarkerEnabled $LogonMarkerEnabled `
+        -ProcessEventsEnabled $ProcessEventsEnabled `
         -AwHostname $AwHostname `
         -CustomRulesPath $CustomRulesPath `
         -CustomPolicyPath $CustomPolicyPath `

@@ -1,8 +1,7 @@
 (function () {
   var reportBase = "__AW_WORKTIME_REPORT_BASE__";
   function defaultDayQuery() {
-    var now = new Date();
-    return now.getHours() < 6 ? "day=yesterday" : "day=today";
+    return "day=today";
   }
 
   var dayQuery = defaultDayQuery();

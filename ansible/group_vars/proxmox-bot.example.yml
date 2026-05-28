@@ -4,6 +4,7 @@ telegram_default_chat_id: 123456789
 
 # Path on controller (this machine) to source bot script for deployment.
 tsj_bot_source_local_path: "/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/tsj_guardian_bot.py"
+tsj_bot_runtime_root: "/opt/infra-admin"
 
 # Optional bot tuning
 tsj_bot_check_interval_sec: 60
@@ -37,8 +38,8 @@ tsj_bot_openvpn_expiry_warn_enabled: "false"
 tsj_bot_openvpn_expiry_warn_days: 30
 tsj_bot_openvpn_expiry_warn_timeout_sec: 120
 tsj_bot_openvpn_expiry_warn_interval_sec: 21600
-tsj_bot_server_fallback_commands: "/home/codex/infra-admin/scripts/system_self_support.sh --heal"
-tsj_bot_updates_script: "/usr/bin/python3 /home/codex/infra-admin/scripts/proxmox_lxc_critical_updates.py"
+tsj_bot_server_fallback_commands: "/opt/infra-admin/scripts/system_self_support.sh --heal"
+tsj_bot_updates_script: "/usr/bin/python3 /opt/infra-admin/scripts/proxmox_lxc_critical_updates.py"
 tsj_bot_update_targets: "auto"
 tsj_bot_pfsense_mcp_bearer: "CHANGE_ME"
 

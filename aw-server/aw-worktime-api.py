@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tempfile
+import threading
 import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -46,8 +47,14 @@ MANAGER_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_MANAGER_CACHE
 MANAGER_CACHE_DIR = Path(os.environ.get("AW_WORKTIME_MANAGER_CACHE_DIR", "/var/lib/activitywatch/worktime-cache"))
 MANAGER_ALIASES_JSON = Path(os.environ.get("AW_WORKTIME_MANAGER_ALIASES_JSON", "/etc/activitywatch/worktime-manager-aliases.json"))
 MANAGER_EXCLUDE_USERS = {item.strip().lower() for item in os.environ.get("AW_WORKTIME_MANAGER_EXCLUDE_USERS", "").split(",") if item.strip()}
+EVENTS_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS", "30")))
+WORKTIME_EVENTS_LIMIT = max(1000, int(os.environ.get("AW_WORKTIME_EVENTS_LIMIT", "50000")))
 MODULE_PATH = Path(__file__).resolve()
 _ALIASES_CACHE = {"mtime": None, "users": {}, "owners": {}, "raw": {}}
+_EVENTS_CACHE_LOCK = threading.Lock()
+_EVENTS_CACHE = {}
+_MANAGEMENT_BUILD_LOCKS_LOCK = threading.Lock()
+_MANAGEMENT_BUILD_LOCKS = {}
 
 
 def get(u):
@@ -272,6 +279,16 @@ def resolve_host(request_host=None):
 
 def get_sessions_bucket_id(host):
     return f"aw-worktime-sessions_{resolve_host(host)}"
+
+
+def get_management_build_lock(host, report_date):
+    key = (resolve_host(host), report_date.isoformat())
+    with _MANAGEMENT_BUILD_LOCKS_LOCK:
+        lock = _MANAGEMENT_BUILD_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _MANAGEMENT_BUILD_LOCKS[key] = lock
+        return lock
 
 
 def resolve_report_date(day=None, date_text=None):
@@ -512,17 +529,31 @@ def aggregate_hourly_rows(events, start, end, host):
 def fetch_events_for_date(host, report_date):
     bounds = get_report_bounds(report_date)
     bucket_id = get_sessions_bucket_id(host)
+    events = fetch_bucket_events(bucket_id, host)
+    return bounds, events
+
+
+def fetch_bucket_events(bucket_id, host):
+    now = now_utc()
+    if EVENTS_CACHE_TTL_SECONDS > 0:
+        with _EVENTS_CACHE_LOCK:
+            cached = _EVENTS_CACHE.get(bucket_id)
+            if cached is not None and age_seconds(cached["stored_at"], now=now) <= EVENTS_CACHE_TTL_SECONDS:
+                return cached["events"]
     try:
         get(f"{AW}/buckets/{bucket_id}")
     except Exception:
         log_warning(f"bucket lookup failed for host={host} bucket={bucket_id} aw_base={AW}")
-        return bounds, []
+        return []
     try:
-        events = get(f"{AW}/buckets/{bucket_id}/events?limit=50000")
+        events = get(f"{AW}/buckets/{bucket_id}/events?limit={WORKTIME_EVENTS_LIMIT}")
     except Exception:
         log_warning(f"events fetch failed for host={host} bucket={bucket_id} aw_base={AW}")
-        return bounds, []
-    return bounds, events
+        return []
+    if EVENTS_CACHE_TTL_SECONDS > 0:
+        with _EVENTS_CACHE_LOCK:
+            _EVENTS_CACHE[bucket_id] = {"stored_at": now, "events": events}
+    return events
 
 
 def build_report_summary(rows):
@@ -971,9 +1002,10 @@ def load_management_cache(host, report_date):
     path = management_cache_path(host, report_date)
     if not path.exists():
         return None
-    age = age_seconds(datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc))
-    if age is None or age > MANAGER_CACHE_TTL_SECONDS:
-        return None
+    if report_date >= datetime.now(REPORT_TZ).date():
+        age = age_seconds(datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc))
+        if age is None or age > MANAGER_CACHE_TTL_SECONDS:
+            return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception:
@@ -1360,27 +1392,42 @@ def _build_management_core(rows, host, report_date, owner_filter="", department_
     }
 
 
-def build_management_trend(host, anchor_date, owner_filter="", department_filter=""):
+def _management_trend_item(payload, report_date):
+    summary = payload["summary"]
+    return {
+        "report_date": report_date.isoformat(),
+        "users_count": summary["users_count"],
+        "active_users": summary["active_users"],
+        "inactive_users": summary["inactive_users"],
+        "workday_total_active_seconds": summary["workday_total_active_seconds"],
+        "workday_total_active_hhmm": summary["workday_total_active_hhmm"],
+        "portfolio_coverage_pct": summary["portfolio_coverage_pct"],
+        "actions_count": summary["actions_count"],
+        "critical_actions_count": summary["critical_actions_count"],
+    }
+
+
+def build_management_trend(host, anchor_date, owner_filter="", department_filter="", precomputed_payloads=None):
     trend = []
+    precomputed_payloads = precomputed_payloads or {}
     for offset in range(MANAGER_TREND_DAYS - 1, -1, -1):
         current_date = anchor_date - timedelta(days=offset)
-        bounds, events = fetch_events_for_date(host, current_date)
-        rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
-        payload = _build_management_core(rows, host, current_date, owner_filter=owner_filter, department_filter=department_filter)
-        summary = payload["summary"]
-        trend.append(
-            {
-                "report_date": current_date.isoformat(),
-                "users_count": summary["users_count"],
-                "active_users": summary["active_users"],
-                "inactive_users": summary["inactive_users"],
-                "workday_total_active_seconds": summary["workday_total_active_seconds"],
-                "workday_total_active_hhmm": summary["workday_total_active_hhmm"],
-                "portfolio_coverage_pct": summary["portfolio_coverage_pct"],
-                "actions_count": summary["actions_count"],
-                "critical_actions_count": summary["critical_actions_count"],
-            }
-        )
+        payload = precomputed_payloads.get(current_date)
+        if payload is None:
+            payload = load_management_cache(host, current_date)
+        if payload is None:
+            bounds, events = fetch_events_for_date(host, current_date)
+            rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
+            payload = _build_management_core(rows, host, current_date, owner_filter=owner_filter, department_filter=department_filter)
+        elif owner_filter or department_filter:
+            payload = apply_management_filters_to_payload(
+                payload,
+                owner_filter=owner_filter,
+                department_filter=department_filter,
+                include_sources=False,
+                include_source_actions=False,
+            )
+        trend.append(_management_trend_item(payload, current_date))
     return trend
 
 
@@ -1423,7 +1470,13 @@ def build_management_payload(rows, host, report_date, owner_filter="", departmen
     payload = _build_management_core(rows, host, report_date, owner_filter=owner_filter, department_filter=department_filter)
     source_freshness, source_actions = build_source_freshness(resolve_host(host))
     payload["sources"] = source_freshness
-    payload["trend"] = build_management_trend(resolve_host(host), report_date, owner_filter=owner_filter, department_filter=department_filter)
+    payload["trend"] = build_management_trend(
+        resolve_host(host),
+        report_date,
+        owner_filter=owner_filter,
+        department_filter=department_filter,
+        precomputed_payloads={report_date: payload},
+    )
     payload["trend_scope"] = "portfolio"
     if source_actions:
         payload["actions"].extend(filter_management_actions(source_actions, payload["rows"], owner_filter=owner_filter, department_filter=department_filter))
@@ -1461,11 +1514,16 @@ def management_report_for_date(host, report_date, owner_filter="", department_fi
     cached = load_management_cache(host, report_date)
     if cached is not None:
         return cached
-    bounds, events = fetch_events_for_date(host, report_date)
-    rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
-    payload = build_management_payload(rows, host, report_date)
-    save_management_cache(host, report_date, payload)
-    return payload
+    lock = get_management_build_lock(host, report_date)
+    with lock:
+        cached = load_management_cache(host, report_date)
+        if cached is not None:
+            return cached
+        bounds, events = fetch_events_for_date(host, report_date)
+        rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
+        payload = build_management_payload(rows, host, report_date)
+        save_management_cache(host, report_date, payload)
+        return payload
 
 
 def report_today(host):

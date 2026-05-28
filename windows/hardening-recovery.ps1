@@ -24,6 +24,7 @@ param(
     [int]$EvtxRetentionDays,
     [string[]]$EvtxChannels,
     [bool]$LogonMarkerEnabled,
+    [bool]$ProcessEventsEnabled,
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
@@ -93,6 +94,7 @@ $effectiveEvtxExportRoot = if ($PSBoundParameters.ContainsKey('EvtxExportRoot') 
 $effectiveEvtxRetentionDays = if ($PSBoundParameters.ContainsKey('EvtxRetentionDays')) { [int]$EvtxRetentionDays } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'retentionDays') { [int]$existingConfig.forensics.retentionDays } else { 14 }
 $effectiveEvtxChannels = if ($PSBoundParameters.ContainsKey('EvtxChannels')) { @($EvtxChannels) } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'evtxChannels') { @($existingConfig.forensics.evtxChannels) } else { @() }
 $effectiveLogonMarkerEnabled = if ($PSBoundParameters.ContainsKey('LogonMarkerEnabled')) { [bool]$LogonMarkerEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$existingConfig.sessionEvents.logonEnabled } else { $true }
+$effectiveProcessEventsEnabled = if ($PSBoundParameters.ContainsKey('ProcessEventsEnabled')) { [bool]$ProcessEventsEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'processEventsEnabled') { [bool]$existingConfig.sessionEvents.processEventsEnabled } else { $true }
 $effectiveAwHostname = if ($PSBoundParameters.ContainsKey('AwHostname') -and -not [string]::IsNullOrWhiteSpace($AwHostname)) { [string]$AwHostname } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.awHostname)) { [string]$existingConfig.awHostname } else { [string]$env:COMPUTERNAME }
 $effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
 $effectivePolicyMode = if ($PSBoundParameters.ContainsKey('PolicyMode') -and $PolicyMode) { [string]$PolicyMode } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'mode') { [string]$existingConfig.policyEngine.mode } else { 'local' }
@@ -202,6 +204,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -EvtxRetentionDays $effectiveEvtxRetentionDays `
     -EvtxChannels $effectiveEvtxChannels `
     -LogonMarkerEnabled $effectiveLogonMarkerEnabled `
+    -ProcessEventsEnabled $effectiveProcessEventsEnabled `
     -AwHostname $effectiveAwHostname `
     -PolicyMode $effectivePolicyMode `
     -PolicyEngineEnabled $effectivePolicyEngineEnabled `

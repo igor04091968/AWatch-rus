@@ -30,6 +30,12 @@ aw_hayabusa_staging_dir: "{{ aw_hayabusa_inbox_dir }}/staging"
 aw_hayabusa_archive_packages_dir: "{{ aw_hayabusa_archive_dir }}/packages"
 aw_hayabusa_archive_extracted_dir: "{{ aw_hayabusa_archive_dir }}/extracted"
 aw_hayabusa_logs_dir: "{{ aw_hayabusa_state_dir }}/logs"
+aw_server_backup_retention_days: 7
+aw_server_backup_keep_last_db: 2
+aw_server_backup_keep_last_json: 2
+aw_server_journal_system_max_use: "100M"
+aw_server_journal_runtime_max_use: "50M"
+aw_server_journal_system_keep_free: "500M"
 aw_dlp_policy_engine_enabled: true
 aw_dlp_policy_engine_bind_host: "0.0.0.0"
 aw_dlp_policy_engine_port: 5601

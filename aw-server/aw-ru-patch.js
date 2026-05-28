@@ -24,6 +24,7 @@
     ["Tools", "Инструменты"],
     ["Raw Data", "Сырые данные"],
     ["Summary", "Сводка"],
+    ["Worktime", "Рабочее время"],
     ["All", "Все"],
     ["None", "Нет"],
     ["Date", "Дата"],
@@ -236,6 +237,7 @@
     ['Common words in "Uncategorized" events', 'Частые слова в событиях "Без категории"'],
     ["No words with significant duration. You're good to go!", "Нет слов со значимой длительностью. Здесь всё в порядке."],
     ["Top apps", "Топ приложений"],
+    ["Top Applications", "Топ приложений"],
     ["Top titles", "Топ заголовков"],
     ["Top URLs", "Топ URL"],
     ["Top domains", "Топ доменов"],
@@ -596,8 +598,8 @@
     }, "");
 
     center.innerHTML =
-      '<h4>RDP summary</h4>' +
-      '<p>Этот блок строится из server-side worktime отчёта и не зависит от того, жива ли локальная интерактивная RDP-сессия.</p>' +
+      '<h4>RDP сводка</h4>' +
+      '<p>Этот блок строится из bucket <code>aw-worktime-sessions</code> через AW API и показывает сводку по RDP-сессиям выбранного хоста.</p>' +
       '<div class="aw-ru-rdp-grid">' +
         '<section class="aw-ru-rdp-card"><h5>Активное время</h5><div class="aw-ru-rdp-value">' + escapeHtml(formatDurationSeconds(totalActiveSeconds)) + '</div></section>' +
         '<section class="aw-ru-rdp-card"><h5>Активных пользователей</h5><div class="aw-ru-rdp-value">' + escapeHtml(String(activeUsers.length)) + '</div></section>' +
@@ -844,9 +846,15 @@
   }
 
   function removeBadDlpLinks(root) {
-    const badLinks = root.querySelectorAll("a[href*='/view/DLP']");
-    badLinks.forEach(function (link) {
+    const links = Array.from(root.querySelectorAll("a[href], [role='link']"));
+    links.forEach(function (link) {
+      const href = String(link.getAttribute("href") || "");
+      const label = normalizeText(link.textContent || "");
+      const isBrokenActivityDlpLink = /\/view\/dlp(?:[/?#]|$)/i.test(href);
+      const isActivityTabDlpLabel = label === "DLP" && !!link.closest("li");
+      if (!isBrokenActivityDlpLink && !isActivityTabDlpLabel) return;
       const item = link.closest("li") || link;
+      if (item && item.getAttribute && item.getAttribute("data-aw-ru-dlp-item") === "1") return;
       item.remove();
     });
   }
@@ -2113,6 +2121,16 @@
     });
   }
 
+  function applyTextAndNavigationPatches(root) {
+    if (!root) return;
+    walk(root);
+    translateAttributes(root);
+    hideNoiseNavigation(root);
+    hidePveAuditTabForRegularHost(root);
+    patchActivityHeading(root);
+    patchCategoryBuilderHostLabel(root);
+  }
+
   function detachObserver() {
     if (!observerAttached) return;
     observer.disconnect();
@@ -2147,6 +2165,7 @@
             if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
           }
         }
+        applyTextAndNavigationPatches(document.body);
         staticPatchRouteKey = routeKey;
         return;
       }
@@ -2154,13 +2173,8 @@
       ensureSettingsHost();
       ensureHostGroupsData().catch(function () {});
       normalizeCategoryBuilderUnknownHostRefs();
+      applyTextAndNavigationPatches(document.body);
       if (routeChanged) {
-        walk(document.body);
-        translateAttributes(document.body);
-        hideNoiseNavigation(document.body);
-        hidePveAuditTabForRegularHost(document.body);
-        patchActivityHeading(document.body);
-        patchCategoryBuilderHostLabel(document.body);
         staticPatchRouteKey = routeKey;
       }
       injectPveAuditCenter(document.body);
@@ -2187,7 +2201,6 @@
 
   const observer = new MutationObserver(function () {
     if (applyPatchInFlight) return;
-    if (isDlpSignalBucketRoute() && document.body && document.body.querySelector("[data-aw-ru-dlp-center='1']")) return;
     scheduleApplyPatch();
   });
 

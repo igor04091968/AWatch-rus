@@ -25,6 +25,8 @@ Collector ownership in this model:
 - `file-operations-collector.ps1`: user-session path
 - `dlp-endpoint-signals-collector.ps1`: user-session path
 - `worktime-session-collector.ps1`: single global process under recovery path
+  - publishes session presence and `process_start` / `process_stop` events for all visible user sessions, including `Disc`
+  - this is session/process telemetry, not a replacement for per-user foreground window watchers
 
 ### 2. Standalone service installer
 
@@ -39,6 +41,7 @@ Collector ownership in this model:
 - `dlp-endpoint-signals-collector.ps1`: allowed
 - `file-operations-collector.ps1`: allowed
 - `worktime-session-collector.ps1`: allowed
+  - still provides session/process telemetry, but not interactive foreground-window truth
 - `browser-domains-native-collector.ps1`: not reliable in Session 0
 - `email-outbound-collector.ps1`: not reliable in Session 0
 - `aw-watcher-afk` / `aw-watcher-window`: not a standalone Session 0 primitive
