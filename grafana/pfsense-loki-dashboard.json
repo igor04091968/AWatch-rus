@@ -30,7 +30,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Events in selected period",
+      "title": "Событий за период",
       "type": "stat",
       "datasource": {
         "type": "loki",
@@ -96,7 +96,7 @@
     },
     {
       "id": 2,
-      "title": "Blocked",
+      "title": "Заблокировано",
       "type": "stat",
       "datasource": {
         "type": "loki",
@@ -166,7 +166,7 @@
     },
     {
       "id": 3,
-      "title": "Passed",
+      "title": "Разрешено",
       "type": "stat",
       "datasource": {
         "type": "loki",
@@ -232,7 +232,7 @@
     },
     {
       "id": 4,
-      "title": "Active interfaces",
+      "title": "Активные интерфейсы",
       "type": "stat",
       "datasource": {
         "type": "loki",
@@ -298,7 +298,7 @@
     },
     {
       "id": 5,
-      "title": "Firewall events by action",
+      "title": "Динамика block/pass",
       "type": "timeseries",
       "datasource": {
         "type": "loki",
@@ -380,7 +380,7 @@
     },
     {
       "id": 6,
-      "title": "Traffic by interface",
+      "title": "События по интерфейсам",
       "type": "timeseries",
       "datasource": {
         "type": "loki",
@@ -462,7 +462,7 @@
     },
     {
       "id": 7,
-      "title": "Top source IPs",
+      "title": "Топ источников",
       "type": "bargauge",
       "datasource": {
         "type": "loki",
@@ -522,7 +522,7 @@
     },
     {
       "id": 8,
-      "title": "Top destination IPs",
+      "title": "Топ назначений",
       "type": "bargauge",
       "datasource": {
         "type": "loki",
@@ -582,7 +582,7 @@
     },
     {
       "id": 9,
-      "title": "Protocols",
+      "title": "Протоколы",
       "type": "bargauge",
       "datasource": {
         "type": "loki",
@@ -641,18 +641,198 @@
       }
     },
     {
+      "id": 11,
+      "title": "Причины firewall",
+      "type": "bargauge",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum by (reason) (count_over_time(sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | reason != `` [$__range]))",
+          "legendFormat": "{{reason}}",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "axisPlacement": "auto"
+          },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      }
+    },
+    {
+      "id": 12,
+      "title": "Направление трафика",
+      "type": "bargauge",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 20
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum by (direction) (count_over_time(sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | direction != `` [$__range]))",
+          "legendFormat": "{{direction}}",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "axisPlacement": "auto"
+          },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      }
+    },
+    {
+      "id": 13,
+      "title": "Интерфейс и действие",
+      "type": "bargauge",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 20
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum by (iface, action) (count_over_time(sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | iface != `` | action != `` [$__range]))",
+          "legendFormat": "{{iface}} {{action}}",
+          "queryType": "instant",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "axisPlacement": "auto"
+          },
+          "decimals": 0,
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "gradient",
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "namePlacement": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      }
+    },
+    {
       "id": 10,
-      "title": "Readable firewall log lines",
+      "title": "Читаемые firewall-события",
       "type": "logs",
       "datasource": {
         "type": "loki",
         "uid": "cfdljedz74we8f"
       },
       "gridPos": {
-        "h": 10,
+        "h": 12,
         "w": 24,
         "x": 0,
-        "y": 20
+        "y": 28
       },
       "targets": [
         {
@@ -743,8 +923,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "pfSense Firewall Logs Overview",
+  "title": "pfSense Firewall Overview",
   "uid": "pfsense-loki-dashboard",
-  "version": 2,
+  "version": 4,
   "weekStart": ""
 }

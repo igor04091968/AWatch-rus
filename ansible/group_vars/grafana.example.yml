@@ -4,4 +4,5 @@ grafana_admin_password: "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') }}"
 grafana_validate_tls: false
 grafana_folder_uid: "awatch-rus"
 grafana_folder_title: "AWatch-rus"
+grafana_pfsense_folder_uid: "awatch-rus"
 grafana_dashboards_import_overwrite: true

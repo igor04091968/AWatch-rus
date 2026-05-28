@@ -24,6 +24,10 @@
       - file: "grafana/dlp-dashboard.json"
         uid: "awatch-dlp-overview"
         title: "AW-rus: DLP обзор"
+      - file: "grafana/pfsense-loki-dashboard.json"
+        uid: "pfsense-loki-dashboard"
+        title: "pfSense Firewall Overview"
+        folder_uid: "{{ grafana_pfsense_folder_uid | default(grafana_folder_uid_eff) }}"
 
   tasks:
     - name: Validate required Grafana settings
@@ -106,7 +110,7 @@
         status_code: 200
         body:
           dashboard: "{{ (lookup('file', aw_repo_root ~ '/' ~ item.file) | from_json) | combine({'id': None}, recursive=True) }}"
-          folderUid: "{{ grafana_folder_uid_eff }}"
+          folderUid: "{{ item.folder_uid | default(grafana_folder_uid_eff) }}"
           overwrite: "{{ grafana_dashboards_import_overwrite_eff | bool }}"
           message: "Imported by Ansible from {{ item.file }}"
       loop: "{{ grafana_dashboards }}"
