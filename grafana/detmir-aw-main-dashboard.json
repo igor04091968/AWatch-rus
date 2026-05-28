@@ -1,0 +1,230 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 27,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "value_and_name"
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => (r._measurement == \"aw_window_event\" or r._measurement == \"aw_afk_event\") and r._field == \"duration_s\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0 }))\n  |> keep(columns: [\"_value\"])\n  |> yield(name: \"freshness_seconds\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Свежесть данных AW",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 18,
+        "x": 6,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"active\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Активность окон (сумма за 5 минут)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_afk_event\" and r._field == \"duration_s\" and r.status == \"afk\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"afk\")",
+          "refId": "A"
+        }
+      ],
+      "title": "AFK (сумма за 5 минут)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> map(fn: (r) => ({ r with category_view: if r.category == \"erp_1c\" then \"1С-Бухгалтерия\" else if r.category == \"file_manager\" then \"Файловый менеджер\" else if r.category == \"terminal_shell\" then \"Терминальная оболочка\" else if r.category == \"browser\" then \"Интернет-браузер\" else if r.category == \"office_docs\" then \"Офисные документы\" else if r.category == \"remote_admin\" then \"Удаленное администрирование\" else if r.category == \"development\" then \"Разработка и программирование\" else if r.category == \"communication\" then \"Средства связи\" else if r.category == \"database\" then \"Работа с базами данных\" else if r.category == \"monitoring\" then \"Мониторинг и диагностика\" else if r.category == \"virtualization\" then \"Виртуализация\" else if r.category == \"system\" or r.category == \"misc_user\" or r.category == \"other\" or r.category == \"\" then \"Системные приложения\" else r.category }))\n  |> group(columns: [\"category_view\"])\n  |> sum()\n  |> group()\n  |> sort(columns: [\"_value\"], desc: true)\n  |> yield(name: \"categories\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Категории по активному времени",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> group()\n  |> sum()\n  |> yield(name: \"total_active\")",
+          "refId": "A"
+        }
+      ],
+      "title": "Общее активное время",
+      "type": "stat"
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": [
+    "detmir",
+    "activitywatch"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-12h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "DetMir ActivityWatch",
+  "uid": "detmir-aw-main",
+  "version": 3,
+  "weekStart": ""
+}

@@ -128,6 +128,69 @@ def test_aggregate_hourly_rows_splits_interval_by_local_hour():
     assert [row["active_seconds"] for row in rows] == [300, 300]
 
 
+def test_build_true_active_apps_requires_foreground_not_afk_and_evidence():
+    start = datetime(2026, 5, 14, 6, 0, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 5, 14, 7, 59, 59, tzinfo=timezone.utc)
+    window_events = [
+        {"timestamp": "2026-05-14T06:00:00Z", "duration": 120, "data": {"app": "1cv8.exe", "title": "ИНФОВЕСТ"}},
+        {"timestamp": "2026-05-14T06:02:00Z", "duration": 180, "data": {"app": "1cv8.exe", "title": "Счета учета: Материалы"}},
+        {"timestamp": "2026-05-14T07:00:00Z", "duration": 600, "data": {"app": "totalcmd.exe", "title": "Total Commander"}},
+    ]
+    afk_events = [
+        {"timestamp": "2026-05-14T06:00:00Z", "duration": 600, "data": {"status": "not-afk"}},
+        {"timestamp": "2026-05-14T07:00:00Z", "duration": 600, "data": {"status": "not-afk"}},
+    ]
+    evidence_events_by_bucket = {
+        "aw-file-operations_SHARKON2025": [
+            {
+                "timestamp": "2026-05-14T07:05:00Z",
+                "duration": 0,
+                "data": {"signalType": "file_write", "path": "C:\\data\\report.xlsx"},
+            }
+        ],
+        "aw-dlp-endpoint-signals_SHARKON2025": [
+            {
+                "timestamp": "2026-05-14T07:06:00Z",
+                "duration": 0,
+                "data": {"signalType": "collector_health", "eventsFlushed": 100},
+            }
+        ],
+    }
+
+    rows = MODULE.build_true_active_apps_from_events(window_events, afk_events, evidence_events_by_bucket, start, end)
+
+    by_app = {row["application"]: row for row in rows}
+    assert "1С" in by_app
+    assert "Total Commander" in by_app
+    assert by_app["1С"]["proved_work_seconds"] == 300
+    assert by_app["1С"]["last_action"] == "Счета учета: Материалы"
+    assert by_app["Total Commander"]["proved_work_seconds"] == 480
+    assert by_app["Total Commander"]["last_action"] == "C:\\data\\report.xlsx"
+
+
+def test_render_html_contains_true_active_apps_table():
+    html = MODULE.render_html(
+        [],
+        "SHARKON2025",
+        datetime(2026, 5, 14, tzinfo=timezone.utc).date(),
+        selected_day="today",
+        true_active_apps=[
+            {
+                "application": "1С",
+                "proved_work_human": "34 мин",
+                "proved_work_hhmm": "00:34",
+                "last_action_local": "15:31",
+                "last_action": "Счета учета: Материалы",
+            }
+        ],
+    )
+    assert "Доказанная работа по приложениям" in html
+    assert "Приложение" in html
+    assert "Доказанная работа" in html
+    assert "Последнее действие" in html
+    assert "Счета учета: Материалы" in html
+
+
 def test_build_management_payload_creates_actions_for_missing_and_late_users():
     rows = [
         {

@@ -49,6 +49,8 @@ MANAGER_ALIASES_JSON = Path(os.environ.get("AW_WORKTIME_MANAGER_ALIASES_JSON", "
 MANAGER_EXCLUDE_USERS = {item.strip().lower() for item in os.environ.get("AW_WORKTIME_MANAGER_EXCLUDE_USERS", "").split(",") if item.strip()}
 EVENTS_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS", "30")))
 WORKTIME_EVENTS_LIMIT = max(1000, int(os.environ.get("AW_WORKTIME_EVENTS_LIMIT", "50000")))
+TRUE_ACTIVE_EVIDENCE_WINDOW_SECONDS = max(30, int(os.environ.get("AW_WORKTIME_TRUE_ACTIVE_EVIDENCE_WINDOW_SECONDS", "180")))
+TRUE_ACTIVE_MAX_EVENT_SECONDS = max(30, int(os.environ.get("AW_WORKTIME_TRUE_ACTIVE_MAX_EVENT_SECONDS", "600")))
 MODULE_PATH = Path(__file__).resolve()
 _ALIASES_CACHE = {"mtime": None, "users": {}, "owners": {}, "raw": {}}
 _EVENTS_CACHE_LOCK = threading.Lock()
@@ -83,6 +85,19 @@ def parse_iso_utc(value):
 def hhmm(total_seconds):
     total_seconds = max(0, int(total_seconds))
     return "%02d:%02d" % (total_seconds // 3600, (total_seconds % 3600) // 60)
+
+
+def human_duration_ru(total_seconds):
+    total_seconds = max(0, int(total_seconds))
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    if hours and minutes:
+        return f"{hours} ч {minutes} мин"
+    if hours:
+        return f"{hours} ч"
+    if minutes:
+        return f"{minutes} мин"
+    return f"{total_seconds} сек"
 
 
 def now_utc():
@@ -395,6 +410,246 @@ def _merge_intervals(intervals):
             continue
         merged.append((start, end))
     return merged
+
+
+def _overlap_interval(left, right):
+    start = max(left[0], right[0])
+    end = min(left[1], right[1])
+    if end <= start:
+        return None
+    return start, end
+
+
+def _interval_contains(interval, ts):
+    return interval[0] <= ts < interval[1]
+
+
+def _event_timestamp(event):
+    try:
+        return pts(event.get("timestamp"))
+    except Exception:
+        return None
+
+
+def _event_duration_seconds(event, default_seconds=DEFAULT_SAMPLE_SECONDS):
+    try:
+        duration = float(event.get("duration") or 0.0)
+    except Exception:
+        duration = 0.0
+    if duration <= 0:
+        duration = default_seconds
+    return max(1.0, min(float(TRUE_ACTIVE_MAX_EVENT_SECONDS), duration))
+
+
+def _normalize_app_name(app, title=""):
+    app_raw = str(app or "").strip()
+    app_l = app_raw.lower()
+    title_raw = str(title or "").strip()
+    if app_l.startswith(("1cv8", "1cestart")):
+        return "1С"
+    if app_l in {"chrome.exe", "google chrome"} or "google chrome" in title_raw.lower():
+        return "Chrome"
+    if app_l in {"msedge.exe", "microsoft edge"} or "microsoft edge" in title_raw.lower():
+        return "Edge"
+    if app_l in {"browser.exe", "browser"} or "яндекс" in title_raw.lower():
+        return "Яндекс Браузер"
+    if app_l in {"excel.exe"}:
+        return "Excel"
+    if app_l in {"winword.exe"}:
+        return "Word"
+    if app_l in {"powerpnt.exe"}:
+        return "PowerPoint"
+    if app_l in {"outlook.exe"}:
+        return "Outlook"
+    if app_l in {"explorer.exe"}:
+        return "Проводник"
+    if app_l in {"totalcmd.exe", "totalcmd64.exe"}:
+        return "Total Commander"
+    if app_l in {"cmd.exe"}:
+        return "Command Prompt"
+    if app_l in {"powershell.exe", "pwsh.exe"}:
+        return "PowerShell"
+    if app_l in {"acrord32.exe", "acrobat.exe"}:
+        return "Adobe Acrobat Reader"
+    if app_l in {"windowsterminal.exe", "windowsterminal"}:
+        return "Windows Terminal"
+    if app_raw:
+        return app_raw[:-4] if app_l.endswith(".exe") else app_raw
+    if title_raw:
+        return title_raw
+    return "Неизвестное приложение"
+
+
+def _event_context(event):
+    data = event.get("data") or {}
+    for key in ("title", "url", "path", "filePath", "targetPath", "windowTitle", "foregroundTitle", "signalType"):
+        value = str(data.get(key) or "").strip()
+        if value:
+            return value
+    return "активность"
+
+
+def _is_not_afk_event(event):
+    data = event.get("data") or {}
+    status = str(data.get("status") or data.get("state") or "").strip().lower()
+    return status in {"not-afk", "not_afk", "active", "активно"}
+
+
+def _is_real_evidence_event(event):
+    data = event.get("data") or {}
+    signal_type = str(data.get("signalType") or data.get("type") or "").strip().lower()
+    if signal_type in {"collector_health", "self_test", "heartbeat", "health"}:
+        return False
+    if data.get("url") or data.get("title") or data.get("path") or data.get("filePath") or data.get("targetPath"):
+        return True
+    if signal_type:
+        return True
+    return False
+
+
+def _events_for_bounds(events, start, end):
+    result = []
+    for event in events:
+        ts = _event_timestamp(event)
+        if ts is None or ts < start or ts > end:
+            continue
+        result.append((ts, event))
+    result.sort(key=lambda item: item[0])
+    return result
+
+
+def _build_window_intervals(window_events, start, end):
+    intervals = []
+    previous_key = None
+    for ts, event in _events_for_bounds(window_events, start, end):
+        data = event.get("data") or {}
+        app = str(data.get("app") or data.get("process") or data.get("processName") or "").strip()
+        title = str(data.get("title") or data.get("windowTitle") or "").strip()
+        if not app and not title:
+            continue
+        duration = _event_duration_seconds(event, default_seconds=DEFAULT_SAMPLE_SECONDS)
+        interval = (max(ts, start), min(ts + timedelta(seconds=duration), end + timedelta(seconds=1)))
+        if interval[1] <= interval[0]:
+            continue
+        app_name = _normalize_app_name(app, title)
+        current_key = (app_name, title)
+        title_changed = previous_key is not None and current_key != previous_key
+        previous_key = current_key
+        intervals.append(
+            {
+                "app": app_name,
+                "raw_app": app,
+                "title": title,
+                "start": interval[0],
+                "end": interval[1],
+                "title_changed": title_changed,
+                "timestamp": ts,
+            }
+        )
+    return intervals
+
+
+def _build_not_afk_intervals(afk_events, start, end):
+    intervals = []
+    for ts, event in _events_for_bounds(afk_events, start, end):
+        if not _is_not_afk_event(event):
+            continue
+        duration = _event_duration_seconds(event, default_seconds=5)
+        interval = (max(ts, start), min(ts + timedelta(seconds=duration), end + timedelta(seconds=1)))
+        if interval[1] > interval[0]:
+            intervals.append(interval)
+    return _merge_intervals(intervals)
+
+
+def _find_window_at(window_intervals, ts):
+    for item in window_intervals:
+        if item["start"] <= ts < item["end"]:
+            return item
+    return None
+
+
+def _add_app_evidence(evidence_by_app, app, ts, context):
+    evidence_by_app.setdefault(app, []).append((ts, str(context or "").strip() or "активность"))
+
+
+def build_true_active_apps_from_events(window_events, afk_events, evidence_events_by_bucket, start, end):
+    window_intervals = _build_window_intervals(window_events, start, end)
+    not_afk_intervals = _build_not_afk_intervals(afk_events, start, end)
+    evidence_by_app = {}
+
+    for item in window_intervals:
+        if item["title_changed"]:
+            _add_app_evidence(evidence_by_app, item["app"], item["timestamp"], item["title"] or item["raw_app"])
+
+    for events in evidence_events_by_bucket.values():
+        for ts, event in _events_for_bounds(events, start, end):
+            if not _is_real_evidence_event(event):
+                continue
+            window = _find_window_at(window_intervals, ts)
+            if window is None:
+                continue
+            _add_app_evidence(evidence_by_app, window["app"], ts, _event_context(event))
+
+    rows = []
+    evidence_delta = timedelta(seconds=TRUE_ACTIVE_EVIDENCE_WINDOW_SECONDS)
+    for app in sorted({item["app"] for item in window_intervals} | set(evidence_by_app)):
+        app_evidence = sorted(evidence_by_app.get(app, []), key=lambda item: item[0])
+        if not app_evidence:
+            continue
+        evidence_windows = _merge_intervals([(ts - evidence_delta, ts + evidence_delta) for ts, _context in app_evidence])
+        proved_intervals = []
+        for window in [item for item in window_intervals if item["app"] == app]:
+            base = (window["start"], window["end"])
+            for afk_interval in not_afk_intervals:
+                active_overlap = _overlap_interval(base, afk_interval)
+                if active_overlap is None:
+                    continue
+                for evidence_interval in evidence_windows:
+                    proved = _overlap_interval(active_overlap, evidence_interval)
+                    if proved is not None:
+                        proved_intervals.append(proved)
+        proved_intervals = _merge_intervals(proved_intervals)
+        proved_seconds = int(sum((right - left).total_seconds() for left, right in proved_intervals))
+        if proved_seconds <= 0:
+            continue
+        last_ts, last_context = app_evidence[-1]
+        rows.append(
+            {
+                "application": app,
+                "proved_work_seconds": proved_seconds,
+                "proved_work_hhmm": hhmm(proved_seconds),
+                "proved_work_human": human_duration_ru(proved_seconds),
+                "last_action_utc": to_iso_utc(last_ts),
+                "last_action_local": last_ts.astimezone(REPORT_TZ).strftime("%H:%M"),
+                "last_action": last_context,
+                "evidence_events": len(app_evidence),
+            }
+        )
+    rows.sort(key=lambda item: (-item["proved_work_seconds"], item["application"].lower()))
+    return rows
+
+
+def build_true_active_apps(host, report_date):
+    bounds = get_report_bounds(report_date)
+    host = resolve_host(host)
+    window_events = fetch_bucket_events(f"aw-watcher-window_{host}", host) or fetch_bucket_events(f"aw-rdp-window_{host}", host)
+    afk_events = fetch_bucket_events(f"aw-watcher-afk_{host}", host) or fetch_bucket_events(f"aw-rdp-afk_{host}", host)
+    evidence_events_by_bucket = {}
+    for bucket_id in (
+        f"aw-file-operations_{host}",
+        f"aw-dlp-endpoint-signals_{host}",
+        f"aw-watcher-web-chrome_{host}",
+        f"aw-watcher-web-edge_{host}",
+        f"aw-detmir-web-category_{host}",
+    ):
+        evidence_events_by_bucket[bucket_id] = fetch_bucket_events(bucket_id, host)
+    return build_true_active_apps_from_events(
+        window_events,
+        afk_events,
+        evidence_events_by_bucket,
+        bounds["start"],
+        bounds["end"],
+    )
 
 
 def _collect_user_rows(events, start, end, host):
@@ -1537,7 +1792,7 @@ def report_for_date_fresh(host, report_date):
     return module.report_for_date(host, report_date)
 
 
-def render_html(rows, host, report_date, selected_day=None):
+def render_html(rows, host, report_date, selected_day=None, true_active_apps=None):
     generated = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     date_local = report_date.strftime("%Y-%m-%d")
     day_query = f"&day={selected_day}" if selected_day in {"today", "yesterday"} else ""
@@ -1556,6 +1811,20 @@ def render_html(rows, host, report_date, selected_day=None):
     ]
     trs = []
     detail_cards = []
+    true_active_apps = true_active_apps or []
+    true_active_rows = []
+    for app_row in true_active_apps:
+        last_action = app_row.get("last_action") or "-"
+        last_time = app_row.get("last_action_local") or "-"
+        true_active_rows.append(
+            "<tr>"
+            f"<td>{html.escape(app_row.get('application') or '-')}</td>"
+            f"<td class='good'>{html.escape(app_row.get('proved_work_human') or app_row.get('proved_work_hhmm') or '0 сек')}</td>"
+            f"<td>{html.escape(last_time)} · {html.escape(last_action)}</td>"
+            "</tr>"
+        )
+    if not true_active_rows:
+        true_active_rows.append("<tr><td colspan='3'>Пока нет доказанной активной работы по приложениям за выбранную дату.</td></tr>")
     for row in rows:
         user_slug = safe_slug(row["user"])
         active_seconds = int(row.get("active_seconds", 0) or 0)
@@ -1810,6 +2079,21 @@ def render_html(rows, host, report_date, selected_day=None):
       <div class="summary-grid">
         {''.join(f"<div class='summary-card'><span>{html.escape(label)}</span><strong>{html.escape(value)}</strong></div>" for label, value in cards)}
       </div>
+    </section>
+    <section class="card">
+      <h2 class="section-title">Доказанная работа по приложениям</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Приложение</th>
+            <th>Доказанная работа</th>
+            <th>Последнее действие</th>
+          </tr>
+        </thead>
+        <tbody>
+          {''.join(true_active_rows)}
+        </tbody>
+      </table>
     </section>
     <section class="card">
       <h2 class="section-title">Таблица по пользователям</h2>
@@ -2397,6 +2681,7 @@ class H(BaseHTTPRequestHandler):
         is_management = parsed.path == "/reports/worktime/management"
         management_payload = management_report_for_date(host, report_date, owner_filter=owner_filter, department_filter=department_filter) if is_management else None
         rows = report_for_date_fresh(host, report_date) if not is_management else management_payload["rows"]
+        true_active_apps = [] if is_management else build_true_active_apps(host, report_date)
 
         if fmt == "csv":
             if is_management:
@@ -2437,7 +2722,7 @@ class H(BaseHTTPRequestHandler):
             if is_management:
                 data = render_management_html(management_payload, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
             else:
-                data = render_html(rows, host, report_date, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
+                data = render_html(rows, host, report_date, selected_day=day if day in {"today", "yesterday"} else None, true_active_apps=true_active_apps).encode("utf-8")
             send_bytes(self, data, "text/html; charset=utf-8")
             return
 
@@ -2454,6 +2739,7 @@ class H(BaseHTTPRequestHandler):
             "report_date": report_date.isoformat(),
             "bucket_id": get_sessions_bucket_id(host),
             "rows": rows,
+            "true_active_apps": true_active_apps,
         }
         data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
         send_bytes(self, data, "application/json; charset=utf-8")

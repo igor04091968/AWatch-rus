@@ -8,6 +8,9 @@ secrets/runtime.env
 *.bak
 windows/*.report.json
 .rollout-logs/
+output/
+.ai/
+.autonomous/
 
 # IDE
 .idea/

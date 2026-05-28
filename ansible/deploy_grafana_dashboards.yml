@@ -12,6 +12,10 @@
     grafana_folder_title_eff: "{{ grafana_folder_title | default('AWatch-rus') }}"
     grafana_dashboards_import_overwrite_eff: "{{ grafana_dashboards_import_overwrite | default(true) }}"
     grafana_dashboards:
+      - file: "grafana/detmir-aw-main-dashboard.json"
+        uid: "detmir-aw-main"
+        title: "DetMir ActivityWatch"
+        folder_uid: "{{ grafana_detmir_folder_uid | default(grafana_folder_uid_eff) }}"
       - file: "grafana/detmir-rdp-user-activity-dashboard.json"
         uid: "detmir-rdp-user-activity"
         title: "DetMir: Работа пользователей в RDP"
