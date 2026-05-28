@@ -1,0 +1,750 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "datasource",
+          "uid": "grafana"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "target": {
+          "limit": 100,
+          "matchAny": false,
+          "tags": [],
+          "type": "dashboard"
+        },
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "pfSense Logs Dashboard with Loki",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 18,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Events in selected period",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2`[$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {},
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Blocked",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action = `block` [$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {},
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Passed",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum(count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action = `pass` [$__range]))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {},
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Active interfaces",
+      "type": "stat",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "count(sum by (iface) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | iface != `` [$__range])))",
+          "refId": "A",
+          "queryType": "instant"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {},
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "wideLayout": true,
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Firewall events by action",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` [$__rate_interval]))",
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "{{action}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "gradientMode": "opacity",
+            "spanNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Traffic by interface",
+      "type": "timeseries",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum by (iface) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | iface != `` [$__rate_interval]))",
+          "refId": "A",
+          "queryType": "range",
+          "legendFormat": "{{iface}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "gradientMode": "opacity",
+            "spanNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisColorMode": "text",
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        },
+        "legend": {
+          "showLegend": true,
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Top source IPs",
+      "type": "bargauge",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "topk(12, sum by (src_ip) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | src_ip != `` [$__range])))",
+          "refId": "A",
+          "queryType": "instant",
+          "legendFormat": "{{src_ip}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "axisPlacement": "auto"
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "minVizWidth": 0,
+        "minVizHeight": 10,
+        "namePlacement": "auto",
+        "valueMode": "color"
+      }
+    },
+    {
+      "id": 8,
+      "title": "Top destination IPs",
+      "type": "bargauge",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "topk(12, sum by (dst_ip) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | dst_ip != `` [$__range])))",
+          "refId": "A",
+          "queryType": "instant",
+          "legendFormat": "{{dst_ip}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "axisPlacement": "auto"
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "minVizWidth": 0,
+        "minVizHeight": 10,
+        "namePlacement": "auto",
+        "valueMode": "color"
+      }
+    },
+    {
+      "id": 9,
+      "title": "Protocols",
+      "type": "bargauge",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 12
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "sum by (proto) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | proto != `` [$__range]))",
+          "refId": "A",
+          "queryType": "instant",
+          "legendFormat": "{{proto}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "axisPlacement": "auto"
+          },
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "minVizWidth": 0,
+        "minVizHeight": 10,
+        "namePlacement": "auto",
+        "valueMode": "color"
+      }
+    },
+    {
+      "id": 10,
+      "title": "Readable firewall log lines",
+      "type": "logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "cfdljedz74we8f"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "cfdljedz74we8f"
+          },
+          "editorMode": "code",
+          "expr": "{job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` | line_format `{{.action}} {{.direction}} iface={{.iface}} proto={{.proto}} {{.src_ip}}:{{.src_port}} -> {{.dst_ip}}:{{.dst_port}} reason={{.reason}} rule={{.rule}}`",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": false,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
+      }
+    }
+  ],
+  "preload": false,
+  "refresh": "5m",
+  "schemaVersion": 42,
+  "tags": [
+    "firewall",
+    "loki",
+    "pfsense"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "Первое слово для поиска",
+        "label": "Search Term 1",
+        "name": "search_term_1",
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "query": "",
+        "type": "textbox",
+        "hide": 0
+      },
+      {
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "description": "Второе слово для поиска",
+        "label": "Search Term 2",
+        "name": "search_term_2",
+        "options": [
+          {
+            "selected": true,
+            "text": "",
+            "value": ""
+          }
+        ],
+        "query": "",
+        "type": "textbox",
+        "hide": 0
+      }
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "pfSense Firewall Logs Overview",
+  "uid": "pfsense-loki-dashboard",
+  "version": 2,
+  "weekStart": ""
+}
