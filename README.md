@@ -1,156 +1,64 @@
 # AWatch-rus
 
-Практический каркас проекта для повторного развёртывания ActivityWatch Server в новом окружении с LXC-контейнером на Proxmox, русифицированным Web UI, systemd-юнитами, шаблонными скриптами деплоя и эксплуатационной документацией.
+AWatch-rus помогает спокойно смотреть, что происходит в рабочей среде: кто работал удаленно, сколько было активного времени, какие окна были открыты, были ли события безопасности и не пропали ли данные.
 
-## Что входит
+Первый экран проекта теперь не про установку и скрипты. Для повседневной работы начинайте с дашбордов.
 
-- `docs/preparation.md` — подготовка инфраструктуры и входных параметров.
-- `docs/codebase-onboarding.md` — обзор структуры репозитория и маршрут изучения для новичка.
-- `docs/deployment.md` — пошаговый деплой LXC и ActivityWatch Server.
-- `docs/runbook.md` — быстрый runbook для оператора.
-- `docs/security-analytics-stack-v1.md` — текущий security analytics контур: Hayabusa, auto-case, scoring и Telegram alerts.
-- `docs/operations.md` — регламент сопровождения, бэкапов, обновлений и rollback.
-- `docs/GRAFANA_DASHBOARDS_RU.md` — импорт и сопровождение Grafana dashboard'ов через Ansible API playbook.
-- `docs/PRESENTATION_RU.md` — презентационные экраны Grafana и AW-rus со скриншотами.
-- `docs/1C_FILE_ANALYTICS_STACK_RU.md` — production guide по файловой 1С Detmir: topology, rollout, verification, recovery, task principal и hardening.
-- `docs/1C_COMPANY_INTELLIGENCE_RU.md` — слой анализа и прогноза по компаниям поверх `clickhouse-1c`: marts, forecasting, API и Grafana; в file-based Detmir контуре это прогноз активности компаний/баз по read-only telemetry.
-- `docs/1C_AI_INVESTIGATOR_RUNTIME_RU.md` — сводка текущего production runtime: manager pages, recovery briefs, weekly digest, company entity keys и live topology.
-- `docs/windows/ensemble.md` — orchestration-пакет для Windows-деплоя и проверки.
-- `docs/linux-client.md` — user-space rollout Linux-клиента ActivityWatch на удалённый `AW server`.
-- `docs/linux-remote-worker.md` — полный Linux remote-worker stack: GUI, SSH/console и browser admin UI вроде Proxmox `:8006`.
-- `docs/console-ssh-logger.md` — логирование только консольных команд и SSH-сессий в AW.
-- `docs/dlp-gap-analysis.md` — разрыв до enterprise DLP и roadmap.
-- `docs/dlp-aggregator.md` — прототип централизованной агрегации DLP/file-operation событий.
-- `docs/dlp-reliability-roadmap.md` — roadmap повышения надёжности DLP-коллекторов.
-- `docs/powershell-analysis.md` — статический анализ работоспособности DLP PowerShell-скриптов.
-- `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md` — канонический MCP/PowerShell remote path для DetMir Windows host через `SSH`, а не `WSMan`.
-- `proxmox/` — шаблонные скрипты подготовки и наполнения CT на стороне Proxmox.
-- `aw-server/` — установочные скрипты, env-шаблон, systemd unit, RU patch для Web UI и server-side worktime/management report API на `:5610`.
-- `ansible/` — Ansible-ensemble для автоматизированного сервера (Debian/CT).
-- `grafana/` — version-controlled Grafana dashboard JSON для RDP/worktime, DLP/ИБ и overview-экранов.
-- `clickhouse-1c/` — отдельный analytics stack для **файловой 1С**: ETL, ClickHouse schema, detections, company intelligence marts/forecasting, Grafana catalog и AI Investigator contract.
-- `pfsense/` — внешний poller для pfSense API и systemd unit под Debian/Ubuntu utility VM.
-- `windows/` — PowerShell toolkit: single-user, domain-users, ensemble orchestration, hardening/recovery, validation, Windows/RDP DLP telemetry (`aw-dlp-incidents_*`, `aw-dlp-endpoint-signals_*`) и session-level presence для удалённых Windows/RDP пользователей (`aw-worktime-sessions_*`).
-- `scripts/quality-gate.sh` — локальный preflight-пайплайн проверок.
-- `scripts/aggregate_dlp_events.py` — сбор `aw-file-operations_*` и `aw-dlp-incidents_*` в SQLite/PostgreSQL.
-- `scripts/install_aw_linux_client.sh` — установка Linux bundle + autostart для remote AW server.
-- `scripts/install_aw_console_ssh_logger.sh` — user-space установка console/ssh logger.
-- `scripts/install_aw_linux_web_category_logger.sh` — user-space классификация browser admin UI по title/class.
-- `scripts/install_aw_linux_remote_worker.sh` — полный Linux remote-worker installer.
-- `scripts/install_detmir_powershell_mcp.sh` — привязка локального `powershell-windows`/`pwsh` к DetMir Windows host `192.168.100.18`.
+## Открыть дашборды
 
-## Базовый сценарий
+Основная страница:
 
-1. Подготовить параметры окружения по `docs/preparation.md`.
-2. Заполнить единый файл секретов `secrets/deploy.secrets.env` (автоподключение).
-3. На узле Proxmox создать контейнер через `proxmox/create-ct.sh`.
-4. Загрузить артефакты и серверный env в CT через `proxmox/push-aw-artifacts.sh`.
-5. Внутри контейнера выполнить `aw-server/install_aw_server.sh`.
-6. Применить русификацию Web UI через `aw-server/apply_webui_ru_patch.sh`.
-7. Проверить API, Web UI и состояние systemd по `docs/runbook.md`.
-8. Развернуть Windows-клиентов через `windows/deploy-ensemble.ps1`.
-9. Проверить итог через `windows/validate-deployment.ps1`.
+- [Grafana dashboards](http://10.10.10.11:3000/dashboards)
 
-## Текущий security analytics контур
+Полезные панели:
 
-Сейчас в `AW-rus` уже есть замкнутый forensic-контур:
+- `DetMir ActivityWatch` - общая картина по активности.
+- `DetMir: Работа пользователей в RDP` - кто работал, когда и в каких сессиях.
+- `DetMir: DLP и ИБ обзор` - копирование, печать, USB, браузеры и другие события безопасности.
+- `DetMir: ИБ сводка для руководства` - короткая управленческая сводка без лишних деталей.
+- `AW-rus: DLP обзор` - отдельный обзор DLP-потока.
 
-- Windows-хост раз в `6` часов делает `EVTX export + upload`;
-- `aw-hayabusa-drop.path` автоматически подхватывает новый пакет;
-- `aw-hayabusa` строит forensic-отчёт;
-- `aw-hayabusa-case-alert` считает severity и score;
-- при уровне от `medium` создаётся или обновляется case;
-- при уровне от `high` уходит Telegram alert;
-- в case пишется только bounded metadata, без сырых EVTX и полного timeline body.
+Дополнительные интерфейсы:
 
-Практический операторский вход:
+- [ActivityWatch Web UI](http://10.10.10.13:5600) - исходные события и детальный просмотр ActivityWatch.
+- [Worktime reports](http://10.10.10.13:5610) - отчеты по рабочему времени, если сервис включен.
 
-```powershell
-powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-upload-hayabusa-to-aw-server.ps1 -HoursBack 6 -CaseId 30
-```
+## Что видно без технических деталей
 
-Подробности:
+- Работал ли пользователь за компьютером или в RDP-сессии.
+- Когда была активность, простой и переключение окон.
+- Какие приложения, сайты и процессы чаще всего были в работе.
+- Есть ли события, важные для ИБ: копирование, печать, USB, подозрительные сайты.
+- Не пропали ли данные с рабочих компьютеров и RDP-сессий.
 
-- `docs/security-analytics-stack-v1.md`
-- `docs/runbook.md`
-- `docs/hayabusa-operator-ib-guide-2026-05-14.md`
+## Кому это полезно
 
-Для полного Ansible-сценария “с нуля” в Proxmox используйте:
+- Руководителю - быстро увидеть рабочую картину без просмотра логов.
+- ИБ - заметить DLP-сигналы и подозрительную активность.
+- Администратору - проверить, что сборщики и сервер работают стабильно.
 
-- `ansible/provision_proxmox_ct_and_deploy_aw.yml`
-- `ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml` (массово по матрице CT)
+## Если дашборд пустой
 
-Для централизованного деплоя Windows/RDP-клиентов через WinRM:
+Обычно это значит одно из трех: выбран слишком узкий период времени, рабочий компьютер давно не присылал события или временно не обновилась витрина в Grafana. Начните с периода `Last 24 hours`, затем переходите к техническим разделам ниже.
 
-- `ansible/deploy_aw_windows.yml`
+## Техническая документация
 
-Для интерактивной PowerShell/MCP-работы с DetMir Windows host из Linux:
+Для эксплуатации и настройки:
 
-- `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md`
-- `scripts/install_detmir_powershell_mcp.sh`
+- [Wiki home](docs/wiki/Home.md)
+- [Getting Started and Prerequisites](docs/wiki/Getting-Started-and-Prerequisites.md)
+- [Server Infrastructure](docs/wiki/Server-Infrastructure.md)
+- [Operations, CI/CD, and Quality Assurance](docs/wiki/Operations-CI-CD-and-Quality-Assurance.md)
+- [Full deployment manual](docs/FULL_DEPLOYMENT_MANUAL_RU.md)
 
-Для внешнего pfSense poller'а:
+Для мониторинга:
 
-- `ansible/deploy_aw_pfsense_poller.yml`
+- [Grafana and Prometheus Monitoring Stack](docs/wiki/Grafana-and-Prometheus-Monitoring-Stack.md)
+- [Grafana dashboards guide](docs/GRAFANA_DASHBOARDS_RU.md)
+- [Prometheus Exporter](docs/wiki/Prometheus-Exporter.md)
 
-Для импорта Grafana dashboard'ов через HTTP API:
+Для сборщиков и интерфейса:
 
-- `ansible/deploy_grafana_dashboards.yml`
-- `ansible/deploy_proxmox_web_gateway.yml`
-- `docs/GRAFANA_DASHBOARDS_RU.md`
-- `docs/1C_FILE_ANALYTICS_STACK_RU.md`
-
-Для Linux desktop/admin host, который должен слать watcher'ы на удалённый AW server:
-
-- `docs/linux-client.md`
-- `scripts/install_aw_linux_client.sh`
-
-Для полного Linux remote-worker сценария:
-
-- `docs/linux-remote-worker.md`
-- `scripts/install_aw_linux_remote_worker.sh`
-
-Для режима “только консоль/ssh” без GUI watcher'ов:
-
-- `docs/console-ssh-logger.md`
-- `scripts/install_aw_console_ssh_logger.sh`
-
-Скрипты `proxmox/create-ct.sh` и `proxmox/push-aw-artifacts.sh` по умолчанию читают:
-
-- `secrets/deploy.secrets.env`
-
-## Принципы
-
-- Никаких реальных секретов, токенов и боевых IP в репозитории.
-- Все переменные вынесены в `.example` / `.env` шаблоны.
-- Документация ориентирована на повторяемое развёртывание, а не на одноразовую ручную установку.
-- Rollback и backup описаны как обязательная часть каждой операции.
-
-## Минимальная структура
-
-- CT/LXC на Debian 12
-- ActivityWatch Server Rust release
-- Web UI override в `/opt/activitywatch/webui-ru`
-- systemd unit `activitywatch-server.service`
-- bind/listen через переменные окружения
-
-## Ограничения
-
-- Базовый серверный контур AW-rus работает и без Grafana/InfluxDB.
-- Для управленческих и ИБ-dashboard'ов нужен отдельный мониторинговый стек: Grafana + InfluxDB.
-- Часть интеграционных сценариев всё ещё требует внешних систем: pfSense, 1С, почтовый контур, SQL/monitoring stack.
-
-## Быстрые ссылки
-
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/docs/FULL_DEPLOYMENT_MANUAL_RU.md`
-- `/home/igor/tmp/AWatch-rus/docs/windows/ensemble.md`
-- `docs/preparation.md`
-- `docs/deployment.md`
-- `docs/runbook.md`
-- `docs/operations.md`
-- `docs/GRAFANA_DASHBOARDS_RU.md`
-- `docs/PRESENTATION_RU.md`
-- `proxmox/create-ct.sh`
-- `aw-server/install_aw_server.sh`
-- `windows/deploy-ensemble.ps1`
-- `windows/validate-deployment.ps1`
+- [Windows Collector Suite](docs/wiki/Windows-Collector-Suite.md)
+- [Worktime API and UI Bridge](docs/wiki/Worktime-API-and-UI-Bridge.md)
+- [Russian WebUI Patch and Localization](docs/wiki/Russian-WebUI-Patch-and-Localization.md)

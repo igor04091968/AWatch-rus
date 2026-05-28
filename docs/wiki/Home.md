@@ -1,105 +1,66 @@
-# ActivityWatch-Russian Documentation
+# AWatch-rus: рабочий экран
 
-Добро пожаловать в документацию ActivityWatch-Russian - корпоративной системы мониторинга активности на базе ActivityWatch с русификацией и DLP функциями.
+Эта страница - короткий вход в систему. Для обычной работы не нужно начинать с установки, служб и конфигов: сначала откройте дашборды и посмотрите, есть ли данные.
 
-## 📚 Содержание
+## Открыть дашборды
 
-### Production guide
-- [1.2 Getting Started and Prerequisites](Getting-Started-and-Prerequisites) - обязательные env-переменные, Influx token'ы и preflight validation
-- [2.2 Server Infrastructure](Server-Infrastructure) - retention, journald limits и `aw-prune-local-state`
-- [2.3 Russian WebUI Patch and Localization](Russian-WebUI-Patch-and-Localization) - runtime RU patch, DLP links и navigation fixes
-- [2.4 Worktime API and UI Bridge](Worktime-API-and-UI-Bridge) - cache, build locks, trend optimization и foreground context
-- [3 Windows Collector Suite](Windows-Collector-Suite) - RDP/session/process collectors, recovery и локализованный Administrator
-- [7 Grafana and Prometheus Monitoring Stack](Grafana-and-Prometheus-Monitoring-Stack) - Influx exporters, token validation и Grafana checks
-- [8 Operations, CI/CD, and Quality Assurance](Operations-CI-CD-and-Quality-Assurance) - тесты, autoheal и rollout checks
+- [Grafana dashboards](http://10.10.10.11:3000/dashboards) - основная страница со всеми панелями.
+- [ActivityWatch Web UI](http://10.10.10.13:5600) - детальный просмотр исходных событий.
+- [Worktime reports](http://10.10.10.13:5610) - отчеты по рабочему времени, если сервис включен.
 
-### Архитектура
-- [Обзор архитектуры](Architecture) - высокоуровневая архитектура системы
-- [Компоненты системы](Components) - описание всех компонентов
-- [Интерактивная карта](Interactive-Map) - визуальная карта связей
-- [ИБ-профиль DLP](../dlp-security-functional-spec-ru.md) - подробное описание реализованного DLP/monitoring-контура для службы ИБ
-- [Runtime status: DLP chain](../dlp-runtime-chain-status-2026-05-13.md) - фактический live-статус policy/cases/integrations/compliance
-- [Runtime status: Content analysis](../dlp-content-analysis-runtime-status-2026-05-13.md) - фактический live-статус dictionary/regex/OCR/IOC
-- [Hayabusa AW-rus integration](../hayabusa-aw-rus-integration-2026-05-14.md) - bounded DFIR enrichment path для incidents/cases/operator flow
-- [Hayabusa operator and IB guide](../hayabusa-operator-ib-guide-2026-05-14.md) - когда запускать forensic path, где лежат артефакты и какие у него границы
-- [Hayabusa Security Analytics](Hayabusa-Security-Analytics) - текущий production-контур: auto-upload, auto-case, severity scoring и Telegram alerts
-- [Security analytics stack v1](../security-analytics-stack-v1.md) - целевая v1-модель без претензии на Splunk-class SIEM
-- [File 1C analytics](File-1C-Analytics) - ClickHouse/Grafana/AI Investigator контур для файловой 1С
-- [1C Company Intelligence](1C-Company-Intelligence) - AI-ready слой анализа и прогноза по компаниям поверх файловой 1С
-- [1C AI Investigator Runtime](../1C_AI_INVESTIGATOR_RUNTIME_RU.md) - что уже реально сделано в production: topology, manager UI, briefs, recovery и границы контура
+## Что смотреть в первую очередь
 
-### Компоненты
-- [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring) - мониторинг clipboard, печати, USB
-- [Browser Domains Monitoring](Browser-Domains-Monitoring) - мониторинг браузеров
-- [Email Outbound Monitoring](Email-Outbound-Monitoring) - мониторинг почты
-- [WebUI Русификация](WebUI-Russian-Patches) - патчи интерфейса
-- [DLP Агрегация](DLP-Aggregation) - обработка DLP событий
-- [Prometheus Exporter](Prometheus-Exporter) - метрики для мониторинга
+- `DetMir ActivityWatch` - общий обзор активности.
+- `DetMir: Работа пользователей в RDP` - рабочие сессии пользователей.
+- `DetMir: DLP и ИБ обзор` - копирование, печать, USB, браузеры и другие события безопасности.
+- `DetMir: ИБ сводка для руководства` - короткая картина для управленческого просмотра.
+- `AW-rus: DLP обзор` - отдельный фокус на DLP-событиях.
 
-### Развертывание
-- [Установка на Windows](Windows-Installation) - установка коллекторов
-- [Настройка сервера](Server-Setup) - настройка Linux сервера
-- [Grafana + Prometheus](Monitoring-Setup) - мониторинг стек
-- [Windows startup model](../windows-deploy-startup-model.md) - canonical startup model для RDP/standalone deployment
+## Простая расшифровка
 
-### Конфигурация
-- [DLP Правила](DLP-Rules) - настройка DLP политик
-- [Категоризация сайтов](Web-Categorization) - настройка категорий
-- [Группы хостов](Host-Groups) - управление группами
+- Если есть активность - данные с рабочих мест приходят.
+- Если графики пустые - сначала проверьте выбранный период времени.
+- Если видны события безопасности - их стоит смотреть вместе с пользователем, временем и контекстом окна.
+- Если данные резко пропали - переходите к разделу эксплуатации и проверок.
 
-## 🚀 Быстрый старт
+## Для кого
 
-### Минимальная конфигурация
-```bash
-# 1. Развернуть сервер
-cd ansible
-ansible-playbook -i inventory.ini deploy_aw_server.yml
+- Руководителю: посмотреть рабочую картину без логов и технической детализации.
+- ИБ: увидеть события, которые могут требовать внимания.
+- Администратору: быстро понять, живы ли сбор данных, API, InfluxDB и Grafana.
 
-# 2. Развернуть Windows collectors
-AW_WINRM_PASSWORD='...' bash ./run_deploy_aw_windows.sh
+## Технические разделы
 
-# 3. Проверить операторский forensic path
-powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-upload-hayabusa-to-aw-server.ps1 -HoursBack 6 -CaseId 30
-```
+### Эксплуатация
 
-### Полная конфигурация
-```bash
-# 1. Развертывание на Windows
-.\windows\deploy-domain-users.ps1
+- [1.2 Getting Started and Prerequisites](Getting-Started-and-Prerequisites) - обязательные переменные окружения, Influx token'ы и preflight validation.
+- [2.2 Server Infrastructure](Server-Infrastructure) - сервер, retention, journald limits и `aw-prune-local-state`.
+- [8 Operations, CI/CD, and Quality Assurance](Operations-CI-CD-and-Quality-Assurance) - тесты, autoheal, rollout checks и диагностика.
+- [Настройка сервера](Server-Setup) - базовая настройка Linux-сервера.
 
-# 2. Настройка сервера
-cd ansible
-ansible-playbook server-setup.yml
+### Дашборды и мониторинг
 
-# 3. Запуск мониторинга стека
-cd ../grafana-1c
-docker-compose up -d
+- [7 Grafana and Prometheus Monitoring Stack](Grafana-and-Prometheus-Monitoring-Stack) - Grafana, Prometheus, Influx exporters и token validation.
+- [Grafana + Prometheus](Monitoring-Setup) - мониторинговый стек.
+- [Prometheus Exporter](Prometheus-Exporter) - метрики для внешнего мониторинга.
 
-# 4. Для файловой 1С поднять ClickHouse/Grafana scaffold
-cd ../clickhouse-1c
-docker compose up -d
+### Сборщики Windows
 
-# 5. Агрегация DLP событий
-python3 scripts/aggregate_dlp_events.py
-```
+- [3 Windows Collector Suite](Windows-Collector-Suite) - RDP/session/process collectors, recovery и локализованный Administrator.
+- [Установка на Windows](Windows-Installation) - установка Windows collectors.
+- [Browser Domains Monitoring](Browser-Domains-Monitoring) - сбор доменов браузеров.
+- [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring) - clipboard, печать, USB и endpoint-события.
 
-## 📊 Обзор системы
+### Интерфейс и отчеты
 
-ActivityWatch-Russian - это корпоративная система мониторинга активности пользователей с:
+- [2.3 Russian WebUI Patch and Localization](Russian-WebUI-Patch-and-Localization) - русификация, DLP links и navigation fixes.
+- [2.4 Worktime API and UI Bridge](Worktime-API-and-UI-Bridge) - API отчетов, cache, build locks и foreground context.
+- [WebUI Русификация](WebUI-Russian-Patches) - патчи интерфейса.
 
-- **DLP мониторинг** - clipboard, печать, USB, браузеры, email
-- **Русификация** - полный перевод интерфейса на русский
-- **Аналитика** - агрегация данных и отчеты
-- **Мониторинг** - Prometheus + Grafana дашборды
-- **Автоматизация** - Ansible деплой на Windows и Linux
-- **Security analytics** - Hayabusa, auto-case, severity scoring, Telegram alerts
+### Архитектура и дополнительные контуры
 
-## 🔗 Ссылки
-
-- [GitHub Repository](https://github.com/igor04091968/AWatch-rus)
-- [ActivityWatch Official](https://activitywatch.net/)
-- [Примеры конфигураций](https://github.com/igor04091968/AWatch-rus/tree/main/grafana-1c)
-
-## 📝 Поддержка
-
-Для вопросов и предложений используйте [Issues](https://github.com/igor04091968/AWatch-rus/issues).
+- [Обзор архитектуры](Architecture) - высокоуровневая архитектура системы.
+- [Компоненты системы](Components) - описание компонентов.
+- [Интерактивная карта](Interactive-Map) - визуальная карта связей.
+- [Hayabusa Security Analytics](Hayabusa-Security-Analytics) - security analytics, auto-case, scoring и Telegram alerts.
+- [File 1C analytics](File-1C-Analytics) - ClickHouse/Grafana/AI Investigator контур для файловой 1С.
