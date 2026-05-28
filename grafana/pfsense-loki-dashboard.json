@@ -317,7 +317,7 @@
             "uid": "cfdljedz74we8f"
           },
           "editorMode": "code",
-          "expr": "sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` [$__rate_interval]))",
+          "expr": "sum by (action) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` | action != `` [5m]))",
           "refId": "A",
           "queryType": "range",
           "legendFormat": "{{action}}"
@@ -357,8 +357,8 @@
               "mode": "off"
             }
           },
-          "unit": "ops",
-          "decimals": 2
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -399,7 +399,7 @@
             "uid": "cfdljedz74we8f"
           },
           "editorMode": "code",
-          "expr": "sum by (iface) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | iface != `` [$__rate_interval]))",
+          "expr": "sum by (iface) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` | iface != `` [5m]))",
           "refId": "A",
           "queryType": "range",
           "legendFormat": "{{iface}}"
@@ -439,8 +439,8 @@
               "mode": "off"
             }
           },
-          "unit": "ops",
-          "decimals": 2
+          "unit": "short",
+          "decimals": 0
         },
         "overrides": []
       },
@@ -661,7 +661,7 @@
             "uid": "cfdljedz74we8f"
           },
           "editorMode": "code",
-          "expr": "sum by (reason) (count_over_time(sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | reason != `` [$__range]))",
+          "expr": "sum by (reason) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` | reason != `` [$__range]))",
           "legendFormat": "{{reason}}",
           "queryType": "instant",
           "refId": "A"
@@ -721,7 +721,7 @@
             "uid": "cfdljedz74we8f"
           },
           "editorMode": "code",
-          "expr": "sum by (direction) (count_over_time(sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | direction != `` [$__range]))",
+          "expr": "sum by (direction) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` | direction != `` [$__range]))",
           "legendFormat": "{{direction}}",
           "queryType": "instant",
           "refId": "A"
@@ -781,7 +781,7 @@
             "uid": "cfdljedz74we8f"
           },
           "editorMode": "code",
-          "expr": "sum by (iface, action) (count_over_time(sum by (action) (rate({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | iface != `` | action != `` [$__range]))",
+          "expr": "sum by (iface, action) (count_over_time({job=\"pfsense\"} |~ `(?i)$search_term_1` |~ `(?i)$search_term_2` | regexp `^(?P<rule>[^,]*),(?P<subrule>[^,]*),(?P<anchor>[^,]*),(?P<tracker>[^,]*),(?P<iface>[^,]*),(?P<reason>[^,]*),(?P<action>[^,]*),(?P<direction>[^,]*),(?P<ipver>[^,]*),(?P<tos>[^,]*),(?P<ecn>[^,]*),(?P<ttl>[^,]*),(?P<packet_id>[^,]*),(?P<offset>[^,]*),(?P<flags>[^,]*),(?P<protoid>[^,]*),(?P<proto>[^,]*),(?P<bytes>[^,]*),(?P<src_ip>[^,]*),(?P<dst_ip>[^,]*)(?:,(?P<src_port>[^,]*),(?P<dst_port>[^,]*))?.*` | action != `` | iface != `` | action != `` [$__range]))",
           "legendFormat": "{{iface}} {{action}}",
           "queryType": "instant",
           "refId": "A"
@@ -925,6 +925,6 @@
   "timezone": "browser",
   "title": "pfSense Firewall Overview",
   "uid": "pfsense-loki-dashboard",
-  "version": 4,
+  "version": 6,
   "weekStart": ""
 }
