@@ -51,35 +51,33 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
+                "color": "orange",
                 "value": null
               },
               {
-                "color": "orange",
-                "value": 1
-              },
-              {
                 "color": "green",
-                "value": 2
+                "value": 1
               }
             ]
           },
           "mappings": [
             {
+              "type": "value",
               "options": {
-                "empty": {
-                  "text": "EMPTY"
+                "0": {
+                  "text": "proxy_only",
+                  "color": "orange",
+                  "index": 0
                 },
-                "ledger_ready": {
-                  "text": "LEDGER READY"
-                },
-                "proxy_only": {
-                  "text": "PROXY ONLY"
+                "1": {
+                  "text": "ledger_ready",
+                  "color": "green",
+                  "index": 1
                 }
-              },
-              "type": "value"
+              }
             }
-          ]
+          ],
+          "displayName": "Статус"
         },
         "overrides": []
       },
@@ -102,7 +100,8 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "proxy_only"
       },
       "targets": [
         {
@@ -114,7 +113,7 @@
           "format": 1,
           "pluginVersion": "11.2.2",
           "queryType": "table",
-          "rawSql": "SELECT readiness_status AS value FROM analytics_1c.v_financial_reporting_readiness",
+          "rawSql": "SELECT value FROM (SELECT if(readiness_status = 'ledger_ready', 1, 0) AS value, 1 AS priority FROM analytics_1c.v_financial_reporting_readiness UNION ALL SELECT 0 AS value, 2 AS priority) ORDER BY priority LIMIT 1",
           "refId": "A"
         }
       ],
