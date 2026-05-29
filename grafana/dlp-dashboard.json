@@ -56,11 +56,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> sum()",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\")\n  |> group()\n  |> sum()\n  |> keep(columns:[\"_value\"])",
           "refId": "A"
         }
       ],
@@ -92,7 +93,8 @@
                 "value": 3
               }
             ]
-          }
+          },
+          "displayName": "Сработок"
         },
         "overrides": []
       },
@@ -114,11 +116,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\" and (r.severity == \"high\" or r.severity == \"critical\"))\n  |> sum()",
+          "query": "import \"array\"\n\nhigh = from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_incident\" and r._field == \"count\" and (r.severity == \"high\" or r.severity == \"critical\"))\n  |> group()\n  |> sum()\n  |> keep(columns: [\"_value\"])\n\nfallback = array.from(rows: [{_value: 0}])\n\nunion(tables: [fallback, high])\n  |> group()\n  |> sum()\n  |> set(key: \"_field\", value: \"Сработок\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"high_or_critical_count\")\n",
           "refId": "A"
         }
       ],
@@ -172,11 +175,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -180d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_case\" and r._field == \"count\")\n  |> group(columns:[\"case_id\"])\n  |> last()\n  |> filter(fn: (r) => r.status == \"open\")\n  |> group()\n  |> count()",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -180d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_case\" and r._field == \"count\")\n  |> group(columns:[\"case_id\"])\n  |> last()\n  |> filter(fn: (r) => r.status == \"open\")\n  |> group()\n  |> count()\n  |> keep(columns:[\"_value\"])",
           "refId": "A"
         }
       ],
@@ -230,11 +234,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -180d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_case\" and r._field == \"count\")\n  |> group(columns:[\"case_id\"])\n  |> last()\n  |> filter(fn: (r) => r.status == \"investigating\")\n  |> group()\n  |> count()",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -180d)\n  |> filter(fn: (r) => r._measurement == \"aw_dlp_case\" and r._field == \"count\")\n  |> group(columns:[\"case_id\"])\n  |> last()\n  |> filter(fn: (r) => r.status == \"investigating\")\n  |> group()\n  |> count()\n  |> keep(columns:[\"_value\"])",
           "refId": "A"
         }
       ],
@@ -311,7 +316,8 @@
           "fields": "",
           "values": false
         },
-        "showUnfilled": true
+        "showUnfilled": true,
+        "noValue": "0"
       },
       "targets": [
         {

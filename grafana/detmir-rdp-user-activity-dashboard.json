@@ -36,12 +36,15 @@
       },
       "id": 1,
       "options": {
-        "content": "### Как читать дашборд\n- **Верхний блок** показывает **вчерашний завершённый день**. Это основной управленческий срез.\n- **Средний блок** показывает **сегодня с начала дня**. Эти цифры оперативные и к вечеру будут меняться.\n- Если утром по блоку **сегодня** мало часов или нули, это не ошибка: день ещё не завершён.\n- Нижние графики нужны для ответа на два вопроса: **как меняется нагрузка по дням** и **кто сколько времени работал**.",
+        "content": "### Работа пользователей в RDP\nВерхний блок — завершённый вчерашний день. Средний блок — текущий день. Нижний блок — детализация по сотрудникам и доказанным действиям.",
         "mode": "markdown"
       },
-      "title": "Руководителю: как смотреть этот экран",
+      "title": "Сводка для руководителя",
       "transparent": true,
-      "type": "text"
+      "type": "text",
+      "fieldConfig": {
+        "defaults": {}
+      }
     },
     {
       "datasource": {
@@ -84,7 +87,8 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
@@ -115,7 +119,7 @@
               }
             ]
           },
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -138,11 +142,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:2)\n  |> limit(n:1)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:2)\n  |> limit(n:1)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> keep(columns:[\"_value\"])",
           "refId": "A"
         }
       ],
@@ -169,7 +174,7 @@
               }
             ]
           },
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -192,7 +197,8 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
@@ -223,7 +229,7 @@
               }
             ]
           },
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -246,11 +252,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:1)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:1)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> keep(columns:[\"_value\"])",
           "refId": "A"
         }
       ],
@@ -267,7 +274,7 @@
         "defaults": {
           "decimals": 1,
           "displayName": "${__field.labels.user}",
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -291,7 +298,8 @@
           "values": false
         },
         "showUnfilled": true,
-        "sizing": "auto"
+        "sizing": "auto",
+        "noValue": "0"
       },
       "targets": [
         {
@@ -312,7 +320,7 @@
         "defaults": {
           "decimals": 1,
           "displayName": "${__field.labels.user}",
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -336,7 +344,8 @@
           "values": false
         },
         "showUnfilled": true,
-        "sizing": "auto"
+        "sizing": "auto",
+        "noValue": "0"
       },
       "targets": [
         {
@@ -363,7 +372,7 @@
           },
           "decimals": 1,
           "displayName": "Команда",
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -409,7 +418,7 @@
             "showPoints": "auto"
           },
           "displayName": "${__field.labels.user}",
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -480,18 +489,18 @@
             "indexByName": {
               "Дата": 0,
               "Пользователь": 1,
-              "Учётная_запись": 2,
+              "Учётная запись": 2,
               "Часы": 3
             },
             "renameByName": {
-              "Учётная_запись": "Учётная запись"
+              "Учётная запись": "Учётная запись"
             }
           }
         }
       ],
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"user\"])\n  |> last()\n  |> sort(columns:[\"report_date\",\"user\"], desc:true)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> keep(columns:[\"report_date\",\"user\",\"user_id\",\"_value\"])\n  |> rename(columns:{report_date:\"Дата\", user:\"Пользователь\", user_id:\"Учётная_запись\", _value:\"Часы\"})",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"user\"])\n  |> last()\n  |> sort(columns:[\"report_date\",\"user\"], desc:true)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> group()\n  |> keep(columns:[\"report_date\",\"user\",\"user_id\",\"_value\"])\n  |> rename(columns:{report_date:\"Дата\", user:\"Пользователь\", user_id:\"Учётная запись\", _value:\"Часы\"})",
           "refId": "A"
         }
       ],
@@ -518,7 +527,7 @@
               }
             ]
           },
-          "unit": "h"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -541,11 +550,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nfrom(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r._field == \"proved_work_seconds\" and r.host == \"${host}\" and r.report_date == today)\n  |> group(columns:[\"application\"])\n  |> last()\n  |> group()\n  |> sum()\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))",
+          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nfrom(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r._field == \"proved_work_seconds\" and r.host == \"${host}\" and r.report_date == today)\n  |> set(key: \"_field\", value: \"Доказанная работа\")\n  |> group(columns:[\"application\"])\n  |> last()\n  |> group()\n  |> sum()\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> keep(columns:[\"_value\"])",
           "refId": "A"
         }
       ],
@@ -577,7 +587,7 @@
             "properties": [
               {
                 "id": "unit",
-                "value": "h"
+                "value": "suffix: ч"
               },
               {
                 "id": "decimals",
@@ -588,7 +598,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Evidence"
+              "options": "Подтверждений"
             },
             "properties": [
               {
@@ -620,7 +630,7 @@
       },
       "targets": [
         {
-          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nbase = from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r.host == \"${host}\" and r.report_date == today)\n\nnums = base\n  |> filter(fn: (r) => r._field == \"proved_work_seconds\" or r._field == \"evidence_events\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\ntexts = base\n  |> filter(fn: (r) => r._field == \"last_action\" or r._field == \"last_action_local\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\njoin(tables: {n: nums, t: texts}, on: [\"application\", \"report_date\"])\n  |> map(fn:(r)=>({ r with hours: float(v:r.proved_work_seconds) / 3600.0 }))\n  |> sort(columns:[\"proved_work_seconds\"], desc:true)\n  |> keep(columns:[\"report_date\",\"application\",\"hours\",\"last_action_local\",\"last_action\",\"evidence_events\"])\n  |> rename(columns:{report_date:\"Дата\", application:\"Приложение\", hours:\"Часы\", last_action_local:\"Последнее действие\", last_action:\"Контекст\", evidence_events:\"Evidence\"})",
+          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nbase = from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r.host == \"${host}\" and r.report_date == today)\n\nnums = base\n  |> filter(fn: (r) => r._field == \"proved_work_seconds\" or r._field == \"evidence_events\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\ntexts = base\n  |> filter(fn: (r) => r._field == \"last_action\" or r._field == \"last_action_local\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\njoin(tables: {n: nums, t: texts}, on: [\"application\", \"report_date\"])\n  |> map(fn:(r)=>({ r with hours: float(v:r.proved_work_seconds) / 3600.0 }))\n  |> sort(columns:[\"proved_work_seconds\"], desc:true)\n  |> group()\n  |> keep(columns:[\"report_date\",\"application\",\"hours\",\"last_action_local\",\"last_action\",\"evidence_events\"])\n  |> rename(columns:{report_date:\"Дата\", application:\"Приложение\", hours:\"Доказано, ч\", last_action_local:\"Последнее действие\", last_action:\"Окно / действие\", evidence_events:\"Подтверждений\"})",
           "refId": "A"
         }
       ],
@@ -666,7 +676,8 @@
               "mode": "off"
             }
           },
-          "unit": "h"
+          "unit": "suffix: ч",
+          "displayName": "${__field.labels.application}"
         },
         "overrides": []
       },
@@ -691,7 +702,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r._field == \"proved_work_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"application\",\"report_date\"])\n  |> last()\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> group(columns:[\"application\"])",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r._field == \"proved_work_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"application\",\"report_date\"])\n  |> last()\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> set(key: \"_field\", value: \"Доказанная работа\")\n  |> group(columns:[\"application\"])",
           "refId": "A"
         }
       ],

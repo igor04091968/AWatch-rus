@@ -16,7 +16,7 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
-          "unit": "s"
+          "unit": "suffix: мин"
         },
         "overrides": []
       },
@@ -39,11 +39,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "value_and_name"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => (r._measurement == \"aw_window_event\" or r._measurement == \"aw_afk_event\") and r._field == \"duration_s\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0 }))\n  |> keep(columns: [\"_value\"])\n  |> yield(name: \"freshness_seconds\")",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => (r._measurement == \"aw_window_event\" or r._measurement == \"aw_afk_event\") and r._field == \"duration_s\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: (float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0) / 60.0 }))\n  |> set(key: \"_field\", value: \"Свежесть данных\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"freshness_minutes\")\n",
           "refId": "A"
         }
       ],
@@ -57,7 +58,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s"
+          "unit": "suffix: мин",
+          "displayName": "${__field.labels.host}"
         },
         "overrides": []
       },
@@ -81,7 +83,7 @@
       },
       "targets": [
         {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"active\")",
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> map(fn: (r) => ({ r with _value: r._value / 60.0 }))\n  |> set(key: \"_field\", value: \"Активность, мин\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"active_minutes\")\n",
           "refId": "A"
         }
       ],
@@ -95,7 +97,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s"
+          "unit": "suffix: мин",
+          "displayName": "${__field.labels.host}"
         },
         "overrides": []
       },
@@ -119,7 +122,7 @@
       },
       "targets": [
         {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_afk_event\" and r._field == \"duration_s\" and r.status == \"afk\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> keep(columns: [\"_time\", \"_value\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"afk\")",
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_afk_event\" and r._field == \"duration_s\" and r.status == \"afk\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> map(fn: (r) => ({ r with _value: r._value / 60.0 }))\n  |> set(key: \"_field\", value: \"AFK, мин\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"afk_minutes\")\n",
           "refId": "A"
         }
       ],
@@ -133,7 +136,8 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "s"
+          "unit": "suffix: ч",
+          "displayName": "${__field.labels.category_view}"
         },
         "overrides": []
       },
@@ -157,7 +161,7 @@
       },
       "targets": [
         {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> map(fn: (r) => ({ r with category_view: if r.category == \"erp_1c\" then \"1С-Бухгалтерия\" else if r.category == \"file_manager\" then \"Файловый менеджер\" else if r.category == \"terminal_shell\" then \"Терминальная оболочка\" else if r.category == \"browser\" then \"Интернет-браузер\" else if r.category == \"office_docs\" then \"Офисные документы\" else if r.category == \"remote_admin\" then \"Удаленное администрирование\" else if r.category == \"development\" then \"Разработка и программирование\" else if r.category == \"communication\" then \"Средства связи\" else if r.category == \"database\" then \"Работа с базами данных\" else if r.category == \"monitoring\" then \"Мониторинг и диагностика\" else if r.category == \"virtualization\" then \"Виртуализация\" else if r.category == \"system\" or r.category == \"misc_user\" or r.category == \"other\" or r.category == \"\" then \"Системные приложения\" else r.category }))\n  |> group(columns: [\"category_view\"])\n  |> sum()\n  |> group()\n  |> sort(columns: [\"_value\"], desc: true)\n  |> yield(name: \"categories\")",
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> map(fn: (r) => ({ r with category_view: if r.category == \"erp_1c\" then \"1С-Бухгалтерия\" else if r.category == \"file_manager\" then \"Файловый менеджер\" else if r.category == \"terminal_shell\" then \"Терминальная оболочка\" else if r.category == \"browser\" then \"Интернет-браузер\" else if r.category == \"office_docs\" then \"Офисные документы\" else if r.category == \"remote_admin\" then \"Удаленное администрирование\" else if r.category == \"development\" then \"Разработка и программирование\" else if r.category == \"communication\" then \"Средства связи\" else if r.category == \"database\" then \"Работа с базами данных\" else if r.category == \"monitoring\" then \"Мониторинг и диагностика\" else if r.category == \"virtualization\" then \"Виртуализация\" else if r.category == \"system\" or r.category == \"misc_user\" or r.category == \"other\" or r.category == \"\" then \"Системные приложения\" else r.category }))\n  |> group(columns: [\"category_view\"])\n  |> sum()\n  |> map(fn: (r) => ({ r with _value: r._value / 3600.0 }))\n  |> set(key: \"_field\", value: \"Часы\")\n  |> keep(columns: [\"_value\", \"_field\", \"category_view\"])\n  |> sort(columns: [\"_value\"], desc: true)\n  |> yield(name: \"categories_hours\")\n",
           "refId": "A"
         }
       ],
@@ -172,7 +176,7 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
-          "unit": "s"
+          "unit": "suffix: ч"
         },
         "overrides": []
       },
@@ -195,11 +199,12 @@
           "fields": "",
           "values": false
         },
-        "textMode": "auto"
+        "textMode": "value",
+        "noValue": "0"
       },
       "targets": [
         {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> group()\n  |> sum()\n  |> yield(name: \"total_active\")",
+          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> group()\n  |> sum()\n  |> map(fn: (r) => ({ r with _value: r._value / 3600.0 }))\n  |> set(key: \"_field\", value: \"Активное время\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"total_active_hours\")\n",
           "refId": "A"
         }
       ],

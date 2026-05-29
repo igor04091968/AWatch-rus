@@ -87,11 +87,12 @@
           "fields": ""
         },
         "orientation": "auto",
-        "textMode": "auto",
+        "textMode": "value",
         "wideLayout": true,
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "noValue": "0"
       }
     },
     {
@@ -157,11 +158,12 @@
           "fields": ""
         },
         "orientation": "auto",
-        "textMode": "auto",
+        "textMode": "value",
         "wideLayout": true,
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "noValue": "0"
       }
     },
     {
@@ -223,11 +225,12 @@
           "fields": ""
         },
         "orientation": "auto",
-        "textMode": "auto",
+        "textMode": "value",
         "wideLayout": true,
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "noValue": "0"
       }
     },
     {
@@ -289,16 +292,17 @@
           "fields": ""
         },
         "orientation": "auto",
-        "textMode": "auto",
+        "textMode": "value",
         "wideLayout": true,
         "colorMode": "value",
         "graphMode": "area",
-        "justifyMode": "auto"
+        "justifyMode": "auto",
+        "noValue": "0"
       }
     },
     {
       "id": 5,
-      "title": "Динамика block/pass",
+      "title": "Динамика блокировок и разрешений",
       "type": "timeseries",
       "datasource": {
         "type": "loki",
@@ -369,12 +373,9 @@
         },
         "legend": {
           "showLegend": true,
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
+          "calcs": []
         }
       }
     },
@@ -451,12 +452,9 @@
         },
         "legend": {
           "showLegend": true,
-          "displayMode": "table",
+          "displayMode": "list",
           "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ]
+          "calcs": []
         }
       }
     },
@@ -517,7 +515,8 @@
         "minVizWidth": 0,
         "minVizHeight": 10,
         "namePlacement": "auto",
-        "valueMode": "color"
+        "valueMode": "color",
+        "noValue": "0"
       }
     },
     {
@@ -577,7 +576,8 @@
         "minVizWidth": 0,
         "minVizHeight": 10,
         "namePlacement": "auto",
-        "valueMode": "color"
+        "valueMode": "color",
+        "noValue": "0"
       }
     },
     {
@@ -637,7 +637,8 @@
         "minVizWidth": 0,
         "minVizHeight": 10,
         "namePlacement": "auto",
-        "valueMode": "color"
+        "valueMode": "color",
+        "noValue": "0"
       }
     },
     {
@@ -697,7 +698,8 @@
           "values": false
         },
         "showUnfilled": true,
-        "valueMode": "color"
+        "valueMode": "color",
+        "noValue": "0"
       }
     },
     {
@@ -757,7 +759,8 @@
           "values": false
         },
         "showUnfilled": true,
-        "valueMode": "color"
+        "valueMode": "color",
+        "noValue": "0"
       }
     },
     {
@@ -817,7 +820,8 @@
           "values": false
         },
         "showUnfilled": true,
-        "valueMode": "color"
+        "valueMode": "color",
+        "noValue": "0"
       }
     },
     {
@@ -882,8 +886,8 @@
           "text": "",
           "value": ""
         },
-        "description": "Первое слово для поиска",
-        "label": "Search Term 1",
+        "description": "Первое слово для фильтрации событий",
+        "label": "Поиск 1",
         "name": "search_term_1",
         "options": [
           {
@@ -901,8 +905,8 @@
           "text": "",
           "value": ""
         },
-        "description": "Второе слово для поиска",
-        "label": "Search Term 2",
+        "description": "Второе слово для фильтрации событий",
+        "label": "Поиск 2",
         "name": "search_term_2",
         "options": [
           {
@@ -923,7 +927,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "pfSense Firewall Overview",
+  "title": "pfSense: обзор firewall",
   "uid": "pfsense-loki-dashboard",
   "version": 6,
   "weekStart": ""
