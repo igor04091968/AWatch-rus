@@ -10,7 +10,8 @@ fi
 source "$ENV_FILE"
 
 WEBUI_DIR="${AW_SERVER_WEBUI_DIR:-${AW_WEBUI_DIR:-/opt/activitywatch/webui-ru}}"
-REPORT_BASE="${AW_WORKTIME_REPORT_BASE:-http://10.10.10.13:5610}"
+SERVER_PUBLIC_HOST="${AW_SERVER_PUBLIC_HOST:-${AW_SERVER_HOST:-$(hostname -f 2>/dev/null || hostname)}}"
+REPORT_BASE="${AW_WORKTIME_REPORT_BASE:-http://${SERVER_PUBLIC_HOST}:5610}"
 CASE_PORT="${AW_DLP_CASE_PORT:-5602}"
 CASE_BASE="${AW_DLP_CASE_PUBLIC_BASE:-}"
 PATCH_JS_SRC="/root/bootstrap/aw-ru-patch.js"
@@ -62,12 +63,19 @@ worktime_panel_hash="$(sha1sum "$WORKTIME_PANEL_TARGET" | awk '{print substr($1,
 if [[ -z "$CASE_BASE" ]]; then
   CASE_BASE="$(python3 - "$REPORT_BASE" "$CASE_PORT" <<'PY'
 from urllib.parse import urlsplit, urlunsplit
+import os
+import socket
 import sys
 
 report_base = sys.argv[1]
 case_port = sys.argv[2]
 parts = urlsplit(report_base)
-hostname = parts.hostname or "10.10.10.13"
+hostname = (
+    parts.hostname
+    or os.environ.get("AW_SERVER_PUBLIC_HOST")
+    or os.environ.get("AW_SERVER_HOST")
+    or socket.getfqdn()
+)
 scheme = parts.scheme or "http"
 print(urlunsplit((scheme, f"{hostname}:{case_port}", "", "", "")))
 PY

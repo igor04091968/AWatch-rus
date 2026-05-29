@@ -3,8 +3,8 @@
     return;
   }
   window.__awRuPatchBootstrapped = true;
-  window.__awRuPatchVersion = "template-v13-category-builder-early-fix";
-  document.documentElement.setAttribute("data-aw-ru-patch", "template-v13-category-builder-early-fix");
+  window.__awRuPatchVersion = "template-v14-dlp-route-lite";
+  document.documentElement.setAttribute("data-aw-ru-patch", "template-v14-dlp-route-lite");
 
   const exact = new Map([
     ["ActivityWatch", "АктивВотч"],
@@ -24,6 +24,7 @@
     ["Tools", "Инструменты"],
     ["Raw Data", "Сырые данные"],
     ["Summary", "Сводка"],
+    ["Worktime", "Рабочее время"],
     ["All", "Все"],
     ["None", "Нет"],
     ["Date", "Дата"],
@@ -236,6 +237,7 @@
     ['Common words in "Uncategorized" events', 'Частые слова в событиях "Без категории"'],
     ["No words with significant duration. You're good to go!", "Нет слов со значимой длительностью. Здесь всё в порядке."],
     ["Top apps", "Топ приложений"],
+    ["Top Applications", "Топ приложений"],
     ["Top titles", "Топ заголовков"],
     ["Top URLs", "Топ URL"],
     ["Top domains", "Топ доменов"],
@@ -344,7 +346,16 @@
       '.aw-ru-pve-audit-value { font-size: 24px; font-weight: 700; }',
       '.aw-ru-pve-audit-table { width: 100%; border-collapse: collapse; margin-top: 8px; }',
       '.aw-ru-pve-audit-table th, .aw-ru-pve-audit-table td { padding: 6px 8px; border-bottom: 1px solid rgba(120,120,120,.18); vertical-align: top; text-align: left; font-size: 13px; }',
-      '.aw-ru-pve-audit-muted { opacity: .72; font-size: 13px; }'
+      '.aw-ru-pve-audit-muted { opacity: .72; font-size: 13px; }',
+      '.aw-ru-rdp-center { margin: 16px 0; padding: 16px; border: 1px solid rgba(120,120,120,.35); border-radius: 8px; background: rgba(10,20,40,.04); }',
+      '.aw-ru-rdp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 12px 0 16px; }',
+      '.aw-ru-rdp-card { border: 1px solid rgba(120,120,120,.22); border-radius: 8px; padding: 12px; background: rgba(255,255,255,.02); }',
+      '.aw-ru-rdp-card h5 { margin: 0 0 6px; font-size: 13px; opacity: .8; }',
+      '.aw-ru-rdp-value { font-size: 24px; font-weight: 700; }',
+      '.aw-ru-rdp-table { width: 100%; border-collapse: collapse; margin-top: 8px; }',
+      '.aw-ru-rdp-table th, .aw-ru-rdp-table td { padding: 6px 8px; border-bottom: 1px solid rgba(120,120,120,.18); vertical-align: top; text-align: left; font-size: 13px; }',
+      '.aw-ru-rdp-links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }',
+      '.aw-ru-rdp-links a { display: inline-block; padding: 4px 8px; border-radius: 999px; background: rgba(90,140,255,.15); text-decoration: none; }'
     ].join("\n");
     document.head.appendChild(style);
   }
@@ -370,6 +381,12 @@
     return "";
   }
 
+  function getCurrentActivityDayFromHash() {
+    const hash = window.location.hash || "";
+    const match = hash.match(/#\/activity\/[^/]+\/day\/([^/?#]+)/i);
+    return match && match[1] ? decodeURIComponent(match[1]) : "today";
+  }
+
   function isPveLikeHost(host) {
     return /^pve[-_]/i.test(String(host || ""));
   }
@@ -382,6 +399,230 @@
     if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(value)) return false;
     if (value.indexOf(":") !== -1 && /^[0-9a-f:\[\]]+$/i.test(value)) return false;
     return true;
+  }
+
+  function isClientActivityRoute() {
+    const hash = window.location.hash || "";
+    const match = hash.match(/^#\/activity\/([^/]+)(?:\/day\/([^/]+))?\/view\/([^/?#]+)/i);
+    if (!match) return false;
+    const host = decodeURIComponent(match[1] || "");
+    return isLikelyClientHost(host) && !isPveLikeHost(host);
+  }
+
+  function getRdpReportBaseUrl() {
+    const url = new URL(window.location.href);
+    url.hash = "";
+    url.search = "";
+    url.pathname = "/reports/worktime/today";
+    url.port = "5610";
+    return url;
+  }
+
+  function buildRdpReportUrl(format, day) {
+    const url = getRdpReportBaseUrl();
+    url.searchParams.set("day", day || "today");
+    if (format) url.searchParams.set("format", format);
+    return url.toString();
+  }
+
+  function normalizeActivityDay(day) {
+    if (day && day !== "today") return day;
+    const now = new Date();
+    return [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0")
+    ].join("-");
+  }
+
+  function getActivityDayRange(day) {
+    const normalizedDay = normalizeActivityDay(day);
+    const start = new Date(normalizedDay + "T00:00:00");
+    const end = new Date(normalizedDay + "T23:59:59");
+    return { normalizedDay: normalizedDay, start: start, end: end };
+  }
+
+  function formatActiveHhmm(totalSeconds) {
+    const seconds = Math.max(0, Number(totalSeconds) || 0);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return String(hours).padStart(2, "0") + ":" + String(minutes).padStart(2, "0");
+  }
+
+  function isWorktimeRowActive(data) {
+    if (!data || typeof data !== "object") return false;
+    if (typeof data.active === "boolean") return data.active;
+    const state = String(data.state || "").trim().toLowerCase();
+    return state === "active" || state === "активно";
+  }
+
+  function formatDurationSeconds(totalSeconds) {
+    const seconds = Math.max(0, Number(totalSeconds) || 0);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    if (hours > 0) return hours + "ч " + String(minutes).padStart(2, "0") + "м";
+    if (minutes > 0) return minutes + "м " + String(secs).padStart(2, "0") + "с";
+    return secs + "с";
+  }
+
+  function formatIsoForUi(value) {
+    if (!value) return "—";
+    try {
+      return new Date(value).toLocaleString();
+    } catch (error) {
+      return value;
+    }
+  }
+
+  async function fetchRdpWorktimeReport(host, day) {
+    if (!host) return null;
+    const cacheKey = host + "|" + (day || "today");
+    if (!window.__awRuRdpReportCache) window.__awRuRdpReportCache = {};
+    if (window.__awRuRdpReportCache[cacheKey]) return window.__awRuRdpReportCache[cacheKey];
+    const range = getActivityDayRange(day);
+    const bucketId = "aw-worktime-sessions_" + host;
+    const params = new URLSearchParams();
+    params.set("start", range.start.toISOString());
+    params.set("end", new Date(range.end.getTime() + 1000).toISOString());
+    params.set("limit", "100000");
+    const response = await fetch("/api/0/buckets/" + encodeURIComponent(bucketId) + "/events?" + params.toString(), { credentials: "same-origin" });
+    if (!response.ok) throw new Error("rdp-report-fetch-failed");
+    const events = await response.json();
+    if (!Array.isArray(events)) return null;
+    const rowsByUser = new Map();
+    events.forEach(function (event) {
+      const data = event && event.data ? event.data : {};
+      const ts = event && event.timestamp ? String(event.timestamp) : "";
+      if (!ts) return;
+      const tsDate = new Date(ts);
+      if (Number.isNaN(tsDate.getTime())) return;
+      const tsDay = [
+        tsDate.getFullYear(),
+        String(tsDate.getMonth() + 1).padStart(2, "0"),
+        String(tsDate.getDate()).padStart(2, "0")
+      ].join("-");
+      if (tsDay !== range.normalizedDay) return;
+      const userId = String(data.userId || "");
+      const userName = String(data.username || userId || "").trim();
+      if (!userName) return;
+      const key = userId || userName;
+      if (!rowsByUser.has(key)) {
+        rowsByUser.set(key, {
+          user: userName,
+          user_id: userId || userName,
+          active_seconds: 0,
+          first_activity: "",
+          last_activity: "",
+          sessions_count: new Set(),
+          samples_count: 0,
+          active_samples: 0
+        });
+      }
+      const row = rowsByUser.get(key);
+      row.samples_count += 1;
+      if (data.sessionId !== undefined && data.sessionId !== null) row.sessions_count.add(String(data.sessionId));
+      if (isWorktimeRowActive(data)) {
+        const sampleSeconds = Math.max(0, Number(data.sampleSeconds || event.duration || 0));
+        row.active_seconds += sampleSeconds;
+        row.active_samples += 1;
+        if (!row.first_activity || ts < row.first_activity) row.first_activity = ts;
+        if (!row.last_activity || ts > row.last_activity) row.last_activity = ts;
+      }
+    });
+    const payload = {
+      host: host,
+      report_date: range.normalizedDay,
+      rows: Array.from(rowsByUser.values()).map(function (row) {
+        return {
+          user: row.user,
+          user_id: row.user_id,
+          active_seconds: row.active_seconds,
+          active_hhmm: formatActiveHhmm(row.active_seconds),
+          first_activity: row.first_activity,
+          last_activity: row.last_activity,
+          sessions_count: row.sessions_count.size,
+          samples_count: row.samples_count,
+          active_samples: row.active_samples
+        };
+      })
+    };
+    window.__awRuRdpReportCache[cacheKey] = payload;
+    return payload;
+  }
+
+  async function injectRdpWorktimeCenter(root) {
+    if (!isClientActivityRoute()) return;
+    const host = getCurrentHostFromHash();
+    const day = getCurrentActivityDayFromHash();
+    const report = await fetchRdpWorktimeReport(host, day);
+    if (!report || !Array.isArray(report.rows) || !report.rows.length) return;
+
+    const totalActiveSeconds = report.rows.reduce(function (sum, row) {
+      return sum + Math.max(0, Number(row && row.active_seconds || 0));
+    }, 0);
+    const activeUsers = report.rows.filter(function (row) {
+      return Number(row && row.active_seconds || 0) > 0;
+    });
+    const topRows = activeUsers
+      .slice()
+      .sort(function (left, right) {
+        return Number(right.active_seconds || 0) - Number(left.active_seconds || 0);
+      })
+      .slice(0, 5);
+
+    Array.from(root.querySelectorAll("li")).forEach(function (item) {
+      const text = (item.textContent || "").trim();
+      if (/^(?:Активное время|Time active):/i.test(text)) {
+        item.textContent = "Активное время: " + formatDurationSeconds(totalActiveSeconds);
+      }
+    });
+
+    const heading = root.querySelector("h3");
+    if (!heading || !heading.parentElement) return;
+
+    let center = root.querySelector("[data-aw-ru-rdp-center='1']");
+    if (!center) {
+      center = document.createElement("section");
+      center.className = "aw-ru-rdp-center";
+      center.setAttribute("data-aw-ru-rdp-center", "1");
+      const anchor = heading.parentElement.querySelector("img") || null;
+      heading.parentElement.insertBefore(center, anchor);
+    }
+
+    const latestActivity = topRows.reduce(function (latest, row) {
+      const value = row && row.last_activity ? String(row.last_activity) : "";
+      if (!value) return latest;
+      if (!latest) return value;
+      return value > latest ? value : latest;
+    }, "");
+
+    center.innerHTML =
+      '<h4>RDP сводка</h4>' +
+      '<p>Этот блок строится из bucket <code>aw-worktime-sessions</code> через AW API и показывает сводку по RDP-сессиям выбранного хоста.</p>' +
+      '<div class="aw-ru-rdp-grid">' +
+        '<section class="aw-ru-rdp-card"><h5>Активное время</h5><div class="aw-ru-rdp-value">' + escapeHtml(formatDurationSeconds(totalActiveSeconds)) + '</div></section>' +
+        '<section class="aw-ru-rdp-card"><h5>Активных пользователей</h5><div class="aw-ru-rdp-value">' + escapeHtml(String(activeUsers.length)) + '</div></section>' +
+        '<section class="aw-ru-rdp-card"><h5>Последняя активность</h5><div class="aw-ru-rdp-value" style="font-size:16px;">' + escapeHtml(formatIsoForUi(latestActivity)) + '</div></section>' +
+      '</div>' +
+      '<table class="aw-ru-rdp-table">' +
+        '<thead><tr><th>Пользователь</th><th>Активное время</th><th>Первая активность</th><th>Последняя активность</th></tr></thead>' +
+        '<tbody>' +
+          (topRows.length ? topRows.map(function (row) {
+            return '<tr>' +
+              '<td>' + escapeHtml(row.user || row.user_id || "") + '</td>' +
+              '<td>' + escapeHtml(row.active_hhmm || formatDurationSeconds(row.active_seconds || 0)) + '</td>' +
+              '<td>' + escapeHtml(formatIsoForUi(row.first_activity || "")) + '</td>' +
+              '<td>' + escapeHtml(formatIsoForUi(row.last_activity || "")) + '</td>' +
+            '</tr>';
+          }).join("") : '<tr><td colspan="4">Нет активных пользователей в отчёте.</td></tr>') +
+        '</tbody>' +
+      '</table>' +
+      '<div class="aw-ru-rdp-links">' +
+        '<a href="' + escapeHtml(buildRdpReportUrl("html", day)) + '">HTML</a>' +
+        '<a href="' + escapeHtml(buildRdpReportUrl("csv", day)) + '">CSV</a>' +
+        '<a href="' + escapeHtml(buildRdpReportUrl("", day)) + '">JSON</a>' +
+      '</div>';
   }
 
   function enforceSafeActivityViewForPveHost() {
@@ -605,9 +846,15 @@
   }
 
   function removeBadDlpLinks(root) {
-    const badLinks = root.querySelectorAll("a[href*='/view/DLP']");
-    badLinks.forEach(function (link) {
+    const links = Array.from(root.querySelectorAll("a[href], [role='link']"));
+    links.forEach(function (link) {
+      const href = String(link.getAttribute("href") || "");
+      const label = normalizeText(link.textContent || "");
+      const isBrokenActivityDlpLink = /\/view\/dlp(?:[/?#]|$)/i.test(href);
+      const isActivityTabDlpLabel = label === "DLP" && !!link.closest("li");
+      if (!isBrokenActivityDlpLink && !isActivityTabDlpLabel) return;
       const item = link.closest("li") || link;
+      if (item && item.getAttribute && item.getAttribute("data-aw-ru-dlp-item") === "1") return;
       item.remove();
     });
   }
@@ -718,11 +965,9 @@
         {
           id: "virtual-infra",
           name: "Virtual servers + Proxmox",
-          description: "Инфраструктурные VM, Proxmox и сетевые узлы.",
-          patterns: ["^(PFSENSE|PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"],
+          description: "Инфраструктурные VM и узлы Proxmox.",
+          patterns: ["^(PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"],
           links: [
-            { label: "pfSense health", type: "bucket", bucket_prefix: "aw-pfsense-health_" },
-            { label: "pfSense gateways", type: "bucket", bucket_prefix: "aw-pfsense-gateways_" },
             { label: "Все бакеты", type: "buckets" }
           ]
         }
@@ -785,9 +1030,6 @@
       "aw-pve-webadmin-events_",
       "aw-pve-task-events_",
       "aw-dlp-incidents_",
-      "aw-pfsense-health_",
-      "aw-pfsense-gateways_",
-      "aw-pfsense-interfaces_"
     ];
     for (const prefix of prefixes) {
       if (bucketId.indexOf(prefix) === 0) {
@@ -1129,7 +1371,9 @@
         try {
           await saveDlpReview(host, event, row);
           state.reviews = collapseReviewEvents(await loadBucketEvents("aw-dlp-review_" + host, 200));
-          renderDlpTableRows(center, host);
+          renderDlpReviewManager(center, host);
+          center.querySelector("[data-aw-ru-dlp-status]").textContent =
+            "Событий: " + state.events.length + " · правил: " + state.activeRules.length + "/" + state.rules.length + " · review: " + state.reviews.filter(function (review) { return !(review.data && review.data.review && review.data.review.archived); }).length + "/" + state.reviews.length;
           message.textContent = "Review сохранен.";
         } catch (error) {
           message.textContent = "Ошибка сохранения review: " + error.message;
@@ -1170,8 +1414,17 @@
         if (!hayabusa) return "";
         const status = String(hayabusa.status || "");
         const mode = String(hayabusa.mode || "");
+        const caseHost = normalizeText(c && c.host);
+        const forensicHost = normalizeText(hayabusa.host);
         const reportDir = String(hayabusa.report_dir || "");
-        const title = reportDir ? ' title="' + escapeHtml(reportDir) + '"' : "";
+        const hostMismatch = caseHost && forensicHost && caseHost !== forensicHost;
+        const titleParts = [];
+        if (reportDir) titleParts.push(reportDir);
+        if (hostMismatch) titleParts.push("host mismatch: case=" + caseHost + " forensic=" + forensicHost);
+        const title = titleParts.length ? ' title="' + escapeHtml(titleParts.join(" | ")) + '"' : "";
+        if (hostMismatch) {
+          return '<span' + title + '>Hayabusa host-mismatch · ' + escapeHtml(forensicHost) + '</span>';
+        }
         return '<span' + title + '>Hayabusa ' + escapeHtml(status) + (mode ? " · " + escapeHtml(mode) : "") + '</span>';
       }
       const rows = (cases || []).map(function (c) {
@@ -1868,6 +2121,16 @@
     });
   }
 
+  function applyTextAndNavigationPatches(root) {
+    if (!root) return;
+    walk(root);
+    translateAttributes(root);
+    hideNoiseNavigation(root);
+    hidePveAuditTabForRegularHost(root);
+    patchActivityHeading(root);
+    patchCategoryBuilderHostLabel(root);
+  }
+
   function detachObserver() {
     if (!observerAttached) return;
     observer.disconnect();
@@ -1887,34 +2150,37 @@
     try {
       const routeKey = window.location.hash || "#";
       const routeChanged = routeKey !== staticPatchRouteKey;
+      const dlpRoute = isDlpSignalBucketRoute();
+      installCategoryBuilderNetworkPatch();
+      injectStyles();
+      if (dlpRoute) {
+        ensureSettingsHost();
+        injectDlpNavigation(document.body);
+        if (dlpOverlayFailureCount === 0) {
+          try {
+            injectDlpReviewCenter(document.body);
+          } catch (error) {
+            dlpOverlayFailureCount += 1;
+            const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
+            if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
+          }
+        }
+        applyTextAndNavigationPatches(document.body);
+        staticPatchRouteKey = routeKey;
+        return;
+      }
       enforceSafeActivityViewForPveHost();
       ensureSettingsHost();
       ensureHostGroupsData().catch(function () {});
       normalizeCategoryBuilderUnknownHostRefs();
-      installCategoryBuilderNetworkPatch();
-      injectStyles();
+      applyTextAndNavigationPatches(document.body);
       if (routeChanged) {
-        walk(document.body);
-        translateAttributes(document.body);
-        hideNoiseNavigation(document.body);
-        hidePveAuditTabForRegularHost(document.body);
-        patchActivityHeading(document.body);
-        patchCategoryBuilderHostLabel(document.body);
         staticPatchRouteKey = routeKey;
       }
       injectPveAuditCenter(document.body);
+      injectRdpWorktimeCenter(document.body).catch(function () {});
       injectDlpNavigation(document.body);
-      if (isDlpSignalBucketRoute() && dlpOverlayFailureCount === 0) {
-        try {
-          injectDlpReviewCenter(document.body);
-        } catch (error) {
-          dlpOverlayFailureCount += 1;
-          const existing = document.body.querySelector("[data-aw-ru-dlp-center='1']");
-          if (existing && existing.parentElement) existing.parentElement.removeChild(existing);
-        }
-      } else if (!isDlpSignalBucketRoute()) {
-        injectDlpReviewCenter(document.body);
-      }
+      injectDlpReviewCenter(document.body);
       injectDlpAlertsCenter(document.body);
       injectHostGroupsCenter(document.body).catch(function () {});
       redirectBareTrendsRoute();
@@ -1947,6 +2213,7 @@
   });
   window.addEventListener("hashchange", function () {
     redirectBareTrendsRoute();
+    dlpOverlayFailureCount = 0;
     staticPatchRouteKey = "";
     scheduleApplyPatch();
   });

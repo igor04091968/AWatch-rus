@@ -47,13 +47,11 @@
     {
       "id": "virtual-infra",
       "name": "Virtual servers + Proxmox",
-      "description": "Инфраструктурные VM и сетевые узлы. Здесь должны лежать Proxmox, pfSense, Debian и Ubuntu серверы.",
+      "description": "Инфраструктурные VM и серверы Proxmox, Debian и Ubuntu.",
       "patterns": [
-        "^(PFSENSE|PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"
+        "^(PVE|PROXMOX|DEBIAN|UBUNTU|LINUX|VM-|SRV-|INFRA-)"
       ],
       "links": [
-        { "label": "pfSense health", "type": "bucket", "bucket_prefix": "aw-pfsense-health_" },
-        { "label": "pfSense gateways", "type": "bucket", "bucket_prefix": "aw-pfsense-gateways_" },
         { "label": "Все бакеты", "type": "buckets" }
       ]
     }

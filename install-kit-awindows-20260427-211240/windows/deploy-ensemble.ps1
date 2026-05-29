@@ -27,6 +27,7 @@ param(
     [int]$EvtxRetentionDays = 14,
     [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
+    [bool]$ProcessEventsEnabled = $true,
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
@@ -40,6 +41,17 @@ param(
     [int]$PolicyRefreshSeconds = 300,
     [string]$PolicyCachePath,
     [string]$ReportPath,
+    [bool]$HayabusaAutoUploadEnabled = $true,
+    [int]$HayabusaAutoUploadIntervalHours = 6,
+    [int]$HayabusaAutoUploadHoursBack = 6,
+    [string]$HayabusaAutoUploadMode = 'incident',
+    [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
+    [bool]$File1CAutoUploadEnabled = $true,
+    [int]$File1CAutoUploadIntervalHours = 6,
+    [string]$File1CAutoUploadTaskName = 'ActivityWatch File1C Upload',
+    [string]$File1CTargetHost,
+    [string]$File1CTargetUser = 'igor',
+    [string]$File1CRegistryWorkbookPath = 'E:\USER1\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx',
     [switch]$SkipHardening,
     [switch]$ValidateAfterDeploy,
     [switch]$IntegrationTestEnabled
@@ -88,6 +100,7 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -EvtxRetentionDays $EvtxRetentionDays `
     -EvtxChannels $EvtxChannels `
     -LogonMarkerEnabled $LogonMarkerEnabled `
+    -ProcessEventsEnabled $ProcessEventsEnabled `
     -AwHostname $AwHostname `
     -CustomRulesPath $CustomRulesPath `
     -CustomPolicyPath $CustomPolicyPath `
@@ -98,6 +111,17 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -PolicyEngineScheme $PolicyEngineScheme `
     -PolicyRefreshSeconds $PolicyRefreshSeconds `
     -PolicyCachePath $PolicyCachePath `
+    -HayabusaAutoUploadEnabled $HayabusaAutoUploadEnabled `
+    -HayabusaAutoUploadIntervalHours $HayabusaAutoUploadIntervalHours `
+    -HayabusaAutoUploadHoursBack $HayabusaAutoUploadHoursBack `
+    -HayabusaAutoUploadMode $HayabusaAutoUploadMode `
+    -HayabusaAutoUploadTaskName $HayabusaAutoUploadTaskName `
+    -File1CAutoUploadEnabled $File1CAutoUploadEnabled `
+    -File1CAutoUploadIntervalHours $File1CAutoUploadIntervalHours `
+    -File1CAutoUploadTaskName $File1CAutoUploadTaskName `
+    -File1CTargetHost $File1CTargetHost `
+    -File1CTargetUser $File1CTargetUser `
+    -File1CRegistryWorkbookPath $File1CRegistryWorkbookPath `
     -IntegrationTestEnabled:$IntegrationTestEnabled
 
 if (-not $SkipHardening) {
@@ -123,6 +147,7 @@ if (-not $SkipHardening) {
         -EvtxRetentionDays $EvtxRetentionDays `
         -EvtxChannels $EvtxChannels `
         -LogonMarkerEnabled $LogonMarkerEnabled `
+        -ProcessEventsEnabled $ProcessEventsEnabled `
         -AwHostname $AwHostname `
         -CustomRulesPath $CustomRulesPath `
         -CustomPolicyPath $CustomPolicyPath `

@@ -94,6 +94,89 @@
         - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
 
+    - name: Установить prune script для локального state
+      ansible.builtin.copy:
+        src: "{{ aw_repo_root }}/aw-server/aw-prune-local-state.sh"
+        dest: /usr/local/bin/aw-prune-local-state.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ограничить рост journald на aw-server
+      ansible.builtin.copy:
+        dest: /etc/systemd/journald.conf.d/aw-rus-retention.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Journal]
+          SystemMaxUse={{ aw_server_journal_system_max_use }}
+          RuntimeMaxUse={{ aw_server_journal_runtime_max_use }}
+          SystemKeepFree={{ aw_server_journal_system_keep_free }}
+      register: aw_journald_dropin
+
+    - name: Установить systemd service prune локального state
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/aw-prune-local-state.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Prune ActivityWatch local backups and temp state
+
+          [Service]
+          Type=oneshot
+          Environment=AW_DATA_DIR={{ aw_server_data_dir }}
+          Environment=AW_BACKUP_RETENTION_DAYS={{ aw_server_backup_retention_days }}
+          Environment=AW_BACKUP_KEEP_LAST_DB={{ aw_server_backup_keep_last_db }}
+          Environment=AW_BACKUP_KEEP_LAST_JSON={{ aw_server_backup_keep_last_json }}
+          ExecStart=/usr/local/bin/aw-prune-local-state.sh
+
+    - name: Установить systemd timer prune локального state
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/aw-prune-local-state.timer
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Daily prune of ActivityWatch local backups and temp state
+
+          [Timer]
+          OnCalendar=*-*-* 04:40:00
+          Persistent=true
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Перечитать systemd после retention unit/drop-in
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Включить и запустить timer prune локального state
+      ansible.builtin.systemd:
+        name: aw-prune-local-state.timer
+        enabled: true
+        state: started
+
+    - name: Применить journald retention без простоя
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - restart
+          - systemd-journald
+      when: aw_journald_dropin.changed
+      failed_when: false
+
+    - name: Сжать существующий journald до нового лимита
+      ansible.builtin.command:
+        argv:
+          - journalctl
+          - --vacuum-size={{ aw_server_journal_system_max_use }}
+      changed_when: true
+      failed_when: false
+
     - name: (Check mode) Пропустить установку релиза ActivityWatch
       ansible.builtin.debug:
         msg: "ansible_check_mode=true: download/unarchive/install of ActivityWatch release is skipped."
@@ -114,6 +197,11 @@
             dest: "{{ aw_release_dir }}"
             remote_src: true
             extra_opts: ["-o"]
+
+        - name: Удалить временный архив ActivityWatch после распаковки
+          ansible.builtin.file:
+            path: "{{ aw_archive_path }}"
+            state: absent
 
         - name: Найти распакованный каталог ActivityWatch
           ansible.builtin.find:
@@ -288,6 +376,22 @@
             dest: /opt/activitywatch/aw-server/apply_webui_ru_patch.sh
             mode: "0755"
 
+        - name: Проверить Influx token для AW worktime exporter
+          ansible.builtin.assert:
+            that:
+              - aw_worktime_influx_token is defined
+              - aw_worktime_influx_token | length > 0
+            fail_msg: "aw_worktime_influx_enabled=true, но aw_worktime_influx_token пуст. Exporter будет падать и Grafana не получит worktime-ряды."
+          when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Проверить Influx token для AW DLP exporter
+          ansible.builtin.assert:
+            that:
+              - aw_dlp_influx_token is defined
+              - aw_dlp_influx_token | length > 0
+            fail_msg: "aw_dlp_influx_enabled=true, но aw_dlp_influx_token пуст. Exporter будет падать и Grafana не получит DLP-ряды."
+          when: aw_dlp_influx_enabled | default(false) | bool
+
         - name: Записать /etc/activitywatch/aw-server.env перед хотфиксами
           ansible.builtin.copy:
             dest: /etc/activitywatch/aw-server.env
@@ -340,8 +444,16 @@
               AW_HEALTH_STRICT_FILEOPS={{ aw_health_strict_fileops | default(0) }}
               AW_MONITORED_WINDOWS_HOST={{ aw_monitored_windows_host }}
               AW_MONITORED_WINDOWS_HOSTNAME={{ aw_monitored_windows_hostname }}
+              AW_RUS_HEALTH_WORKTIME_API={{ aw_rus_health_worktime_api_base | default('http://127.0.0.1:5610') }}
               AW_RUS_HEALTH_STATE_DIR={{ aw_rus_health_state_dir }}
               AW_RUS_HEALTH_VALIDATION_DIR={{ aw_rus_health_validation_dir }}
+              AW_RUS_HEALTH_SESSION_EVENTS_MAX_AGE_SECONDS={{ aw_rus_health_session_events_max_age_seconds | default(86400) }}
+              AW_HAYABUSA_AUTO_CASE_ENABLED={{ 'true' if (aw_hayabusa_auto_case_enabled | default(true) | bool) else 'false' }}
+              AW_HAYABUSA_AUTO_CASE_MIN_SEVERITY={{ aw_hayabusa_auto_case_min_severity | default('medium') }}
+              AW_HAYABUSA_TELEGRAM_ENABLED={{ 'true' if (aw_hayabusa_telegram_enabled | default(false) | bool) else 'false' }}
+              AW_HAYABUSA_TELEGRAM_MIN_SEVERITY={{ aw_hayabusa_telegram_min_severity | default('high') }}
+              AW_HAYABUSA_TELEGRAM_BOT_TOKEN={{ aw_hayabusa_telegram_bot_token | default('') }}
+              AW_HAYABUSA_TELEGRAM_CHAT_IDS={{ aw_hayabusa_telegram_chat_ids | default('') }}
 
         - name: Создать каталог DLP policy engine
           ansible.builtin.file:
@@ -914,7 +1026,6 @@
           ansible.builtin.systemd:
             name: aw-worktime-influx-exporter.service
             state: started
-          failed_when: false
           when: aw_worktime_influx_enabled | default(false) | bool
 
         - name: Включить и перезапустить AW DLP Influx exporter timer
@@ -928,7 +1039,6 @@
           ansible.builtin.systemd:
             name: aw-dlp-influx-exporter.service
             state: started
-          failed_when: false
           when: aw_dlp_influx_enabled | default(false) | bool
 
         - name: Применить хотфиксы compiled JS чанков (Trends, Timespiral, Category helper)
@@ -1506,6 +1616,11 @@
             remote_src: true
             creates: "{{ aw_hayabusa_release_dir }}/{{ aw_hayabusa_binary_name }}"
 
+        - name: Удалить временный архив Hayabusa после распаковки
+          ansible.builtin.file:
+            path: "{{ aw_hayabusa_archive_path }}"
+            state: absent
+
         - name: Нормализовать права release Hayabusa
           ansible.builtin.file:
             path: "{{ aw_hayabusa_release_dir }}"
@@ -1545,6 +1660,124 @@
             group: root
             mode: "0755"
 
+        - name: Создать server-side ops bundle для Hayabusa
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          loop:
+            - /opt/activitywatch/aw-rus-ops
+            - /opt/activitywatch/aw-rus-ops/hayabusa
+            - /opt/activitywatch/aw-rus-ops/ansible
+            - /opt/activitywatch/aw-rus-ops/drop
+
+        - name: Положить исходный wrapper в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa.sh"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa.sh
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить helper link-case для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-link-case.py"
+            dest: /usr/local/bin/aw-hayabusa-link-case
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper link-case в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-link-case.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-link-case.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить helper from-windows для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-from-windows.py"
+            dest: /usr/local/bin/aw-hayabusa-from-windows
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper from-windows в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-from-windows.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-from-windows.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить README Hayabusa в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/README.md"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/README.md
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить helper autoprocess для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-autoprocess.py"
+            dest: /usr/local/bin/aw-hayabusa-autoprocess
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper autoprocess в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-autoprocess.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-autoprocess.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить helper case-alert для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-case-alert.py"
+            dest: /usr/local/bin/aw-hayabusa-case-alert
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить helper case-alert в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-case-alert.py"
+            dest: /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-case-alert.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить systemd unit aw-hayabusa-drop.service
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-hayabusa-drop.service"
+            dest: /etc/systemd/system/aw-hayabusa-drop.service
+            owner: root
+            group: root
+            mode: "0644"
+          notify: Перезагрузить systemd
+
+        - name: Установить systemd unit aw-hayabusa-drop.path
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-hayabusa-drop.path"
+            dest: /etc/systemd/system/aw-hayabusa-drop.path
+            owner: root
+            group: root
+            mode: "0644"
+          notify: Перезагрузить systemd
+
+        - name: Включить и запустить aw-hayabusa-drop.path
+          ansible.builtin.systemd:
+            name: aw-hayabusa-drop.path
+            enabled: true
+            state: started
+            daemon_reload: true
+
         - name: Проверить server-side runner через doctor
           ansible.builtin.command:
             cmd: /usr/local/bin/aw-hayabusa doctor
@@ -1572,6 +1805,7 @@
             cmd: /usr/local/bin/aw-rus-healthd.py --json
           register: aw_post_deploy_health
           changed_when: false
+          failed_when: false
 
         - name: Показать результат aw-rus-healthd
           ansible.builtin.debug:

@@ -30,6 +30,9 @@ sync_tree() {
 if [[ -d "$OLD_SERVER_CONFIG_DIR" ]]; then
   cp "$OLD_SERVER_CONFIG_DIR"/*.deployment-config.json "$TMP_SERVER_CONFIG_DIR"/
 fi
+if [[ -d "$SERVER_CONFIG_DIR" ]]; then
+  cp "$SERVER_CONFIG_DIR"/*.deployment-config.json "$TMP_SERVER_CONFIG_DIR"/
+fi
 
 rm -rf "${KIT_DIR}/ansible" "${KIT_DIR}/aw-server" "${KIT_DIR}/windows" "${KIT_DIR}/server-configs-"*
 

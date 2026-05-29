@@ -17,11 +17,6 @@
     ]
   },
   {
-    "id": "DLP",
-    "name": "DLP",
-    "elements": []
-  },
-  {
     "id": "worktime",
     "name": "Worktime",
     "elements": [

@@ -27,6 +27,7 @@ param(
     [int]$EvtxRetentionDays = 14,
     [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
+    [bool]$ProcessEventsEnabled = $true,
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
@@ -39,6 +40,17 @@ param(
     [string]$PolicyEngineScheme = 'http',
     [int]$PolicyRefreshSeconds = 300,
     [string]$PolicyCachePath,
+    [bool]$HayabusaAutoUploadEnabled = $true,
+    [int]$HayabusaAutoUploadIntervalHours = 6,
+    [int]$HayabusaAutoUploadHoursBack = 6,
+    [string]$HayabusaAutoUploadMode = 'incident',
+    [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
+    [bool]$File1CAutoUploadEnabled = $true,
+    [int]$File1CAutoUploadIntervalHours = 6,
+    [string]$File1CAutoUploadTaskName = 'ActivityWatch File1C Upload',
+    [string]$File1CTargetHost,
+    [string]$File1CTargetUser = 'igor',
+    [string]$File1CRegistryWorkbookPath = 'E:\USER1\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx',
     [switch]$IntegrationTestEnabled
 )
 
@@ -64,6 +76,8 @@ $emailCollectorSource = Join-Path $PSScriptRoot 'email-outbound-collector.ps1'
 $fileCollectorSource = Join-Path $PSScriptRoot 'file-operations-collector.ps1'
 $sessionCollectorSource = Join-Path $PSScriptRoot 'worktime-session-collector.ps1'
 $evtxExportScriptSource = Join-Path $PSScriptRoot 'export-evtx-for-hayabusa.ps1'
+$hayabusaUploadScriptSource = Join-Path $PSScriptRoot 'export-upload-hayabusa-to-aw-server.ps1'
+$file1cTelemetryScriptSource = Join-Path $PSScriptRoot 'export-upload-file-1c-telemetry.ps1'
 $exampleRulesSource = Join-Path $PSScriptRoot 'web-category-rules.example.json'
 $examplePolicySource = Join-Path $PSScriptRoot 'dlp-policy.example.json'
 
@@ -83,6 +97,8 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -FileCollectorScriptSource $fileCollectorSource `
     -SessionCollectorScriptSource $sessionCollectorSource `
     -EvtxExportScriptSource $evtxExportScriptSource `
+    -HayabusaUploadScriptSource $hayabusaUploadScriptSource `
+    -File1CTelemetryScriptSource $file1cTelemetryScriptSource `
     -ExampleRulesSource $exampleRulesSource `
     -ExamplePolicySource $examplePolicySource `
     -StateRoot $StateRoot `
@@ -107,6 +123,8 @@ $config = New-ActivityWatchDeploymentConfig `
     -FileCollectorScript $assetResult.FileCollectorScript `
     -SessionCollectorScript $assetResult.SessionCollectorScript `
     -EvtxExportScript $assetResult.EvtxExportScript `
+    -HayabusaUploadScript $assetResult.HayabusaUploadScript `
+    -File1CTelemetryScript $assetResult.File1CTelemetryScript `
     -RulesPath $assetResult.ActiveRules `
     -PolicyPath $assetResult.ActivePolicy `
     -PollSeconds $PollSeconds `
@@ -123,6 +141,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -EvtxRetentionDays $EvtxRetentionDays `
     -EvtxChannels $EvtxChannels `
     -LogonMarkerEnabled $LogonMarkerEnabled `
+    -ProcessEventsEnabled $ProcessEventsEnabled `
     -AwHostname $AwHostname `
     -PolicyMode $PolicyMode `
     -PolicyEngineEnabled $PolicyEngineEnabled `
@@ -131,6 +150,17 @@ $config = New-ActivityWatchDeploymentConfig `
     -PolicyEngineScheme $PolicyEngineScheme `
     -PolicyRefreshSeconds $PolicyRefreshSeconds `
     -PolicyCachePath $PolicyCachePath `
+    -HayabusaAutoUploadEnabled $HayabusaAutoUploadEnabled `
+    -HayabusaAutoUploadIntervalHours $HayabusaAutoUploadIntervalHours `
+    -HayabusaAutoUploadHoursBack $HayabusaAutoUploadHoursBack `
+    -HayabusaAutoUploadMode $HayabusaAutoUploadMode `
+    -HayabusaAutoUploadTaskName $HayabusaAutoUploadTaskName `
+    -File1CAutoUploadEnabled $File1CAutoUploadEnabled `
+    -File1CAutoUploadIntervalHours $File1CAutoUploadIntervalHours `
+    -File1CAutoUploadTaskName $File1CAutoUploadTaskName `
+    -File1CTargetHost $File1CTargetHost `
+    -File1CTargetUser $File1CTargetUser `
+    -File1CRegistryWorkbookPath $File1CRegistryWorkbookPath `
     -LaunchScriptPath $launchScriptPath `
     -RecoveryScriptPath $recoveryScriptPath `
     -UserTasks $taskDefinitions `
@@ -142,6 +172,8 @@ Remove-LegacyActivityWatchEntries
 Set-ActivityWatchAcl -InstallRoot $InstallRoot -StateRoot $StateRoot -LogsRoot $logsRoot
 Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptPath $launchScriptPath -ConfigPath $configPath
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $recoveryScriptPath -ConfigPath $configPath
+Register-ActivityWatchHayabusaAutoUploadTask -ConfigPath $configPath
+Register-ActivityWatchFile1CAutoUploadTask -ConfigPath $configPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
 Write-Host 'ActivityWatch развёрнут для пользователей:'

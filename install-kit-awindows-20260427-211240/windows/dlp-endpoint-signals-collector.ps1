@@ -182,37 +182,62 @@ function Read-TransportQueueItems {
     return $items
 }
 
+function Write-TransportQueueItems {
+    param([object[]]$Items = @())
+
+    $lines = @()
+    foreach ($item in @($Items)) {
+        if ($null -eq $item) { continue }
+        $lines += ($item | ConvertTo-Json -Compress)
+    }
+
+    Set-Content -LiteralPath $script:TransportQueuePath -Value $lines -Encoding UTF8
+    $script:TransportMetrics.queueDepth = @($Items).Count
+}
+
 function Flush-TransportQueue {
     param([int]$MaxItems = 200)
     if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) { return }
+
+    $items = @()
     $lock = Get-TransportQueueLock
     try {
-        $items = Read-TransportQueueItems
-        $script:TransportMetrics.queueDepth = $items.Count
-        if ($items.Count -eq 0) { return }
-        $left = New-Object System.Collections.Generic.List[object]
-        $sent = 0
-        foreach ($item in $items) {
-            if ($sent -ge $MaxItems) {
-                $left.Add($item)
-                continue
-            }
-            try {
-                Invoke-AwJsonPost -Uri ([string]$item.uri) -Json ([string]$item.payload)
-                $sent++
-                $script:TransportMetrics.eventsFlushed++
-            }
-            catch {
-                $script:TransportMetrics.sendFailures++
-                $left.Add($item)
-            }
+        $items = @(Read-TransportQueueItems)
+        $itemCount = @($items).Count
+        $script:TransportMetrics.queueDepth = $itemCount
+        if ($itemCount -eq 0) { return }
+
+        # Drain the on-disk queue under lock, then release the lock before network I/O.
+        # This prevents one stalled POST from blocking every concurrent enqueue/flush attempt.
+        Write-TransportQueueItems -Items @()
+    }
+    finally {
+        $lock.Dispose()
+    }
+
+    $retryItems = @()
+    $sent = 0
+    foreach ($item in @($items)) {
+        if ($null -eq $item) { continue }
+        if ($sent -ge $MaxItems) {
+            $retryItems += $item
+            continue
         }
-        foreach ($item in $items | Select-Object -Skip ($sent + $left.Count)) {
-            $left.Add($item)
+        try {
+            Invoke-AwJsonPost -Uri ([string]$item.uri) -Json ([string]$item.payload)
+            $sent++
+            $script:TransportMetrics.eventsFlushed++
         }
-        $lines = @($left | ForEach-Object { $_ | ConvertTo-Json -Compress })
-        Set-Content -LiteralPath $script:TransportQueuePath -Value $lines -Encoding UTF8
-        $script:TransportMetrics.queueDepth = $left.Count
+        catch {
+            $script:TransportMetrics.sendFailures++
+            $retryItems += $item
+        }
+    }
+
+    $lock = Get-TransportQueueLock
+    try {
+        $concurrentItems = @(Read-TransportQueueItems)
+        Write-TransportQueueItems -Items (@($retryItems) + @($concurrentItems))
     }
     finally {
         $lock.Dispose()

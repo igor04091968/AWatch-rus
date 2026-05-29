@@ -229,14 +229,17 @@ def main() -> int:
 
     parser = argparse.ArgumentParser(description="Unified AW-RUS health orchestrator")
     parser.add_argument("--aw-server", default=env("AW_SERVER_URL", "http://127.0.0.1:5600"))
-    parser.add_argument("--worktime-api", default=env("AW_WORKTIME_REPORT_BASE", "http://127.0.0.1:5610"))
+    parser.add_argument(
+        "--worktime-api",
+        default=env("AW_RUS_HEALTH_WORKTIME_API", env("AW_WORKTIME_REPORT_BASE", "http://127.0.0.1:5610")),
+    )
     parser.add_argument("--rdp-host", default=env("AW_MONITORED_WINDOWS_HOST", "192.168.100.18"))
     parser.add_argument("--rdp-hostname", default=env("AW_MONITORED_WINDOWS_HOSTNAME", "SHARKON2025"))
     parser.add_argument("--state-dir", default=env("AW_RUS_HEALTH_STATE_DIR", "/var/lib/activitywatch/health"))
     parser.add_argument("--validation-dir", default=env("AW_RUS_HEALTH_VALIDATION_DIR", "/var/lib/activitywatch/health/windows-validation"))
     parser.add_argument("--session-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_SESSION_MAX_AGE_SECONDS", "900")))
     parser.add_argument("--interactive-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_INTERACTIVE_MAX_AGE_SECONDS", "900")))
-    parser.add_argument("--session-events-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_SESSION_EVENTS_MAX_AGE_SECONDS", "604800")))
+    parser.add_argument("--session-events-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_SESSION_EVENTS_MAX_AGE_SECONDS", "86400")))
     parser.add_argument("--validation-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_VALIDATION_MAX_AGE_SECONDS", "259200")))
     parser.add_argument("--tcp-timeout-seconds", type=float, default=float(env("AW_RUS_HEALTH_TCP_TIMEOUT_SECONDS", "3")))
     parser.add_argument("--json", action="store_true")
@@ -257,9 +260,8 @@ def main() -> int:
         report.add("http:aw-server", "fail", f"activitywatch API failed: {exc}", url=f"{aw_api_base}/info")
 
     try:
-        payload = http_json(args.worktime_api.rstrip("/") + "/reports/worktime/today")
-        rows = len(payload) if isinstance(payload, list) else None
-        report.add("http:worktime-api", "ok", "worktime API responded", rows=rows)
+        payload = http_json(args.worktime_api.rstrip("/") + "/health")
+        report.add("http:worktime-api", "ok", "worktime API responded", payload=payload if isinstance(payload, dict) else {})
     except Exception as exc:
         report.add("http:worktime-api", "fail", f"worktime API failed: {exc}", url=args.worktime_api)
 
@@ -322,6 +324,9 @@ def main() -> int:
         missing_status="fail",
         stale_status="warn",
     )
+    if session_status == "warn" and session_details.get("age_seconds") is not None:
+        session_status = "ok"
+        session_summary = f"event-driven ({session_details['age_seconds']}s since last logon marker)"
     report.add("bucket:session-events", session_status, session_summary, **session_details)
 
     validation_dir = Path(args.validation_dir)

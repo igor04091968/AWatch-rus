@@ -24,6 +24,7 @@ param(
     [int]$EvtxRetentionDays,
     [string[]]$EvtxChannels,
     [bool]$LogonMarkerEnabled,
+    [bool]$ProcessEventsEnabled,
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,
@@ -70,6 +71,8 @@ $effectiveEndpointCollector = if ($existingConfig -and $existingConfig.paths.PSO
 $effectiveFileCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$existingConfig.paths.fileCollectorScript } else { Join-Path $effectiveStateRoot 'file-operations-collector.ps1' }
 $effectiveSessionCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$existingConfig.paths.sessionCollectorScript } else { Join-Path $effectiveStateRoot 'worktime-session-collector.ps1' }
 $effectiveEvtxExportScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'evtxExportScript') { [string]$existingConfig.paths.evtxExportScript } else { Join-Path $effectiveStateRoot 'export-evtx-for-hayabusa.ps1' }
+$effectiveHayabusaUploadScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'hayabusaUploadScript') { [string]$existingConfig.paths.hayabusaUploadScript } else { Join-Path $effectiveStateRoot 'export-upload-hayabusa-to-aw-server.ps1' }
+$effectiveFile1CTelemetryScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'file1cTelemetryScript') { [string]$existingConfig.paths.file1cTelemetryScript } else { Join-Path $effectiveStateRoot 'export-upload-file-1c-telemetry.ps1' }
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 $effectivePolicyClientScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$existingConfig.paths.policyClientScript } else { Join-Path $effectiveStateRoot 'dlp-policy-client.ps1' }
@@ -91,6 +94,7 @@ $effectiveEvtxExportRoot = if ($PSBoundParameters.ContainsKey('EvtxExportRoot') 
 $effectiveEvtxRetentionDays = if ($PSBoundParameters.ContainsKey('EvtxRetentionDays')) { [int]$EvtxRetentionDays } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'retentionDays') { [int]$existingConfig.forensics.retentionDays } else { 14 }
 $effectiveEvtxChannels = if ($PSBoundParameters.ContainsKey('EvtxChannels')) { @($EvtxChannels) } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'evtxChannels') { @($existingConfig.forensics.evtxChannels) } else { @() }
 $effectiveLogonMarkerEnabled = if ($PSBoundParameters.ContainsKey('LogonMarkerEnabled')) { [bool]$LogonMarkerEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$existingConfig.sessionEvents.logonEnabled } else { $true }
+$effectiveProcessEventsEnabled = if ($PSBoundParameters.ContainsKey('ProcessEventsEnabled')) { [bool]$ProcessEventsEnabled } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'sessionEvents' -and $existingConfig.sessionEvents.PSObject.Properties.Name -contains 'processEventsEnabled') { [bool]$existingConfig.sessionEvents.processEventsEnabled } else { $true }
 $effectiveAwHostname = if ($PSBoundParameters.ContainsKey('AwHostname') -and -not [string]::IsNullOrWhiteSpace($AwHostname)) { [string]$AwHostname } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.awHostname)) { [string]$existingConfig.awHostname } else { [string]$env:COMPUTERNAME }
 $effectiveVersion = if ($Version) { $Version } elseif ($existingConfig) { [string]$existingConfig.package.version } else { 'v0.13.2' }
 $effectivePolicyMode = if ($PSBoundParameters.ContainsKey('PolicyMode') -and $PolicyMode) { [string]$PolicyMode } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'mode') { [string]$existingConfig.policyEngine.mode } else { 'local' }
@@ -100,6 +104,31 @@ $effectivePolicyEnginePort = if ($PSBoundParameters.ContainsKey('PolicyEnginePor
 $effectivePolicyEngineScheme = if ($PSBoundParameters.ContainsKey('PolicyEngineScheme') -and $PolicyEngineScheme) { [string]$PolicyEngineScheme } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'scheme') { [string]$existingConfig.policyEngine.scheme } else { 'http' }
 $effectivePolicyRefreshSeconds = if ($PSBoundParameters.ContainsKey('PolicyRefreshSeconds')) { [int]$PolicyRefreshSeconds } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'refreshSeconds') { [int]$existingConfig.policyEngine.refreshSeconds } else { 300 }
 $effectivePolicyCachePath = if ($PSBoundParameters.ContainsKey('PolicyCachePath') -and $PolicyCachePath) { [string]$PolicyCachePath } elseif ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'policyEngine' -and $existingConfig.policyEngine.PSObject.Properties.Name -contains 'cachePath') { [string]$existingConfig.policyEngine.cachePath } else { Join-Path $effectiveStateRoot 'dlp-policy-cache.json' }
+$effectiveHayabusaAutoUploadEnabled = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.forensics.hayabusaAutomation.enabled } else { $true }
+$effectiveHayabusaAutoUploadIntervalHours = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'intervalHours') { [int]$existingConfig.forensics.hayabusaAutomation.intervalHours } else { 6 }
+$effectiveHayabusaAutoUploadHoursBack = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'hoursBack') { [int]$existingConfig.forensics.hayabusaAutomation.hoursBack } else { 6 }
+$effectiveHayabusaAutoUploadMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'mode') { [string]$existingConfig.forensics.hayabusaAutomation.mode } else { 'incident' }
+$effectiveHayabusaAutoUploadTaskName = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'taskName') { [string]$existingConfig.forensics.hayabusaAutomation.taskName } else { 'ActivityWatch Hayabusa Upload' }
+$effectiveFile1CAutoUploadEnabled = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.analytics.file1cAutomation.enabled } else { $true }
+$effectiveFile1CAutoUploadIntervalHours = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'intervalHours') { [int]$existingConfig.analytics.file1cAutomation.intervalHours } else { 6 }
+$effectiveFile1CAutoUploadTaskName = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'taskName') { [string]$existingConfig.analytics.file1cAutomation.taskName } else { 'ActivityWatch File1C Upload' }
+$effectiveFile1CTargetHost = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetHost') { [string]$existingConfig.analytics.file1cAutomation.targetHost } else { '' }
+$effectiveFile1CTargetUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetUser') { [string]$existingConfig.analytics.file1cAutomation.targetUser } else { 'igor' }
+
+if ([string]::IsNullOrWhiteSpace($effectiveFile1CTargetHost)) {
+    $file1cLogPath = Join-Path $effectiveLogsRoot 'file1c-telemetry.log'
+    if (Test-Path -LiteralPath $file1cLogPath) {
+        $recoveredFile1CHost = ''
+        foreach ($line in Get-Content -LiteralPath $file1cLogPath -Encoding UTF8) {
+            if ([string]$line -match 'upload complete analyticsHost=([^\s]+)') {
+                $recoveredFile1CHost = [string]$Matches[1]
+            }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($recoveredFile1CHost)) {
+            $effectiveFile1CTargetHost = $recoveredFile1CHost
+        }
+    }
+}
 
 $effectiveUsers = if ($Users -or $UserListPath) {
     Normalize-ActivityWatchUsers -Users $Users -UserListPath $UserListPath -Domain $Domain
@@ -131,6 +160,8 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -FileCollectorScriptSource (Join-Path $PSScriptRoot 'file-operations-collector.ps1') `
     -SessionCollectorScriptSource (Join-Path $PSScriptRoot 'worktime-session-collector.ps1') `
     -EvtxExportScriptSource (Join-Path $PSScriptRoot 'export-evtx-for-hayabusa.ps1') `
+    -HayabusaUploadScriptSource (Join-Path $PSScriptRoot 'export-upload-hayabusa-to-aw-server.ps1') `
+    -File1CTelemetryScriptSource (Join-Path $PSScriptRoot 'export-upload-file-1c-telemetry.ps1') `
     -ExampleRulesSource (Join-Path $PSScriptRoot 'web-category-rules.example.json') `
     -ExamplePolicySource (Join-Path $PSScriptRoot 'dlp-policy.example.json') `
     -StateRoot $effectiveStateRoot `
@@ -155,6 +186,8 @@ $config = New-ActivityWatchDeploymentConfig `
     -FileCollectorScript $effectiveFileCollector `
     -SessionCollectorScript $effectiveSessionCollector `
     -EvtxExportScript $effectiveEvtxExportScript `
+    -HayabusaUploadScript $effectiveHayabusaUploadScript `
+    -File1CTelemetryScript $effectiveFile1CTelemetryScript `
     -RulesPath $effectiveRules `
     -PolicyPath $effectivePolicy `
     -PollSeconds $effectivePollSeconds `
@@ -171,6 +204,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -EvtxRetentionDays $effectiveEvtxRetentionDays `
     -EvtxChannels $effectiveEvtxChannels `
     -LogonMarkerEnabled $effectiveLogonMarkerEnabled `
+    -ProcessEventsEnabled $effectiveProcessEventsEnabled `
     -AwHostname $effectiveAwHostname `
     -PolicyMode $effectivePolicyMode `
     -PolicyEngineEnabled $effectivePolicyEngineEnabled `
@@ -179,6 +213,16 @@ $config = New-ActivityWatchDeploymentConfig `
     -PolicyEngineScheme $effectivePolicyEngineScheme `
     -PolicyRefreshSeconds $effectivePolicyRefreshSeconds `
     -PolicyCachePath $effectivePolicyCachePath `
+    -HayabusaAutoUploadEnabled $effectiveHayabusaAutoUploadEnabled `
+    -HayabusaAutoUploadIntervalHours $effectiveHayabusaAutoUploadIntervalHours `
+    -HayabusaAutoUploadHoursBack $effectiveHayabusaAutoUploadHoursBack `
+    -HayabusaAutoUploadMode $effectiveHayabusaAutoUploadMode `
+    -HayabusaAutoUploadTaskName $effectiveHayabusaAutoUploadTaskName `
+    -File1CAutoUploadEnabled $effectiveFile1CAutoUploadEnabled `
+    -File1CAutoUploadIntervalHours $effectiveFile1CAutoUploadIntervalHours `
+    -File1CAutoUploadTaskName $effectiveFile1CAutoUploadTaskName `
+    -File1CTargetHost $effectiveFile1CTargetHost `
+    -File1CTargetUser $effectiveFile1CTargetUser `
     -LaunchScriptPath $effectiveLaunchScript `
     -RecoveryScriptPath $effectiveRecoveryScript `
     -UserTasks $taskDefinitions `
@@ -189,6 +233,8 @@ Remove-LegacyActivityWatchEntries
 Set-ActivityWatchAcl -InstallRoot $effectiveInstallRoot -StateRoot $effectiveStateRoot -LogsRoot $effectiveLogsRoot
 Register-ActivityWatchUserTasks -TaskDefinitions $taskDefinitions -LaunchScriptPath $effectiveLaunchScript -ConfigPath $effectiveConfigPath
 Register-ActivityWatchRecoveryTask -TaskName $config.recovery.taskName -RecoveryScriptPath $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
+Register-ActivityWatchHayabusaAutoUploadTask -ConfigPath $effectiveConfigPath
+Register-ActivityWatchFile1CAutoUploadTask -ConfigPath $effectiveConfigPath
 Start-ActivityWatchTasks -TaskDefinitions $taskDefinitions -RecoveryTaskName $config.recovery.taskName
 
 Write-Host 'Укрепление и восстановление ActivityWatch завершены.'

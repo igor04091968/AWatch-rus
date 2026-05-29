@@ -94,11 +94,13 @@ function Ensure-Bucket {
     param(
         [Parameter(Mandatory = $true)][string]$ApiBase,
         [Parameter(Mandatory = $true)][string]$BucketId,
-        [Parameter(Mandatory = $true)][string]$HostnameValue
+        [Parameter(Mandatory = $true)][string]$HostnameValue,
+        [string]$ClientName = 'aw-worktime-session-collector',
+        [string]$BucketType = 'aw.worktime.session'
     )
     try { Invoke-RestMethod -Method Get -Uri "$ApiBase/buckets/$BucketId" -ErrorAction Stop | Out-Null; return } catch { Write-Verbose "Bucket not found, creating: $BucketId" }
 
-    $body = @{ client='aw-worktime-session-collector'; type='aw.worktime.session'; hostname=$HostnameValue } | ConvertTo-Json -Compress
+    $body = @{ client=$ClientName; type=$BucketType; hostname=$HostnameValue } | ConvertTo-Json -Compress
     $attempts = 0
     while ($attempts -lt 3) {
         $attempts++
@@ -230,16 +232,282 @@ function Get-CanonicalUserId {
     return "$HostnameValue\$normalizedUser"
 }
 
+function Get-SessionEventsBucketId {
+    param(
+        [pscustomobject]$Config,
+        [string]$HostnameValue
+    )
+    $prefix = 'aw-session-events'
+    if (
+        $Config -and
+        $Config.PSObject.Properties.Name -contains 'sessionEvents' -and
+        $Config.sessionEvents -and
+        $Config.sessionEvents.PSObject.Properties.Name -contains 'bucketPrefix' -and
+        -not [string]::IsNullOrWhiteSpace([string]$Config.sessionEvents.bucketPrefix)
+    ) {
+        $prefix = [string]$Config.sessionEvents.bucketPrefix
+    }
+    return ('{0}_{1}' -f $prefix, $HostnameValue)
+}
+
+function Test-SessionProcessEventsEnabled {
+    param([pscustomobject]$Config)
+    if (
+        $Config -and
+        $Config.PSObject.Properties.Name -contains 'sessionEvents' -and
+        $Config.sessionEvents -and
+        $Config.sessionEvents.PSObject.Properties.Name -contains 'processEventsEnabled'
+    ) {
+        return [bool]$Config.sessionEvents.processEventsEnabled
+    }
+    return $true
+}
+
+function Get-ProcessStatePath {
+    param([pscustomobject]$Config)
+    $stateRoot = ''
+    if ($Config -and $Config.PSObject.Properties.Name -contains 'paths' -and $Config.paths) {
+        if ($Config.paths.PSObject.Properties.Name -contains 'stateRoot') {
+            $stateRoot = [string]$Config.paths.stateRoot
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($stateRoot)) {
+        $stateRoot = 'C:\ProgramData\AWatch-rus'
+    }
+    return (Join-Path $stateRoot 'session-process-state.json')
+}
+
+function Load-ProcessState {
+    param([string]$Path)
+    $map = @{}
+    try {
+        if (Test-Path -LiteralPath $Path) {
+            $raw = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
+            if (-not [string]::IsNullOrWhiteSpace($raw)) {
+                $obj = $raw | ConvertFrom-Json -ErrorAction Stop
+                foreach ($item in @($obj.processes)) {
+                    if (-not $item) { continue }
+                    $key = [string]$item.key
+                    if ([string]::IsNullOrWhiteSpace($key)) { continue }
+                    $map[$key] = $item
+                }
+            }
+        }
+    }
+    catch {
+        Write-Verbose "Process state load error: $($_.Exception.Message)"
+    }
+    return $map
+}
+
+function Save-ProcessState {
+    param(
+        [string]$Path,
+        [hashtable]$Map
+    )
+    try {
+        $dir = Split-Path -Path $Path -Parent
+        if ($dir -and -not (Test-Path -LiteralPath $dir)) {
+            New-Item -Path $dir -ItemType Directory -Force | Out-Null
+        }
+        $items = @()
+        foreach ($entry in $Map.GetEnumerator()) {
+            $value = $entry.Value
+            if ($null -eq $value) { continue }
+            $items += [pscustomobject]@{
+                key         = [string]$entry.Key
+                processId   = [int]$value.processId
+                sessionId   = [int]$value.sessionId
+                username    = [string]$value.username
+                userId      = [string]$value.userId
+                state       = [string]$value.state
+                processName = [string]$value.processName
+                commandLine = [string]$value.commandLine
+                createdAt   = [string]$value.createdAt
+                hostname    = [string]$value.hostname
+            }
+        }
+        $payload = [pscustomobject]@{ processes = $items }
+        $payload | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $Path -Encoding UTF8
+    }
+    catch {
+        Write-Verbose "Process state save error: $($_.Exception.Message)"
+    }
+}
+
+function Test-ExcludedSessionProcess {
+    param(
+        [string]$Name,
+        [string]$CommandLine
+    )
+    $n = [string]$Name
+    if ([string]::IsNullOrWhiteSpace($n)) { return $true }
+    if ($n -match '^(Idle|System|Registry|svchost|services|lsass|winlogon|csrss|fontdrvhost|dwm|taskhostw|sihost|explorer)\.exe$') { return $true }
+    if ($n -match '^(aw-watcher-afk|aw-watcher-window|conhost)\.exe$') { return $true }
+    return $false
+}
+
+function Get-SessionProcessSnapshot {
+    param(
+        [pscustomobject]$Config,
+        [string]$HostnameValue,
+        [object[]]$SessionRecords
+    )
+    $bySession = @{}
+    foreach ($rec in @($SessionRecords)) {
+        if ($null -eq $rec) { continue }
+        $sid = [int]$rec.sessionId
+        $bySession[$sid] = [pscustomobject]@{
+            username = [string]$rec.username
+            userId   = Get-CanonicalUserId -Config $Config -HostnameValue $HostnameValue -Username ([string]$rec.username)
+            state    = [string]$rec.state
+        }
+    }
+
+    $snapshot = @{}
+    if ($bySession.Count -eq 0) {
+        return $snapshot
+    }
+
+    try {
+        $procs = Get-Process -ErrorAction Stop | Where-Object { $bySession.ContainsKey([int]$_.SessionId) }
+    }
+    catch {
+        Write-Verbose "Process snapshot error: $($_.Exception.Message)"
+        return $snapshot
+    }
+
+    foreach ($proc in @($procs)) {
+        try {
+            $sid = [int]$proc.SessionId
+        }
+        catch {
+            continue
+        }
+        if (-not $bySession.ContainsKey($sid)) { continue }
+
+        $name = [string]$proc.ProcessName
+        if ($name -and $name -notmatch '\.exe$') {
+            $name = "$name.exe"
+        }
+        $commandLine = ''
+        if (Test-ExcludedSessionProcess -Name $name -CommandLine $commandLine) { continue }
+
+        $createdAt = ''
+        try {
+            if ($proc.StartTime) {
+                $createdAt = $proc.StartTime.ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+            }
+        }
+        catch {
+            $createdAt = ''
+        }
+        if ([string]::IsNullOrWhiteSpace($createdAt)) {
+            $createdAt = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+        }
+
+        $key = ('{0}|{1}|{2}' -f $sid, [int]$proc.Id, $createdAt)
+        $sessionMeta = $bySession[$sid]
+        $snapshot[$key] = [pscustomobject]@{
+            processId   = [int]$proc.Id
+            sessionId   = $sid
+            username    = [string]$sessionMeta.username
+            userId      = [string]$sessionMeta.userId
+            state       = [string]$sessionMeta.state
+            processName = $name
+            commandLine = $commandLine
+            createdAt   = $createdAt
+            hostname    = $HostnameValue
+        }
+    }
+    return $snapshot
+}
+
+function Publish-SessionProcessEvents {
+    param(
+        [string]$ApiBase,
+        [string]$BucketId,
+        [hashtable]$Previous,
+        [hashtable]$Current
+    )
+    foreach ($entry in $Current.GetEnumerator()) {
+        if ($Previous.ContainsKey($entry.Key)) { continue }
+        $item = $entry.Value
+        $payload = [pscustomobject]@{
+            timestamp = [string]$item.createdAt
+            duration  = 0
+            data      = [pscustomobject]@{
+                eventType   = 'process_start'
+                username    = [string]$item.username
+                userId      = [string]$item.userId
+                sessionId   = [int]$item.sessionId
+                state       = [string]$item.state
+                processId   = [int]$item.processId
+                processName = [string]$item.processName
+                commandLine = [string]$item.commandLine
+                createdAt   = [string]$item.createdAt
+                hostname    = [string]$item.hostname
+                source      = 'worktime-session-collector'
+            }
+        } | ConvertTo-Json -Depth 6 -Compress
+        try {
+            [void](Invoke-AwJsonPost -Uri "$ApiBase/buckets/$BucketId/heartbeat?pulsetime=1" -Json $payload)
+        }
+        catch {
+            Write-Verbose "Process start publish error: $($_.Exception.Message)"
+        }
+    }
+
+    $nowUtc = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
+    foreach ($entry in $Previous.GetEnumerator()) {
+        if ($Current.ContainsKey($entry.Key)) { continue }
+        $item = $entry.Value
+        $payload = [pscustomobject]@{
+            timestamp = $nowUtc
+            duration  = 0
+            data      = [pscustomobject]@{
+                eventType   = 'process_stop'
+                username    = [string]$item.username
+                userId      = [string]$item.userId
+                sessionId   = [int]$item.sessionId
+                state       = [string]$item.state
+                processId   = [int]$item.processId
+                processName = [string]$item.processName
+                commandLine = [string]$item.commandLine
+                createdAt   = [string]$item.createdAt
+                hostname    = [string]$item.hostname
+                source      = 'worktime-session-collector'
+            }
+        } | ConvertTo-Json -Depth 6 -Compress
+        try {
+            [void](Invoke-AwJsonPost -Uri "$ApiBase/buckets/$BucketId/heartbeat?pulsetime=1" -Json $payload)
+        }
+        catch {
+            Write-Verbose "Process stop publish error: $($_.Exception.Message)"
+        }
+    }
+}
+
 # Main
 $cfg = Get-Config -Path $ConfigPath
 $hostValue = if ($Hostname -and $Hostname.Trim()) { $Hostname.Trim() } elseif ($cfg -and $cfg.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]$cfg.awHostname)) { [string]$cfg.awHostname } elseif ($cfg -and $cfg.awHostname) { [string]$cfg.awHostname } else { [string]$env:COMPUTERNAME }
 try { $apiBase = '{0}://{1}:{2}/api/0' -f [string]$cfg.server.scheme, [string]$cfg.server.host, [string]$cfg.server.port } catch { throw 'Invalid server configuration in config file.' }
 
 $bucketId = 'aw-worktime-sessions_' + $hostValue
+$sessionEventsBucketId = Get-SessionEventsBucketId -Config $cfg -HostnameValue $hostValue
+$processEventsEnabled = Test-SessionProcessEventsEnabled -Config $cfg
+$processStatePath = Get-ProcessStatePath -Config $cfg
 $sleepSec = if ($PollSeconds -gt 0) { $PollSeconds } elseif ($cfg.collector -and $cfg.collector.pollSeconds) { [int]$cfg.collector.pollSeconds } else { 30 }
 $pulse = [Math]::Max($sleepSec * 3, 30)
 
 Ensure-Bucket -ApiBase $apiBase -BucketId $bucketId -HostnameValue $hostValue
+if ($processEventsEnabled) {
+    Ensure-Bucket -ApiBase $apiBase -BucketId $sessionEventsBucketId -HostnameValue $hostValue -ClientName 'aw-session-events' -BucketType 'aw.session.event'
+    $previousProcessState = Load-ProcessState -Path $processStatePath
+}
+else {
+    $previousProcessState = @{}
+}
 
 while ($true) {
     $now = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ss.fffZ')
@@ -263,6 +531,13 @@ while ($true) {
                 state       = 'Unknown'
             }
         )
+    }
+
+    if ($processEventsEnabled) {
+        $currentProcessState = Get-SessionProcessSnapshot -Config $cfg -HostnameValue $hostValue -SessionRecords $records
+        Publish-SessionProcessEvents -ApiBase $apiBase -BucketId $sessionEventsBucketId -Previous $previousProcessState -Current $currentProcessState
+        Save-ProcessState -Path $processStatePath -Map $currentProcessState
+        $previousProcessState = $currentProcessState
     }
 
     foreach ($rec in $records) {

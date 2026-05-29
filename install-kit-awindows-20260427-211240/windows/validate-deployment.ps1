@@ -30,14 +30,30 @@ $pulseSeconds = if ($config.PSObject.Properties.Name -contains 'collector' -and 
 $freshnessSeconds = [Math]::Max($pollSeconds * 3, 30)
 $sessionFreshnessSeconds = [Math]::Max($pollSeconds * 4, 45)
 $transportStaleSeconds = [Math]::Max($pollSeconds * 12, 180)
+$endpointFreshnessSeconds = [Math]::Max($transportStaleSeconds, 300)
 $queueMaxDepth = 1000
 
 $afkExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$config.collectors.afkEnabled } else { $true }
 $windowExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$config.collectors.windowEnabled } else { $true }
 $fileOpsExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]$config.collectors.fileOpsEnabled } else { $true }
+$sessionEventsConfig = if ($config.PSObject.Properties.Name -contains 'sessionEvents') { $config.sessionEvents } else { $null }
+$sessionLogonEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$sessionEventsConfig.logonEnabled } else { $false }
+$sessionProcessEventsEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'processEventsEnabled') { [bool]$sessionEventsConfig.processEventsEnabled } else { $true }
+$sessionEventsBucketId = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'bucketPrefix' -and -not [string]::IsNullOrWhiteSpace([string]$sessionEventsConfig.bucketPrefix)) {
+    ('{0}_{1}' -f [string]$sessionEventsConfig.bucketPrefix, $awHostname)
+}
+else {
+    'aw-session-events_' + $awHostname
+}
 
 function Get-LoggedOnUsers {
+    param(
+        [bool]$IncludeDisconnected = $false
+    )
+
     $users = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $activeStates = @('Active', 'Активно')
+    $inactiveStates = @('Disc', 'Disconnected', 'Idle', 'Listen', 'Диск', 'Откл', 'Отключен')
     try {
         $lines = & quser.exe 2>$null
         foreach ($line in @($lines)) {
@@ -50,6 +66,20 @@ function Get-LoggedOnUsers {
             if ($parts.Count -lt 1) { continue }
             $user = [string]$parts[0]
             if ([string]::IsNullOrWhiteSpace($user)) { continue }
+            $state = $null
+            foreach ($part in @($parts | Select-Object -Skip 1)) {
+                $token = [string]$part
+                if ([string]::IsNullOrWhiteSpace($token)) { continue }
+                if ($activeStates -contains $token -or $inactiveStates -contains $token) {
+                    $state = $token
+                    break
+                }
+            }
+            if ($null -ne $state -and $activeStates -notcontains $state) {
+                if (-not $IncludeDisconnected -or $inactiveStates -notcontains $state) {
+                    continue
+                }
+            }
             [void]$users.Add($user)
             [void]$users.Add(('{0}\{1}' -f $env:COMPUTERNAME, $user))
             if (-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) {
@@ -361,13 +391,27 @@ $endpointCollectorProcesses = @(Get-CollectorProcesses -ScriptPath $endpointColl
 $fileCollectorProcesses = if ($fileOpsExpected) { @(Get-CollectorProcesses -ScriptPath $fileCollectorScript) } else { @() }
 $browserCollectorProcesses = @(Get-CollectorProcesses -ScriptPath $collectorScript)
 
-$loggedOnUsers = Get-LoggedOnUsers
-$sessionBoundUsers = @(
+$liveLoggedOnUsers = Get-LoggedOnUsers
+$interactiveUsers = Get-LoggedOnUsers -IncludeDisconnected $true
+$liveSessionBoundUsers = @(
     @($config.userTasks) |
-        Where-Object { Test-UserHasSession -UserId ([string]$_.userId) -LoggedOnUsers $loggedOnUsers } |
+        Where-Object { Test-UserHasSession -UserId ([string]$_.userId) -LoggedOnUsers $liveLoggedOnUsers } |
         ForEach-Object { [string]$_.userId }
 )
-$sessionScopedExpectedCount = [int]$sessionBoundUsers.Count
+$interactiveSessionBoundUsers = @(
+    @($config.userTasks) |
+        Where-Object { Test-UserHasSession -UserId ([string]$_.userId) -LoggedOnUsers $interactiveUsers } |
+        ForEach-Object { [string]$_.userId }
+)
+$sessionScopedExpectedCount = if ($liveSessionBoundUsers.Count -gt 0) {
+    [int]$liveSessionBoundUsers.Count
+}
+elseif ($interactiveSessionBoundUsers.Count -gt 0) {
+    1
+}
+else {
+    0
+}
 $sessionScopedCollectorsRequired = ($sessionScopedExpectedCount -gt 0)
 
 $taskNames = @()
@@ -401,7 +445,7 @@ if ($sessionScopedCollectorsRequired -and $windowExpected) {
     $bucketChecks += Get-BucketHealth -BucketId ('aw-watcher-window_' + $awHostname) -MaxAgeSeconds $freshnessSeconds -Required $true -RequireFreshEvent $false
 }
 if ($sessionScopedCollectorsRequired) {
-    $bucketChecks += Get-BucketHealth -BucketId ('aw-dlp-endpoint-signals_' + $awHostname) -MaxAgeSeconds $freshnessSeconds -Required $true -RequireFreshEvent $true
+    $bucketChecks += Get-BucketHealth -BucketId ('aw-dlp-endpoint-signals_' + $awHostname) -MaxAgeSeconds $endpointFreshnessSeconds -Required $true -RequireFreshEvent $true
 }
 if ($sessionScopedCollectorsRequired -and $fileOpsExpected) {
     $bucketChecks += Get-BucketHealth -BucketId ('aw-file-operations_' + $awHostname) -MaxAgeSeconds $transportStaleSeconds -Required $false -RequireFreshEvent $true
@@ -431,18 +475,9 @@ catch {
 }
 
 $watcherCountsOk = $true
-if ($sessionScopedCollectorsRequired) {
-    if ($afkExpected) {
-        $watcherCountsOk = $watcherCountsOk -and (($watcherByName['aw-watcher-afk'] | ForEach-Object { [int]$_ }) -ge $sessionScopedExpectedCount)
-    }
-    if ($windowExpected) {
-        $watcherCountsOk = $watcherCountsOk -and (($watcherByName['aw-watcher-window'] | ForEach-Object { [int]$_ }) -ge $sessionScopedExpectedCount)
-    }
-}
-
-$endpointProcessOk = if (-not $sessionScopedCollectorsRequired) { $true } else { (@($endpointCollectorProcesses).Count -ge $sessionScopedExpectedCount) }
-$fileProcessOk = if (-not $fileOpsExpected -or -not $sessionScopedCollectorsRequired) { $true } else { (@($fileCollectorProcesses).Count -ge $sessionScopedExpectedCount) }
-$browserProcessOk = if (-not $sessionScopedCollectorsRequired) { $true } else { (@($browserCollectorProcesses).Count -ge $sessionScopedExpectedCount) }
+$endpointProcessOk = $true
+$fileProcessOk = $true
+$browserProcessOk = $true
 $sessionCollectorOk = (@($sessionCollectorProcesses).Count -eq 1)
 
 $result = [ordered]@{
@@ -470,7 +505,8 @@ $result = [ordered]@{
         ok = [bool]($tasks.Count -gt 0 -and -not ($tasks | Where-Object { -not $_.present -or -not $_.enabled }))
     }
     processes = [ordered]@{
-        sessionBoundUsers = $sessionBoundUsers
+        liveSessionBoundUsers = $liveSessionBoundUsers
+        sessionBoundUsers = $interactiveSessionBoundUsers
         sessionScopedExpectedCount = [int]$sessionScopedExpectedCount
         watchers = @($runningWatchers)
         watcherDuplicates = @($watcherDuplicates)
@@ -507,6 +543,12 @@ $result = [ordered]@{
         operationalLogEnabled = $printServiceOperationalEnabled
         jobTitlePolicyEnabled = $printJobTitlePolicyEnabled
         ok = [bool]($printServiceOperationalEnabled -and $printJobTitlePolicyEnabled)
+    }
+    sessionEvents = [ordered]@{
+        bucketId = $sessionEventsBucketId
+        logonEnabled = [bool]$sessionLogonEnabled
+        processEventsEnabled = [bool]$sessionProcessEventsEnabled
+        ok = $true
     }
     forensics = [ordered]@{
         evtxExportRoot = if ($config.PSObject.Properties.Name -contains 'forensics' -and $config.forensics.PSObject.Properties.Name -contains 'evtxExportRoot') { [string]$config.forensics.evtxExportRoot } else { $null }
