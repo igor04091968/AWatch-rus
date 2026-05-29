@@ -196,7 +196,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and (r._field == \"users_count\" or r._field == \"total_active_seconds\") and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:2)\n  |> limit(n:1)\n  |> map(fn:(r) => ({ r with _value: float(v: r.total_active_seconds) / float(v: r.users_count) / 3600.0 }))",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and (r._field == \"users_count\" or r._field == \"total_active_seconds\") and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:2)\n  |> limit(n:1)\n  |> map(fn:(r) => ({ r with _value: float(v: r.total_active_seconds) / float(v: r.users_count) / 3600.0 }))\n  |> keep(columns:[\"_value\"])",
           "refId": "A"
         }
       ],
@@ -497,6 +497,206 @@
       ],
       "title": "Подробно: последние 7 дней по сотрудникам",
       "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "description": "Строгий показатель: время засчитывается только когда есть foreground window, not-AFK и дополнительное evidence-событие действия пользователя.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 33
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nfrom(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r._field == \"proved_work_seconds\" and r.host == \"${host}\" and r.report_date == today)\n  |> group(columns:[\"application\"])\n  |> last()\n  |> group()\n  |> sum()\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))",
+          "refId": "A"
+        }
+      ],
+      "title": "Сегодня: доказанная работа по приложениям",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "description": "Приложения, где работа доказана связкой: активная RDP-сессия, не AFK, foreground окно и evidence-событие.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Часы"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "h"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Evidence"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 8,
+        "y": 33
+      },
+      "id": 12,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nbase = from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r.host == \"${host}\" and r.report_date == today)\n\nnums = base\n  |> filter(fn: (r) => r._field == \"proved_work_seconds\" or r._field == \"evidence_events\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\ntexts = base\n  |> filter(fn: (r) => r._field == \"last_action\" or r._field == \"last_action_local\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\njoin(tables: {n: nums, t: texts}, on: [\"application\", \"report_date\"])\n  |> map(fn:(r)=>({ r with hours: float(v:r.proved_work_seconds) / 3600.0 }))\n  |> sort(columns:[\"proved_work_seconds\"], desc:true)\n  |> keep(columns:[\"report_date\",\"application\",\"hours\",\"last_action_local\",\"last_action\",\"evidence_events\"])\n  |> rename(columns:{report_date:\"Дата\", application:\"Приложение\", hours:\"Часы\", last_action_local:\"Последнее действие\", last_action:\"Контекст\", evidence_events:\"Evidence\"})",
+          "refId": "A"
+        }
+      ],
+      "title": "Сегодня: доказанная работа по приложениям - детали",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "description": "История доказанной работы по приложениям. Нули означают, что foreground/AFK есть, но нет достаточного evidence действия.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "lineInterpolation": "linear",
+            "barAlignment": 0,
+            "lineWidth": 1,
+            "fillOpacity": 35,
+            "gradientMode": "none",
+            "spanNulls": false,
+            "insertNulls": false,
+            "showPoints": "never",
+            "pointSize": 5,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisPlacement": "auto",
+            "axisLabel": "",
+            "axisColorMode": "text",
+            "axisBorderShow": false,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "unit": "h"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "id": 13,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r._field == \"proved_work_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"application\",\"report_date\"])\n  |> last()\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> group(columns:[\"application\"])",
+          "refId": "A"
+        }
+      ],
+      "title": "Доказанная работа по дням и приложениям",
+      "type": "timeseries"
     }
   ],
   "refresh": "10m",

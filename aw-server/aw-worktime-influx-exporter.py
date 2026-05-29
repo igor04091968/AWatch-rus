@@ -60,6 +60,7 @@ def build_lines_for_day(host, report_date):
     rows = WORKTIME.aggregate_rows(events, bounds["start"], bounds["end"], host)
     hourly_rows = WORKTIME.aggregate_hourly_rows(events, bounds["start"], bounds["end"], host)
     summary = WORKTIME.build_report_summary(rows)
+    true_active_apps = WORKTIME.build_true_active_apps(host, report_date)
 
     lines = []
     daily_ts = _timestamp_ns(bounds["start"])
@@ -118,6 +119,28 @@ def build_lines_for_day(host, report_date):
             daily_ts,
         )
     )
+
+    for app in true_active_apps:
+        lines.append(
+            _line(
+                "aw_true_active_app_daily",
+                {
+                    "host": host,
+                    "application": app["application"],
+                    "report_date": report_date.isoformat(),
+                },
+                {
+                    "proved_work_seconds": int(app.get("proved_work_seconds", 0) or 0),
+                    "evidence_events": int(app.get("evidence_events", 0) or 0),
+                    "proved_work_human": app.get("proved_work_human", ""),
+                    "proved_work_hhmm": app.get("proved_work_hhmm", ""),
+                    "last_action": app.get("last_action", ""),
+                    "last_action_local": app.get("last_action_local", ""),
+                    "last_action_utc": app.get("last_action_utc", ""),
+                },
+                daily_ts,
+            )
+        )
     return [line for line in lines if line]
 
 
