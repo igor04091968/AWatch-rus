@@ -1549,6 +1549,9 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
 
 Отложить:
 
+- новый этап: сделать `detmir-portal` - единый read-only Rust web portal для
+  оператора, руководителя и владельца. Детальный план:
+  `docs/DETMIR_PORTAL_GUI_PLAN_RU.md`;
 - перенос Telegram bot runtime снят с плана: Python остается постоянным
   runtime, Rust используется только для backend helpers;
 - перенос оставшихся install/runtime scripts на Rust;
