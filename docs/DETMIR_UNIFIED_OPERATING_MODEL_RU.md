@@ -18,6 +18,10 @@
 управления ИТ-инфраструктурой, с ориентиром на класс `09.10`, без заявления
 сертифицированной DLP/SIEM/EDR/XDR/СЗИ.
 
+Нейминг для внешних материалов: `DetMir` - продукт, `AWatch-rus` -
+репозиторий и техническая база. Рекомендуемая формула: `DetMir, программный
+комплекс на базе AWatch-rus`.
+
 ## 1. Назначение
 
 `DetMir` в этом репозитории это не только `ActivityWatch Server`.
@@ -420,6 +424,13 @@ Telegram bot `DetMirAuto` обязан покрывать:
 | `docs/runbook.md` | живая эксплуатация |
 | `docs/DETMIR_THREAT_MODEL_RU.md` | рабочая модель угроз и границы security-позиционирования |
 | `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` | стратегия позиционирования для реестра российского ПО |
+| `docs/ADMIN_GUIDE_RU.md` | руководство администратора |
+| `docs/OPERATOR_GUIDE_RU.md` | руководство оператора |
+| `docs/INSTALL_RU.md` | установка и первичная проверка |
+| `docs/ARCHITECTURE_RU.md` | продуктовая архитектура |
+| `docs/OWNERSHIP_RU.md` | правообладание и состав продукта |
+| `docs/THIRD_PARTY_LICENSES_RU.md` | сторонние компоненты и license-audit baseline |
+| `docs/REGISTRY_CHECKLIST_RU.md` | чек-лист подготовки к реестру российского ПО |
 | этот файл | единая карта системы и рабочего процесса |
 
 ## 9. Операционный минимум, который нельзя терять

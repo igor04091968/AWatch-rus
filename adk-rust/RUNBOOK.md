@@ -1658,7 +1658,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       portal health `true`, `detmir-status` `OK / ok_for_operator=true`, and
       failed units `0`.
     - `docs/DETMIR_THREAT_MODEL_RU.md` added as the current working threat
-      model for DetMir/AWatch-rus. It records the product as an operational
+      model for DetMir. It records the product as an operational
       control and technical audit platform, not a certified DLP/SIEM/EDR/XDR
       or FSTEC SZI. It also records Igor as the declared product owner, lists
       assets, trust zones, attacker/operator-failure classes, implemented
@@ -1670,6 +1670,14 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       DLP/security/evidence/Hayabusa as applied modules, and prepare website,
       operator/admin docs, ownership package, screenshots, and dependency
       inventory before any registry filing.
+    - registry proof package skeleton added:
+      `docs/ADMIN_GUIDE_RU.md`, `docs/OPERATOR_GUIDE_RU.md`,
+      `docs/INSTALL_RU.md`, `docs/ARCHITECTURE_RU.md`,
+      `docs/OWNERSHIP_RU.md`, `docs/THIRD_PARTY_LICENSES_RU.md`, and
+      `docs/REGISTRY_CHECKLIST_RU.md`. Naming decision fixed across the docs:
+      `DetMir` is the product, `AWatch-rus` is the repository/technical base,
+      and the external formula is `DetMir, программный комплекс на базе
+      AWatch-rus`.
 
 Отложить:
 
