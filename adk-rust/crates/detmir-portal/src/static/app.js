@@ -202,20 +202,50 @@ function renderDlpIncidentsList(items) {
   return renderIncidentsList(dlpItems);
 }
 
+function renderDlpEvidence(evidence) {
+  if (!evidence) return `<p class="muted">Данные evidence загружаются.</p>`;
+  if (!evidence.ok) return `<p class="muted">Evidence недоступны: ${escapeHtml(evidence.error || "ошибка чтения")}</p>`;
+  const items = evidence.items || [];
+  if (items.length === 0) return `<p class="muted">DLP evidence пока не найдены.</p>`;
+  return `<div class="list evidence-list">${items.map(item => `
+    <div class="row evidence-row">
+      <div>
+        <strong>${escapeHtml(item.signal_type || item.source || item.stream_type)}</strong>
+        <div class="muted small">${escapeHtml(item.event_ts)} · ${escapeHtml(item.hostname)}${item.username ? " · " + escapeHtml(item.username) : ""}</div>
+      </div>
+      <div>
+        <span class="muted">${escapeHtml(item.message || item.file_path || item.rule_id || item.event_id)}</span>
+        <div class="muted small">${item.source_file ? "Файл: " + escapeHtml(item.source_file) + " · " : ""}${item.screenshot_sha256 ? "SHA-256: " + escapeHtml(item.screenshot_sha256) : escapeHtml(item.blocked_reason || "без скрина")}</div>
+      </div>
+      <span class="badge ${item.screenshot_available ? "status-ok" : "status-warn"}">${item.screenshot_available ? "СКРИН" : "МЕТА"}</span>
+      <div class="actions">
+        ${item.preview_url ? `<a class="small-button" href="${escapeHtml(item.preview_url)}" target="_blank" rel="noopener noreferrer">Открыть</a>` : ""}
+        ${item.download_url ? `<a class="small-button" href="${escapeHtml(item.download_url)}" target="_blank" rel="noopener noreferrer">Скачать</a>` : ""}
+      </div>
+    </div>
+  `).join("")}</div>`;
+}
+
 function renderIncidents(data) {
   const links = state.links || {};
+  const incidents = Array.isArray(data) ? data : data.incidents;
+  const evidence = Array.isArray(data) ? null : data.evidence;
   return `
     <h2 class="section-title">Инциденты ИБ</h2>
     <div class="grid-2">
       <section class="card">
         <h3>DLP-инциденты</h3>
-        ${renderDlpIncidentsList(data)}
+        ${renderDlpIncidentsList(incidents)}
       </section>
       <section class="card">
         <h3>Графики и дашборды</h3>
         ${renderDlpLinks(links)}
       </section>
     </div>
+    <section class="card evidence-card">
+      <h3>Доказательства</h3>
+      ${renderDlpEvidence(evidence)}
+    </section>
   `;
 }
 
@@ -228,7 +258,10 @@ async function refresh() {
   if (state.tab === "operator") content.innerHTML = renderOperator(data);
   if (state.tab === "manager") content.innerHTML = renderManager(data);
   if (state.tab === "owner") content.innerHTML = renderOwner(data);
-  if (state.tab === "incidents") content.innerHTML = renderIncidents(data);
+  if (state.tab === "incidents") {
+    const evidence = await loadJson("/dlp/evidence").catch(error => ({ ok: false, error: error.message, items: [] }));
+    content.innerHTML = renderIncidents({ incidents: data, evidence });
+  }
 }
 
 function setTab(tab) {

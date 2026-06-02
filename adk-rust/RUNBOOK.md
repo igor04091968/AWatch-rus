@@ -1611,6 +1611,25 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       non-incident operational links are intentionally not shown in this card.
       Local Playwright smoke verified DLP incident rendering, dashboard links,
       no Worktime/1C text in the card, and zero JS errors.
+    - DLP evidence viewing layer added to the portal:
+      `detmir-portal` now exposes `/api/dlp/evidence` and safe screenshot
+      routes by opaque evidence id. The service reads DLP warehouse SQLite
+      read-only, extracts `screenshotSha256`/dimensions from raw event JSON,
+      and serves image files only from an allowlisted evidence root after
+      canonical path, extension, size, and SHA-256 validation. Evidence views
+      and downloads append to `evidence-audit.jsonl`. Production uses an
+      AW-server evidence-only service, `/usr/local/bin/detmir-portal-evidence`
+      with `detmir-portal-evidence.service`, because the DLP warehouse lives on
+      the AW server. Proxmox nginx gateway routes
+      `/portal/api/dlp/evidence*` to `10.10.10.13:8721`. Current production
+      verification: AW evidence API `ok=true`, gateway evidence route
+      `ok=true`, `db_available=true`, 11 DLP evidence rows returned,
+      `screenshot_available=0` because current stored rows do not yet contain
+      screenshot metadata, both portal/evidence services active, failed units
+      0, `detmir-status` `OK / ok_for_operator=true`. Local HTTP smoke
+      verified byte-identical screenshot serving and audit logging; local
+      Playwright smoke verified the `Доказательства` block, `СКРИН`, `Открыть`,
+      `Скачать`, and zero JS errors.
     - during this deploy, `detmir-grafana-check` was corrected so empty
       detail-only panels for employees/applications are WARN, not FAIL. The
       mandatory freshness/summary panels still fail the check when stale or

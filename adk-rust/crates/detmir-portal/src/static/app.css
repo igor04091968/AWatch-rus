@@ -156,6 +156,14 @@ h1 {
   grid-template-columns: minmax(150px, 1fr) minmax(220px, 2fr) auto auto;
 }
 
+.evidence-card {
+  margin-top: 12px;
+}
+
+.evidence-row {
+  grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) auto auto;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;
@@ -174,6 +182,12 @@ h1 {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+}
+
+a.small-button {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
 }
 
 .small-button:disabled {
@@ -215,5 +229,6 @@ pre {
   h1 { font-size: 24px; }
   .row { grid-template-columns: 1fr; }
   .incident-row { grid-template-columns: 1fr; }
+  .evidence-row { grid-template-columns: 1fr; }
   .actions { justify-content: flex-start; }
 }

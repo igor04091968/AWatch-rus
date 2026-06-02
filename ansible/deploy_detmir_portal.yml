@@ -46,6 +46,22 @@
           DETMIR_PORTAL_ONE_C_URL=http://10.10.10.2:8710
           DETMIR_PORTAL_TIMEOUT_SECONDS=10
           DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
+          DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
+          DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/detmir-portal/evidence
+          DETMIR_PORTAL_EVIDENCE_LIMIT=30
+          DETMIR_PORTAL_EVIDENCE_MAX_BYTES=8388608
+
+    - name: Ensure detmir-portal state and evidence directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - /var/lib/detmir-portal
+        - /var/lib/detmir-portal/evidence
+        - /var/lib/detmir-portal/evidence/screenshots
 
     - name: Install detmir-portal systemd service
       ansible.builtin.copy:
@@ -91,4 +107,108 @@
       failed_when:
         - detmir_portal_health.status != 200
         - "'sources' not in detmir_portal_health.content"
+      changed_when: false
+
+- name: Deploy DetMir DLP evidence API on AW server
+  hosts: aw_server
+  become: true
+  gather_facts: false
+
+  vars:
+    aw_repo_root: "{{ playbook_dir | dirname }}"
+    aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
+    detmir_evidence_bind: "{{ detmir_evidence_bind_override | default('10.10.10.13:8721') }}"
+    detmir_evidence_env_path: "/etc/detmir-portal-evidence.env"
+
+  tasks:
+    - name: Check local detmir-portal binary for evidence service
+      ansible.builtin.stat:
+        path: "{{ aw_rust_release_dir }}/detmir-portal"
+      delegate_to: localhost
+      become: false
+      register: detmir_evidence_binary
+
+    - name: Fail when detmir-portal evidence binary is absent
+      ansible.builtin.fail:
+        msg: "Missing {{ aw_rust_release_dir }}/detmir-portal. Build with cargo build --release -p detmir-portal."
+      when: not (detmir_evidence_binary.stat.exists | default(false))
+
+    - name: Install detmir-portal evidence binary
+      ansible.builtin.copy:
+        src: "{{ aw_rust_release_dir }}/detmir-portal"
+        dest: /usr/local/bin/detmir-portal-evidence
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Ensure detmir evidence directories on AW server
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0750"
+      loop:
+        - /var/lib/activitywatch/dlp-evidence
+        - /var/lib/activitywatch/dlp-evidence/screenshots
+
+    - name: Install detmir evidence API environment
+      ansible.builtin.copy:
+        dest: "{{ detmir_evidence_env_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          DETMIR_PORTAL_BIND={{ detmir_evidence_bind }}
+          DETMIR_PORTAL_EVIDENCE_ONLY=true
+          DETMIR_PORTAL_STATE_DIR=/var/lib/activitywatch/dlp-evidence
+          DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
+          DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/activitywatch/dlp-evidence
+          DETMIR_PORTAL_EVIDENCE_LIMIT=30
+          DETMIR_PORTAL_EVIDENCE_MAX_BYTES=8388608
+
+    - name: Install detmir evidence API systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/detmir-portal-evidence.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=DetMir DLP Evidence API
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          EnvironmentFile=-{{ detmir_evidence_env_path }}
+          ExecStart=/usr/local/bin/detmir-portal-evidence
+          Restart=on-failure
+          RestartSec=5s
+
+          [Install]
+          WantedBy=multi-user.target
+      register: detmir_evidence_service_unit
+
+    - name: Reload systemd for evidence API
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: detmir_evidence_service_unit.changed
+
+    - name: Enable and restart detmir evidence API
+      ansible.builtin.systemd:
+        name: detmir-portal-evidence.service
+        enabled: true
+        state: restarted
+
+    - name: Verify detmir evidence API health
+      ansible.builtin.uri:
+        url: "http://{{ detmir_evidence_bind }}/api/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: detmir_evidence_health
+      failed_when:
+        - detmir_evidence_health.status != 200
+        - "'evidence-only' not in detmir_evidence_health.content"
       changed_when: false

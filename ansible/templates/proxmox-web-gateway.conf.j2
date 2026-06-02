@@ -261,6 +261,13 @@ server {
         return 302 /portal/;
     }
 
+    location ^~ /portal/api/dlp/evidence {
+        proxy_set_header Authorization "";
+        proxy_set_header X-Remote-User $remote_user;
+        proxy_pass http://10.10.10.13:8721/api/dlp/evidence;
+        proxy_redirect off;
+    }
+
     location /portal/ {
         proxy_set_header Authorization "";
         proxy_set_header X-Remote-User $remote_user;

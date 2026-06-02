@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -11,8 +11,10 @@ use chrono::{SecondsFormat, Utc};
 use clap::Parser;
 use reqwest::blocking::Client;
 use reqwest::header::{CONNECTION, HeaderValue};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 const INDEX_HTML: &str = include_str!("static/index.html");
@@ -70,8 +72,35 @@ struct Cli {
     )]
     state_dir: PathBuf,
 
+    #[arg(
+        long,
+        default_value = "/var/lib/activitywatch/dlp_warehouse.sqlite",
+        env = "DETMIR_PORTAL_DLP_DB_PATH"
+    )]
+    dlp_db_path: PathBuf,
+
+    #[arg(
+        long,
+        default_value = "/var/lib/detmir-portal/evidence",
+        env = "DETMIR_PORTAL_EVIDENCE_ROOT"
+    )]
+    evidence_root: PathBuf,
+
+    #[arg(long, default_value_t = 30, env = "DETMIR_PORTAL_EVIDENCE_LIMIT")]
+    evidence_limit: u32,
+
+    #[arg(
+        long,
+        default_value_t = 8 * 1024 * 1024,
+        env = "DETMIR_PORTAL_EVIDENCE_MAX_BYTES"
+    )]
+    evidence_max_bytes: u64,
+
     #[arg(long)]
     json_smoke: bool,
+
+    #[arg(long, env = "DETMIR_PORTAL_EVIDENCE_ONLY")]
+    evidence_only: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,6 +207,101 @@ struct IncidentAuditEntry {
 }
 
 #[derive(Debug, Serialize)]
+struct EvidenceAuditEntry {
+    generated_at_utc: String,
+    actor: String,
+    action: String,
+    evidence_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_file: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DlpEvidenceResponse {
+    ok: bool,
+    generated_at_utc: String,
+    db_available: bool,
+    screenshot_root_available: bool,
+    limit: u32,
+    items: Vec<DlpEvidenceItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct DlpEvidenceItem {
+    id: String,
+    event_ts: String,
+    bucket_id: String,
+    event_id: String,
+    stream_type: String,
+    hostname: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    username: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    severity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signal_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    rule_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_path: Option<String>,
+    has_screenshot_metadata: bool,
+    screenshot_available: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    screenshot_sha256: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    screenshot_width: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    screenshot_height: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    preview_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    download_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    blocked_reason: Option<String>,
+}
+
+#[derive(Debug)]
+struct DlpEvidenceRow {
+    row_id: i64,
+    bucket_id: String,
+    event_id: String,
+    stream_type: String,
+    hostname: String,
+    username: Option<String>,
+    event_ts: String,
+    operation: Option<String>,
+    file_path: Option<String>,
+    rule_id: Option<String>,
+    action: Option<String>,
+    severity: Option<String>,
+    signal_type: Option<String>,
+    message: Option<String>,
+    source: Option<String>,
+    screenshot_path: Option<String>,
+    raw_json: String,
+}
+
+#[derive(Debug, Clone)]
+struct ScreenshotFile {
+    path: PathBuf,
+    content_type: &'static str,
+    source_file: Option<String>,
+    sha256: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct PortalLinks {
     portal: String,
     grafana_dashboards: String,
@@ -221,6 +345,7 @@ fn run() -> Result<i32> {
             "health": build_health(&snapshot),
             "summary": build_summary(&snapshot),
             "incidents": build_incidents(&snapshot, &incident_state),
+            "dlp_evidence": build_dlp_evidence_response(&args),
         });
         println!("{}", serde_json::to_string_pretty(&smoke)?);
         return Ok(if build_health(&snapshot).ok { 0 } else { 2 });
@@ -229,7 +354,12 @@ fn run() -> Result<i32> {
     let server = Server::http(&args.bind).map_err(|err| anyhow!("bind {}: {err}", args.bind))?;
     eprintln!("detmir-portal listening on http://{}", args.bind);
     for request in server.incoming_requests() {
-        if let Err(err) = handle_request(request, &args) {
+        let result = if args.evidence_only {
+            handle_evidence_only_request(request, &args)
+        } else {
+            handle_request(request, &args)
+        };
+        if let Err(err) = result {
             eprintln!("detmir-portal request failed: {err:#}");
         }
     }
@@ -244,6 +374,12 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
     }
     if method != Method::Get {
         return respond_text(request, StatusCode(405), "Method Not Allowed", "text/plain");
+    }
+    if path == "/api/dlp/evidence" {
+        return respond_json(request, &build_dlp_evidence_response(args));
+    }
+    if let Some((evidence_id, download)) = parse_evidence_screenshot_path(&path) {
+        return handle_evidence_screenshot(request, args, &evidence_id, download);
     }
     match path.as_str() {
         "/" | "/operator" | "/manager" | "/owner" | "/incidents" => respond_text(
@@ -288,6 +424,38 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
             "text/plain; charset=utf-8",
         ),
     }
+}
+
+fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
+    let method = request.method().clone();
+    let path = normalize_path(request.url());
+    if method != Method::Get {
+        return respond_text(request, StatusCode(405), "Method Not Allowed", "text/plain");
+    }
+    if path == "/api/health" {
+        return respond_json(
+            request,
+            &json!({
+                "ok": args.dlp_db_path.exists(),
+                "generated_at_utc": now(),
+                "mode": "evidence-only",
+                "db_available": args.dlp_db_path.exists(),
+                "screenshot_root_available": args.evidence_root.exists(),
+            }),
+        );
+    }
+    if path == "/api/dlp/evidence" {
+        return respond_json(request, &build_dlp_evidence_response(args));
+    }
+    if let Some((evidence_id, download)) = parse_evidence_screenshot_path(&path) {
+        return handle_evidence_screenshot(request, args, &evidence_id, download);
+    }
+    respond_text(
+        request,
+        StatusCode(404),
+        "Not Found",
+        "text/plain; charset=utf-8",
+    )
 }
 
 fn normalize_path(url: &str) -> String {
@@ -880,6 +1048,481 @@ fn incident_state_path(args: &Cli) -> PathBuf {
     args.state_dir.join("incidents-state.json")
 }
 
+fn build_dlp_evidence_response(args: &Cli) -> DlpEvidenceResponse {
+    let generated_at_utc = now();
+    let db_available = args.dlp_db_path.exists();
+    let screenshot_root_available = args.evidence_root.exists();
+    if !db_available {
+        return DlpEvidenceResponse {
+            ok: true,
+            generated_at_utc,
+            db_available,
+            screenshot_root_available,
+            limit: args.evidence_limit,
+            items: Vec::new(),
+            error: Some(format!(
+                "DLP warehouse is absent: {}",
+                args.dlp_db_path.display()
+            )),
+        };
+    }
+    match load_dlp_evidence_items(args) {
+        Ok(items) => DlpEvidenceResponse {
+            ok: true,
+            generated_at_utc,
+            db_available,
+            screenshot_root_available,
+            limit: args.evidence_limit,
+            items,
+            error: None,
+        },
+        Err(err) => DlpEvidenceResponse {
+            ok: false,
+            generated_at_utc,
+            db_available,
+            screenshot_root_available,
+            limit: args.evidence_limit,
+            items: Vec::new(),
+            error: Some(err.to_string()),
+        },
+    }
+}
+
+fn load_dlp_evidence_items(args: &Cli) -> Result<Vec<DlpEvidenceItem>> {
+    let connection = Connection::open_with_flags(
+        &args.dlp_db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .with_context(|| format!("open DLP warehouse {}", args.dlp_db_path.display()))?;
+    let mut statement = connection.prepare(
+        r#"
+        select
+            id,
+            bucket_id,
+            event_id,
+            stream_type,
+            hostname,
+            username,
+            event_ts,
+            operation,
+            file_path,
+            rule_id,
+            action,
+            severity,
+            signal_type,
+            message,
+            source,
+            screenshot_path,
+            raw_json
+        from dlp_events
+        where stream_type = 'dlp_incident'
+           or screenshot_path is not null
+        order by event_ts desc, id desc
+        limit ?
+        "#,
+    )?;
+    let rows = statement
+        .query_map(params![i64::from(args.evidence_limit)], |row| {
+            Ok(DlpEvidenceRow {
+                row_id: row.get(0)?,
+                bucket_id: row.get(1)?,
+                event_id: row.get(2)?,
+                stream_type: row.get(3)?,
+                hostname: row.get(4)?,
+                username: row.get(5)?,
+                event_ts: row.get(6)?,
+                operation: row.get(7)?,
+                file_path: row.get(8)?,
+                rule_id: row.get(9)?,
+                action: row.get(10)?,
+                severity: row.get(11)?,
+                signal_type: row.get(12)?,
+                message: row.get(13)?,
+                source: row.get(14)?,
+                screenshot_path: row.get(15)?,
+                raw_json: row.get(16)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    rows.into_iter()
+        .map(|row| evidence_item_from_row(args, row))
+        .collect()
+}
+
+fn evidence_item_from_row(args: &Cli, row: DlpEvidenceRow) -> Result<DlpEvidenceItem> {
+    let raw = serde_json::from_str::<Value>(&row.raw_json).unwrap_or(Value::Null);
+    let sha256 = json_string(&raw, &["screenshotSha256", "sha256", "captureSha256"])
+        .map(|value| value.to_ascii_lowercase())
+        .filter(|value| is_sha256_hex(value));
+    let source_file = row
+        .screenshot_path
+        .as_deref()
+        .and_then(screenshot_basename)
+        .or_else(|| json_string(&raw, &["screenshotFile", "artifactFile"]));
+    let id = evidence_id(row.row_id, &row.event_id, row.screenshot_path.as_deref());
+    let screenshot = resolve_screenshot_file(args, &source_file, &sha256)?;
+    let has_screenshot_metadata = row.screenshot_path.is_some() || sha256.is_some();
+    let blocked_reason = if screenshot.is_some() {
+        None
+    } else if has_screenshot_metadata && sha256.is_none() {
+        Some("screenshot sha256 is absent; original is not served".to_string())
+    } else if has_screenshot_metadata {
+        Some("screenshot is not synced into the server evidence root yet".to_string())
+    } else {
+        None
+    };
+    Ok(DlpEvidenceItem {
+        id: id.clone(),
+        event_ts: row.event_ts,
+        bucket_id: row.bucket_id,
+        event_id: row.event_id,
+        stream_type: row.stream_type,
+        hostname: row.hostname,
+        username: row.username,
+        severity: row.severity,
+        signal_type: row.signal_type,
+        rule_id: row.rule_id,
+        action: row.action.or(row.operation),
+        source: row.source,
+        message: row.message,
+        file_path: row.file_path,
+        has_screenshot_metadata,
+        screenshot_available: screenshot.is_some(),
+        source_file,
+        screenshot_sha256: sha256,
+        screenshot_width: json_i64(&raw, &["screenshotWidth", "captureWidth"]),
+        screenshot_height: json_i64(&raw, &["screenshotHeight", "captureHeight"]),
+        preview_url: screenshot
+            .as_ref()
+            .map(|_| format!("/portal/api/dlp/evidence/{id}/screenshot")),
+        download_url: screenshot
+            .as_ref()
+            .map(|_| format!("/portal/api/dlp/evidence/{id}/download")),
+        blocked_reason,
+    })
+}
+
+fn parse_evidence_screenshot_path(path: &str) -> Option<(String, bool)> {
+    let rest = path.strip_prefix("/api/dlp/evidence/")?;
+    let (evidence_id, suffix) = rest.rsplit_once('/')?;
+    match suffix {
+        "screenshot" => Some((evidence_id.to_string(), false)),
+        "download" => Some((evidence_id.to_string(), true)),
+        _ => None,
+    }
+}
+
+fn handle_evidence_screenshot(
+    request: Request,
+    args: &Cli,
+    evidence_id: &str,
+    download: bool,
+) -> Result<()> {
+    let actor = request_actor(&request);
+    let id = match validate_short_token(evidence_id, "evidence_id", 128) {
+        Ok(id) => id,
+        Err(err) => {
+            return respond_text(
+                request,
+                StatusCode(400),
+                &format!("Bad evidence id: {err}"),
+                "text/plain; charset=utf-8",
+            );
+        }
+    };
+    let screenshot = match load_screenshot_for_evidence(args, &id) {
+        Ok(Some(screenshot)) => screenshot,
+        Ok(None) => {
+            return respond_text(
+                request,
+                StatusCode(404),
+                "Evidence screenshot is not available",
+                "text/plain; charset=utf-8",
+            );
+        }
+        Err(err) => {
+            return respond_text(
+                request,
+                StatusCode(400),
+                &format!("Evidence screenshot rejected: {err}"),
+                "text/plain; charset=utf-8",
+            );
+        }
+    };
+    append_evidence_audit(
+        args,
+        &EvidenceAuditEntry {
+            generated_at_utc: now(),
+            actor,
+            action: if download { "download" } else { "view" }.to_string(),
+            evidence_id: id,
+            sha256: screenshot.sha256.clone(),
+            source_file: screenshot.source_file.clone(),
+        },
+    )?;
+    respond_file(
+        request,
+        &screenshot.path,
+        screenshot.content_type,
+        download.then_some(
+            screenshot
+                .source_file
+                .as_deref()
+                .unwrap_or("dlp-evidence.png"),
+        ),
+    )
+}
+
+fn load_screenshot_for_evidence(
+    args: &Cli,
+    evidence_id_value: &str,
+) -> Result<Option<ScreenshotFile>> {
+    let row_id = evidence_row_id(evidence_id_value)?;
+    if !args.dlp_db_path.exists() {
+        return Ok(None);
+    }
+    let connection = Connection::open_with_flags(
+        &args.dlp_db_path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )
+    .with_context(|| format!("open DLP warehouse {}", args.dlp_db_path.display()))?;
+    let row = connection
+        .query_row(
+            r#"
+            select
+                id,
+                bucket_id,
+                event_id,
+                stream_type,
+                hostname,
+                username,
+                event_ts,
+                operation,
+                file_path,
+                rule_id,
+                action,
+                severity,
+                signal_type,
+                message,
+                source,
+                screenshot_path,
+                raw_json
+            from dlp_events
+            where id = ?
+            "#,
+            params![row_id],
+            |row| {
+                Ok(DlpEvidenceRow {
+                    row_id: row.get(0)?,
+                    bucket_id: row.get(1)?,
+                    event_id: row.get(2)?,
+                    stream_type: row.get(3)?,
+                    hostname: row.get(4)?,
+                    username: row.get(5)?,
+                    event_ts: row.get(6)?,
+                    operation: row.get(7)?,
+                    file_path: row.get(8)?,
+                    rule_id: row.get(9)?,
+                    action: row.get(10)?,
+                    severity: row.get(11)?,
+                    signal_type: row.get(12)?,
+                    message: row.get(13)?,
+                    source: row.get(14)?,
+                    screenshot_path: row.get(15)?,
+                    raw_json: row.get(16)?,
+                })
+            },
+        )
+        .optional()?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let expected_id = evidence_id(row.row_id, &row.event_id, row.screenshot_path.as_deref());
+    if expected_id != evidence_id_value {
+        return Err(anyhow!("evidence id checksum mismatch"));
+    }
+    let raw = serde_json::from_str::<Value>(&row.raw_json).unwrap_or(Value::Null);
+    let sha256 = json_string(&raw, &["screenshotSha256", "sha256", "captureSha256"])
+        .map(|value| value.to_ascii_lowercase())
+        .filter(|value| is_sha256_hex(value));
+    let source_file = row
+        .screenshot_path
+        .as_deref()
+        .and_then(screenshot_basename)
+        .or_else(|| json_string(&raw, &["screenshotFile", "artifactFile"]));
+    resolve_screenshot_file(args, &source_file, &sha256)
+}
+
+fn resolve_screenshot_file(
+    args: &Cli,
+    source_file: &Option<String>,
+    sha256: &Option<String>,
+) -> Result<Option<ScreenshotFile>> {
+    let Some(expected_sha256) = sha256.as_deref() else {
+        return Ok(None);
+    };
+    if !args.evidence_root.exists() {
+        return Ok(None);
+    }
+    let root = args
+        .evidence_root
+        .canonicalize()
+        .with_context(|| format!("canonicalize {}", args.evidence_root.display()))?;
+    let mut candidates = Vec::new();
+    candidates.push(
+        root.join("screenshots")
+            .join(format!("{expected_sha256}.png")),
+    );
+    candidates.push(root.join(format!("{expected_sha256}.png")));
+    candidates.push(root.join(expected_sha256));
+    if let Some(file_name) = source_file
+        .as_deref()
+        .and_then(screenshot_basename)
+        .filter(|name| is_safe_file_name(name))
+    {
+        candidates.push(root.join("screenshots").join(&file_name));
+        candidates.push(root.join(&file_name));
+    }
+    for candidate in candidates {
+        if !candidate.exists() {
+            continue;
+        }
+        let canonical = candidate
+            .canonicalize()
+            .with_context(|| format!("canonicalize {}", candidate.display()))?;
+        if !canonical.starts_with(&root) {
+            continue;
+        }
+        let metadata = fs::metadata(&canonical)?;
+        if !metadata.is_file() || metadata.len() > args.evidence_max_bytes {
+            continue;
+        }
+        let Some(content_type) = screenshot_content_type(&canonical) else {
+            continue;
+        };
+        let actual_sha256 = sha256_file(&canonical)?;
+        if actual_sha256 != expected_sha256 {
+            continue;
+        }
+        return Ok(Some(ScreenshotFile {
+            path: canonical,
+            content_type,
+            source_file: source_file.clone(),
+            sha256: Some(expected_sha256.to_string()),
+        }));
+    }
+    Ok(None)
+}
+
+fn append_evidence_audit(args: &Cli, entry: &EvidenceAuditEntry) -> Result<()> {
+    fs::create_dir_all(&args.state_dir)
+        .with_context(|| format!("create {}", args.state_dir.display()))?;
+    let path = args.state_dir.join("evidence-audit.jsonl");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("open {}", path.display()))?;
+    serde_json::to_writer(&mut file, entry)?;
+    file.write_all(b"\n")?;
+    Ok(())
+}
+
+fn evidence_id(row_id: i64, event_id: &str, screenshot_path: Option<&str>) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in format!("{row_id}\n{event_id}\n{}", screenshot_path.unwrap_or("")).as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("ev-{row_id}-{hash:016x}")
+}
+
+fn evidence_row_id(evidence_id_value: &str) -> Result<i64> {
+    let rest = evidence_id_value
+        .strip_prefix("ev-")
+        .ok_or_else(|| anyhow!("unsupported evidence id prefix"))?;
+    let (row_id, checksum) = rest
+        .split_once('-')
+        .ok_or_else(|| anyhow!("malformed evidence id"))?;
+    if checksum.len() != 16 || !checksum.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(anyhow!("malformed evidence id checksum"));
+    }
+    row_id
+        .parse::<i64>()
+        .map_err(|err| anyhow!("malformed evidence row id: {err}"))
+}
+
+fn json_string(value: &Value, names: &[&str]) -> Option<String> {
+    for name in names {
+        if let Some(text) = value.get(*name).and_then(Value::as_str) {
+            let text = sanitize_text(text, 512);
+            if !text.is_empty() {
+                return Some(text);
+            }
+        }
+    }
+    None
+}
+
+fn json_i64(value: &Value, names: &[&str]) -> Option<i64> {
+    names
+        .iter()
+        .find_map(|name| value.get(*name).and_then(Value::as_i64))
+}
+
+fn screenshot_basename(path: &str) -> Option<String> {
+    if path.split(['/', '\\']).any(|part| part == "..") {
+        return None;
+    }
+    let name = path
+        .rsplit(['/', '\\'])
+        .next()
+        .map(|value| sanitize_text(value, 255))
+        .filter(|value| !value.is_empty())?;
+    is_safe_file_name(&name).then_some(name)
+}
+
+fn is_safe_file_name(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 255
+        && !value.contains("..")
+        && value
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_' | '@'))
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64 && value.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
+fn screenshot_content_type(path: &Path) -> Option<&'static str> {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        _ => None,
+    }
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    let mut file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
 fn request_actor(request: &Request) -> String {
     for name in ["X-Remote-User", "X-Gateway-User", "Remote-User"] {
         if let Some(value) = request
@@ -1238,6 +1881,26 @@ fn respond_text(
     request.respond(response).map_err(|err| anyhow!("{err}"))
 }
 
+fn respond_file(
+    request: Request,
+    path: &Path,
+    content_type: &str,
+    download_name: Option<&str>,
+) -> Result<()> {
+    let data = fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    let mut response = Response::from_data(data)
+        .with_status_code(StatusCode(200))
+        .with_header(header("Content-Type", content_type)?)
+        .with_header(header("Cache-Control", "no-store")?);
+    if let Some(name) = download_name.and_then(screenshot_basename) {
+        response = response.with_header(header(
+            "Content-Disposition",
+            &format!("attachment; filename=\"{}\"", name.replace('"', "")),
+        )?);
+    }
+    request.respond(response).map_err(|err| anyhow!("{err}"))
+}
+
 fn header(name: &str, value: &str) -> Result<Header> {
     Header::from_bytes(name.as_bytes(), value.as_bytes())
         .map_err(|_| anyhow!("invalid header {name}: {value}"))
@@ -1317,5 +1980,68 @@ mod tests {
         assert!(item.acknowledged);
         assert_eq!(item.actor.as_deref(), Some("detmir"));
         assert_eq!(item.assigned_to.as_deref(), Some("operator"));
+    }
+
+    #[test]
+    fn evidence_id_is_stable_and_parseable() {
+        let id = evidence_id(42, "event-1", Some(r"C:\tmp\shot.png"));
+        assert_eq!(id, evidence_id(42, "event-1", Some(r"C:\tmp\shot.png")));
+        assert_ne!(id, evidence_id(42, "event-2", Some(r"C:\tmp\shot.png")));
+        assert_eq!(evidence_row_id(&id).unwrap(), 42);
+    }
+
+    #[test]
+    fn screenshot_basename_rejects_traversal() {
+        assert_eq!(
+            screenshot_basename(r"C:\Users\operator\shot-1.png").as_deref(),
+            Some("shot-1.png")
+        );
+        assert_eq!(screenshot_basename("../secret.png"), None);
+        assert_eq!(screenshot_basename("..\\secret.png"), None);
+    }
+
+    #[test]
+    fn screenshot_resolution_requires_matching_hash_inside_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let screenshots = dir.path().join("screenshots");
+        fs::create_dir_all(&screenshots).unwrap();
+        let data = b"not a real png, but content type is extension-bound";
+        let digest = {
+            let mut hasher = Sha256::new();
+            hasher.update(data);
+            format!("{:x}", hasher.finalize())
+        };
+        fs::write(screenshots.join(format!("{digest}.png")), data).unwrap();
+        let args = Cli {
+            bind: "127.0.0.1:0".to_string(),
+            status_cmd: "true".to_string(),
+            check_cmd: "true".to_string(),
+            failed_units_cmd: "true".to_string(),
+            worktime_url: "http://127.0.0.1".to_string(),
+            one_c_url: "http://127.0.0.1".to_string(),
+            timeout_seconds: 1,
+            state_dir: dir.path().join("state"),
+            dlp_db_path: dir.path().join("dlp.sqlite"),
+            evidence_root: dir.path().to_path_buf(),
+            evidence_limit: 10,
+            evidence_max_bytes: 1024,
+            json_smoke: false,
+            evidence_only: false,
+        };
+        let found = resolve_screenshot_file(&args, &None, &Some(digest.clone()))
+            .unwrap()
+            .unwrap();
+        assert_eq!(found.content_type, "image/png");
+        assert_eq!(found.sha256.as_deref(), Some(digest.as_str()));
+        assert!(
+            resolve_screenshot_file(&args, &None, &Some("0".repeat(64)))
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            resolve_screenshot_file(&args, &None, &None)
+                .unwrap()
+                .is_none()
+        );
     }
 }
