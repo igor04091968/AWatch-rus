@@ -755,6 +755,15 @@ fn counter_delta(
     }
 }
 
+fn transport_counter_key(prefix: &str, bucket_id: &str, data: &Value, metric: &str) -> String {
+    format!(
+        "{prefix}:{bucket_id}:{}:{}:{}:{metric}",
+        value_str(data.get("hostname")),
+        int_or_zero(data.get("sessionId")),
+        value_str(data.get("username"))
+    )
+}
+
 #[derive(Clone, Copy)]
 struct RuntimeThresholds {
     sample_limit: i64,
@@ -858,7 +867,7 @@ fn check_file_operations_runtime(
         let send_failures = int_or_zero(health_data.get("sendFailures"));
         let (previous, delta) = counter_delta(
             counter_state.as_deref_mut(),
-            &format!("file-operations:{bucket_id}:sendFailures"),
+            &transport_counter_key("file-operations", bucket_id, health_data, "sendFailures"),
             send_failures,
         );
         let health_item = json!({
@@ -996,7 +1005,7 @@ fn check_endpoint_self_test_metrics(
         let send_failures = int_or_zero(data.get("sendFailures"));
         let (previous, delta) = counter_delta(
             counter_state.as_deref_mut(),
-            &format!("endpoint-self-test:{bucket_id}:sendFailures"),
+            &transport_counter_key("endpoint-self-test", &bucket_id, data, "sendFailures"),
             send_failures,
         );
         let item = json!({
@@ -1499,6 +1508,24 @@ mod tests {
         assert_eq!(counter_delta(Some(&mut state), "k", 12), (Some(12), 0));
         assert_eq!(counter_delta(Some(&mut state), "k", 13), (Some(12), 1));
         assert_eq!(counter_delta(Some(&mut state), "k", 1), (Some(13), 0));
+    }
+
+    #[test]
+    fn transport_counter_key_separates_sessions() {
+        let data = json!({
+            "hostname": "SHARKON2025",
+            "sessionId": 4,
+            "username": "USER4"
+        });
+        assert_eq!(
+            transport_counter_key(
+                "file-operations",
+                "aw-file-operations_SHARKON2025",
+                &data,
+                "sendFailures"
+            ),
+            "file-operations:aw-file-operations_SHARKON2025:SHARKON2025:4:USER4:sendFailures"
+        );
     }
 
     #[test]

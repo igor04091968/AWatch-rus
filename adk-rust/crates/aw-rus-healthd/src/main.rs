@@ -307,7 +307,7 @@ fn latest_bucket_event(client: &Client, api_base: &str, bucket_id: &str) -> Resu
         .filter(|item| item.is_object())
         .cloned()
         .collect::<Vec<_>>();
-    objects.sort_by(|left, right| event_effective_ts(right).cmp(&event_effective_ts(left)));
+    objects.sort_by_key(|item| std::cmp::Reverse(event_effective_ts(item)));
     Ok(objects.into_iter().next())
 }
 

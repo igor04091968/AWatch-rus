@@ -151,12 +151,18 @@ fn process_one(zip_path: &Path) -> Result<ProcessResult> {
     }
     archive_sidecars(&report_dir, &sidecars)?;
     archive_drop_package(&report_dir, zip_path)?;
-    if sidecars.case_id.is_some() && !Path::new(CASE_ALERT).is_file() {
+    if let Some(case_id) = sidecars.case_id {
+        if Path::new(CASE_ALERT).is_file() {
+            return Ok(ProcessResult {
+                latest_intake: latest,
+                case_alert,
+            });
+        }
         run_checked(
             Path::new(LINKER),
             &[
                 "--case-id".to_string(),
-                sidecars.case_id.unwrap().to_string(),
+                case_id.to_string(),
                 "--mode".to_string(),
                 mode,
                 "--link-source".to_string(),

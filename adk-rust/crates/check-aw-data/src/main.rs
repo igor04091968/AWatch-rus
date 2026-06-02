@@ -227,7 +227,7 @@ fn read_context(
                 .pointer("/data/active")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            if age >= 0 && age < 900 && !active {
+            if (0..900).contains(&age) && !active {
                 state.host_inactive = true;
             }
         }
@@ -248,7 +248,7 @@ fn read_context(
                 .and_then(Value::as_array)
                 .map(Vec::len)
                 .unwrap_or(0);
-            if age >= 0 && age < 300 && status == "ok" && problems == 0 {
+            if (0..300).contains(&age) && status == "ok" && problems == 0 {
                 state.guard_healthy = true;
             }
         }
