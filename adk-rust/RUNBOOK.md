@@ -1603,6 +1603,22 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       failed units stayed `0`. Local Playwright smoke against a temporary
       portal instance verified `Инциденты ИБ`, `В работу`, persisted UI state,
       disabled ack button, and zero JS errors.
+    - `Инциденты ИБ` tightened to a DLP-focused card: the tab now filters the
+      card to DLP/incident/case items, adds a synthetic DLP-count incident when
+      `dlp_counts.warn/fail` is non-zero, and shows only DLP/Grafana dashboard
+      links (`detmir-dlp-security`, `detmir-dlp-management`,
+      `awatch-dlp-overview`, Grafana catalog). Worktime, 1C, AW UI, and other
+      non-incident operational links are intentionally not shown in this card.
+      Local Playwright smoke verified DLP incident rendering, dashboard links,
+      no Worktime/1C text in the card, and zero JS errors.
+    - during this deploy, `detmir-grafana-check` was corrected so empty
+      detail-only panels for employees/applications are WARN, not FAIL. The
+      mandatory freshness/summary panels still fail the check when stale or
+      empty. This removed a false red state shortly after midnight when
+      `today` detail rows were legitimately empty. Production verification:
+      Grafana check `ok=true` with `fail=0`, `detmir-auto --no-heal` rc `0`,
+      portal health `true`, `detmir-status` `OK / ok_for_operator=true`, and
+      failed units `0`.
 
 Отложить:
 

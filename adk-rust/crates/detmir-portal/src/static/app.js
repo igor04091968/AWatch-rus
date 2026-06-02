@@ -73,6 +73,16 @@ function renderLinks(links) {
   </div>`;
 }
 
+function renderDlpLinks(links) {
+  const link = (text, href) => `<a class="button" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
+  return `<div class="links">
+    ${link("ИБ дашборд", links.dlp_security_dashboard)}
+    ${link("ИБ для руководства", links.dlp_management_dashboard)}
+    ${link("DLP обзор", links.dlp_overview_dashboard)}
+    ${link("Все Grafana dashboards", links.grafana_dashboards)}
+  </div>`;
+}
+
 function renderSourceList(data) {
   const sources = [
     ["DetMir", data.detmir_status],
@@ -181,14 +191,36 @@ function renderIncidentsList(items) {
   `).join("")}</div>`;
 }
 
+function isDlpIncident(item) {
+  const text = `${item?.kind || ""} ${item?.source || ""} ${item?.summary || ""}`.toLowerCase();
+  return text.includes("dlp") || text.includes("incident") || text.includes("case") || text.includes("иб");
+}
+
+function renderDlpIncidentsList(items) {
+  const dlpItems = (items || []).filter(isDlpIncident);
+  if (dlpItems.length === 0) return `<p class="muted">Активных DLP/ИБ-инцидентов нет.</p>`;
+  return renderIncidentsList(dlpItems);
+}
+
 function renderIncidents(data) {
+  const links = state.links || {};
   return `
     <h2 class="section-title">Инциденты ИБ</h2>
-    ${renderIncidentsList(data)}
+    <div class="grid-2">
+      <section class="card">
+        <h3>DLP-инциденты</h3>
+        ${renderDlpIncidentsList(data)}
+      </section>
+      <section class="card">
+        <h3>Графики и дашборды</h3>
+        ${renderDlpLinks(links)}
+      </section>
+    </div>
   `;
 }
 
 async function refresh() {
+  if (!state.links) state.links = await loadJson("/links");
   const summary = await loadJson("/summary");
   renderSummary(summary);
   const content = document.getElementById("content");

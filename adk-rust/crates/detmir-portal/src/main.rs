@@ -182,6 +182,9 @@ struct PortalLinks {
     portal: String,
     grafana_dashboards: String,
     detmir_activitywatch: String,
+    dlp_security_dashboard: String,
+    dlp_management_dashboard: String,
+    dlp_overview_dashboard: String,
     aw_ui: String,
     worktime_report: String,
     file1c_brief: String,
@@ -689,6 +692,22 @@ fn build_incidents(snapshot: &Snapshot, state: &IncidentStateFile) -> Vec<Incide
             }
         }
     }
+    if let Some(status) = snapshot.detmir_status.payload.as_ref() {
+        let counts = status.get("dlp_counts").unwrap_or(&Value::Null);
+        let warn = counts.get("warn").and_then(Value::as_u64).unwrap_or(0);
+        let fail = counts.get("fail").and_then(Value::as_u64).unwrap_or(0);
+        if warn > 0 || fail > 0 {
+            incidents.push(incident_item(
+                if fail > 0 { "FAIL" } else { "WARN" },
+                "dlp",
+                "dlp_counts",
+                &format!("DLP requires review: warn={warn}, fail={fail}"),
+                &snapshot.generated_at_utc,
+                "/portal/incidents",
+                state,
+            ));
+        }
+    }
     incidents
 }
 
@@ -923,6 +942,12 @@ fn links() -> PortalLinks {
         detmir_activitywatch:
             "/d/detmir-aw-main/detmir-activitywatch?orgId=1&from=now-48h&to=now&timezone=browser&var-host=SHARKON2025&refresh=5m"
                 .to_string(),
+        dlp_security_dashboard:
+            "/d/detmir-dlp-security?orgId=1&from=now-30d&to=now&timezone=browser".to_string(),
+        dlp_management_dashboard:
+            "/d/detmir-dlp-management?orgId=1&from=now-30d&to=now&timezone=browser".to_string(),
+        dlp_overview_dashboard:
+            "/d/awatch-dlp-overview?orgId=1&from=now-30d&to=now&timezone=browser".to_string(),
         aw_ui: "/r/aw/".to_string(),
         worktime_report: "/reports/worktime/management?format=html&host=SHARKON2025".to_string(),
         file1c_brief: "/r/file1c/brief".to_string(),

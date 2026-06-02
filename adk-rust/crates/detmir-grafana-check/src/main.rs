@@ -232,8 +232,14 @@ fn build_report(cli: &Cli) -> Result<Report> {
                         && first_number
                             .map(|value| value > cli.max_freshness_minutes)
                             .unwrap_or(true);
-                    let status = if rows < cli.min_panel_rows || freshness_failed {
+                    let empty_optional_panel =
+                        rows < cli.min_panel_rows && is_optional_empty_panel(&target.panel_title);
+                    let status = if freshness_failed
+                        || (rows < cli.min_panel_rows && !empty_optional_panel)
+                    {
                         Status::Fail
+                    } else if empty_optional_panel {
+                        Status::Warn
                     } else {
                         Status::Ok
                     };
@@ -572,6 +578,11 @@ fn is_freshness_panel(title: &str) -> bool {
     title.to_lowercase().contains("свеж")
 }
 
+fn is_optional_empty_panel(title: &str) -> bool {
+    let title = title.to_lowercase();
+    title.contains("прилож") || title.contains("сотрудник")
+}
+
 fn frame_row_count(value: &Value) -> usize {
     value
         .get("frames")
@@ -707,5 +718,19 @@ mod tests {
         assert_eq!(targets.len(), 1);
         assert_eq!(targets[0].panel_id, 5);
         assert_eq!(targets[0].datasource_uid, "influxdb_aw");
+    }
+
+    #[test]
+    fn application_panels_are_optional_when_empty() {
+        assert!(is_optional_empty_panel(
+            "Сегодня: доказанная работа по приложениям"
+        ));
+        assert!(is_optional_empty_panel(
+            "Сегодня: приложения и подтверждения"
+        ));
+        assert!(is_optional_empty_panel(
+            "Сегодня: активность по сотрудникам"
+        ));
+        assert!(!is_optional_empty_panel("Сегодня: активное время"));
     }
 }
