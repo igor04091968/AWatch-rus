@@ -1657,6 +1657,12 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       Grafana check `ok=true` with `fail=0`, `detmir-auto --no-heal` rc `0`,
       portal health `true`, `detmir-status` `OK / ok_for_operator=true`, and
       failed units `0`.
+    - `docs/DETMIR_THREAT_MODEL_RU.md` added as the current working threat
+      model for DetMir/AWatch-rus. It records the product as an operational
+      control and technical audit platform, not a certified DLP/SIEM/EDR/XDR
+      or FSTEC SZI. It also records Igor as the declared product owner, lists
+      assets, trust zones, attacker/operator-failure classes, implemented
+      evidence controls, residual risks, and the hardening roadmap.
 
 Отложить:
 
