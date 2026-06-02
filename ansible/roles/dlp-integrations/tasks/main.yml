@@ -68,6 +68,117 @@
     - { src: "webhook-sender.service", dest: "/etc/systemd/system/aw-dlp-webhook-sender.service" }
     - { src: "webhook-sender.timer", dest: "/etc/systemd/system/aw-dlp-webhook-sender.timer" }
 
+- name: Check local Rust CEF exporter
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../adk-rust/target/release/dlp-cef-exporter"
+  delegate_to: localhost
+  register: dlp_cef_exporter_rust_binary
+  become: false
+
+- name: Install Rust CEF exporter
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../adk-rust/target/release/dlp-cef-exporter"
+    dest: /usr/local/bin/dlp-cef-exporter-rust
+    owner: root
+    group: root
+    mode: "0755"
+  when: dlp_cef_exporter_rust_binary.stat.exists | default(false)
+
+- name: Ensure CEF exporter drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/aw-dlp-cef-exporter.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: dlp_cef_exporter_rust_binary.stat.exists | default(false)
+
+- name: Switch CEF exporter to Rust
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/aw-dlp-cef-exporter.service.d/20-rust-switch.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/local/bin/dlp-cef-exporter-rust
+  when: dlp_cef_exporter_rust_binary.stat.exists | default(false)
+
+- name: Check local Rust syslog forwarder
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../adk-rust/target/release/dlp-syslog-forwarder"
+  delegate_to: localhost
+  register: dlp_syslog_forwarder_rust_binary
+  become: false
+
+- name: Install Rust syslog forwarder
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../adk-rust/target/release/dlp-syslog-forwarder"
+    dest: /usr/local/bin/dlp-syslog-forwarder-rust
+    owner: root
+    group: root
+    mode: "0755"
+  when: dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
+
+- name: Ensure syslog forwarder drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/aw-dlp-syslog-forwarder.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
+
+- name: Switch syslog forwarder to Rust
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/aw-dlp-syslog-forwarder.service.d/20-rust-switch.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/local/bin/dlp-syslog-forwarder-rust
+  when: dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
+
+- name: Check local Rust webhook sender
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../adk-rust/target/release/dlp-webhook-sender"
+  delegate_to: localhost
+  register: dlp_webhook_sender_rust_binary
+  become: false
+
+- name: Install Rust webhook sender
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../adk-rust/target/release/dlp-webhook-sender"
+    dest: /usr/local/bin/dlp-webhook-sender-rust
+    owner: root
+    group: root
+    mode: "0755"
+  when: dlp_webhook_sender_rust_binary.stat.exists | default(false)
+
+- name: Ensure webhook sender drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/aw-dlp-webhook-sender.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: dlp_webhook_sender_rust_binary.stat.exists | default(false)
+
+- name: Switch webhook sender to Rust
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/aw-dlp-webhook-sender.service.d/20-rust-switch.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Service]
+      ExecStart=
+      ExecStart=/usr/local/bin/dlp-webhook-sender-rust
+  when: dlp_webhook_sender_rust_binary.stat.exists | default(false)
+
 - name: Reload systemd
   ansible.builtin.systemd:
     daemon_reload: true

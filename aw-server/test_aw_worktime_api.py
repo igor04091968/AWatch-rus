@@ -168,6 +168,48 @@ def test_build_true_active_apps_requires_foreground_not_afk_and_evidence():
     assert by_app["Total Commander"]["last_action"] == "C:\\data\\report.xlsx"
 
 
+def test_latest_bucket_event_falls_back_to_bucket_metadata_end(monkeypatch):
+    def fake_get(url):
+        if url.endswith("/events?limit=1"):
+            raise RuntimeError("events timeout")
+        if url.endswith("/buckets/aw-worktime-sessions_SHARKON2025"):
+            return {"metadata": {"end": "2026-05-30T10:38:07.530Z"}}
+        raise AssertionError(url)
+
+    monkeypatch.setattr(MODULE, "get", fake_get)
+
+    event = MODULE.latest_bucket_event("aw-worktime-sessions_SHARKON2025")
+
+    assert event["timestamp"] == "2026-05-30T10:38:07.530Z"
+    assert event["data"]["source"] == "bucket_metadata"
+
+
+def test_fetch_events_for_date_queries_aw_with_report_bounds(monkeypatch):
+    urls = []
+
+    def fake_get(url):
+        urls.append(url)
+        if url.endswith("/buckets/aw-worktime-sessions_SHARKON2025"):
+            return {"metadata": {"end": "2026-05-30T10:38:07.530Z"}}
+        if "/events?" in url:
+            return []
+        raise AssertionError(url)
+
+    monkeypatch.setattr(MODULE, "get", fake_get)
+    monkeypatch.setattr(MODULE, "REPORT_TZ", timezone.utc)
+    original_cache = MODULE._EVENTS_CACHE
+    try:
+        MODULE._EVENTS_CACHE = {}
+        MODULE.fetch_events_for_date("SHARKON2025", datetime(2026, 5, 30, tzinfo=timezone.utc).date())
+    finally:
+        MODULE._EVENTS_CACHE = original_cache
+
+    event_urls = [url for url in urls if "/events?" in url]
+    assert len(event_urls) == 1
+    assert "start=2026-05-30T00%3A00%3A00Z" in event_urls[0]
+    assert "end=2026-05-30T23%3A59%3A59" in event_urls[0]
+
+
 def test_render_html_contains_true_active_apps_table():
     html = MODULE.render_html(
         [],
@@ -289,7 +331,7 @@ def test_build_management_payload_applies_alias_and_executive_summary():
                 "notes": "Дневной контур",
             }
         }
-        MODULE.build_source_freshness = lambda host: ([], [])
+        MODULE.build_source_freshness = lambda host, **kwargs: ([], [])
         MODULE.build_management_trend = lambda host, report_date, owner_filter="", department_filter="", **kwargs: []
         rows = [
             {
@@ -350,7 +392,7 @@ def test_build_management_payload_filters_by_owner():
             "руководитель смены": {"display_name": "Сменный руководитель", "title": "Руководитель смены 1С"}
         }
         MODULE.build_management_trend = lambda *args, **kwargs: []
-        MODULE.build_source_freshness = lambda host: ([], [])
+        MODULE.build_source_freshness = lambda host, **kwargs: ([], [])
         rows = [
             {
                 "user": "user1",
@@ -697,6 +739,44 @@ def test_build_source_freshness_uses_host_fileops_bucket_only():
         MODULE.now_utc = original_now_utc
 
 
+def test_build_source_freshness_marks_desktop_sources_inactive_without_active_users():
+    original = MODULE.latest_bucket_event
+    original_now_utc = MODULE.now_utc
+    try:
+        def fake_latest(bucket_id):
+            if bucket_id in {"aw-watcher-window_SHARKON2025", "aw-file-operations_SHARKON2025"}:
+                return {
+                    "timestamp": "2026-05-23T11:00:00Z",
+                    "data": {"signalType": "collector_health", "queueDepth": 0, "sendFailures": 0, "eventsFlushed": 50},
+                }
+            if bucket_id.startswith("aw-worktime-sessions_") or bucket_id.startswith("aw-rdp-window_") or bucket_id.startswith("aw-rdp-afk_"):
+                return {
+                    "timestamp": "2026-05-23T12:00:00Z",
+                    "data": {"status": "ok"},
+                }
+            return None
+
+        MODULE.latest_bucket_event = fake_latest
+        MODULE.now_utc = lambda: datetime(2026, 5, 23, 12, 5, 0, tzinfo=timezone.utc)
+        sources, actions = MODULE.build_source_freshness("SHARKON2025", interactive_required=False)
+        source_by_id = {source["source_id"]: source for source in sources}
+        assert source_by_id["watcher_window"]["status"] == "inactive"
+        assert source_by_id["watcher_window"]["status_label"] == "inactive"
+        assert source_by_id["file_operations"]["status"] == "inactive"
+        assert source_by_id["file_operations"]["status_label"] == "inactive"
+        assert not any(action["evidence"].get("source_id") in {"watcher_window", "file_operations"} for action in actions)
+    finally:
+        MODULE.latest_bucket_event = original
+        MODULE.now_utc = original_now_utc
+
+
+def test_resolve_report_format_uses_html_for_browser_accept_without_breaking_api_default():
+    assert MODULE.resolve_report_format({}) == "json"
+    assert MODULE.resolve_report_format({}, "text/html,application/xhtml+xml") == "html"
+    assert MODULE.resolve_report_format({"format": ["json"]}, "text/html") == "json"
+    assert MODULE.resolve_report_format({"format": ["csv"]}, "text/html") == "csv"
+
+
 def test_send_bytes_returns_false_on_broken_pipe():
     handler = _FakeHandler(exc=BrokenPipeError())
     ok = MODULE.send_bytes(handler, b"{}", "application/json; charset=utf-8")
@@ -714,3 +794,285 @@ def test_send_bytes_writes_payload_when_client_is_connected():
     assert handler.status == 201
     assert handler.headers["Content-Length"] == "7"
     assert handler.wfile.data == b"payload"
+
+
+def test_report_response_cache_returns_fresh_and_stale_entries():
+    original_ttl = MODULE.REPORT_CACHE_TTL_SECONDS
+    original_stale_ttl = MODULE.REPORT_STALE_TTL_SECONDS
+    original_disk_dir = MODULE.REPORT_DISK_CACHE_DIR
+    original_disk_ttl = MODULE.REPORT_DISK_STALE_TTL_SECONDS
+    original_cache = MODULE._REPORT_RESPONSE_CACHE
+    original_busy_wait = MODULE.REPORT_BUSY_WAIT_SECONDS
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            MODULE.REPORT_CACHE_TTL_SECONDS = 1
+            MODULE.REPORT_STALE_TTL_SECONDS = 60
+            MODULE.REPORT_DISK_CACHE_DIR = Path(tmp)
+            MODULE.REPORT_DISK_STALE_TTL_SECONDS = 3600
+            MODULE.REPORT_BUSY_WAIT_SECONDS = 0
+            MODULE._REPORT_RESPONSE_CACHE = {}
+            key = MODULE.make_report_cache_key("/reports/worktime/today", "json", "SHARKON2025", datetime(2026, 5, 14, tzinfo=timezone.utc).date())
+            MODULE.save_report_response_cache(key, b"{}", "application/json; charset=utf-8")
+            fresh = MODULE.get_report_response_cache(key)
+            assert fresh is not None
+            assert fresh["stale"] is False
+            assert fresh["cache_source"] == "memory"
+            MODULE._REPORT_RESPONSE_CACHE[key]["stored_monotonic"] -= 10
+            assert MODULE.get_report_response_cache(key) is None
+            stale = MODULE.get_report_response_cache(key, allow_stale=True)
+            assert stale is not None
+            assert stale["stale"] is True
+    finally:
+        MODULE.REPORT_CACHE_TTL_SECONDS = original_ttl
+        MODULE.REPORT_STALE_TTL_SECONDS = original_stale_ttl
+        MODULE.REPORT_DISK_CACHE_DIR = original_disk_dir
+        MODULE.REPORT_DISK_STALE_TTL_SECONDS = original_disk_ttl
+        MODULE._REPORT_RESPONSE_CACHE = original_cache
+        MODULE.REPORT_BUSY_WAIT_SECONDS = original_busy_wait
+
+
+def test_report_response_cache_uses_disk_stale_after_memory_loss():
+    original_ttl = MODULE.REPORT_CACHE_TTL_SECONDS
+    original_stale_ttl = MODULE.REPORT_STALE_TTL_SECONDS
+    original_disk_dir = MODULE.REPORT_DISK_CACHE_DIR
+    original_disk_ttl = MODULE.REPORT_DISK_STALE_TTL_SECONDS
+    original_cache = MODULE._REPORT_RESPONSE_CACHE
+    original_busy_wait = MODULE.REPORT_BUSY_WAIT_SECONDS
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            MODULE.REPORT_CACHE_TTL_SECONDS = 1
+            MODULE.REPORT_STALE_TTL_SECONDS = 60
+            MODULE.REPORT_DISK_CACHE_DIR = Path(tmp)
+            MODULE.REPORT_DISK_STALE_TTL_SECONDS = 3600
+            MODULE.REPORT_BUSY_WAIT_SECONDS = 0
+            MODULE._REPORT_RESPONSE_CACHE = {}
+            key = MODULE.make_report_cache_key("/reports/worktime/today", "csv", "SHARKON2025", datetime(2026, 5, 14, tzinfo=timezone.utc).date())
+            MODULE.save_report_response_cache(key, b"user,active_seconds\nuser1,60\n", "text/csv; charset=utf-8")
+            MODULE._REPORT_RESPONSE_CACHE = {}
+
+            cached = MODULE.get_report_response_cache(key, allow_stale=True)
+
+            assert cached is not None
+            assert cached["data"].startswith(b"user,active_seconds")
+            assert cached["content_type"] == "text/csv; charset=utf-8"
+            assert cached["stale"] is True
+            assert cached["cache_source"] == "disk"
+    finally:
+        MODULE.REPORT_CACHE_TTL_SECONDS = original_ttl
+        MODULE.REPORT_STALE_TTL_SECONDS = original_stale_ttl
+        MODULE.REPORT_DISK_CACHE_DIR = original_disk_dir
+        MODULE.REPORT_DISK_STALE_TTL_SECONDS = original_disk_ttl
+        MODULE._REPORT_RESPONSE_CACHE = original_cache
+        MODULE.REPORT_BUSY_WAIT_SECONDS = original_busy_wait
+
+
+def test_send_cached_report_marks_cache_reason_and_age():
+    handler = _FakeHandler()
+    cached = {
+        "data": b"cached",
+        "content_type": "application/json; charset=utf-8",
+        "age_seconds": 42,
+        "stale": True,
+    }
+    ok = MODULE.send_cached_report(handler, cached, reason="busy")
+    assert ok is True
+    assert handler.status == 200
+    assert handler.headers["X-AW-Worktime-Cache"] == "stale"
+    assert handler.headers["X-AW-Worktime-Cache-Reason"] == "busy"
+    assert handler.headers["X-AW-Worktime-Cache-Age"] == "42"
+    assert handler.headers["X-AW-Worktime-Cache-Source"] == "memory"
+    assert handler.wfile.data == b"cached"
+
+
+def test_send_report_unavailable_returns_503_json():
+    handler = _FakeHandler()
+    MODULE.send_report_unavailable(handler, "busy")
+    payload = json.loads(handler.wfile.data.decode("utf-8"))
+    assert handler.status == 503
+    assert payload["ok"] is False
+    assert payload["error"] == "report_unavailable"
+
+
+def test_send_worktime_report_rebuilds_stale_cache_when_builder_is_available(monkeypatch):
+    original_ttl = MODULE.REPORT_CACHE_TTL_SECONDS
+    original_stale_ttl = MODULE.REPORT_STALE_TTL_SECONDS
+    original_disk_dir = MODULE.REPORT_DISK_CACHE_DIR
+    original_disk_ttl = MODULE.REPORT_DISK_STALE_TTL_SECONDS
+    original_cache = MODULE._REPORT_RESPONSE_CACHE
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            MODULE.REPORT_CACHE_TTL_SECONDS = 1
+            MODULE.REPORT_STALE_TTL_SECONDS = 60
+            MODULE.REPORT_DISK_CACHE_DIR = Path(tmp)
+            MODULE.REPORT_DISK_STALE_TTL_SECONDS = 3600
+            MODULE._REPORT_RESPONSE_CACHE = {}
+            report_date = datetime(2026, 5, 14, tzinfo=timezone.utc).date()
+            key = MODULE.make_report_cache_key("/reports/worktime/today", "html", "SHARKON2025", report_date)
+            MODULE.save_report_response_cache(key, b"stale", "text/html; charset=utf-8")
+            MODULE._REPORT_RESPONSE_CACHE[key]["stored_monotonic"] -= 10
+
+            calls = []
+
+            def fake_build(path, params):
+                calls.append((path, params))
+                return b"fresh", "text/html; charset=utf-8"
+
+            monkeypatch.setattr(MODULE, "build_worktime_report_response", fake_build)
+            handler = _FakeHandler()
+
+            MODULE.send_worktime_report(
+                handler,
+                "/reports/worktime/today",
+                {"format": ["html"]},
+                key,
+                host="SHARKON2025",
+                report_date=report_date,
+            )
+
+            assert calls == [("/reports/worktime/today", {"format": ["html"]})]
+            assert handler.status == 200
+            assert handler.headers["Content-Type"] == "text/html; charset=utf-8"
+            assert "X-AW-Worktime-Cache" not in handler.headers
+            assert handler.wfile.data == b"fresh"
+    finally:
+        MODULE.REPORT_CACHE_TTL_SECONDS = original_ttl
+        MODULE.REPORT_STALE_TTL_SECONDS = original_stale_ttl
+        MODULE.REPORT_DISK_CACHE_DIR = original_disk_dir
+        MODULE.REPORT_DISK_STALE_TTL_SECONDS = original_disk_ttl
+        MODULE._REPORT_RESPONSE_CACHE = original_cache
+
+
+def test_send_worktime_report_serves_stale_cache_only_when_builder_is_busy(monkeypatch):
+    original_ttl = MODULE.REPORT_CACHE_TTL_SECONDS
+    original_stale_ttl = MODULE.REPORT_STALE_TTL_SECONDS
+    original_disk_dir = MODULE.REPORT_DISK_CACHE_DIR
+    original_disk_ttl = MODULE.REPORT_DISK_STALE_TTL_SECONDS
+    original_cache = MODULE._REPORT_RESPONSE_CACHE
+    original_busy_wait = MODULE.REPORT_BUSY_WAIT_SECONDS
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            MODULE.REPORT_CACHE_TTL_SECONDS = 1
+            MODULE.REPORT_STALE_TTL_SECONDS = 60
+            MODULE.REPORT_DISK_CACHE_DIR = Path(tmp)
+            MODULE.REPORT_DISK_STALE_TTL_SECONDS = 3600
+            MODULE.REPORT_BUSY_WAIT_SECONDS = 0
+            MODULE._REPORT_RESPONSE_CACHE = {}
+            report_date = datetime(2026, 5, 14, tzinfo=timezone.utc).date()
+            key = MODULE.make_report_cache_key("/reports/worktime/today", "html", "SHARKON2025", report_date)
+            MODULE.save_report_response_cache(key, b"stale", "text/html; charset=utf-8")
+            MODULE._REPORT_RESPONSE_CACHE[key]["stored_monotonic"] -= 10
+
+            semaphore = MODULE.threading.BoundedSemaphore(1)
+            assert semaphore.acquire(blocking=False) is True
+            monkeypatch.setattr(MODULE, "_REPORT_BUILD_SEMAPHORE", semaphore)
+            monkeypatch.setattr(
+                MODULE,
+                "build_worktime_report_response",
+                lambda path, params: (_ for _ in ()).throw(AssertionError("builder must not run while busy")),
+            )
+            handler = _FakeHandler()
+
+            MODULE.send_worktime_report(
+                handler,
+                "/reports/worktime/today",
+                {"format": ["html"]},
+                key,
+                host="SHARKON2025",
+                report_date=report_date,
+            )
+
+            assert handler.status == 200
+            assert handler.headers["X-AW-Worktime-Cache"] == "stale"
+            assert handler.headers["X-AW-Worktime-Cache-Reason"] == "busy"
+            assert handler.wfile.data == b"stale"
+            semaphore.release()
+    finally:
+        MODULE.REPORT_CACHE_TTL_SECONDS = original_ttl
+        MODULE.REPORT_STALE_TTL_SECONDS = original_stale_ttl
+        MODULE.REPORT_DISK_CACHE_DIR = original_disk_dir
+        MODULE.REPORT_DISK_STALE_TTL_SECONDS = original_disk_ttl
+        MODULE._REPORT_RESPONSE_CACHE = original_cache
+        MODULE.REPORT_BUSY_WAIT_SECONDS = original_busy_wait
+
+
+def test_send_worktime_report_allows_explicit_machine_stale_without_blocking(monkeypatch):
+    original_ttl = MODULE.REPORT_CACHE_TTL_SECONDS
+    original_stale_ttl = MODULE.REPORT_STALE_TTL_SECONDS
+    original_disk_dir = MODULE.REPORT_DISK_CACHE_DIR
+    original_disk_ttl = MODULE.REPORT_DISK_STALE_TTL_SECONDS
+    original_cache = MODULE._REPORT_RESPONSE_CACHE
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            MODULE.REPORT_CACHE_TTL_SECONDS = 1
+            MODULE.REPORT_STALE_TTL_SECONDS = 60
+            MODULE.REPORT_DISK_CACHE_DIR = Path(tmp)
+            MODULE.REPORT_DISK_STALE_TTL_SECONDS = 3600
+            MODULE._REPORT_RESPONSE_CACHE = {}
+            report_date = datetime(2026, 5, 14, tzinfo=timezone.utc).date()
+            key = MODULE.make_report_cache_key("/reports/worktime/today", "csv", "SHARKON2025", report_date)
+            MODULE.save_report_response_cache(key, b"stale", "text/csv; charset=utf-8")
+            MODULE._REPORT_RESPONSE_CACHE[key]["stored_monotonic"] -= 10
+
+            refreshes = []
+            monkeypatch.setattr(
+                MODULE,
+                "trigger_report_background_refresh",
+                lambda key, path, params: refreshes.append((key, path, params)) or True,
+            )
+            monkeypatch.setattr(
+                MODULE,
+                "build_worktime_report_response",
+                lambda path, params: (_ for _ in ()).throw(AssertionError("explicit stale request must not block on build")),
+            )
+            handler = _FakeHandler()
+
+            MODULE.send_worktime_report(
+                handler,
+                "/reports/worktime/today",
+                {"format": ["csv"], "allow_stale": ["1"]},
+                key,
+                host="SHARKON2025",
+                report_date=report_date,
+            )
+
+            assert refreshes == []
+            assert handler.status == 200
+            assert handler.headers["X-AW-Worktime-Cache"] == "stale"
+            assert handler.headers["X-AW-Worktime-Cache-Reason"] == "stale-allowed"
+            assert handler.wfile.data == b"stale"
+    finally:
+        MODULE.REPORT_CACHE_TTL_SECONDS = original_ttl
+        MODULE.REPORT_STALE_TTL_SECONDS = original_stale_ttl
+        MODULE.REPORT_DISK_CACHE_DIR = original_disk_dir
+        MODULE.REPORT_DISK_STALE_TTL_SECONDS = original_disk_ttl
+        MODULE._REPORT_RESPONSE_CACHE = original_cache
+
+
+def test_management_report_for_date_bypasses_today_payload_cache_for_human_requests(monkeypatch):
+    original_ttl = MODULE.MANAGER_CACHE_TTL_SECONDS
+    original_dir = MODULE.MANAGER_CACHE_DIR
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            MODULE.MANAGER_CACHE_TTL_SECONDS = 300
+            MODULE.MANAGER_CACHE_DIR = Path(tmp)
+            report_date = datetime.now(timezone.utc).date()
+            monkeypatch.setattr(MODULE, "REPORT_TZ", timezone.utc)
+            monkeypatch.setattr(MODULE, "fetch_events_for_date", lambda host, date: ({"start": datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc), "end": datetime.combine(date, datetime.max.time(), tzinfo=timezone.utc)}, []))
+            monkeypatch.setattr(MODULE, "aggregate_rows_with_intervals", lambda events, start, end, host: [])
+
+            generated = iter(["old", "fresh"])
+            monkeypatch.setattr(
+                MODULE,
+                "build_management_payload",
+                lambda rows, host, date: {"generated_at_utc": next(generated), "rows": rows},
+            )
+
+            cached = MODULE.management_report_for_date("SHARKON2025", report_date, use_cache=True)
+            fresh = MODULE.management_report_for_date("SHARKON2025", report_date, use_cache=False)
+
+            assert cached["generated_at_utc"] == "old"
+            assert fresh["generated_at_utc"] == "fresh"
+            assert MODULE.load_management_cache("SHARKON2025", report_date)["generated_at_utc"] == "fresh"
+    finally:
+        MODULE.MANAGER_CACHE_TTL_SECONDS = original_ttl
+        MODULE.MANAGER_CACHE_DIR = original_dir

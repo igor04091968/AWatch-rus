@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:ActivityWatchBuiltInAdministratorName = $null
 
@@ -431,6 +431,22 @@ function Get-ActivityWatchTaskNameToken {
     return $buffer.ToString().Trim('_')
 }
 
+function Test-ActivityWatchScheduledTaskExistsExact {
+    param([string]$TaskName)
+
+    if ([string]::IsNullOrWhiteSpace($TaskName)) {
+        return $false
+    }
+
+    try {
+        & schtasks.exe /Query /TN $TaskName *> $null
+        return ($LASTEXITCODE -eq 0)
+    }
+    catch {
+        return $false
+    }
+}
+
 function New-ActivityWatchUserTaskDefinitions {
     param(
         [Parameter(Mandatory = $true)]
@@ -633,6 +649,119 @@ function Test-ActivityWatchUserHasLiveSession {
     return $false
 }
 
+function Test-ActivityWatchSessionMatchesUserId {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$SessionRecord,
+        [Parameter(Mandatory = $true)]
+        [string]$UserId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($UserId) -or $null -eq $SessionRecord) {
+        return $false
+    }
+
+    $sessionUser = [string]$SessionRecord.UserName
+    if ([string]::IsNullOrWhiteSpace($sessionUser)) {
+        return $false
+    }
+
+    foreach ($candidate in @(Resolve-ActivityWatchUserCandidates -UserId $UserId)) {
+        if ($sessionUser -ieq $candidate -or
+            ('{0}\{1}' -f $env:COMPUTERNAME, $sessionUser) -ieq $candidate -or
+            ((-not [string]::IsNullOrWhiteSpace($env:USERDOMAIN)) -and ('{0}\{1}' -f $env:USERDOMAIN, $sessionUser) -ieq $candidate)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-ActivityWatchUserHasManagedSession {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$UserId,
+        [object[]]$SessionRecords,
+        [switch]$IncludeLive,
+        [switch]$IncludeDisconnected
+    )
+
+    foreach ($session in @($SessionRecords)) {
+        if ([int]$session.SessionId -le 0) {
+            continue
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$session.UserName)) {
+            continue
+        }
+        if ([bool]$session.IsLive -and -not $IncludeLive.IsPresent) {
+            continue
+        }
+        if (-not [bool]$session.IsLive -and -not $IncludeDisconnected.IsPresent) {
+            continue
+        }
+        if (Test-ActivityWatchSessionMatchesUserId -SessionRecord $session -UserId $UserId) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Get-ActivityWatchManagedInteractiveSessions {
+    param(
+        [pscustomobject[]]$TaskDefinitions,
+        [object[]]$SessionRecords,
+        [switch]$IncludeLive,
+        [switch]$IncludeDisconnected
+    )
+
+    $result = New-Object System.Collections.Generic.List[object]
+    $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($taskDef in @($TaskDefinitions)) {
+        $userId = [string]$taskDef.userId
+        $taskName = [string]$taskDef.taskName
+        if ([string]::IsNullOrWhiteSpace($userId) -or [string]::IsNullOrWhiteSpace($taskName)) {
+            continue
+        }
+
+        foreach ($session in @($SessionRecords)) {
+            if ([int]$session.SessionId -le 0) {
+                continue
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$session.UserName)) {
+                continue
+            }
+            if ([bool]$session.IsLive -and -not $IncludeLive.IsPresent) {
+                continue
+            }
+            if (-not [bool]$session.IsLive -and -not $IncludeDisconnected.IsPresent) {
+                continue
+            }
+            if (-not (Test-ActivityWatchSessionMatchesUserId -SessionRecord $session -UserId $userId)) {
+                continue
+            }
+
+            $key = '{0}|{1}|{2}' -f $taskName, [int]$session.SessionId, $userId
+            if (-not $seen.Add($key)) {
+                continue
+            }
+
+            $result.Add([pscustomobject]@{
+                    TaskName    = $taskName
+                    UserId      = $userId
+                    SessionName = [string]$session.SessionName
+                    SessionId   = [int]$session.SessionId
+                    State       = [string]$session.State
+                    UserName    = [string]$session.UserName
+                    IsLive      = [bool]$session.IsLive
+                }) | Out-Null
+        }
+    }
+
+    return @($result.ToArray())
+}
+
 function Copy-ActivityWatchCollectorAssets {
     param(
         [Parameter(Mandatory = $true)]
@@ -777,7 +906,7 @@ function New-ActivityWatchDeploymentConfig {
         [int]$EvtxRetentionDays = 14,
         [string[]]$EvtxChannels = @(),
         [bool]$LogonMarkerEnabled = $true,
-        [bool]$ProcessEventsEnabled = $true,
+        [bool]$ProcessEventsEnabled = $false,
         [Parameter(Mandatory = $true)]
         [string]$LaunchScriptPath,
         [Parameter(Mandatory = $true)]
@@ -1410,6 +1539,10 @@ function Get-ActivityWatchRecoveryTaskDefinitions {
             foreach ($task in @($config.userTasks)) {
                 $taskName = [string]$task.launchTaskName
                 $userId = Normalize-ActivityWatchUserId -UserId ([string]$task.userId)
+                $canonicalTaskName = "ActivityWatch Launch [$((Get-ActivityWatchTaskNameToken -UserId $userId))]"
+                if ($canonicalTaskName -ne $taskName -and (Test-ActivityWatchScheduledTaskExistsExact -TaskName $canonicalTaskName)) {
+                    $taskName = $canonicalTaskName
+                }
                 if (-not [string]::IsNullOrWhiteSpace($taskName) -and -not $taskMap.Contains($taskName)) {
                     $taskMap[$taskName] = [pscustomobject]@{
                         taskName = $taskName
@@ -1679,13 +1812,24 @@ function Stop-ActivityWatchProcessesInNonLiveSessions {
         [Parameter(Mandatory = $true)]
         [object[]]$SessionRecords,
         [Parameter(Mandatory = $true)]
-        [pscustomobject]$Config
+        [pscustomobject]$Config,
+        [pscustomobject[]]$TaskDefinitions = @(),
+        [switch]$PreserveManagedSessions
     )
 
     $stateRoot = if ($Config.paths.PSObject.Properties.Name -contains 'stateRoot') { [string]$Config.paths.stateRoot } else { Join-Path $env:ProgramData 'AWatch-rus' }
+    $preservedSessionIds = @()
+    if ($PreserveManagedSessions.IsPresent) {
+        $preservedSessionIds = @(
+            Get-ActivityWatchManagedInteractiveSessions -TaskDefinitions $TaskDefinitions -SessionRecords $SessionRecords -IncludeDisconnected |
+                ForEach-Object { [int]$_.SessionId } |
+                Sort-Object -Unique
+        )
+    }
+
     $sessionIds = @(
         $SessionRecords |
-            Where-Object { -not $_.IsLive -and $_.SessionId -gt 0 } |
+            Where-Object { -not $_.IsLive -and $_.SessionId -gt 0 -and ($preservedSessionIds -notcontains [int]$_.SessionId) } |
             ForEach-Object { [int]$_.SessionId } |
             Sort-Object -Unique
     )
@@ -1704,7 +1848,7 @@ function Stop-ActivityWatchProcessesInNonLiveSessions {
         }
     }
 
-    foreach ($session in @($SessionRecords | Where-Object { -not $_.IsLive -and $_.SessionId -gt 0 })) {
+    foreach ($session in @($SessionRecords | Where-Object { -not $_.IsLive -and $_.SessionId -gt 0 -and ($preservedSessionIds -notcontains [int]$_.SessionId) })) {
         Remove-ActivityWatchLogonMarkersForSession -StateRoot $stateRoot -SessionId ([int]$session.SessionId) -UserName ([string]$session.UserName)
     }
 
@@ -1885,7 +2029,7 @@ function Invoke-ActivityWatchRecoveryLoop {
                 $config = Read-ActivityWatchDeploymentConfig -Path $ConfigPath
                 $taskDefs = Get-ActivityWatchRecoveryTaskDefinitions -ConfigPaths $configPaths
                 $sessionRecords = Get-ActivityWatchSessionRecords
-                Stop-ActivityWatchProcessesInNonLiveSessions -SessionRecords $sessionRecords -Config $config
+                Stop-ActivityWatchProcessesInNonLiveSessions -SessionRecords $sessionRecords -Config $config -TaskDefinitions $taskDefs -PreserveManagedSessions
                 $sessionRecords = Get-ActivityWatchSessionRecords
                 $stateRoot = [string]$config.paths.stateRoot
                 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }

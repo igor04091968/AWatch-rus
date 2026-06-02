@@ -50,7 +50,7 @@
     aw_windows_incident_artifacts_root: "{{ aw_windows_state_root }}\\incident-artifacts"
     aw_windows_forensics_root: "{{ aw_windows_state_root }}\\forensics\\evtx-exports"
     aw_windows_logon_marker_enabled: true
-    aw_windows_process_events_enabled: true
+    aw_windows_process_events_enabled: false
     aw_windows_skip_hardening: false
     aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
     aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.example.json"
@@ -58,6 +58,10 @@
     aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
     aw_windows_launch_task_pattern: "ActivityWatch Launch *"
     aw_windows_recovery_task_name: "ActivityWatch Recovery"
+    aw_windows_collector_guard_enabled: true
+    aw_windows_collector_guard_mode: "enforce"
+    aw_windows_collector_guard_service_name: "AWatchRusCollectorGuard"
+    aw_windows_collector_guard_loop_seconds: 60
     aw_windows_force_task_restart: true
     aw_windows_api_smoke_check_enabled: true
     aw_windows_api_smoke_check_bucket: ""
@@ -181,6 +185,9 @@
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1
         - hardening-recovery.ps1
+        - AWatchRusCollectorGuardService.cs
+        - aw-collector-guard.ps1
+        - install-collector-guard-service.ps1
         - rebuild-worktime-tasks.ps1
         - audit-cryptopro.ps1
         - validate-deployment.ps1
@@ -371,26 +378,49 @@
 
           Start-Sleep -Seconds 2
 
+          $modulePath = "{{ aw_windows_deploy_root }}\windows\ActivityWatch.Windows.Common.psm1"
+          Import-Module $modulePath -Force
+
           # Ensure tasks are enabled (some environments keep them disabled, causing "0s" in WebUI).
           try {
             Enable-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}" -ErrorAction SilentlyContinue | Out-Null
           } catch {}
 
           $config = Get-Content -Raw -LiteralPath "{{ aw_windows_state_root }}\deployment-config.json" | ConvertFrom-Json
-          foreach ($taskDef in @($config.userTasks)) {
-            try { Enable-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue | Out-Null } catch {}
+          $configPaths = Get-ActivityWatchRecoveryConfigPaths -PrimaryConfigPath "{{ aw_windows_state_root }}\deployment-config.json"
+          $taskDefs = @(Get-ActivityWatchRecoveryTaskDefinitions -ConfigPaths $configPaths)
+          $sessionRecords = @(Get-ActivityWatchSessionRecords)
+
+          foreach ($taskDef in @($taskDefs)) {
+            try { Enable-ScheduledTask -TaskName ([string]$taskDef.taskName) -ErrorAction SilentlyContinue | Out-Null } catch {}
           }
 
           $recoveryTask = Get-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}" -ErrorAction SilentlyContinue
           if ($recoveryTask -and $recoveryTask.State -notin @('Running', 'Queued')) {
             Start-ScheduledTask -TaskName "{{ aw_windows_recovery_task_name }}"
           }
-          foreach ($taskDef in @($config.userTasks)) {
-            $launchTask = Get-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
+          foreach ($taskDef in @($taskDefs)) {
+            if (-not (Test-ActivityWatchUserHasManagedSession -UserId ([string]$taskDef.userId) -SessionRecords $sessionRecords -IncludeLive -IncludeDisconnected)) {
+              continue
+            }
+            $launchTask = Get-ScheduledTask -TaskName ([string]$taskDef.taskName) -ErrorAction SilentlyContinue
             if ($launchTask -and $launchTask.State -notin @('Running', 'Queued')) {
-              Start-ScheduledTask -TaskName ([string]$taskDef.launchTaskName) -ErrorAction SilentlyContinue
+              Start-ScheduledTask -TaskName ([string]$taskDef.taskName) -ErrorAction SilentlyContinue
             }
           }
+
+    - name: Установить session-aware AWatch-rus Collector Guard service
+      when: aw_windows_collector_guard_enabled | bool
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $guardParams = @{
+            ConfigPath = "{{ aw_windows_state_root }}\deployment-config.json"
+            Mode = "{{ aw_windows_collector_guard_mode }}"
+            ServiceName = "{{ aw_windows_collector_guard_service_name }}"
+            LoopSeconds = {{ aw_windows_collector_guard_loop_seconds | int }}
+          }
+          & "{{ aw_windows_deploy_root }}\windows\install-collector-guard-service.ps1" @guardParams
 
     - name: Получить Windows hostname для AW smoke-check bucket
       when:

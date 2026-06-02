@@ -1,3 +1,8 @@
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
@@ -24,24 +29,237 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_prefer_server_ciphers off;
 
+    auth_basic "{{ proxmox_web_gateway_auth_realm }}";
+    auth_basic_user_file {{ proxmox_web_gateway_auth_file }};
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "no-referrer" always;
+    add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+
     root {{ proxmox_web_gateway_root }};
     index index.html;
 
     location = {{ proxmox_web_gateway_health_path }} {
+        auth_basic off;
         default_type text/plain;
         return 200 "ok\n";
     }
 
     location = /robots.txt {
+        auth_basic off;
         default_type text/plain;
         return 200 "User-agent: *\nDisallow: /\n";
     }
 
-{% for route in proxmox_web_gateway_routes %}
-    location = /go/{{ route.slug }} {
-        return 302 {{ route.target_url }};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_read_timeout 120s;
+    proxy_send_timeout 120s;
+
+    location /api/0/ {
+        proxy_set_header Origin "";
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600;
+        proxy_redirect off;
     }
+
+    location /r/grafana/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000/;
+        proxy_redirect http://10.10.10.11:3000/ /r/grafana/;
+    }
+
+    location = /login {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location = /logout {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /public/ {
+        proxy_set_header Origin "";
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /api/live/ {
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Origin "$scheme://$host";
+        proxy_set_header Authorization "";
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /api/ {
+        proxy_set_header Origin "";
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /apis/ {
+        proxy_set_header Origin "";
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /d/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /dashboards {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /dashboard/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /avatar/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /profile/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /org/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /user/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /plugins/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /explore {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /alerting/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /connections/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /datasources/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.11:3000;
+        proxy_redirect off;
+    }
+
+    location /r/aw/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600/;
+        proxy_redirect http://10.10.10.13:5600/ /r/aw/;
+    }
+
+    location /reports/worktime/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5610;
+        proxy_redirect off;
+    }
+
+    location = /dark.css {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600;
+        proxy_redirect off;
+    }
+
+    location /css/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600;
+        proxy_redirect off;
+    }
+
+    location = /js/aw-worktime-panel.js {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600;
+        proxy_redirect off;
+        sub_filter_once off;
+        sub_filter_types application/javascript text/javascript;
+        sub_filter 'http://10.10.10.13:5610' '';
+    }
+
+    location /js/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600;
+        proxy_redirect off;
+    }
+
+    location /img/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600;
+        proxy_redirect off;
+    }
+
+    location /fonts/ {
+        auth_basic off;
+        proxy_set_header Origin "";
+        proxy_set_header Authorization "";
+        proxy_pass http://10.10.10.13:5600;
+        proxy_redirect off;
+    }
+
+{% for route in proxmox_web_gateway_routes %}
+{% if route.proxy_target_url is defined %}
+    location = {{ route.proxy_path }} {
+        proxy_set_header Authorization "";
+        proxy_pass {{ route.proxy_target_url }};
+        proxy_redirect off;
+    }
+
+{% endif %}
 {% endfor %}
+
+    location /go/ {
+        try_files /index.html =404;
+    }
 
     location / {
         try_files $uri $uri/ /index.html;

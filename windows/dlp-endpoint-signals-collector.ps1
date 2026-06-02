@@ -15,7 +15,8 @@ param(
     [int]$PolicyRefreshSeconds,
     [string]$PolicyCachePath,
     [string]$LogPath,
-    [int]$PollSeconds
+    [int]$PollSeconds,
+    [switch]$SelfTestSuppressedBlock
 )
 
 Set-StrictMode -Version Latest
@@ -30,6 +31,7 @@ catch {
 
 $script:TransportQueuePath = $null
 $script:TransportQueueLockPath = $null
+$script:SessionId = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
 $script:TransportMetrics = @{
     eventsEnqueued = 0
     eventsFlushed  = 0
@@ -69,6 +71,21 @@ function Write-EndpointLog {
     }
     catch {
     }
+}
+
+function Get-QueueNameToken {
+    param(
+        [string]$UserName,
+        [int]$SessionId
+    )
+    $token = ('{0}-s{1}' -f $UserName, $SessionId)
+    foreach ($ch in [System.IO.Path]::GetInvalidFileNameChars()) {
+        $token = $token.Replace([string]$ch, '_')
+    }
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        return ('session-{0}' -f $SessionId)
+    }
+    return $token
 }
 
 function Invoke-AwJsonPost {
@@ -129,10 +146,19 @@ function Invoke-AwJsonPost {
 
 function Initialize-TransportQueue {
     param([Parameter(Mandatory = $true)][string]$StateRoot)
-    $script:TransportQueuePath = Join-Path $StateRoot 'dlp-endpoint-signals-queue.jsonl'
-    $script:TransportQueueLockPath = Join-Path $StateRoot 'dlp-endpoint-signals-queue.lock'
+    $queueToken = Get-QueueNameToken -UserName $env:USERNAME -SessionId $script:SessionId
+    $script:TransportQueuePath = Join-Path $StateRoot ("dlp-endpoint-signals-queue-{0}.jsonl" -f $queueToken)
+    $script:TransportQueueLockPath = Join-Path $StateRoot ("dlp-endpoint-signals-queue-{0}.lock" -f $queueToken)
     if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) {
         New-Item -Path $script:TransportQueuePath -ItemType File -Force | Out-Null
+    }
+    $legacyQueuePath = Join-Path $StateRoot 'dlp-endpoint-signals-queue.jsonl'
+    if (Test-Path -LiteralPath $legacyQueuePath) {
+        $legacyItems = @(Get-Content -LiteralPath $legacyQueuePath -ErrorAction SilentlyContinue | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($legacyItems.Count -gt 0) {
+            Add-Content -LiteralPath $script:TransportQueuePath -Value $legacyItems -Encoding UTF8
+            Clear-Content -LiteralPath $legacyQueuePath -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -617,6 +643,17 @@ function Load-DlpPolicy {
             regexPack = $null
             ocrEnabled = $false
         }
+        nativeControls = [ordered]@{
+            mode = 'monitor'
+            rollout = [ordered]@{
+                allowGlobalBlock = $false
+            }
+            channels = [ordered]@{
+                clipboard = [ordered]@{ action = 'audit' }
+                usb = [ordered]@{ action = 'audit' }
+                print = [ordered]@{ action = 'audit' }
+            }
+        }
     }
 
     $script:PolicySource = 'defaults'
@@ -656,11 +693,95 @@ function Load-DlpPolicy {
                 $script:Policy.contentAnalysis.ocrEnabled = [bool]$raw.contentAnalysis.ocrEnabled
             }
         }
+        if ($raw.nativeControls) {
+            $nativeProps = @($raw.nativeControls.PSObject.Properties.Name)
+            if ($nativeProps -contains 'mode' -and $raw.nativeControls.mode) {
+                $script:Policy.nativeControls.mode = ([string]$raw.nativeControls.mode).ToLowerInvariant()
+            }
+            if ($nativeProps -contains 'rollout' -and $raw.nativeControls.rollout) {
+                $rolloutProps = @($raw.nativeControls.rollout.PSObject.Properties.Name)
+                if ($rolloutProps -contains 'allowGlobalBlock') {
+                    $script:Policy.nativeControls.rollout.allowGlobalBlock = [bool]$raw.nativeControls.rollout.allowGlobalBlock
+                }
+            }
+            if ($nativeProps -contains 'channels' -and $raw.nativeControls.channels) {
+                foreach ($channelName in @('clipboard', 'usb', 'print')) {
+                    if (@($raw.nativeControls.channels.PSObject.Properties.Name) -contains $channelName) {
+                        $channel = $raw.nativeControls.channels.$channelName
+                        if ($channel -and (@($channel.PSObject.Properties.Name) -contains 'action') -and $channel.action) {
+                            $script:Policy.nativeControls.channels[$channelName].action = ([string]$channel.action).ToLowerInvariant()
+                        }
+                    }
+                }
+            }
+        }
         $script:PolicySource = 'local'
     }
     catch {
         Write-EndpointLog ("policy parse failed: {0}" -f $_.Exception.Message)
     }
+}
+
+function Resolve-DlpEffectiveAction {
+    param(
+        [Parameter(Mandatory = $true)][string]$RequestedAction,
+        [Parameter(Mandatory = $true)][ValidateSet('clipboard', 'usb', 'print')][string]$Channel
+    )
+
+    $requested = $RequestedAction.ToLowerInvariant()
+    $mode = ([string]$script:Policy.nativeControls.mode).ToLowerInvariant()
+    $allowGlobalBlock = [bool]$script:Policy.nativeControls.rollout.allowGlobalBlock
+    $channelAction = 'audit'
+    try {
+        $channelAction = ([string]$script:Policy.nativeControls.channels[$Channel].action).ToLowerInvariant()
+    }
+    catch {
+        $channelAction = 'audit'
+    }
+
+    $suppressed = $false
+    $effective = $requested
+    if ($requested -eq 'block') {
+        $channelAllowsBlock = $channelAction -in @('block', 'blockwithoverride')
+        if ($mode -ne 'enforce' -or -not $allowGlobalBlock -or -not $channelAllowsBlock) {
+            $effective = 'alert'
+            $suppressed = $true
+        }
+    }
+
+    return [pscustomobject]@{
+        requestedAction = $requested
+        action = $effective
+        enforcementMode = $mode
+        nativeChannelAction = $channelAction
+        enforcementSuppressed = $suppressed
+    }
+}
+
+function Invoke-SuppressedBlockSelfTest {
+    $decisions = @()
+    foreach ($channel in @('clipboard', 'usb', 'print')) {
+        $decisions += (Resolve-DlpEffectiveAction -RequestedAction 'block' -Channel $channel)
+    }
+
+    $failed = @(
+        $decisions |
+            Where-Object { $_.action -eq 'block' -or -not [bool]$_.enforcementSuppressed }
+    )
+
+    $result = [ordered]@{
+        ok = (@($failed).Count -eq 0)
+        test = 'suppressed-block-in-monitor'
+        policySource = $script:PolicySource
+        policyMode = $script:PolicyMode
+        decisions = @($decisions)
+    }
+
+    $result | ConvertTo-Json -Depth 6
+    if (-not $result.ok) {
+        exit 2
+    }
+    exit 0
 }
 
 function Test-ValidInn {
@@ -925,7 +1046,9 @@ function Evaluate-ClipboardRules {
         $fingerprint = "clipboard|$ruleId|$ClipboardHash|$env:USERNAME"
         if (-not (Should-EmitByCooldown -Fingerprint $fingerprint -CooldownSeconds ([Math]::Max($cooldown, 30)))) { continue }
 
-        $action = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
+        $requestedAction = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
+        $actionDecision = Resolve-DlpEffectiveAction -RequestedAction $requestedAction -Channel 'clipboard'
+        $action = [string]$actionDecision.action
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
         $message = if ($rule.message) { [string]$rule.message } else { "Clipboard rule matched: $ruleId" }
 
@@ -939,13 +1062,17 @@ function Evaluate-ClipboardRules {
             clipboardHash = $ClipboardHash
             clipboardLength = $ClipboardText.Length
             enforced = $enforced
+            requestedAction = [string]$actionDecision.requestedAction
+            enforcementMode = [string]$actionDecision.enforcementMode
+            nativeChannelAction = [string]$actionDecision.nativeChannelAction
+            enforcementSuppressed = [bool]$actionDecision.enforcementSuppressed
             dictionaryPack = $dictionaryPack
             regexPack = $regexPack
             dictionaryMatches = @($advanced.dictionaryMatches)
             regexMatches = @($advanced.regexMatches)
             ocrRequested = $ocrEnabled
         }
-        Write-EndpointLog ("incident clipboard rule={0} action={1} severity={2} enforced={3}" -f $ruleId, $action, $severity, $enforced)
+        Write-EndpointLog ("incident clipboard rule={0} requested={1} action={2} severity={3} enforced={4} suppressed={5}" -f $ruleId, $requestedAction, $action, $severity, $enforced, [bool]$actionDecision.enforcementSuppressed)
     }
 }
 
@@ -965,7 +1092,9 @@ function Evaluate-UsbRules {
         $fingerprint = "usb|$ruleId|$DriveLetter|$env:USERNAME"
         if (-not (Should-EmitByCooldown -Fingerprint $fingerprint -CooldownSeconds ([Math]::Max($cooldown, 30)))) { continue }
 
-        $action = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
+        $requestedAction = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
+        $actionDecision = Resolve-DlpEffectiveAction -RequestedAction $requestedAction -Channel 'usb'
+        $action = [string]$actionDecision.action
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
         $message = if ($rule.message) { [string]$rule.message } else { "USB rule matched: $ruleId" }
 
@@ -979,8 +1108,12 @@ function Evaluate-UsbRules {
             driveLetter = $DriveLetter
             volumeName  = $VolumeName
             enforced = $enforced
+            requestedAction = [string]$actionDecision.requestedAction
+            enforcementMode = [string]$actionDecision.enforcementMode
+            nativeChannelAction = [string]$actionDecision.nativeChannelAction
+            enforcementSuppressed = [bool]$actionDecision.enforcementSuppressed
         }
-        Write-EndpointLog ("incident usb rule={0} action={1} severity={2} drive={3} enforced={4}" -f $ruleId, $action, $severity, $DriveLetter, $enforced)
+        Write-EndpointLog ("incident usb rule={0} requested={1} action={2} severity={3} drive={4} enforced={5} suppressed={6}" -f $ruleId, $requestedAction, $action, $severity, $DriveLetter, $enforced, [bool]$actionDecision.enforcementSuppressed)
     }
 }
 
@@ -1016,7 +1149,9 @@ function Evaluate-PrintRules {
         $fingerprint = "print|$ruleId|$PrinterName|$Owner|$env:USERNAME"
         if (-not (Should-EmitByCooldown -Fingerprint $fingerprint -CooldownSeconds ([Math]::Max($cooldown, 30)))) { continue }
 
-        $action = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
+        $requestedAction = if ($rule.action) { [string]$rule.action } else { [string]$script:Policy.defaults.action }
+        $actionDecision = Resolve-DlpEffectiveAction -RequestedAction $requestedAction -Channel 'print'
+        $action = [string]$actionDecision.action
         $severity = if ($rule.severity) { [string]$rule.severity } else { [string]$script:Policy.defaults.severity }
         $message = if ($rule.message) { [string]$rule.message } else { "Print rule matched: $ruleId" }
 
@@ -1031,13 +1166,17 @@ function Evaluate-PrintRules {
             documentName = $DocumentName
             owner        = $Owner
             enforced = $enforced
+            requestedAction = [string]$actionDecision.requestedAction
+            enforcementMode = [string]$actionDecision.enforcementMode
+            nativeChannelAction = [string]$actionDecision.nativeChannelAction
+            enforcementSuppressed = [bool]$actionDecision.enforcementSuppressed
             dictionaryPack = $dictionaryPack
             regexPack = $regexPack
             dictionaryMatches = @($advanced.dictionaryMatches)
             regexMatches = @($advanced.regexMatches)
             ocrRequested = $ocrEnabled
         }
-        Write-EndpointLog ("incident print rule={0} action={1} severity={2} printer={3} enforced={4}" -f $ruleId, $action, $severity, $PrinterName, $enforced)
+        Write-EndpointLog ("incident print rule={0} requested={1} action={2} severity={3} printer={4} enforced={5} suppressed={6}" -f $ruleId, $requestedAction, $action, $severity, $PrinterName, $enforced, [bool]$actionDecision.enforcementSuppressed)
     }
 }
 
@@ -1320,6 +1459,9 @@ $script:LastEventTime = $null
 
 Initialize-TransportQueue -StateRoot $resolvedStateRoot
 Initialize-DlpPolicy
+if ($SelfTestSuppressedBlock) {
+    Invoke-SuppressedBlockSelfTest
+}
 Write-EndpointLog ("endpoint collector started against {0}" -f $script:ApiBase)
 
 while ($true) {

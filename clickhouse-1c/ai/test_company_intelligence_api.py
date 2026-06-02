@@ -7,7 +7,9 @@ import sys
 import tempfile
 import types
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.modules.setdefault("clickhouse_connect", types.SimpleNamespace(get_client=lambda **_: None))
@@ -343,6 +345,11 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
         self.assertIn("ФЕЛИЦТ ГРУПП 2026", html_page)
 
     def test_build_weekly_trend_report_and_render(self) -> None:
+        class FixedDatetime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 5, 22, 13, 0, 0, tzinfo=tz or UTC)
+
         payloads = [
             {
                 "generated_at": "2026-05-21T12:00:00+00:00",
@@ -391,7 +398,8 @@ class CompanyIntelligenceApiTests(unittest.TestCase):
                 },
             },
         ]
-        report = api.build_weekly_trend_report(payloads, days=7)
+        with patch.object(api, "datetime", FixedDatetime):
+            report = api.build_weekly_trend_report(payloads, days=7)
         self.assertEqual(len(report["daily"]), 2)
         self.assertEqual(report["top_weekly_changes"][0]["company"], "ФЕЛИЦТ ГРУПП 2026")
         html_page = api.render_weekly_trend_html(report)

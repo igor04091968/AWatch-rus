@@ -1,0 +1,8 @@
+[Unit]
+Description=ActivityWatch SQLite guarded maintenance
+After=activitywatch-server.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/activitywatch/aw-server.env
+ExecStart=/usr/local/bin/aw-db-maintenance --apply --json

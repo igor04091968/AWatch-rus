@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
+import base64
 import csv
+import hashlib
 import html
 import io
 import importlib.util
@@ -8,6 +10,7 @@ import os
 import sys
 import tempfile
 import threading
+import time
 import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -49,18 +52,30 @@ MANAGER_ALIASES_JSON = Path(os.environ.get("AW_WORKTIME_MANAGER_ALIASES_JSON", "
 MANAGER_EXCLUDE_USERS = {item.strip().lower() for item in os.environ.get("AW_WORKTIME_MANAGER_EXCLUDE_USERS", "").split(",") if item.strip()}
 EVENTS_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS", "30")))
 WORKTIME_EVENTS_LIMIT = max(1000, int(os.environ.get("AW_WORKTIME_EVENTS_LIMIT", "50000")))
+AW_HTTP_TIMEOUT_SECONDS = max(0.5, float(os.environ.get("AW_WORKTIME_AW_HTTP_TIMEOUT_SECONDS", "5")))
+REPORT_CACHE_TTL_SECONDS = max(0, int(os.environ.get("AW_WORKTIME_REPORT_CACHE_TTL_SECONDS", "60")))
+REPORT_STALE_TTL_SECONDS = max(REPORT_CACHE_TTL_SECONDS, int(os.environ.get("AW_WORKTIME_REPORT_STALE_TTL_SECONDS", "900")))
+REPORT_DISK_CACHE_DIR = Path(os.environ.get("AW_WORKTIME_REPORT_DISK_CACHE_DIR", "/var/lib/activitywatch/worktime-report-cache"))
+REPORT_DISK_STALE_TTL_SECONDS = max(REPORT_STALE_TTL_SECONDS, int(os.environ.get("AW_WORKTIME_REPORT_DISK_STALE_TTL_SECONDS", "86400")))
+REPORT_BUSY_WAIT_SECONDS = max(0.0, float(os.environ.get("AW_WORKTIME_REPORT_BUSY_WAIT_SECONDS", "8")))
+REPORT_BUSY_WAIT_INTERVAL_SECONDS = max(0.05, float(os.environ.get("AW_WORKTIME_REPORT_BUSY_WAIT_INTERVAL_SECONDS", "0.2")))
+REPORT_MAX_CONCURRENT = max(1, int(os.environ.get("AW_WORKTIME_REPORT_MAX_CONCURRENT", "1")))
 TRUE_ACTIVE_EVIDENCE_WINDOW_SECONDS = max(30, int(os.environ.get("AW_WORKTIME_TRUE_ACTIVE_EVIDENCE_WINDOW_SECONDS", "180")))
 TRUE_ACTIVE_MAX_EVENT_SECONDS = max(30, int(os.environ.get("AW_WORKTIME_TRUE_ACTIVE_MAX_EVENT_SECONDS", "600")))
 MODULE_PATH = Path(__file__).resolve()
 _ALIASES_CACHE = {"mtime": None, "users": {}, "owners": {}, "raw": {}}
 _EVENTS_CACHE_LOCK = threading.Lock()
 _EVENTS_CACHE = {}
+_REPORT_CACHE_LOCK = threading.Lock()
+_REPORT_RESPONSE_CACHE = {}
+_REPORT_REFRESHING = set()
+_REPORT_BUILD_SEMAPHORE = threading.BoundedSemaphore(REPORT_MAX_CONCURRENT)
 _MANAGEMENT_BUILD_LOCKS_LOCK = threading.Lock()
 _MANAGEMENT_BUILD_LOCKS = {}
 
 
 def get(u):
-    with urllib.request.urlopen(u, timeout=30) as r:
+    with urllib.request.urlopen(u, timeout=AW_HTTP_TIMEOUT_SECONDS) as r:
         return json.loads(r.read().decode())
 
 
@@ -784,15 +799,21 @@ def aggregate_hourly_rows(events, start, end, host):
 def fetch_events_for_date(host, report_date):
     bounds = get_report_bounds(report_date)
     bucket_id = get_sessions_bucket_id(host)
-    events = fetch_bucket_events(bucket_id, host)
+    events = fetch_bucket_events(bucket_id, host, start=bounds["start"], end=bounds["end"])
     return bounds, events
 
 
-def fetch_bucket_events(bucket_id, host):
+def fetch_bucket_events(bucket_id, host, start=None, end=None):
     now = now_utc()
+    cache_key = bucket_id
+    params = {"limit": WORKTIME_EVENTS_LIMIT}
+    if start is not None and end is not None:
+        params["start"] = to_iso_utc(start)
+        params["end"] = to_iso_utc(end)
+        cache_key = f"{bucket_id}|{params['start']}|{params['end']}"
     if EVENTS_CACHE_TTL_SECONDS > 0:
         with _EVENTS_CACHE_LOCK:
-            cached = _EVENTS_CACHE.get(bucket_id)
+            cached = _EVENTS_CACHE.get(cache_key)
             if cached is not None and age_seconds(cached["stored_at"], now=now) <= EVENTS_CACHE_TTL_SECONDS:
                 return cached["events"]
     try:
@@ -801,13 +822,13 @@ def fetch_bucket_events(bucket_id, host):
         log_warning(f"bucket lookup failed for host={host} bucket={bucket_id} aw_base={AW}")
         return []
     try:
-        events = get(f"{AW}/buckets/{bucket_id}/events?limit={WORKTIME_EVENTS_LIMIT}")
+        events = get(f"{AW}/buckets/{bucket_id}/events?{urlencode(params)}")
     except Exception:
         log_warning(f"events fetch failed for host={host} bucket={bucket_id} aw_base={AW}")
         return []
     if EVENTS_CACHE_TTL_SECONDS > 0:
         with _EVENTS_CACHE_LOCK:
-            _EVENTS_CACHE[bucket_id] = {"stored_at": now, "events": events}
+            _EVENTS_CACHE[cache_key] = {"stored_at": now, "events": events}
     return events
 
 
@@ -840,16 +861,22 @@ def build_report_summary(rows):
 
 def latest_bucket_event(bucket_id):
     try:
-        events = get(f"{AW}/buckets/{bucket_id}/events?limit=20")
+        events = get(f"{AW}/buckets/{bucket_id}/events?limit=1")
+    except Exception:
+        events = None
+    if isinstance(events, list) and events:
+        valid = [item for item in events if isinstance(item, dict)]
+        if valid:
+            valid.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+            return valid[0]
+    try:
+        bucket = get(f"{AW}/buckets/{bucket_id}")
     except Exception:
         return None
-    if not isinstance(events, list) or not events:
-        return None
-    valid = [item for item in events if isinstance(item, dict)]
-    if not valid:
-        return None
-    valid.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
-    return valid[0]
+    end = ((bucket or {}).get("metadata") or {}).get("end")
+    if end:
+        return {"timestamp": end, "duration": 0, "data": {"source": "bucket_metadata"}}
+    return None
 
 
 def _priority_rank(priority):
@@ -1219,6 +1246,7 @@ def _source_status_label(status):
         "ok": "fresh",
         "warn": "stale",
         "fail": "missing",
+        "inactive": "inactive",
     }.get(status, status)
 
 
@@ -1273,7 +1301,224 @@ def save_management_cache(host, report_date, payload):
     write_atomic_json(management_cache_path(host, report_date), payload)
 
 
-def build_source_freshness(host):
+def make_report_cache_key(path, fmt, host, report_date, selected_day="", owner_filter="", department_filter=""):
+    return "|".join(
+        [
+            str(path),
+            str(fmt),
+            resolve_host(host),
+            report_date.isoformat(),
+            str(selected_day or ""),
+            normalize_management_filter(owner_filter),
+            normalize_management_filter(department_filter),
+        ]
+    )
+
+
+def resolve_report_format(params, accept_header=""):
+    requested = str(params.get("format", [""])[0] or "").lower()
+    if requested in {"csv", "html", "json"}:
+        return requested
+    accept = str(accept_header or "").lower()
+    if "text/html" in accept and "application/json" not in accept:
+        return "html"
+    return "json"
+
+
+def report_disk_cache_path(key):
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    return REPORT_DISK_CACHE_DIR / f"{digest}.json"
+
+
+def load_report_response_disk_cache(key):
+    if REPORT_DISK_STALE_TTL_SECONDS <= 0:
+        return None
+    path = report_disk_cache_path(key)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        stored_epoch = float(payload["stored_epoch"])
+        age = max(0, int(time.time() - stored_epoch))
+        if age > REPORT_DISK_STALE_TTL_SECONDS:
+            return None
+        data = base64.b64decode(payload["data_b64"].encode("ascii"))
+        content_type = str(payload["content_type"])
+    except Exception as exc:
+        log_warning(f"failed to load report disk cache key={key}: {exc}")
+        return None
+    return {
+        "stored_monotonic": time.monotonic() - age,
+        "generated_at_utc": payload.get("generated_at_utc", ""),
+        "data": data,
+        "content_type": content_type,
+        "age_seconds": age,
+        "stale": True,
+        "cache_source": "disk",
+    }
+
+
+def save_report_response_disk_cache(key, data, content_type, generated_at_utc):
+    if REPORT_DISK_STALE_TTL_SECONDS <= 0:
+        return
+    payload = {
+        "key": key,
+        "stored_epoch": time.time(),
+        "generated_at_utc": generated_at_utc,
+        "content_type": content_type,
+        "data_b64": base64.b64encode(data).decode("ascii"),
+    }
+    try:
+        write_atomic_json(report_disk_cache_path(key), payload)
+    except Exception as exc:
+        log_warning(f"failed to save report disk cache key={key}: {exc}")
+
+
+def get_report_response_cache(key, *, allow_stale=False):
+    if REPORT_CACHE_TTL_SECONDS <= 0 and not allow_stale:
+        return None
+    now = time.monotonic()
+    with _REPORT_CACHE_LOCK:
+        cached = _REPORT_RESPONSE_CACHE.get(key)
+        if cached is not None:
+            age = now - cached["stored_monotonic"]
+            max_age = REPORT_STALE_TTL_SECONDS if allow_stale else REPORT_CACHE_TTL_SECONDS
+            if max_age > 0 and age <= max_age:
+                result = dict(cached)
+                result["age_seconds"] = int(age)
+                result["stale"] = age > REPORT_CACHE_TTL_SECONDS
+                result["cache_source"] = "memory"
+                return result
+    if allow_stale:
+        return load_report_response_disk_cache(key)
+    return None
+
+
+def save_report_response_cache(key, data, content_type):
+    if REPORT_STALE_TTL_SECONDS <= 0:
+        return
+    generated_at_utc = now_utc().isoformat().replace("+00:00", "Z")
+    with _REPORT_CACHE_LOCK:
+        _REPORT_RESPONSE_CACHE[key] = {
+            "stored_monotonic": time.monotonic(),
+            "generated_at_utc": generated_at_utc,
+            "data": data,
+            "content_type": content_type,
+        }
+    save_report_response_disk_cache(key, data, content_type, generated_at_utc)
+
+
+def trigger_report_background_refresh(key, path, params):
+    refresh_params = {name: list(values) for name, values in params.items()}
+    with _REPORT_CACHE_LOCK:
+        if key in _REPORT_REFRESHING:
+            return False
+        _REPORT_REFRESHING.add(key)
+
+    def refresh():
+        try:
+            if not _REPORT_BUILD_SEMAPHORE.acquire(blocking=False):
+                return
+            try:
+                data, content_type = build_worktime_report_response(path, refresh_params)
+                save_report_response_cache(key, data, content_type)
+            except Exception as exc:
+                log_warning(f"background report refresh failed path={path}: {exc}")
+            finally:
+                _REPORT_BUILD_SEMAPHORE.release()
+        finally:
+            with _REPORT_CACHE_LOCK:
+                _REPORT_REFRESHING.discard(key)
+
+    thread = threading.Thread(target=refresh, name="worktime-report-refresh", daemon=True)
+    thread.start()
+    return True
+
+
+def send_cached_report(handler, cached, *, reason):
+    handler.send_response(200)
+    handler.send_header("Content-Type", cached["content_type"])
+    handler.send_header("Content-Length", str(len(cached["data"])))
+    handler.send_header("X-AW-Worktime-Cache", "stale" if cached.get("stale") else "fresh")
+    handler.send_header("X-AW-Worktime-Cache-Reason", reason)
+    handler.send_header("X-AW-Worktime-Cache-Age", str(cached.get("age_seconds", 0)))
+    handler.send_header("X-AW-Worktime-Cache-Source", cached.get("cache_source", "memory"))
+    handler.end_headers()
+    try:
+        handler.wfile.write(cached["data"])
+    except (BrokenPipeError, ConnectionResetError):
+        return False
+    return True
+
+
+def send_report_unavailable(handler, message):
+    payload = {
+        "ok": False,
+        "error": "report_unavailable",
+        "message": message,
+        "generated_at_utc": now_utc().isoformat().replace("+00:00", "Z"),
+    }
+    data = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
+    send_bytes(handler, data, "application/json; charset=utf-8", status=503)
+
+
+def send_worktime_report(handler, path, params, cache_key, *, host, report_date):
+    cached = get_report_response_cache(cache_key)
+    if cached is not None:
+        send_cached_report(handler, cached, reason="ttl")
+        return
+
+    allow_immediate_stale = str(params.get("allow_stale", [""])[0]).lower() in {"1", "true", "yes"}
+    if allow_immediate_stale:
+        cached = get_report_response_cache(cache_key, allow_stale=True)
+        if cached is not None:
+            refresh_stale = str(params.get("refresh_stale", [""])[0]).lower() in {"1", "true", "yes"}
+            if refresh_stale:
+                trigger_report_background_refresh(cache_key, path, params)
+            send_cached_report(handler, cached, reason="stale-allowed")
+            return
+
+    if not _REPORT_BUILD_SEMAPHORE.acquire(blocking=False):
+        if not allow_immediate_stale and REPORT_BUSY_WAIT_SECONDS > 0:
+            deadline = time.monotonic() + REPORT_BUSY_WAIT_SECONDS
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(REPORT_BUSY_WAIT_INTERVAL_SECONDS, remaining))
+                cached = get_report_response_cache(cache_key)
+                if cached is not None:
+                    send_cached_report(handler, cached, reason="ttl-after-wait")
+                    return
+        cached = get_report_response_cache(cache_key, allow_stale=True)
+        if cached is not None:
+            send_cached_report(handler, cached, reason="busy")
+            return
+        send_report_unavailable(handler, "report builder is busy and no cached response is available")
+        return
+
+    try:
+        cached = get_report_response_cache(cache_key)
+        if cached is not None:
+            send_cached_report(handler, cached, reason="ttl-after-lock")
+            return
+        try:
+            data, content_type = build_worktime_report_response(path, params)
+        except Exception as exc:
+            log_warning(f"report build failed path={path} host={host} date={report_date}: {exc}")
+            cached = get_report_response_cache(cache_key, allow_stale=True)
+            if cached is not None:
+                send_cached_report(handler, cached, reason="build-error")
+                return
+            send_report_unavailable(handler, "report build failed and no cached response is available")
+            return
+        save_report_response_cache(cache_key, data, content_type)
+        send_bytes(handler, data, content_type)
+    finally:
+        _REPORT_BUILD_SEMAPHORE.release()
+
+
+def build_source_freshness(host, interactive_required=True):
     source_specs = [
         {
             "source_id": "worktime_sessions",
@@ -1305,6 +1550,7 @@ def build_source_freshness(host):
             "bucket_candidates": [f"aw-watcher-window_{host}"],
             "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
             "required": True,
+            "interactive_only": True,
             "owner": "ops",
         },
         {
@@ -1321,6 +1567,7 @@ def build_source_freshness(host):
             "bucket_candidates": [f"aw-file-operations_{host}"],
             "max_age_seconds": MANAGER_CRITICAL_SOURCE_MAX_AGE_SECONDS,
             "required": True,
+            "interactive_only": True,
             "owner": "ops",
         },
         {
@@ -1379,6 +1626,9 @@ def build_source_freshness(host):
         else:
             status = "ok"
             summary = f"fresh ({age}s)"
+        if spec.get("interactive_only") and not interactive_required and status != "ok":
+            status = "inactive"
+            summary = "inactive: no active interactive users"
         detail = {
             "source_id": spec["source_id"],
             "label": spec["label"],
@@ -1388,12 +1638,14 @@ def build_source_freshness(host):
             "timestamp": (matched_event or {}).get("timestamp", ""),
             "age_seconds": age,
             "required": spec["required"],
+            "interactive_only": bool(spec.get("interactive_only")),
+            "interactive_required": bool(interactive_required),
             "max_age_seconds": spec["max_age_seconds"],
             "summary": summary,
             "event_summary": _source_summary(matched_event),
         }
         sources.append(detail)
-        if status == "ok":
+        if status in {"ok", "inactive"}:
             continue
         priority = "critical" if spec["required"] else "medium"
         actions.append(
@@ -1723,7 +1975,8 @@ def build_management_payload(rows, host, report_date, owner_filter="", departmen
     owner_filter = normalize_management_filter(owner_filter)
     department_filter = normalize_management_filter(department_filter)
     payload = _build_management_core(rows, host, report_date, owner_filter=owner_filter, department_filter=department_filter)
-    source_freshness, source_actions = build_source_freshness(resolve_host(host))
+    interactive_required = int(payload.get("summary", {}).get("active_users", 0) or 0) > 0
+    source_freshness, source_actions = build_source_freshness(resolve_host(host), interactive_required=interactive_required)
     payload["sources"] = source_freshness
     payload["trend"] = build_management_trend(
         resolve_host(host),
@@ -1751,11 +2004,11 @@ def report_for_date(host, report_date):
     return aggregate_rows(events, bounds["start"], bounds["end"], host)
 
 
-def management_report_for_date(host, report_date, owner_filter="", department_filter=""):
+def management_report_for_date(host, report_date, owner_filter="", department_filter="", use_cache=True):
     owner_filter = normalize_management_filter(owner_filter)
     department_filter = normalize_management_filter(department_filter)
     if owner_filter or department_filter:
-        base_payload = management_report_for_date(host, report_date)
+        base_payload = management_report_for_date(host, report_date, use_cache=use_cache)
         filtered_payload = apply_management_filters_to_payload(
             base_payload,
             owner_filter=owner_filter,
@@ -1766,14 +2019,17 @@ def management_report_for_date(host, report_date, owner_filter="", department_fi
         filtered_payload["trend"] = []
         filtered_payload["trend_scope"] = "filtered_current_only"
         return filtered_payload
-    cached = load_management_cache(host, report_date)
-    if cached is not None:
-        return cached
-    lock = get_management_build_lock(host, report_date)
-    with lock:
+    cache_allowed = use_cache or report_date < datetime.now(REPORT_TZ).date()
+    if cache_allowed:
         cached = load_management_cache(host, report_date)
         if cached is not None:
             return cached
+    lock = get_management_build_lock(host, report_date)
+    with lock:
+        if cache_allowed:
+            cached = load_management_cache(host, report_date)
+            if cached is not None:
+                return cached
         bounds, events = fetch_events_for_date(host, report_date)
         rows = aggregate_rows_with_intervals(events, bounds["start"], bounds["end"], host)
         payload = build_management_payload(rows, host, report_date)
@@ -2265,10 +2521,11 @@ def render_management_html(payload, selected_day=None):
 
     sources_html = []
     for source in payload.get("sources", []):
+        source_priority_class = "low" if source["status"] in {"ok", "inactive"} else ("critical" if source["required"] else "medium")
         sources_html.append(
             "<tr>"
             f"<td>{html.escape(source['label'])}</td>"
-            f"<td><span class='prio prio-{html.escape('low' if source['status'] == 'ok' else ('critical' if source['required'] else 'medium'))}'>{html.escape(source['status_label'])}</span></td>"
+            f"<td><span class='prio prio-{html.escape(source_priority_class)}'>{html.escape(source['status_label'])}</span></td>"
             f"<td>{html.escape(source['bucket_id'])}</td>"
             f"<td>{html.escape(source.get('timestamp') or '-')}</td>"
             f"<td>{html.escape(str(source.get('age_seconds')) if source.get('age_seconds') is not None else '-')}</td>"
@@ -2619,6 +2876,85 @@ def render_management_html(payload, selected_day=None):
 </html>"""
 
 
+def build_worktime_report_response(path, params):
+    fmt = resolve_report_format(params)
+    host = resolve_host(params.get("host", [DEFAULT_HOST])[0])
+    day = params.get("day", ["today"])[0]
+    date_text = params.get("date", [None])[0]
+    owner_filter = normalize_management_filter(params.get("owner", [""])[0])
+    department_filter = normalize_management_filter(params.get("department", [""])[0])
+    report_date = resolve_report_date(day=day, date_text=date_text)
+    is_management = path == "/reports/worktime/management"
+    allow_immediate_stale = str(params.get("allow_stale", [""])[0]).lower() in {"1", "true", "yes"}
+    management_payload = (
+        management_report_for_date(
+            host,
+            report_date,
+            owner_filter=owner_filter,
+            department_filter=department_filter,
+            use_cache=allow_immediate_stale,
+        )
+        if is_management
+        else None
+    )
+    rows = report_for_date_fresh(host, report_date) if not is_management else management_payload["rows"]
+    true_active_apps = [] if is_management else build_true_active_apps(host, report_date)
+
+    if fmt == "csv":
+        if is_management:
+            out = io.StringIO()
+            writer = csv.DictWriter(
+                out,
+                fieldnames=["priority", "owner", "user_id", "action_id", "deadline_hint", "reason", "recommended_action"],
+                extrasaction="ignore",
+            )
+            writer.writeheader()
+            writer.writerows(management_payload["actions"])
+            return out.getvalue().encode(), "text/csv; charset=utf-8"
+        out = io.StringIO()
+        writer = csv.DictWriter(
+            out,
+            fieldnames=[
+                "user",
+                "user_id",
+                "active_seconds",
+                "active_hhmm",
+                "first_activity",
+                "last_activity",
+                "idle_seconds",
+                "sessions_count",
+                "samples_count",
+                "active_samples",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+        return out.getvalue().encode(), "text/csv; charset=utf-8"
+
+    if fmt == "html":
+        if is_management:
+            data = render_management_html(management_payload, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
+        else:
+            data = render_html(rows, host, report_date, selected_day=day if day in {"today", "yesterday"} else None, true_active_apps=true_active_apps).encode("utf-8")
+        return data, "text/html; charset=utf-8"
+
+    if is_management:
+        data = json.dumps(management_payload, ensure_ascii=False, indent=2).encode("utf-8")
+        return data, "application/json; charset=utf-8"
+
+    obj = {
+        "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "report_timezone": str(REPORT_TZ),
+        "host": host,
+        "report_date": report_date.isoformat(),
+        "bucket_id": get_sessions_bucket_id(host),
+        "rows": rows,
+        "true_active_apps": true_active_apps,
+    }
+    data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
+    return data, "application/json; charset=utf-8"
+
+
 def send_bytes(handler, data, content_type, status=200):
     handler.send_response(status)
     handler.send_header("Content-Type", content_type)
@@ -2667,82 +3003,27 @@ class H(BaseHTTPRequestHandler):
             return
 
         params = parse_qs(parsed.query, keep_blank_values=False)
-        fmt = "json"
-        if params.get("format", ["json"])[0] == "csv":
-            fmt = "csv"
-        elif params.get("format", ["json"])[0] == "html":
-            fmt = "html"
+        fmt = resolve_report_format(params, self.headers.get("Accept", ""))
+        if not params.get("format") and fmt != "json":
+            params = {name: list(values) for name, values in params.items()}
+            params["format"] = [fmt]
         host = resolve_host(params.get("host", [DEFAULT_HOST])[0])
         day = params.get("day", ["today"])[0]
         date_text = params.get("date", [None])[0]
         owner_filter = normalize_management_filter(params.get("owner", [""])[0])
         department_filter = normalize_management_filter(params.get("department", [""])[0])
         report_date = resolve_report_date(day=day, date_text=date_text)
-        is_management = parsed.path == "/reports/worktime/management"
-        management_payload = management_report_for_date(host, report_date, owner_filter=owner_filter, department_filter=department_filter) if is_management else None
-        rows = report_for_date_fresh(host, report_date) if not is_management else management_payload["rows"]
-        true_active_apps = [] if is_management else build_true_active_apps(host, report_date)
+        cache_key = make_report_cache_key(
+            parsed.path,
+            fmt,
+            host,
+            report_date,
+            selected_day=day if day in {"today", "yesterday"} else "",
+            owner_filter=owner_filter,
+            department_filter=department_filter,
+        )
 
-        if fmt == "csv":
-            if is_management:
-                out = io.StringIO()
-                writer = csv.DictWriter(
-                    out,
-                    fieldnames=["priority", "owner", "user_id", "action_id", "deadline_hint", "reason", "recommended_action"],
-                    extrasaction="ignore",
-                )
-                writer.writeheader()
-                writer.writerows(management_payload["actions"])
-                data = out.getvalue().encode()
-                send_bytes(self, data, "text/csv; charset=utf-8")
-                return
-            out = io.StringIO()
-            writer = csv.DictWriter(
-                out,
-                fieldnames=[
-                    "user",
-                    "user_id",
-                    "active_seconds",
-                    "active_hhmm",
-                    "first_activity",
-                    "last_activity",
-                    "idle_seconds",
-                    "sessions_count",
-                    "samples_count",
-                    "active_samples",
-                ],
-            )
-            writer.writeheader()
-            writer.writerows(rows)
-            data = out.getvalue().encode()
-            send_bytes(self, data, "text/csv; charset=utf-8")
-            return
-
-        if fmt == "html":
-            if is_management:
-                data = render_management_html(management_payload, selected_day=day if day in {"today", "yesterday"} else None).encode("utf-8")
-            else:
-                data = render_html(rows, host, report_date, selected_day=day if day in {"today", "yesterday"} else None, true_active_apps=true_active_apps).encode("utf-8")
-            send_bytes(self, data, "text/html; charset=utf-8")
-            return
-
-        if is_management:
-            obj = management_payload
-            data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
-            send_bytes(self, data, "application/json; charset=utf-8")
-            return
-
-        obj = {
-            "generated_at_utc": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "report_timezone": str(REPORT_TZ),
-            "host": host,
-            "report_date": report_date.isoformat(),
-            "bucket_id": get_sessions_bucket_id(host),
-            "rows": rows,
-            "true_active_apps": true_active_apps,
-        }
-        data = json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
-        send_bytes(self, data, "application/json; charset=utf-8")
+        send_worktime_report(self, parsed.path, params, cache_key, host=host, report_date=report_date)
 
 
 class WorktimeHTTPServer(ThreadingHTTPServer):

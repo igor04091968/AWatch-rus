@@ -6,6 +6,12 @@
 
 Use this model on `SHARKON2025`-style hosts with multiple user sessions.
 
+- `AWatchRusCollectorGuard` service:
+  - runs under `LocalSystem`
+  - is the preferred local control plane for collector supervision
+  - in `shadow` mode only publishes state/heartbeat
+  - in `enforce` mode starts only session-appropriate collectors/tasks with cooldown and restart budget
+  - publishes `aw-rus-collector-guard_<HOST>`
 - `ActivityWatch Launch [HOST_user]` tasks:
   - `AtLogOn`
   - `InteractiveToken`
@@ -13,8 +19,9 @@ Use this model on `SHARKON2025`-style hosts with multiple user sessions.
 - `ActivityWatch Recovery` task:
   - `AtStartup`
   - `SYSTEM`
+  - stays enabled even when `AWatchRusCollectorGuard` is active
   - keeps only the global `worktime-session-collector` alive
-  - may re-trigger user launch tasks, but only for users whose sessions currently exist
+  - may re-trigger user launch tasks for managed live or disconnected sessions
 - interactive collectors/watcher binaries belong to the user-session path, not to Session 0
 
 Collector ownership in this model:
@@ -53,10 +60,17 @@ Do not mix the two startup models on the same RDP host:
 - no permanent standalone-service loop together with per-user launch/recovery tasks
 - no blind `Start-ScheduledTask` for all configured users
 - no validation rule that treats users without sessions as failed collector startup
+- no bot-driven collector recovery as the primary control plane
+
+During migration, `AWatchRusCollectorGuard` may run in `shadow` mode beside the existing
+recovery task. In `enforce` mode it becomes the primary control plane; `ActivityWatch Recovery`
+still remains enabled as fallback/bootstrap and must not be disabled by deploy scripts.
 
 ## Hardening rules
 
 - start launch tasks only for users with real sessions
+- treat managed disconnected RDP sessions as real recovery targets when their launch tasks exist
 - keep only one global `worktime-session-collector`
 - validate by session-aware expectations, not by “all configured users must currently run”
+- use guard heartbeat and bucket freshness as health signals
 - keep `deploy_aw_windows.yml`, `deploy-ensemble.ps1`, `hardening-recovery.ps1`, and installer assumptions aligned

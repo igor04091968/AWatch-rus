@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json'
 )
@@ -38,7 +38,7 @@ $windowExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -a
 $fileOpsExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]$config.collectors.fileOpsEnabled } else { $true }
 $sessionEventsConfig = if ($config.PSObject.Properties.Name -contains 'sessionEvents') { $config.sessionEvents } else { $null }
 $sessionLogonEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$sessionEventsConfig.logonEnabled } else { $false }
-$sessionProcessEventsEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'processEventsEnabled') { [bool]$sessionEventsConfig.processEventsEnabled } else { $true }
+$sessionProcessEventsEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'processEventsEnabled') { [bool]$sessionEventsConfig.processEventsEnabled } else { $false }
 $sessionEventsBucketId = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'bucketPrefix' -and -not [string]::IsNullOrWhiteSpace([string]$sessionEventsConfig.bucketPrefix)) {
     ('{0}_{1}' -f [string]$sessionEventsConfig.bucketPrefix, $awHostname)
 }
@@ -301,6 +301,94 @@ function Get-TransportQueueHealth {
     }
 }
 
+function Get-TransportQueueGroupHealth {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        [string]$StateRoot,
+        [Parameter(Mandatory = $true)]
+        [string]$QueuePattern,
+        [Parameter(Mandatory = $true)]
+        [int]$StaleAfterSeconds,
+        [Parameter(Mandatory = $true)]
+        [int]$MaxDepth,
+        [int]$ActiveProcessCount = 0,
+        [bool]$Required = $true
+    )
+
+    $queues = @(Get-ChildItem -LiteralPath $StateRoot -Filter $QueuePattern -ErrorAction SilentlyContinue | Sort-Object Name)
+    if ($queues.Count -eq 0) {
+        return [pscustomobject]@{
+            name = $Name
+            required = [bool]$Required
+            queuePattern = $QueuePattern
+            queueCount = 0
+            queues = @()
+            depth = 0
+            sizeBytes = 0
+            activeProcessCount = [int]$ActiveProcessCount
+            staleAfterSeconds = [int]$StaleAfterSeconds
+            maxDepth = [int]$MaxDepth
+            ok = [bool](-not $Required)
+        }
+    }
+
+    $items = @()
+    foreach ($queue in $queues) {
+        $lockPath = [System.IO.Path]::ChangeExtension($queue.FullName, '.lock')
+        $items += Get-TransportQueueHealth -Name $queue.BaseName -QueuePath $queue.FullName -LockPath $lockPath -StaleAfterSeconds $StaleAfterSeconds -MaxDepth $MaxDepth -ActiveProcessCount $ActiveProcessCount -Required $Required
+    }
+
+    return [pscustomobject]@{
+        name = $Name
+        required = [bool]$Required
+        queuePattern = $QueuePattern
+        queueCount = [int]$items.Count
+        queues = @($items)
+        depth = [int](($items | Measure-Object -Property depth -Sum).Sum)
+        sizeBytes = [int64](($items | Measure-Object -Property sizeBytes -Sum).Sum)
+        activeProcessCount = [int]$ActiveProcessCount
+        staleAfterSeconds = [int]$StaleAfterSeconds
+        maxDepth = [int]$MaxDepth
+        ok = [bool](-not ($items | Where-Object { -not $_.ok }))
+    }
+}
+
+function Resolve-ActivityWatchLaunchTaskName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TaskName
+    )
+
+    if ($TaskName -notmatch '\[[^\]]+_Administrator\]') {
+        return $TaskName
+    }
+
+    $localizedCandidate = 'ActivityWatch Launch [{0}_Администратор]' -f $awHostname
+    $localizedTask = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -eq $localizedCandidate } | Select-Object -First 1
+    if ($localizedTask) {
+        return $localizedCandidate
+    }
+
+    try {
+        $builtinAdmin = Get-LocalUser -ErrorAction Stop |
+            Where-Object { [string]$_.SID -match '-500$' } |
+            Select-Object -First 1
+        if ($builtinAdmin -and -not [string]::IsNullOrWhiteSpace([string]$builtinAdmin.Name)) {
+            $candidate = 'ActivityWatch Launch [{0}_{1}]' -f $awHostname, [string]$builtinAdmin.Name
+            $existing = Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -eq $candidate } | Select-Object -First 1
+            if ($existing) {
+                return $candidate
+            }
+        }
+    }
+    catch {
+    }
+
+    return $TaskName
+}
+
 function Get-TaskSnapshot {
     param(
         [Parameter(Mandatory = $true)]
@@ -337,14 +425,13 @@ function Get-TaskSnapshot {
             }
             catch {
             }
-
             [pscustomobject]@{
                 taskName = [string]$task.TaskName
                 present = $true
                 enabled = [bool]$enabled
                 state = [string]$task.State
                 lastResult = if ($taskInfo) { [int64]$taskInfo.LastTaskResult } else { $null }
-                ok = [bool]($enabled)
+                ok = [bool]$enabled
             }
         }
     )
@@ -413,10 +500,14 @@ else {
     0
 }
 $sessionScopedCollectorsRequired = ($sessionScopedExpectedCount -gt 0)
+$liveSessionScopedCollectorsRequired = ($liveSessionBoundUsers.Count -gt 0)
+
+$collectorGuardService = Get-Service -Name 'AWatchRusCollectorGuard' -ErrorAction SilentlyContinue
+$collectorGuardActive = [bool]($collectorGuardService -and $collectorGuardService.Status -eq 'Running')
 
 $taskNames = @()
 if ($config.userTasks) {
-    $taskNames += @($config.userTasks | ForEach-Object { [string]$_.launchTaskName })
+    $taskNames += @($config.userTasks | ForEach-Object { Resolve-ActivityWatchLaunchTaskName -TaskName ([string]$_.launchTaskName) })
 }
 $taskNames += [string]$config.recovery.taskName
 $tasks = @(Get-TaskSnapshot -TaskNames $taskNames)
@@ -438,24 +529,24 @@ foreach ($watcher in $runningWatchers) {
 $bucketChecks = @(
     Get-BucketHealth -BucketId ('aw-worktime-sessions_' + $awHostname) -MaxAgeSeconds $sessionFreshnessSeconds -Required $true -RequireFreshEvent $true
 )
-if ($sessionScopedCollectorsRequired -and $afkExpected) {
+if ($liveSessionScopedCollectorsRequired -and $afkExpected) {
     $bucketChecks += Get-BucketHealth -BucketId ('aw-watcher-afk_' + $awHostname) -MaxAgeSeconds $freshnessSeconds -Required $true -RequireFreshEvent $false
 }
-if ($sessionScopedCollectorsRequired -and $windowExpected) {
+if ($liveSessionScopedCollectorsRequired -and $windowExpected) {
     $bucketChecks += Get-BucketHealth -BucketId ('aw-watcher-window_' + $awHostname) -MaxAgeSeconds $freshnessSeconds -Required $true -RequireFreshEvent $false
 }
-if ($sessionScopedCollectorsRequired) {
+if ($liveSessionScopedCollectorsRequired) {
     $bucketChecks += Get-BucketHealth -BucketId ('aw-dlp-endpoint-signals_' + $awHostname) -MaxAgeSeconds $endpointFreshnessSeconds -Required $true -RequireFreshEvent $true
 }
-if ($sessionScopedCollectorsRequired -and $fileOpsExpected) {
+if ($liveSessionScopedCollectorsRequired -and $fileOpsExpected) {
     $bucketChecks += Get-BucketHealth -BucketId ('aw-file-operations_' + $awHostname) -MaxAgeSeconds $transportStaleSeconds -Required $false -RequireFreshEvent $true
 }
 
 $queueChecks = @(
-    Get-TransportQueueHealth -Name 'endpoint' -QueuePath (Join-Path $stateRoot 'dlp-endpoint-signals-queue.jsonl') -LockPath (Join-Path $stateRoot 'dlp-endpoint-signals-queue.lock') -StaleAfterSeconds $transportStaleSeconds -MaxDepth $queueMaxDepth -ActiveProcessCount @($endpointCollectorProcesses).Count -Required $sessionScopedCollectorsRequired
+    Get-TransportQueueGroupHealth -Name 'endpoint' -StateRoot $stateRoot -QueuePattern 'dlp-endpoint-signals-queue*.jsonl' -StaleAfterSeconds $transportStaleSeconds -MaxDepth $queueMaxDepth -ActiveProcessCount @($endpointCollectorProcesses).Count -Required $liveSessionScopedCollectorsRequired
 )
 if ($fileOpsExpected) {
-    $queueChecks += Get-TransportQueueHealth -Name 'fileops' -QueuePath (Join-Path $stateRoot 'file-operations-queue.jsonl') -LockPath (Join-Path $stateRoot 'file-operations-queue.lock') -StaleAfterSeconds $transportStaleSeconds -MaxDepth $queueMaxDepth -ActiveProcessCount @($fileCollectorProcesses).Count -Required $sessionScopedCollectorsRequired
+    $queueChecks += Get-TransportQueueGroupHealth -Name 'fileops' -StateRoot $stateRoot -QueuePattern 'file-operations-queue*.jsonl' -StaleAfterSeconds $transportStaleSeconds -MaxDepth $queueMaxDepth -ActiveProcessCount @($fileCollectorProcesses).Count -Required $liveSessionScopedCollectorsRequired
 }
 
 $printServiceOperationalEnabled = $false
@@ -502,12 +593,14 @@ $result = [ordered]@{
     }
     tasks = [ordered]@{
         list = $tasks
-        ok = [bool]($tasks.Count -gt 0 -and -not ($tasks | Where-Object { -not $_.present -or -not $_.enabled }))
+        ok = [bool]($tasks.Count -gt 0 -and -not ($tasks | Where-Object { -not $_.ok }))
     }
     processes = [ordered]@{
         liveSessionBoundUsers = $liveSessionBoundUsers
         sessionBoundUsers = $interactiveSessionBoundUsers
         sessionScopedExpectedCount = [int]$sessionScopedExpectedCount
+        liveSessionScopedCollectorsRequired = [bool]$liveSessionScopedCollectorsRequired
+        collectorGuardServiceActive = [bool]$collectorGuardActive
         watchers = @($runningWatchers)
         watcherDuplicates = @($watcherDuplicates)
         sessionCollectors = @($sessionCollectorProcesses)

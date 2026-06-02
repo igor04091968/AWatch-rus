@@ -1,0 +1,79 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/detmir-auto",
+    "crates/detmir-aw-client",
+    "crates/aw-db-health",
+    "crates/aw-db-maintenance",
+    "crates/aw-health-check",
+    "crates/aw-prune-local-state",
+    "crates/check-aw-data",
+    "crates/check-aw-full",
+    "crates/check-install-kit-vs-repo",
+    "crates/validate-install-kit",
+    "crates/verify-innosetup-installer",
+    "crates/rebuild-install-kit",
+    "crates/quality-gate",
+    "crates/extract-ioc-from-sigma",
+    "crates/merge-aw-server-dbs",
+    "crates/prod-backup-restore",
+    "crates/prod-rollout",
+    "crates/rdp-worktime-report",
+    "crates/aw-contour-smoke",
+    "crates/aw-browser-smoke",
+    "crates/diag-and-manual-restart",
+    "crates/aw-slo-monitor",
+    "crates/aw-rus-healthd",
+    "crates/detmir-check",
+    "crates/detmir-core",
+    "crates/dlp-health-check",
+    "crates/dlp-content-analyzer",
+    "crates/dlp-admin-cli",
+    "crates/dlp-policy-engine",
+    "crates/dlp-case-management",
+    "crates/dlp-compliance",
+    "crates/hayabusa-tools",
+    "crates/dlp-cef-exporter",
+    "crates/dlp-aggregator",
+    "crates/dlp-influx-exporter",
+    "crates/worktime-influx-exporter",
+    "crates/worktime-autoheal",
+    "crates/worktime-api",
+    "crates/worktime-prewarm",
+    "crates/worktime-ui-bridge",
+    "crates/dlp-syslog-forwarder",
+    "crates/dlp-webhook-sender",
+    "crates/detmir-dlp",
+    "crates/detmir-heal-safe",
+    "crates/detmir-status",
+    "crates/detmir-state",
+    "crates/tsj-guardian-status",
+    "crates/tsj-guardian-watchdog",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+publish = false
+
+[workspace.dependencies]
+adk-rust = { version = "0.9.1", default-features = false }
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
+clap = { version = "4", features = ["derive", "env"] }
+detmir-aw-client = { path = "crates/detmir-aw-client" }
+detmir-core = { path = "crates/detmir-core" }
+detmir-state = { path = "crates/detmir-state" }
+fs2 = "0.4"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+regex = "1"
+rusqlite = "0.32"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+sha2 = "0.10"
+tempfile = "3"
+tiny_http = "0.12"
+url = "2"
+urlencoding = "2"

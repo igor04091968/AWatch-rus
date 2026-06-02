@@ -66,6 +66,21 @@ function Write-StartupTrace {
     }
 }
 
+function Get-QueueNameToken {
+    param(
+        [string]$UserName,
+        [int]$SessionId
+    )
+    $token = ('{0}-s{1}' -f $UserName, $SessionId)
+    foreach ($ch in [System.IO.Path]::GetInvalidFileNameChars()) {
+        $token = $token.Replace([string]$ch, '_')
+    }
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        return ('session-{0}' -f $SessionId)
+    }
+    return $token
+}
+
 function Invoke-AwJsonPost {
     param(
         [Parameter(Mandatory = $true)][string]$Uri,
@@ -97,10 +112,19 @@ function Initialize-TransportQueue {
     param(
         [Parameter(Mandatory = $true)][string]$StateRoot
     )
-    $script:TransportQueuePath = Join-Path $StateRoot 'file-operations-queue.jsonl'
-    $script:TransportQueueLockPath = Join-Path $StateRoot 'file-operations-queue.lock'
+    $queueToken = Get-QueueNameToken -UserName $env:USERNAME -SessionId $script:SessionId
+    $script:TransportQueuePath = Join-Path $StateRoot ("file-operations-queue-{0}.jsonl" -f $queueToken)
+    $script:TransportQueueLockPath = Join-Path $StateRoot ("file-operations-queue-{0}.lock" -f $queueToken)
     if (-not (Test-Path -LiteralPath $script:TransportQueuePath)) {
         New-Item -Path $script:TransportQueuePath -ItemType File -Force | Out-Null
+    }
+    $legacyQueuePath = Join-Path $StateRoot 'file-operations-queue.jsonl'
+    if (Test-Path -LiteralPath $legacyQueuePath) {
+        $legacyItems = @(Get-Content -LiteralPath $legacyQueuePath -ErrorAction SilentlyContinue | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($legacyItems.Count -gt 0) {
+            Add-Content -LiteralPath $script:TransportQueuePath -Value $legacyItems -Encoding UTF8
+            Clear-Content -LiteralPath $legacyQueuePath -ErrorAction SilentlyContinue
+        }
     }
 }
 

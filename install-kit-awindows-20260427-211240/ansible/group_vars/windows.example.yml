@@ -50,7 +50,7 @@ aw_windows_evtx_channels:
   - Microsoft-Windows-TerminalServices-LocalSessionManager/Operational
   - Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational
 aw_windows_logon_marker_enabled: true
-aw_windows_process_events_enabled: true
+aw_windows_process_events_enabled: false
 aw_windows_skip_hardening: false
 
 aw_windows_rules_path: "{{ aw_windows_deploy_root }}\\windows\\web-category-rules.example.json"
@@ -59,6 +59,13 @@ aw_windows_policy_path: "{{ aw_windows_deploy_root }}\\windows\\dlp-policy.examp
 aw_windows_validation_remote_path: "{{ aw_windows_state_root }}\\aw_validate_ansible.json"
 aw_windows_validation_local_dir: "/tmp/aw-rus-validation-{{ lookup('env','USER') | default('ansible', true) }}"
 aw_windows_fail_on_validation_error: true
+
+# Collector Guard supervises collectors, but ActivityWatch Recovery must stay enabled
+# as a fallback and as the launch-task bootstrap path for managed RDP sessions.
+aw_windows_collector_guard_enabled: true
+aw_windows_collector_guard_mode: "enforce"
+aw_windows_collector_guard_service_name: "AWatchRusCollectorGuard"
+aw_windows_collector_guard_loop_seconds: 60
 
 # Безопасная миграция текущего прода со старых путей в единый профиль AWatch-rus.
 aw_windows_migration_enabled: true

@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cmd="$(basename "$0")"
+polli_chat="${POLLI_CHAT:-/usr/local/bin/polli-chat}"
+
+need_text() {
+  if [ "$#" -lt 1 ]; then
+    echo "Нужен текст запроса. Пример: $cmd \"объясни ошибку\"" >&2
+    exit 1
+  fi
+}
+
+key() {
+  python3 - <<'PY'
+import json
+from pathlib import Path
+print(json.loads(Path.home().joinpath(".pollinations/credentials.json").read_text())["apiKey"])
+PY
+}
+
+urlencode() {
+  python3 - "$*" <<'PY'
+import sys, urllib.parse
+print(urllib.parse.quote(sys.argv[1]))
+PY
+}
+
+case "$cmd" in
+  ai)
+    need_text "$@"
+    exec "$polli_chat" --model text.daily "$*"
+    ;;
+  ai-fast)
+    need_text "$@"
+    exec "$polli_chat" --model text.cheap "$*"
+    ;;
+  ai-smart)
+    need_text "$@"
+    exec "$polli_chat" --model text.heavy "$*"
+    ;;
+  ai-code)
+    need_text "$@"
+    exec "$polli_chat" --model text.coding_primary "$*"
+    ;;
+  ai-search)
+    need_text "$@"
+    exec "$polli_chat" --model text.search_reasoning "$*"
+    ;;
+  ai-report)
+    if [ "$#" -lt 1 ]; then
+      echo "Пример: ai-report /tmp/check-output.txt" >&2
+      exit 1
+    fi
+    file="$1"
+    [ -f "$file" ] || { echo "Файл не найден: $file" >&2; exit 1; }
+    {
+      echo "Сделай короткий рабочий отчет: состояние, что важно, следующие действия."
+      echo
+      sed -n '1,1400p' "$file"
+    } | "$polli_chat" --model text.daily
+    ;;
+  ai-models)
+    k="$(key)"
+    curl -fsSL 'https://gen.pollinations.ai/v1/models' \
+      -H 'User-Agent: curl/8.5 detmir-proxmox' \
+      -H "Authorization: Bearer ${k}" |
+      python3 -c 'import json,sys; data=json.load(sys.stdin); [print(item.get("id") or item.get("name") or item.get("model")) for item in data.get("data", []) if isinstance(item, dict)]'
+    ;;
+  ai-test)
+    echo "1) text:"
+    "$polli_chat" --model text.cheap --max-tokens 20 'Return exactly: text-ok'
+    echo
+    echo "2) embedding:"
+    k="$(key)"
+    curl -fsSL 'https://gen.pollinations.ai/v1/embeddings' \
+      -H "Authorization: Bearer ${k}" \
+      -H 'User-Agent: curl/8.5 detmir-proxmox' \
+      -H 'Content-Type: application/json' \
+      -d '{"model":"openai-3-small","input":"embedding test","dimensions":128}' |
+      python3 -c 'import json,sys; data=json.load(sys.stdin); emb=data["data"][0]["embedding"]; print("embedding-ok len=" + str(len(emb)))'
+    ;;
+  ai-image)
+    need_text "$@"
+    prompt="$1"
+    out="${2:-$HOME/ai-image-$(date +%Y%m%d-%H%M%S).jpg}"
+    model="${3:-zimage}"
+    encoded="$(urlencode "$prompt")"
+    curl -fsSL "https://gen.pollinations.ai/image/${encoded}?model=${model}&width=1024&height=1024" \
+      -H 'User-Agent: curl/8.5 detmir-proxmox' \
+      -H "Authorization: Bearer $(key)" \
+      -o "$out"
+    echo "$out"
+    ;;
+  ai-voice)
+    need_text "$@"
+    text="$1"
+    out="${2:-$HOME/ai-voice-$(date +%Y%m%d-%H%M%S).mp3}"
+    voice="${3:-nova}"
+    encoded="$(urlencode "$text")"
+    curl -fsSL "https://gen.pollinations.ai/audio/${encoded}?voice=${voice}" \
+      -H 'User-Agent: curl/8.5 detmir-proxmox' \
+      -H "Authorization: Bearer $(key)" \
+      -o "$out"
+    echo "$out"
+    ;;
+  *)
+    echo "Unknown AI tool name: $cmd" >&2
+    exit 2
+    ;;
+esac

@@ -27,7 +27,7 @@ param(
     [int]$EvtxRetentionDays = 14,
     [string[]]$EvtxChannels = @(),
     [bool]$LogonMarkerEnabled = $true,
-    [bool]$ProcessEventsEnabled = $true,
+    [bool]$ProcessEventsEnabled = $false,
     [string]$AwHostname,
     [string]$CustomRulesPath,
     [string]$CustomPolicyPath,

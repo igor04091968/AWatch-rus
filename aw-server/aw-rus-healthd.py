@@ -8,6 +8,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,7 +22,12 @@ ENV_FILE = Path("/etc/activitywatch/aw-server.env")
 def load_env_file(path: Path) -> None:
     if not path.exists():
         return
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except PermissionError:
+        # systemd EnvironmentFile has already injected the variables for service runs.
+        return
+    for raw_line in lines:
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
@@ -55,9 +61,19 @@ def age_seconds(ts: datetime | None, now: datetime) -> int | None:
     return max(0, int((now - ts).total_seconds()))
 
 
-def http_json(url: str, timeout: int = 10) -> Any:
-    with request.urlopen(url, timeout=timeout) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+def http_json(url: str, timeout: int = 20, attempts: int = 2, backoff_seconds: float = 0.5) -> Any:
+    last_exc: Exception | None = None
+    for attempt in range(max(1, attempts)):
+        try:
+            with request.urlopen(url, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            last_exc = exc
+            if attempt + 1 >= max(1, attempts):
+                break
+            time.sleep(backoff_seconds * (2**attempt))
+    assert last_exc is not None
+    raise last_exc
 
 
 def run_command(cmd: list[str]) -> tuple[int, str]:
@@ -136,7 +152,7 @@ class Report:
 
 
 def latest_bucket_event(api_base: str, bucket_id: str) -> dict[str, Any] | None:
-    events = http_json(f"{api_base}/buckets/{bucket_id}/events?limit=20")
+    events = http_json(f"{api_base}/buckets/{bucket_id}/events?limit=1", timeout=25)
     if isinstance(events, list) and events:
         events = [item for item in events if isinstance(item, dict)]
         if not events:
@@ -144,6 +160,16 @@ def latest_bucket_event(api_base: str, bucket_id: str) -> dict[str, Any] | None:
         events.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
         return events[0]
     return None
+
+
+def bucket_metadata_ts(buckets: dict[str, Any], bucket_id: str) -> datetime | None:
+    bucket = buckets.get(bucket_id) if isinstance(buckets, dict) else None
+    if not isinstance(bucket, dict):
+        return None
+    metadata = bucket.get("metadata")
+    if not isinstance(metadata, dict):
+        return None
+    return parse_ts(metadata.get("end"))
 
 
 def host_activity_from_worktime(event: dict[str, Any] | None, max_age_seconds: int) -> dict[str, Any]:
@@ -189,6 +215,78 @@ def bucket_health(
     return "ok", f"fresh ({age}s)", details
 
 
+def bucket_timestamp_health(
+    api_base: str,
+    buckets: dict[str, Any],
+    bucket_id: str,
+    max_age_seconds: int,
+    missing_status: str,
+    stale_status: str,
+) -> tuple[str, str, dict[str, Any]]:
+    metadata_ts = bucket_metadata_ts(buckets, bucket_id)
+    if metadata_ts is not None:
+        age = age_seconds(metadata_ts, now_utc())
+        timestamp = metadata_ts.isoformat().replace("+00:00", "Z")
+        details = {
+            "bucket": bucket_id,
+            "timestamp": timestamp,
+            "age_seconds": age,
+            "timestamp_source": "bucket_metadata.end",
+        }
+        if age is None:
+            return "warn", "timestamp parse failed", details
+        if age > max_age_seconds:
+            return stale_status, f"stale ({age}s)", details
+        return "ok", f"fresh ({age}s)", details
+
+    return bucket_health(api_base, bucket_id, max_age_seconds, missing_status, stale_status)
+
+
+def guard_bucket_health(
+    api_base: str,
+    host: str,
+    max_age_seconds: int,
+    required: bool,
+) -> tuple[str, str, dict[str, Any]]:
+    bucket_id = f"aw-rus-collector-guard_{host}"
+    try:
+        event = latest_bucket_event(api_base, bucket_id)
+    except Exception as exc:
+        status = "fail" if required else "warn"
+        return status, f"guard bucket query failed: {exc}", {"bucket": bucket_id}
+
+    if not event:
+        status = "fail" if required else "warn"
+        return status, "no guard heartbeat", {"bucket": bucket_id, "required": required}
+
+    ts = parse_ts(event.get("timestamp"))
+    age = age_seconds(ts, now_utc())
+    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+    guard_status = str(data.get("status") or "unknown").lower()
+    details = {
+        "bucket": bucket_id,
+        "timestamp": event.get("timestamp"),
+        "age_seconds": age,
+        "required": required,
+        "guard_status": guard_status,
+        "mode": data.get("mode"),
+        "live_session_count": data.get("liveSessionCount"),
+        "problems": data.get("problems", []),
+        "actions": data.get("actions", []),
+    }
+
+    stale_status = "fail" if required else "warn"
+    if age is None:
+        return "warn", "guard timestamp parse failed", details
+    if age > max_age_seconds:
+        return stale_status, f"guard stale ({age}s)", details
+    if guard_status in ("fail", "error"):
+        return "fail" if required else "warn", f"guard reports {guard_status}", details
+    if guard_status == "warn":
+        return "warn", "guard reports warn", details
+    return "ok", f"guard fresh ({age}s)", details
+
+
 def latest_validation_report(validation_dir: Path) -> Path | None:
     candidates = sorted(
         (path for path in validation_dir.glob("*-aw_validate_ansible.json") if path.is_file()),
@@ -206,7 +304,20 @@ def write_atomic(path: Path, content: str) -> None:
     os.replace(tmp_name, path)
 
 
-def check_wrapper(report: Report, name: str, cmd: list[str], json_mode: bool = False) -> None:
+def chmod_if_possible(path: Path, mode: int) -> None:
+    try:
+        path.chmod(mode)
+    except OSError:
+        pass
+
+
+def check_wrapper(
+    report: Report,
+    name: str,
+    cmd: list[str],
+    json_mode: bool = False,
+    failure_status: str = "fail",
+) -> None:
     if not Path(cmd[0]).exists():
         report.add(name, "warn", "binary missing", command=cmd)
         return
@@ -221,7 +332,7 @@ def check_wrapper(report: Report, name: str, cmd: list[str], json_mode: bool = F
             return
     else:
         details["output"] = output
-    report.add(name, "ok" if rc == 0 else "fail", "passed" if rc == 0 else "failed", **details)
+    report.add(name, "ok" if rc == 0 else failure_status, "passed" if rc == 0 else "failed", **details)
 
 
 def main() -> int:
@@ -240,6 +351,8 @@ def main() -> int:
     parser.add_argument("--session-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_SESSION_MAX_AGE_SECONDS", "900")))
     parser.add_argument("--interactive-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_INTERACTIVE_MAX_AGE_SECONDS", "900")))
     parser.add_argument("--session-events-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_SESSION_EVENTS_MAX_AGE_SECONDS", "86400")))
+    parser.add_argument("--guard-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_GUARD_MAX_AGE_SECONDS", "300")))
+    parser.add_argument("--guard-required", action="store_true", default=env("AW_RUS_HEALTH_GUARD_REQUIRED", "0").lower() in ("1", "true", "yes"))
     parser.add_argument("--validation-max-age-seconds", type=int, default=int(env("AW_RUS_HEALTH_VALIDATION_MAX_AGE_SECONDS", "259200")))
     parser.add_argument("--tcp-timeout-seconds", type=float, default=float(env("AW_RUS_HEALTH_TCP_TIMEOUT_SECONDS", "3")))
     parser.add_argument("--json", action="store_true")
@@ -250,8 +363,14 @@ def main() -> int:
     if not aw_api_base.endswith("/api/0"):
         aw_api_base = aw_api_base.rstrip("/") + "/api/0"
 
-    check_wrapper(report, "wrapper:aw-health-check", ["/usr/local/bin/aw-health-check"])
-    check_wrapper(report, "wrapper:dlp-health-check", ["/usr/local/bin/dlp-health-check", "--json"], json_mode=True)
+    check_wrapper(report, "wrapper:aw-health-check", ["/usr/local/bin/aw-health-check"], failure_status="warn")
+    check_wrapper(
+        report,
+        "wrapper:dlp-health-check",
+        ["/usr/local/bin/dlp-health-check", "--json"],
+        json_mode=True,
+        failure_status="warn",
+    )
 
     try:
         info = http_json(f"{aw_api_base}/info")
@@ -279,6 +398,14 @@ def main() -> int:
         buckets = {}
 
     host = args.rdp_hostname
+    guard_status, guard_summary, guard_details = guard_bucket_health(
+        aw_api_base,
+        host,
+        args.guard_max_age_seconds,
+        args.guard_required,
+    )
+    report.add("bucket:collector-guard", guard_status, guard_summary, **guard_details)
+
     worktime_bucket = f"aw-worktime-sessions_{host}"
     worktime_event = None
     if buckets:
@@ -315,10 +442,15 @@ def main() -> int:
         )
         details["interactive_required"] = interactive_required
         details["host_activity"] = activity
+        if not interactive_required and status != "ok":
+            details["inactive_summary"] = summary
+            status = "ok"
+            summary = "inactive: no active interactive users"
         report.add(label, status, summary, **details)
 
-    session_status, session_summary, session_details = bucket_health(
+    session_status, session_summary, session_details = bucket_timestamp_health(
         aw_api_base,
+        buckets,
         f"aw-session-events_{host}",
         args.session_events_max_age_seconds,
         missing_status="fail",
@@ -362,8 +494,12 @@ def main() -> int:
 
     payload = report.as_dict()
     state_dir = Path(args.state_dir)
-    write_atomic(state_dir / "aw-rus-health.json", json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
-    write_atomic(state_dir / "aw-rus-health.txt", report.render_text() + "\n")
+    health_json_path = state_dir / "aw-rus-health.json"
+    health_txt_path = state_dir / "aw-rus-health.txt"
+    write_atomic(health_json_path, json.dumps(payload, ensure_ascii=False, indent=2) + "\n")
+    write_atomic(health_txt_path, report.render_text() + "\n")
+    chmod_if_possible(health_json_path, 0o644)
+    chmod_if_possible(health_txt_path, 0o644)
 
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

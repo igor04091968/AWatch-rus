@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec "${DETMIR_CHECK_BIN:-/usr/local/bin/detmir-check}" "$@"

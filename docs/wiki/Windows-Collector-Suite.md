@@ -18,10 +18,10 @@
 
 ## Process events
 
-Новый флаг:
+Флаг:
 
 ```yaml
-aw_windows_process_events_enabled: true
+aw_windows_process_events_enabled: false
 ```
 
 Он попадает в deployment config как:
@@ -30,7 +30,7 @@ aw_windows_process_events_enabled: true
 sessionEvents.processEventsEnabled
 ```
 
-Когда флаг включен, Windows collector публикует process-level изменения в session events bucket. Это дает server-side слою больше контекста для active session detection и forensic review.
+По умолчанию флаг выключен во всех путях deploy/recovery: постоянная публикация process-level изменений в `aw-session-events_<host>` создает чрезмерный поток событий и быстро раздувает SQLite на AW server. Включать его следует только явно и временно для forensic/debug окна, после чего возвращать `false`.
 
 ## Localized Administrator
 

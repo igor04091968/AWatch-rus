@@ -12,6 +12,10 @@
     tsj_bot_script_name: "tsj_guardian_bot.py"
     tsj_bot_script_dest: "{{ tsj_bot_root }}/{{ tsj_bot_script_name }}"
     tsj_bot_source_local_path: "{{ aw_repo_root }}/proxmox/tsj_guardian_bot.py"
+    tsj_bot_watchdog_name: "tsj_guardian_watchdog.sh"
+    tsj_bot_watchdog_dest: "{{ tsj_bot_root }}/{{ tsj_bot_watchdog_name }}"
+    tsj_bot_watchdog_source_local_path: "{{ aw_repo_root }}/proxmox/{{ tsj_bot_watchdog_name }}"
+    tsj_bot_watchdog_service_name: "tsj-guardian-watchdog.service"
     tsj_bot_openvpn_helper_name: "pfsense_openvpn_client_export.php"
     tsj_bot_openvpn_helper_dest: "{{ tsj_bot_root }}/{{ tsj_bot_openvpn_helper_name }}"
     tsj_bot_openvpn_helper_source_local_path: "{{ aw_repo_root }}/proxmox/{{ tsj_bot_openvpn_helper_name }}"
@@ -20,6 +24,16 @@
     tsj_bot_state_dir: "{{ tsj_bot_runtime_root }}/.state"
     tsj_bot_logs_dir: "{{ tsj_bot_runtime_root }}/logs"
     tsj_bot_default_chat_id: "{{ telegram_default_chat_id | default(telegram_allowed_chat_ids.split(',')[0]) }}"
+    aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
+    tsj_guardian_status_required_flags:
+      - "--status-text"
+      - "--incident-suggestions"
+      - "--incident-defer-decision"
+      - "--escalation-decision"
+      - "--operator-action-decision"
+      - "--dlp-policy-decision"
+      - "--confirmation-decision"
+      - "--autoheal-plan-decision"
 
   pre_tasks:
     - name: Проверить наличие существующего .env бота на хосте
@@ -62,12 +76,55 @@
       delegate_to: localhost
       become: false
 
+    - name: Проверить наличие watchdog скрипта на контроллере
+      ansible.builtin.stat:
+        path: "{{ tsj_bot_watchdog_source_local_path }}"
+      register: tsj_bot_watchdog_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Проверить локальный Rust TSJ guardian status helper
+      ansible.builtin.stat:
+        path: "{{ aw_rust_release_dir }}/tsj-guardian-status"
+      register: tsj_guardian_status_rust_binary
+      delegate_to: localhost
+      become: false
+
+    - name: Остановить выполнение если Rust TSJ guardian status helper не найден
+      ansible.builtin.assert:
+        that:
+          - tsj_guardian_status_rust_binary.stat.exists
+          - tsj_guardian_status_rust_binary.stat.isreg
+        fail_msg: "Rust helper не найден: {{ aw_rust_release_dir }}/tsj-guardian-status. Соберите binary и проверьте CARGO_TARGET_DIR."
+
+    - name: Проверить контракт локального Rust TSJ guardian status helper
+      ansible.builtin.command:
+        cmd: "{{ aw_rust_release_dir }}/tsj-guardian-status --help"
+      register: tsj_guardian_status_help
+      changed_when: false
+      delegate_to: localhost
+      become: false
+
+    - name: Остановить выполнение если Rust TSJ guardian status helper устарел
+      ansible.builtin.assert:
+        that:
+          - item in tsj_guardian_status_help.stdout
+        fail_msg: "Rust helper {{ aw_rust_release_dir }}/tsj-guardian-status не поддерживает {{ item }}. Проверьте CARGO_TARGET_DIR и пересоберите helper."
+      loop: "{{ tsj_guardian_status_required_flags }}"
+
     - name: Остановить выполнение если helper для OpenVPN не найден
       ansible.builtin.assert:
         that:
           - tsj_bot_openvpn_helper_stat.stat.exists
           - tsj_bot_openvpn_helper_stat.stat.isreg
         fail_msg: "Файл helper для OpenVPN не найден: {{ tsj_bot_openvpn_helper_source_local_path }}"
+
+    - name: Остановить выполнение если watchdog не найден
+      ansible.builtin.assert:
+        that:
+          - tsj_bot_watchdog_stat.stat.exists
+          - tsj_bot_watchdog_stat.stat.isreg
+        fail_msg: "Файл watchdog не найден: {{ tsj_bot_watchdog_source_local_path }}"
 
   tasks:
     - name: Установить зависимости Python для бота
@@ -99,6 +156,16 @@
         mode: "0750"
       notify: Restart tsj bot
 
+    - name: Развернуть Rust helper статуса TSJ guardian
+      ansible.builtin.copy:
+        src: "{{ aw_rust_release_dir }}/tsj-guardian-status"
+        dest: /usr/local/bin/tsj-guardian-status
+        owner: root
+        group: root
+        mode: "0755"
+      when: tsj_guardian_status_rust_binary.stat.exists | default(false)
+      notify: Restart tsj bot
+
     - name: Развернуть helper для OpenVPN экспорта
       ansible.builtin.copy:
         src: "{{ tsj_bot_openvpn_helper_source_local_path }}"
@@ -108,12 +175,21 @@
         mode: "0640"
       notify: Restart tsj bot
 
+    - name: Развернуть watchdog скрипт бота
+      ansible.builtin.copy:
+        src: "{{ tsj_bot_watchdog_source_local_path }}"
+        dest: "{{ tsj_bot_watchdog_dest }}"
+        owner: root
+        group: root
+        mode: "0755"
+
     - name: Сгенерировать полный .env бота
       when:
         - telegram_bot_token is defined
         - (telegram_bot_token | string | length) > 20
         - telegram_allowed_chat_ids is defined
         - (telegram_allowed_chat_ids | string | length) > 0
+      no_log: true
       ansible.builtin.copy:
         dest: "{{ tsj_bot_env_path }}"
         owner: "{{ tsj_bot_user }}"
@@ -142,6 +218,7 @@
           LOG_FILE={{ tsj_bot_log_file | default(tsj_bot_runtime_root + '/logs/tsj_guardian_bot.log') }}
           HEARTBEAT_FILE={{ tsj_bot_heartbeat_file | default(tsj_bot_runtime_root + '/.state/tsj_guardian_heartbeat') }}
           CHECK_INTERVAL_SEC={{ tsj_bot_check_interval_sec | default(60) }}
+          INCIDENT_FAILURE_QUORUM_CHECKS={{ tsj_bot_incident_failure_quorum_checks | default(2) }}
           OPERATOR_TIMEOUT_SEC={{ tsj_bot_operator_timeout_sec | default(900) }}
           RETRY_AUTORECOVERY_EVERY_SEC={{ tsj_bot_retry_autorecovery_every_sec | default(300) }}
           EXIT_ON_AUTORECOVERY_SUCCESS={{ tsj_bot_exit_on_autorecovery_success | default('true') }}
@@ -175,18 +252,25 @@
           SERVER_FALLBACK_COMMANDS={{ tsj_bot_server_fallback_commands | default(tsj_bot_runtime_root + '/scripts/system_self_support.sh --heal') }}
           UPDATES_SCRIPT={{ tsj_bot_updates_script | default('/usr/bin/python3 ' + tsj_bot_runtime_root + '/scripts/proxmox_lxc_critical_updates.py') }}
           UPDATE_TARGETS={{ tsj_bot_update_targets | default('auto') }}
+          DETMIR_AI_STATE_FILE={{ tsj_bot_detmir_ai_state_file | default('/var/lib/detmir-ai/latest-state.json') }}
+          TSJ_GUARDIAN_STATUS_BIN={{ tsj_bot_guardian_status_bin | default('/usr/local/bin/tsj-guardian-status') }}
           AW_RUS_API_BASE={{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}
           AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}
           AW_DLP_POLICY_API_BASE={{ tsj_bot_aw_dlp_policy_api_base | default('http://10.10.10.13:5601/api/0') }}
           AW_DLP_POLICY_ACTOR={{ tsj_bot_aw_dlp_policy_actor | default('tsj-guardian-bot') }}
-          AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl reset-failed aw-worktime-ui-bridge.service && sudo -S systemctl start aw-worktime-ui-bridge.service'") }}
-          AW_RUS_DLP_HEAL_CMD={{ tsj_bot_aw_rus_dlp_heal_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'") }}
+          AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n /usr/local/bin/aw-worktime-autoheal.sh && sudo -n systemctl reset-failed aw-worktime-ui-bridge.service && sudo -n systemctl start aw-worktime-ui-bridge.service'") }}
+          AW_RUS_DLP_HEAL_CMD={{ tsj_bot_aw_rus_dlp_heal_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n systemctl restart activitywatch-server.service && (sudo -n systemctl start activitywatch-dlp-aggregator.service || true) && sudo -n /usr/local/bin/aw-health-check && sudo -n /usr/local/bin/dlp-health-check'") }}
           AW_RUS_CASE_API_BASE={{ tsj_bot_aw_rus_case_api_base | default('http://10.10.10.13:5602') }}
           AW_RUS_HAYABUSA_ENABLED={{ tsj_bot_aw_rus_hayabusa_enabled | default('true') }}
-          AW_RUS_HAYABUSA_SSH_CMD={{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default("sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13") }}
+          AW_RUS_HAYABUSA_SSH_CMD={{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13") }}
           AW_RUS_HOST={{ tsj_bot_aw_rus_host | default('SHARKON2025') }}
           AW_RUS_PRIMARY_USER={{ tsj_bot_aw_rus_primary_user | default('USER1') }}
           AW_RUS_STALE_SEC={{ tsj_bot_aw_rus_stale_sec | default(900) }}
+          AW_RUS_SLO_ENABLED={{ tsj_bot_aw_rus_slo_enabled | default('true') }}
+          AW_RUS_SLO_ALERT_WINDOW={{ tsj_bot_aw_rus_slo_alert_window | default('24h') }}
+          AW_RUS_SLO_MIN_SAMPLES={{ tsj_bot_aw_rus_slo_min_samples | default(4) }}
+          AW_RUS_SLO_MAX_AGE_SEC={{ tsj_bot_aw_rus_slo_max_age_sec | default(90) }}
+          AW_RUS_SLO_SUMMARY_CMD={{ tsj_bot_aw_rus_slo_summary_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'") }}
           AW_RUS_WINDOWS_HOST={{ tsj_bot_aw_rus_windows_host | default(hostvars[(groups['aw_windows'] | first)].ansible_host | default('192.168.100.18')) }}
           AW_RUS_WINDOWS_SSH_USER={{ tsj_bot_aw_rus_windows_ssh_user | default(hostvars[(groups['aw_windows'] | first)].ansible_user | default('Администратор')) }}
           AW_RUS_WINDOWS_SSH_PASSWORD={{ tsj_bot_aw_rus_windows_ssh_password | default(hostvars[(groups['aw_windows'] | first)].ansible_password | default('')) }}
@@ -207,6 +291,7 @@
             (telegram_allowed_chat_ids | string | length) > 0
           )
         - tsj_bot_existing_env.stat.exists | default(false)
+      no_log: true
       ansible.builtin.lineinfile:
         path: "{{ tsj_bot_env_path }}"
         regexp: "^{{ item.key }}="
@@ -220,14 +305,19 @@
         - { key: "AW_RUS_WORKTIME_BASE", value: "{{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}" }
         - { key: "AW_DLP_POLICY_API_BASE", value: "{{ tsj_bot_aw_dlp_policy_api_base | default('http://10.10.10.13:5601/api/0') }}" }
         - { key: "AW_DLP_POLICY_ACTOR", value: "{{ tsj_bot_aw_dlp_policy_actor | default('tsj-guardian-bot') }}" }
-        - { key: "AW_RUS_WORKTIME_HEAL_CMD", value: "{{ tsj_bot_aw_rus_worktime_heal_cmd | default(\"sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl reset-failed aw-worktime-ui-bridge.service && sudo -S systemctl start aw-worktime-ui-bridge.service'\") }}" }
-        - { key: "AW_RUS_DLP_HEAL_CMD", value: "{{ tsj_bot_aw_rus_dlp_heal_cmd | default(\"sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'\") }}" }
+        - { key: "AW_RUS_WORKTIME_HEAL_CMD", value: "{{ tsj_bot_aw_rus_worktime_heal_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n /usr/local/bin/aw-worktime-autoheal.sh && sudo -n systemctl reset-failed aw-worktime-ui-bridge.service && sudo -n systemctl start aw-worktime-ui-bridge.service'\") }}" }
+        - { key: "AW_RUS_DLP_HEAL_CMD", value: "{{ tsj_bot_aw_rus_dlp_heal_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n systemctl restart activitywatch-server.service && (sudo -n systemctl start activitywatch-dlp-aggregator.service || true) && sudo -n /usr/local/bin/aw-health-check && sudo -n /usr/local/bin/dlp-health-check'\") }}" }
         - { key: "AW_RUS_CASE_API_BASE", value: "{{ tsj_bot_aw_rus_case_api_base | default('http://10.10.10.13:5602') }}" }
         - { key: "AW_RUS_HAYABUSA_ENABLED", value: "{{ tsj_bot_aw_rus_hayabusa_enabled | default('true') }}" }
-        - { key: "AW_RUS_HAYABUSA_SSH_CMD", value: "{{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default(\"sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13\") }}" }
+        - { key: "AW_RUS_HAYABUSA_SSH_CMD", value: "{{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13\") }}" }
         - { key: "AW_RUS_HOST", value: "{{ tsj_bot_aw_rus_host | default('SHARKON2025') }}" }
         - { key: "AW_RUS_PRIMARY_USER", value: "{{ tsj_bot_aw_rus_primary_user | default('USER1') }}" }
         - { key: "AW_RUS_STALE_SEC", value: "{{ tsj_bot_aw_rus_stale_sec | default(900) }}" }
+        - { key: "AW_RUS_SLO_ENABLED", value: "{{ tsj_bot_aw_rus_slo_enabled | default('true') }}" }
+        - { key: "AW_RUS_SLO_ALERT_WINDOW", value: "{{ tsj_bot_aw_rus_slo_alert_window | default('24h') }}" }
+        - { key: "AW_RUS_SLO_MIN_SAMPLES", value: "{{ tsj_bot_aw_rus_slo_min_samples | default(4) }}" }
+        - { key: "AW_RUS_SLO_MAX_AGE_SEC", value: "{{ tsj_bot_aw_rus_slo_max_age_sec | default(90) }}" }
+        - { key: "AW_RUS_SLO_SUMMARY_CMD", value: "{{ tsj_bot_aw_rus_slo_summary_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'\") }}" }
         - { key: "AW_RUS_WINDOWS_HOST", value: "{{ tsj_bot_aw_rus_windows_host | default(hostvars[(groups['aw_windows'] | first)].ansible_host | default('192.168.100.18')) }}" }
         - { key: "AW_RUS_WINDOWS_SSH_USER", value: "{{ tsj_bot_aw_rus_windows_ssh_user | default(hostvars[(groups['aw_windows'] | first)].ansible_user | default('Администратор')) }}" }
         - { key: "AW_RUS_WINDOWS_SSH_PASSWORD", value: "{{ tsj_bot_aw_rus_windows_ssh_password | default(hostvars[(groups['aw_windows'] | first)].ansible_password | default('')) }}" }
@@ -239,6 +329,9 @@
         - { key: "AW_RUS_WINDOWS_EMAIL_COLLECTOR_PATH", value: "{{ tsj_bot_aw_rus_windows_email_collector_path | default('C:\\ProgramData\\AWatch-rus\\email-outbound-collector.ps1') }}" }
         - { key: "AI_CHAT_WORKDIR", value: "{{ tsj_bot_ai_chat_workdir | default('/home/igor') }}" }
         - { key: "AI_EXEC_USER", value: "{{ tsj_bot_ai_exec_user | default('igor') }}" }
+        - { key: "INCIDENT_FAILURE_QUORUM_CHECKS", value: "{{ tsj_bot_incident_failure_quorum_checks | default(2) }}" }
+        - { key: "DETMIR_AI_STATE_FILE", value: "{{ tsj_bot_detmir_ai_state_file | default('/var/lib/detmir-ai/latest-state.json') }}" }
+        - { key: "TSJ_GUARDIAN_STATUS_BIN", value: "{{ tsj_bot_guardian_status_bin | default('/usr/local/bin/tsj-guardian-status') }}" }
         - { key: "TMUX_USER", value: "{{ tsj_bot_tmux_user | default('igor') }}" }
         - { key: "PFSENSE_ENV_PATH", value: "{{ tsj_bot_pfsense_env_path | default('/home/igor/.config/tsj-bot/pfsense.env.readonly') }}" }
         - { key: "PFSENSE_INVENTORY_PATH", value: "{{ tsj_bot_pfsense_inventory_path | default('/home/igor/.config/tsj-bot/inventory.md') }}" }
@@ -272,6 +365,33 @@
         - Reload systemd
         - Restart tsj bot
 
+    - name: Установить systemd unit watchdog бота
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ tsj_bot_watchdog_service_name }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=TSJ Guardian Bot Heartbeat Watchdog
+          After={{ tsj_bot_service_name }} gost-tg.service
+          Wants={{ tsj_bot_service_name }} gost-tg.service
+
+          [Service]
+          Type=simple
+          User=root
+          ExecStart=/bin/bash -lc 'while true; do {{ tsj_bot_watchdog_dest }}; sleep 60; done'
+          StandardOutput=null
+          StandardError=null
+          Restart=always
+          RestartSec=5
+
+          [Install]
+          WantedBy=multi-user.target
+      notify:
+        - Reload systemd
+        - Restart tsj watchdog
+
     - name: Проверить синтаксис Python скрипта бота
       ansible.builtin.command: "python3 -m py_compile {{ tsj_bot_script_dest }}"
       changed_when: false
@@ -282,11 +402,23 @@
         enabled: true
         state: started
 
+    - name: Включить и запустить watchdog бота
+      ansible.builtin.systemd:
+        name: "{{ tsj_bot_watchdog_service_name }}"
+        enabled: true
+        state: started
+
     - name: Проверить что сервис активен
       ansible.builtin.command: "systemctl is-active {{ tsj_bot_service_name }}"
       register: tsj_bot_active
       changed_when: false
       failed_when: tsj_bot_active.stdout.strip() != "active"
+
+    - name: Проверить что watchdog активен
+      ansible.builtin.command: "systemctl is-active {{ tsj_bot_watchdog_service_name }}"
+      register: tsj_bot_watchdog_active
+      changed_when: false
+      failed_when: tsj_bot_watchdog_active.stdout.strip() != "active"
 
   handlers:
     - name: Reload systemd
@@ -296,4 +428,9 @@
     - name: Restart tsj bot
       ansible.builtin.systemd:
         name: "{{ tsj_bot_service_name }}"
+        state: restarted
+
+    - name: Restart tsj watchdog
+      ansible.builtin.systemd:
+        name: "{{ tsj_bot_watchdog_service_name }}"
         state: restarted

@@ -8,6 +8,7 @@ tsj_bot_runtime_root: "/opt/infra-admin"
 
 # Optional bot tuning
 tsj_bot_check_interval_sec: 60
+tsj_bot_incident_failure_quorum_checks: 2
 tsj_bot_operator_timeout_sec: 900
 tsj_bot_retry_autorecovery_every_sec: 300
 tsj_bot_telegram_proxy_url: "http://127.0.0.1:11090"
@@ -56,6 +57,11 @@ tsj_bot_aw_rus_hayabusa_ssh_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentica
 tsj_bot_aw_rus_host: "SHARKON2025"
 tsj_bot_aw_rus_primary_user: "USER1"
 tsj_bot_aw_rus_stale_sec: 900
+tsj_bot_aw_rus_slo_enabled: "true"
+tsj_bot_aw_rus_slo_alert_window: "24h"
+tsj_bot_aw_rus_slo_min_samples: 4
+tsj_bot_aw_rus_slo_max_age_sec: 90
+tsj_bot_aw_rus_slo_summary_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'"
 tsj_bot_aw_rus_windows_host: "192.168.100.18"
 tsj_bot_aw_rus_windows_ssh_user: "Администратор"
 tsj_bot_aw_rus_windows_ssh_password: "CHANGE_ME"

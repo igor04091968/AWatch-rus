@@ -2,9 +2,9 @@
 Description=Run AW Worktime InfluxDB exporter every 10 minutes
 
 [Timer]
-OnBootSec=3min
-OnUnitActiveSec=10min
+OnCalendar=*:4/10:05
 AccuracySec=1min
+RandomizedDelaySec=30s
 Unit=aw-worktime-influx-exporter.service
 
 [Install]

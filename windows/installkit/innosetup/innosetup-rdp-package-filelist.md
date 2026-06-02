@@ -29,6 +29,9 @@
 - `windows/deploy-single-user.ps1`
 - `windows/deploy-domain-users.ps1`
 - `windows/deploy-ensemble.ps1`
+- `windows/AWatchRusCollectorGuardService.cs`
+- `windows/aw-collector-guard.ps1`
+- `windows/install-collector-guard-service.ps1`
 - `windows/hardening-recovery.ps1`
 - `windows/validate-deployment.ps1`
 - `windows/migrate-awatch-rus-paths.ps1`
@@ -41,6 +44,7 @@
 ### 1.4 Шаблоны конфигурации
 - `windows/web-category-rules.example.json`
 - `windows/dlp-policy.example.json`
+- `windows/dlp-policy.native-cross-os.example.json`
 
 ## 2) Бинарный payload ActivityWatch
 
@@ -83,6 +87,7 @@
 - `windows\dlp-endpoint-signals-collector.ps1`
 - `windows\web-category-rules.example.json`
 - `windows\dlp-policy.example.json`
+- `windows\dlp-policy.native-cross-os.example.json`
 - `payload\activitywatch-v0.13.2-windows-x86_64.zip` (только для offline-режима)
 
 ## 6) Контроль перед сборкой .iss

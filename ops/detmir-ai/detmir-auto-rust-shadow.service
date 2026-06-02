@@ -1,0 +1,20 @@
+[Unit]
+Description=DetMir Rust autonomous shadow health loop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=igor
+Group=igor
+ExecCondition=/bin/sh -c '! systemctl -q is-active detmir-auto.service'
+Environment=DETMIR_AI_STATE_DIR=/var/lib/detmir-ai/shadow/detmir-auto-rust
+Environment=DETMIR_AI_RUN_DIR=/var/lib/detmir-ai/shadow/detmir-auto-rust/locks
+Environment=no_proxy=localhost,127.0.0.1,192.168.100.18,10.10.10.13,10.10.10.2,10.10.10.0/24,192.168.100.0/24
+Environment=NO_PROXY=localhost,127.0.0.1,192.168.100.18,10.10.10.13,10.10.10.2,10.10.10.0/24,192.168.100.0/24
+ExecStart=/usr/local/bin/detmir-auto-rust --no-heal --no-report --command-timeout-seconds 180
+SuccessExitStatus=2
+TimeoutStartSec=240
+Nice=5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+aw_host="${DETMIR_AW_SSH_HOST:-igor@10.10.10.13}"
+
+ssh -o BatchMode=yes \
+  -o ConnectTimeout=10 \
+  -o StrictHostKeyChecking=accept-new \
+  "$aw_host" \
+  'bash -s' <<'REMOTE'
+set -euo pipefail
+
+services=(
+  activitywatch-server.service
+  aw-worktime-api.service
+  aw-worktime-ui-bridge.service
+  activitywatch-dlp-aggregator.service
+)
+
+sudo -n systemctl reset-failed "${services[@]}" >/dev/null 2>&1 || true
+
+for service in activitywatch-server.service aw-worktime-api.service aw-worktime-ui-bridge.service; do
+  if ! systemctl is-active --quiet "$service"; then
+    echo "restart $service"
+    sudo -n systemctl restart "$service"
+  else
+    echo "active $service"
+  fi
+done
+
+if systemctl list-unit-files activitywatch-dlp-aggregator.service >/dev/null 2>&1; then
+  if ! systemctl is-active --quiet activitywatch-dlp-aggregator.service; then
+    echo "start activitywatch-dlp-aggregator.service"
+    sudo -n systemctl start activitywatch-dlp-aggregator.service || true
+  else
+    echo "active activitywatch-dlp-aggregator.service"
+  fi
+fi
+
+sudo -n /usr/local/bin/dlp-health-check --json >/tmp/detmir-heal-dlp-health.json || true
+REMOTE

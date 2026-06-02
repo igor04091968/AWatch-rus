@@ -6,7 +6,7 @@ Wants=network-online.target activitywatch-server.service aw-dlp-case-management.
 [Service]
 Type=oneshot
 EnvironmentFile=-/etc/activitywatch/aw-server.env
-ExecStart=/usr/bin/python3 /usr/local/bin/aw-hayabusa-autoprocess
+ExecStart=/usr/local/bin/aw-hayabusa-autoprocess
 User=root
 Group=root
 StandardOutput=journal

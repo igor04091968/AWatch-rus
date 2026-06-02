@@ -11,6 +11,29 @@ if [[ -f "${ROOT_DIR}/secrets/runtime.env" ]]; then
   set +a
 fi
 
+if [[ "${1:-}" == "--apply-legacy" ]]; then
+  shift
+else
+  for candidate in \
+    "${PROD_BACKUP_RESTORE_RUST:-}" \
+    "${CARGO_TARGET_DIR:-}/release/prod-backup-restore" \
+    "$ROOT_DIR/adk-rust/target/release/prod-backup-restore" \
+    "/usr/local/bin/prod-backup-restore"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      exec "$candidate" --root "$ROOT_DIR" "$@"
+    fi
+  done
+  cat >&2 <<'EOF'
+prod_backup_restore.sh is destructive and now requires the Rust planner.
+Build it first:
+  cd adk-rust && cargo build --release -p prod-backup-restore
+
+To run the old destructive restore explicitly:
+  scripts/prod_backup_restore.sh --apply-legacy
+EOF
+  exit 2
+fi
+
 : "${AW_SSH_PASSWORD:?AW_SSH_PASSWORD is required}"
 : "${AW_WINRM_PASSWORD:?AW_WINRM_PASSWORD is required}"
 

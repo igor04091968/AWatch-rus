@@ -14,6 +14,7 @@
     aw_sw_cleanup_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-sw-cleanup.js') | hash('sha1') | truncate(12, true, '') }}"
     aw_worktime_classes: "{{ lookup('file', aw_repo_root + '/aw-server/settings/classes-worktime.json') | from_json }}"
     aw_default_views: "{{ lookup('file', aw_repo_root + '/aw-server/settings/views-default.json') | from_json }}"
+    aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
 
   tasks:
     - name: Установить базовые пакеты
@@ -28,6 +29,15 @@
           - unzip
         state: present
         update_cache: true
+
+    - name: Установить пакеты для browser smoke проверки
+      ansible.builtin.apt:
+        name:
+          - chromium
+          - nodejs
+          - node-playwright
+        state: present
+      when: aw_browser_smoke_enabled | default(true) | bool
 
     - name: Создать системную группу сервиса
       ansible.builtin.group:
@@ -63,10 +73,13 @@
         - "{{ aw_server_data_dir }}/.config/activitywatch"
         - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
         - "{{ aw_server_data_dir }}/backups"
+        - "{{ aw_server_data_dir }}/slo"
+        - "{{ aw_server_data_dir }}/browser-smoke"
         - "{{ aw_rus_health_state_dir }}"
         - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
         - /etc/activitywatch
+        - /usr/local/lib/aw-rus-browser-smoke
         - "{{ aw_bootstrap_dir }}"
 
     - name: Настроить каталоги ActivityWatch с владельцем сервиса
@@ -90,6 +103,8 @@
         - "{{ aw_server_data_dir }}/.config/activitywatch"
         - "{{ aw_server_data_dir }}/.config/activitywatch/aw-server-rust"
         - "{{ aw_server_data_dir }}/backups"
+        - "{{ aw_server_data_dir }}/slo"
+        - "{{ aw_server_data_dir }}/browser-smoke"
         - "{{ aw_rus_health_state_dir }}"
         - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
@@ -101,6 +116,30 @@
         owner: root
         group: root
         mode: "0755"
+
+    - name: Положить legacy prune script в server-side ops bundle
+      ansible.builtin.copy:
+        src: "{{ aw_repo_root }}/scripts/legacy/aw-prune-local-state.sh"
+        dest: /opt/activitywatch/aw-rus-ops/aw-prune-local-state.sh
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Проверить локальный Rust prune local state
+      ansible.builtin.stat:
+        path: "{{ aw_rust_release_dir }}/aw-prune-local-state"
+      delegate_to: localhost
+      register: aw_prune_local_state_rust_binary
+      become: false
+
+    - name: Установить Rust prune local state
+      ansible.builtin.copy:
+        src: "{{ aw_rust_release_dir }}/aw-prune-local-state"
+        dest: /usr/local/bin/aw-prune-local-state-rust
+        owner: root
+        group: root
+        mode: "0755"
+      when: aw_prune_local_state_rust_binary.stat.exists | default(false)
 
     - name: Ограничить рост journald на aw-server
       ansible.builtin.copy:
@@ -376,20 +415,138 @@
             dest: /opt/activitywatch/aw-server/apply_webui_ru_patch.sh
             mode: "0755"
 
+        - name: Создать server-side ops bundle для ранних health helpers
+          ansible.builtin.file:
+            path: /opt/activitywatch/aw-rus-ops
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить wrapper aw-health-check до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-health-check-wrapper.sh"
+            dest: /usr/local/bin/aw-health-check
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить legacy aw-health-check до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/health-check.sh"
+            dest: /opt/activitywatch/aw-rus-ops/health-check.sh
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Проверить локальный Rust aw-health-check до Influx проверок
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-health-check"
+          delegate_to: localhost
+          register: aw_health_check_rust_binary_early
+          become: false
+
+        - name: Установить Rust aw-health-check до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-health-check"
+            dest: /usr/local/bin/aw-health-check-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_health_check_rust_binary_early.stat.exists | default(false)
+
+        - name: Проверить локальный Rust aw-db-health до Influx проверок
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-db-health"
+          delegate_to: localhost
+          register: aw_db_health_rust_binary_early
+          become: false
+
+        - name: Установить Rust aw-db-health до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-db-health"
+            dest: /usr/local/bin/aw-db-health
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_db_health_rust_binary_early.stat.exists | default(false)
+
+        - name: Проверить локальный Rust aw-db-maintenance до Influx проверок
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-db-maintenance"
+          delegate_to: localhost
+          register: aw_db_maintenance_rust_binary_early
+          become: false
+
+        - name: Установить Rust aw-db-maintenance до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-db-maintenance"
+            dest: /usr/local/bin/aw-db-maintenance
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+
+        - name: Установить aw-db-maintenance service до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-db-maintenance.service"
+            dest: /etc/systemd/system/aw-db-maintenance.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+
+        - name: Установить aw-db-maintenance timer до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-db-maintenance.timer"
+            dest: /etc/systemd/system/aw-db-maintenance.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+
+        - name: Включить weekly aw-db-maintenance timer до Influx проверок
+          ansible.builtin.systemd:
+            name: aw-db-maintenance.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+          when: aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+
+        - name: Прочитать текущий aw-server.env для сохранения Influx token
+          ansible.builtin.slurp:
+            path: /etc/activitywatch/aw-server.env
+          register: aw_existing_server_env_raw
+          failed_when: false
+          no_log: true
+
+        - name: Подготовить effective Influx tokens без вывода секретов
+          ansible.builtin.set_fact:
+            aw_existing_server_env_text: "{{ aw_existing_server_env_raw.content | default('') | b64decode }}"
+            aw_existing_worktime_influx_token: "{{ (aw_existing_server_env_raw.content | default('') | b64decode | regex_search('(?m)^AW_WORKTIME_INFLUX_TOKEN=.*$') | default('', true) | regex_replace('^AW_WORKTIME_INFLUX_TOKEN=', '')) }}"
+            aw_existing_dlp_influx_token: "{{ (aw_existing_server_env_raw.content | default('') | b64decode | regex_search('(?m)^AW_DLP_INFLUX_TOKEN=.*$') | default('', true) | regex_replace('^AW_DLP_INFLUX_TOKEN=', '')) }}"
+          no_log: true
+
+        - name: Выбрать effective Influx tokens
+          ansible.builtin.set_fact:
+            aw_effective_worktime_influx_token: "{{ (aw_worktime_influx_token | default('') | string) if ((aw_worktime_influx_token | default('') | string | length) > 0) else aw_existing_worktime_influx_token }}"
+            aw_effective_dlp_influx_token: "{{ (aw_dlp_influx_token | default('') | string) if ((aw_dlp_influx_token | default('') | string | length) > 0) else aw_existing_dlp_influx_token }}"
+          no_log: true
+
         - name: Проверить Influx token для AW worktime exporter
           ansible.builtin.assert:
             that:
-              - aw_worktime_influx_token is defined
-              - aw_worktime_influx_token | length > 0
-            fail_msg: "aw_worktime_influx_enabled=true, но aw_worktime_influx_token пуст. Exporter будет падать и Grafana не получит worktime-ряды."
+              - aw_effective_worktime_influx_token is defined
+              - aw_effective_worktime_influx_token | length > 0
+            fail_msg: "aw_worktime_influx_enabled=true, но token пуст и в локальном env, и в текущем /etc/activitywatch/aw-server.env. Exporter будет падать и Grafana не получит worktime-ряды."
           when: aw_worktime_influx_enabled | default(false) | bool
 
         - name: Проверить Influx token для AW DLP exporter
           ansible.builtin.assert:
             that:
-              - aw_dlp_influx_token is defined
-              - aw_dlp_influx_token | length > 0
-            fail_msg: "aw_dlp_influx_enabled=true, но aw_dlp_influx_token пуст. Exporter будет падать и Grafana не получит DLP-ряды."
+              - aw_effective_dlp_influx_token is defined
+              - aw_effective_dlp_influx_token | length > 0
+            fail_msg: "aw_dlp_influx_enabled=true, но token пуст и в локальном env, и в текущем /etc/activitywatch/aw-server.env. Exporter будет падать и Grafana не получит DLP-ряды."
           when: aw_dlp_influx_enabled | default(false) | bool
 
         - name: Записать /etc/activitywatch/aw-server.env перед хотфиксами
@@ -427,7 +584,7 @@
               AW_WORKTIME_INFLUX_BUCKET={{ aw_worktime_influx_bucket | default('aw_metrics') }}
               AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default('SHARKON2025') }}
               AW_WORKTIME_INFLUX_DAYS={{ aw_worktime_influx_days | default('today,yesterday') }}
-              AW_WORKTIME_INFLUX_TOKEN={{ aw_worktime_influx_token | default('') }}
+              AW_WORKTIME_INFLUX_TOKEN={{ aw_effective_worktime_influx_token | default('') }}
               AW_DLP_INFLUX_ENABLED={{ 'true' if (aw_dlp_influx_enabled | default(false) | bool) else 'false' }}
               AW_DLP_INFLUX_URL={{ aw_dlp_influx_url | default('') }}
               AW_DLP_INFLUX_ORG={{ aw_dlp_influx_org | default('proxmox') }}
@@ -435,7 +592,7 @@
               AW_DLP_INFLUX_HOSTS={{ aw_dlp_influx_hosts | default('SHARKON2025') }}
               AW_DLP_INFLUX_LOOKBACK_DAYS={{ aw_dlp_influx_lookback_days | default(30) }}
               AW_DLP_INFLUX_EVENT_LIMIT={{ aw_dlp_influx_event_limit | default(2000) }}
-              AW_DLP_INFLUX_TOKEN={{ aw_dlp_influx_token | default('') }}
+              AW_DLP_INFLUX_TOKEN={{ aw_effective_dlp_influx_token | default('') }}
               AW_DLP_AW_API_BASE=http://127.0.0.1:5600/api/0
               AW_DLP_CASE_API_BASE=http://127.0.0.1:5602/api/0/dlp/cases
               AW_EXPECT_START_OF_DAY={{ aw_worktime_start_of_day | default('') }}
@@ -448,6 +605,19 @@
               AW_RUS_HEALTH_STATE_DIR={{ aw_rus_health_state_dir }}
               AW_RUS_HEALTH_VALIDATION_DIR={{ aw_rus_health_validation_dir }}
               AW_RUS_HEALTH_SESSION_EVENTS_MAX_AGE_SECONDS={{ aw_rus_health_session_events_max_age_seconds | default(86400) }}
+              AW_RUS_HEALTH_GUARD_MAX_AGE_SECONDS={{ aw_rus_health_guard_max_age_seconds | default(300) }}
+              AW_RUS_HEALTH_GUARD_REQUIRED={{ 1 if (aw_rus_health_guard_required | default(true) | bool) else 0 }}
+              AW_RUS_SLO_STATE_DIR={{ aw_server_data_dir }}/slo
+              AW_RUS_SLO_AW_BASE=http://127.0.0.1:5600
+              AW_RUS_SLO_WORKTIME_BASE={{ aw_rus_health_worktime_api_base | default('http://127.0.0.1:5610') }}
+              AW_RUS_SLO_TARGET_PERCENT={{ aw_rus_slo_target_percent | default('99.97') }}
+              AW_BROWSER_SMOKE_AW_BASE=http://127.0.0.1:5600
+              AW_BROWSER_SMOKE_WORKTIME_BASE={{ aw_rus_health_worktime_api_base | default('http://127.0.0.1:5610') }}
+              AW_BROWSER_SMOKE_HOST={{ aw_monitored_windows_hostname }}
+              AW_BROWSER_SMOKE_OUTPUT_DIR={{ aw_server_data_dir }}/browser-smoke
+              AW_BROWSER_SMOKE_ENGINE={{ aw_browser_smoke_engine | default('chromium-cli') }}
+              AW_BROWSER_SMOKE_TIMEOUT_MS={{ aw_browser_smoke_timeout_ms | default(20000) }}
+              AW_BROWSER_SMOKE_RENDER_TIMEOUT_MS={{ aw_browser_smoke_render_timeout_ms | default(15000) }}
               AW_HAYABUSA_AUTO_CASE_ENABLED={{ 'true' if (aw_hayabusa_auto_case_enabled | default(true) | bool) else 'false' }}
               AW_HAYABUSA_AUTO_CASE_MIN_SEVERITY={{ aw_hayabusa_auto_case_min_severity | default('medium') }}
               AW_HAYABUSA_TELEGRAM_ENABLED={{ 'true' if (aw_hayabusa_telegram_enabled | default(false) | bool) else 'false' }}
@@ -501,6 +671,50 @@
             mode: "0644"
           when: aw_dlp_policy_engine_enabled | default(false) | bool
 
+        - name: Проверить локальный Rust DLP policy engine
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-policy-engine"
+          delegate_to: localhost
+          register: aw_dlp_policy_engine_rust_binary
+          become: false
+          when: aw_dlp_policy_engine_enabled | default(false) | bool
+
+        - name: Установить Rust DLP policy engine
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-policy-engine"
+            dest: /usr/local/bin/aw-dlp-policy-engine-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_policy_engine_enabled | default(false) | bool
+            - aw_dlp_policy_engine_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог DLP policy engine
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-dlp-policy-engine.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_policy_engine_enabled | default(false) | bool
+            - aw_dlp_policy_engine_rust_binary.stat.exists | default(false)
+
+        - name: Переключить DLP policy engine на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-policy-engine.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-dlp-policy-engine-rust
+          when:
+            - aw_dlp_policy_engine_enabled | default(false) | bool
+            - aw_dlp_policy_engine_rust_binary.stat.exists | default(false)
+
         - name: Создать каталог DLP content analysis
           ansible.builtin.file:
             path: /opt/activitywatch/dlp-content-analysis
@@ -527,6 +741,25 @@
             group: root
             mode: "0755"
           when: aw_dlp_content_analysis_enabled | default(true) | bool
+
+        - name: Проверить локальный Rust DLP content analyzer
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-content-analyzer"
+          delegate_to: localhost
+          register: dlp_content_analyzer_rust_binary
+          become: false
+          when: aw_dlp_content_analysis_enabled | default(true) | bool
+
+        - name: Установить Rust DLP content analyzer
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-content-analyzer"
+            dest: /usr/local/bin/aw-dlp-content-analyzer-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_content_analysis_enabled | default(true) | bool
+            - dlp_content_analyzer_rust_binary.stat.exists | default(false)
 
         - name: Создать virtualenv DLP content analysis
           ansible.builtin.command:
@@ -619,6 +852,50 @@
             mode: "0644"
           when: aw_dlp_integrations_enabled | default(true) | bool
 
+        - name: Проверить локальный Rust CEF exporter
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-cef-exporter"
+          delegate_to: localhost
+          register: dlp_cef_exporter_rust_binary
+          become: false
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить Rust CEF exporter
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-cef-exporter"
+            dest: /usr/local/bin/dlp-cef-exporter-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_cef_exporter_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог CEF exporter
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-dlp-cef-exporter.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_cef_exporter_rust_binary.stat.exists | default(false)
+
+        - name: Переключить CEF exporter на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-cef-exporter.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/dlp-cef-exporter-rust
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_cef_exporter_rust_binary.stat.exists | default(false)
+
         - name: Установить systemd unit syslog forwarder
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/dlp-integrations/syslog-forwarder.service"
@@ -637,6 +914,50 @@
             mode: "0644"
           when: aw_dlp_integrations_enabled | default(true) | bool
 
+        - name: Проверить локальный Rust syslog forwarder
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-syslog-forwarder"
+          delegate_to: localhost
+          register: dlp_syslog_forwarder_rust_binary
+          become: false
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить Rust syslog forwarder
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-syslog-forwarder"
+            dest: /usr/local/bin/dlp-syslog-forwarder-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог syslog forwarder
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-dlp-syslog-forwarder.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
+
+        - name: Переключить syslog forwarder на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-syslog-forwarder.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/dlp-syslog-forwarder-rust
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
+
         - name: Установить systemd unit webhook sender
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/dlp-integrations/webhook-sender.service"
@@ -654,6 +975,50 @@
             group: root
             mode: "0644"
           when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Проверить локальный Rust webhook sender
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-webhook-sender"
+          delegate_to: localhost
+          register: dlp_webhook_sender_rust_binary
+          become: false
+          when: aw_dlp_integrations_enabled | default(true) | bool
+
+        - name: Установить Rust webhook sender
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-webhook-sender"
+            dest: /usr/local/bin/dlp-webhook-sender-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_webhook_sender_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог webhook sender
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-dlp-webhook-sender.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_webhook_sender_rust_binary.stat.exists | default(false)
+
+        - name: Переключить webhook sender на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-webhook-sender.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/dlp-webhook-sender-rust
+          when:
+            - aw_dlp_integrations_enabled | default(true) | bool
+            - dlp_webhook_sender_rust_binary.stat.exists | default(false)
 
         - name: Создать каталог DLP case management
           ansible.builtin.file:
@@ -710,6 +1075,50 @@
             mode: "0644"
           when: aw_dlp_case_management_enabled | default(true) | bool
 
+        - name: Проверить локальный Rust DLP case management
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-case-management"
+          delegate_to: localhost
+          register: aw_dlp_case_management_rust_binary
+          become: false
+          when: aw_dlp_case_management_enabled | default(true) | bool
+
+        - name: Установить Rust DLP case management
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-case-management"
+            dest: /usr/local/bin/aw-dlp-case-management-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_case_management_enabled | default(true) | bool
+            - aw_dlp_case_management_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог DLP case management
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-dlp-case-management.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_case_management_enabled | default(true) | bool
+            - aw_dlp_case_management_rust_binary.stat.exists | default(false)
+
+        - name: Переключить DLP case management на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-case-management.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-dlp-case-management-rust
+          when:
+            - aw_dlp_case_management_enabled | default(true) | bool
+            - aw_dlp_case_management_rust_binary.stat.exists | default(false)
+
         - name: Создать каталоги DLP compliance
           ansible.builtin.file:
             path: "{{ item }}"
@@ -753,6 +1162,50 @@
             virtualenv: /opt/activitywatch/dlp-compliance/.venv
           when: aw_dlp_compliance_enabled | default(true) | bool
 
+        - name: Проверить локальный Rust DLP compliance
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-compliance"
+          delegate_to: localhost
+          register: aw_dlp_compliance_rust_binary
+          become: false
+          when: aw_dlp_compliance_enabled | default(true) | bool
+
+        - name: Установить Rust DLP compliance
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-compliance"
+            dest: /usr/local/bin/aw-dlp-compliance-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_compliance_enabled | default(true) | bool
+            - aw_dlp_compliance_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог DLP compliance report scheduler
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-dlp-report-scheduler.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_compliance_enabled | default(true) | bool
+            - aw_dlp_compliance_rust_binary.stat.exists | default(false)
+
+        - name: Переключить DLP compliance report scheduler на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-report-scheduler.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-dlp-compliance-rust
+          when:
+            - aw_dlp_compliance_enabled | default(true) | bool
+            - aw_dlp_compliance_rust_binary.stat.exists | default(false)
+
         - name: Установить dlp-admin-cli
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/scripts/dlp-admin-cli.py"
@@ -760,6 +1213,21 @@
             owner: root
             group: root
             mode: "0755"
+
+        - name: Проверить локальный Rust dlp-admin-cli
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-admin-cli"
+          delegate_to: localhost
+          register: aw_dlp_admin_cli_rust_binary
+
+        - name: Установить Rust dlp-admin-cli
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-admin-cli"
+            dest: /usr/local/bin/dlp-admin-cli
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_dlp_admin_cli_rust_binary.stat.exists
 
         - name: Установить скрипт AW worktime API
           ansible.builtin.copy:
@@ -769,6 +1237,22 @@
             group: root
             mode: "0755"
 
+        - name: Проверить локальный Rust AW worktime API
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/worktime-api"
+          delegate_to: localhost
+          register: aw_worktime_api_rust_binary
+          become: false
+
+        - name: Установить Rust AW worktime API
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/worktime-api"
+            dest: /usr/local/bin/aw-worktime-api-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_api_rust_binary.stat.exists | default(false)
+
         - name: Установить systemd unit AW worktime API
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-api.service"
@@ -776,6 +1260,27 @@
             owner: root
             group: root
             mode: "0644"
+
+        - name: Создать drop-in каталог AW worktime API
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-worktime-api.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_api_rust_binary.stat.exists | default(false)
+
+        - name: Переключить AW worktime API на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-worktime-api.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-worktime-api-rust
+          when: aw_worktime_api_rust_binary.stat.exists | default(false)
 
         - name: Установить скрипт AW worktime UI bridge
           ansible.builtin.copy:
@@ -785,6 +1290,22 @@
             group: root
             mode: "0755"
 
+        - name: Проверить локальный Rust AW worktime UI bridge
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/worktime-ui-bridge"
+          delegate_to: localhost
+          register: aw_worktime_ui_bridge_rust_binary
+          become: false
+
+        - name: Установить Rust AW worktime UI bridge
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/worktime-ui-bridge"
+            dest: /usr/local/bin/aw-worktime-ui-bridge-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_ui_bridge_rust_binary.stat.exists | default(false)
+
         - name: Установить скрипт AW worktime autoheal
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-autoheal.sh"
@@ -792,6 +1313,46 @@
             owner: root
             group: root
             mode: "0755"
+
+        - name: Проверить локальный Rust AW worktime autoheal
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/worktime-autoheal"
+          delegate_to: localhost
+          register: aw_worktime_autoheal_rust_binary
+          become: false
+
+        - name: Установить Rust AW worktime autoheal
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/worktime-autoheal"
+            dest: /usr/local/bin/aw-worktime-autoheal-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_autoheal_rust_binary.stat.exists | default(false)
+
+        - name: Установить скрипт AW worktime prewarm
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-prewarm.sh"
+            dest: /usr/local/bin/aw-worktime-prewarm.sh
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Проверить локальный Rust AW worktime prewarm
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/worktime-prewarm"
+          delegate_to: localhost
+          register: aw_worktime_prewarm_rust_binary
+          become: false
+
+        - name: Установить Rust AW worktime prewarm
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/worktime-prewarm"
+            dest: /usr/local/bin/aw-worktime-prewarm-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_prewarm_rust_binary.stat.exists | default(false)
 
         - name: Установить скрипт AW worktime Influx exporter
           ansible.builtin.copy:
@@ -811,21 +1372,118 @@
             mode: "0755"
           when: aw_dlp_influx_enabled | default(false) | bool
 
+        - name: Создать server-side ops bundle для legacy aw-health-check
+          ansible.builtin.file:
+            path: /opt/activitywatch/aw-rus-ops
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
         - name: Установить скрипт aw-health-check
           ansible.builtin.copy:
-            src: "{{ aw_repo_root }}/aw-server/health-check.sh"
+            src: "{{ aw_repo_root }}/aw-server/aw-health-check-wrapper.sh"
             dest: /usr/local/bin/aw-health-check
             owner: root
             group: root
             mode: "0755"
 
-        - name: Установить скрипт dlp-health-check
+        - name: Положить legacy aw-health-check в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/health-check.sh"
+            dest: /opt/activitywatch/aw-rus-ops/health-check.sh
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Проверить локальный Rust aw-health-check
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-health-check"
+          delegate_to: localhost
+          register: aw_health_check_rust_binary
+          become: false
+
+        - name: Установить Rust aw-health-check
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-health-check"
+            dest: /usr/local/bin/aw-health-check-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_health_check_rust_binary.stat.exists | default(false)
+
+        - name: Проверить локальный Rust aw-db-health
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-db-health"
+          delegate_to: localhost
+          register: aw_db_health_rust_binary
+          become: false
+
+        - name: Установить Rust aw-db-health
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-db-health"
+            dest: /usr/local/bin/aw-db-health
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_db_health_rust_binary.stat.exists | default(false)
+
+        - name: Установить скрипт check-aw-data
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/check-aw-data-wrapper.sh"
+            dest: /usr/local/bin/check-aw-data
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Положить legacy check-aw-data в server-side ops bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/legacy/check-aw-data.sh"
+            dest: /opt/activitywatch/aw-rus-ops/check-aw-data.sh
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Проверить локальный Rust check-aw-data
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/check-aw-data"
+          delegate_to: localhost
+          register: check_aw_data_rust_binary
+          become: false
+
+        - name: Установить Rust check-aw-data
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/check-aw-data"
+            dest: /usr/local/bin/check-aw-data-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: check_aw_data_rust_binary.stat.exists | default(false)
+
+        - name: Проверить локальный Rust dlp-health-check
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-health-check"
+          delegate_to: localhost
+          register: dlp_health_check_rust_binary
+          become: false
+
+        - name: Установить Rust dlp-health-check
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-health-check"
+            dest: /usr/local/bin/dlp-health-check
+            owner: root
+            group: root
+            mode: "0755"
+          when: dlp_health_check_rust_binary.stat.exists | default(false)
+
+        - name: Установить legacy Python dlp-health-check
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/scripts/dlp-health-check.py"
             dest: /usr/local/bin/dlp-health-check
             owner: root
             group: root
             mode: "0755"
+          when: not (dlp_health_check_rust_binary.stat.exists | default(false))
 
         - name: Установить скрипт aw-rus-healthd
           ansible.builtin.copy:
@@ -835,6 +1493,39 @@
             group: root
             mode: "0755"
 
+        - name: Установить скрипт aw-slo-monitor
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-slo-monitor.py"
+            dest: /usr/local/bin/aw-slo-monitor.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Проверить локальный Rust AW-RUS SLO monitor
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-slo-monitor"
+          delegate_to: localhost
+          register: aw_slo_monitor_rust_binary
+          become: false
+
+        - name: Установить Rust AW-RUS SLO monitor
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-slo-monitor"
+            dest: /usr/local/bin/aw-slo-monitor-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_slo_monitor_rust_binary.stat.exists | default(false)
+
+        - name: Установить browser smoke скрипт
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/aw-webui-browser-smoke.mjs"
+            dest: /usr/local/lib/aw-rus-browser-smoke/aw-webui-browser-smoke.mjs
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_browser_smoke_enabled | default(true) | bool
+
         - name: Установить systemd unit AW worktime UI bridge
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-ui-bridge.service"
@@ -842,6 +1533,27 @@
             owner: root
             group: root
             mode: "0644"
+
+        - name: Создать drop-in каталог AW worktime UI bridge
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-worktime-ui-bridge.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_ui_bridge_rust_binary.stat.exists | default(false)
+
+        - name: Переключить AW worktime UI bridge на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-worktime-ui-bridge.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-worktime-ui-bridge-rust
+          when: aw_worktime_ui_bridge_rust_binary.stat.exists | default(false)
 
         - name: Установить systemd timer AW worktime UI bridge
           ansible.builtin.copy:
@@ -859,10 +1571,68 @@
             group: root
             mode: "0644"
 
+        - name: Создать drop-in каталог AW worktime autoheal
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-worktime-autoheal.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_autoheal_rust_binary.stat.exists | default(false)
+
+        - name: Переключить AW worktime autoheal на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-worktime-autoheal.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-worktime-autoheal-rust
+          when: aw_worktime_autoheal_rust_binary.stat.exists | default(false)
+
         - name: Установить systemd timer AW worktime autoheal
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-autoheal.timer"
             dest: /etc/systemd/system/aw-worktime-autoheal.timer
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить systemd unit AW worktime prewarm
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-prewarm.service"
+            dest: /etc/systemd/system/aw-worktime-prewarm.service
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Создать drop-in каталог AW worktime prewarm
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-worktime-prewarm.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_worktime_prewarm_rust_binary.stat.exists | default(false)
+
+        - name: Переключить AW worktime prewarm на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-worktime-prewarm.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-worktime-prewarm-rust
+          when: aw_worktime_prewarm_rust_binary.stat.exists | default(false)
+
+        - name: Установить systemd timer AW worktime prewarm
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-worktime-prewarm.timer"
+            dest: /etc/systemd/system/aw-worktime-prewarm.timer
             owner: root
             group: root
             mode: "0644"
@@ -883,6 +1653,58 @@
             group: root
             mode: "0644"
 
+        - name: Установить systemd unit AW-RUS SLO monitor
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-slo-monitor.service"
+            dest: /etc/systemd/system/aw-slo-monitor.service
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Создать drop-in каталог AW-RUS SLO monitor
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-slo-monitor.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_slo_monitor_rust_binary.stat.exists | default(false)
+
+        - name: Переключить AW-RUS SLO monitor на Rust
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-slo-monitor-rust-switch.conf"
+            dest: /etc/systemd/system/aw-slo-monitor.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_slo_monitor_rust_binary.stat.exists | default(false)
+
+        - name: Установить systemd timer AW-RUS SLO monitor
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-slo-monitor.timer"
+            dest: /etc/systemd/system/aw-slo-monitor.timer
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить systemd unit AW-RUS browser smoke
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-browser-smoke.service"
+            dest: /etc/systemd/system/aw-browser-smoke.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_browser_smoke_enabled | default(true) | bool
+
+        - name: Установить systemd timer AW-RUS browser smoke
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-browser-smoke.timer"
+            dest: /etc/systemd/system/aw-browser-smoke.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_browser_smoke_enabled | default(true) | bool
+
         - name: Установить systemd unit AW worktime Influx exporter
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-worktime-influx-exporter.service"
@@ -891,6 +1713,50 @@
             group: root
             mode: "0644"
           when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Проверить локальный Rust AW worktime Influx exporter
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/worktime-influx-exporter"
+          delegate_to: localhost
+          register: aw_worktime_influx_exporter_rust_binary
+          become: false
+          when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Установить Rust AW worktime Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/worktime-influx-exporter"
+            dest: /usr/local/bin/aw-worktime-influx-exporter-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_worktime_influx_enabled | default(false) | bool
+            - aw_worktime_influx_exporter_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог AW worktime Influx exporter
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-worktime-influx-exporter.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_worktime_influx_enabled | default(false) | bool
+            - aw_worktime_influx_exporter_rust_binary.stat.exists | default(false)
+
+        - name: Переключить AW worktime Influx exporter на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-worktime-influx-exporter.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-worktime-influx-exporter-rust
+          when:
+            - aw_worktime_influx_enabled | default(false) | bool
+            - aw_worktime_influx_exporter_rust_binary.stat.exists | default(false)
 
         - name: Установить systemd timer AW worktime Influx exporter
           ansible.builtin.copy:
@@ -910,6 +1776,50 @@
             mode: "0644"
           when: aw_dlp_influx_enabled | default(false) | bool
 
+        - name: Проверить локальный Rust AW DLP Influx exporter
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-influx-exporter"
+          delegate_to: localhost
+          register: aw_dlp_influx_exporter_rust_binary
+          become: false
+          when: aw_dlp_influx_enabled | default(false) | bool
+
+        - name: Установить Rust AW DLP Influx exporter
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-influx-exporter"
+            dest: /usr/local/bin/aw-dlp-influx-exporter-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_influx_enabled | default(false) | bool
+            - aw_dlp_influx_exporter_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог AW DLP Influx exporter
+          ansible.builtin.file:
+            path: /etc/systemd/system/aw-dlp-influx-exporter.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when:
+            - aw_dlp_influx_enabled | default(false) | bool
+            - aw_dlp_influx_exporter_rust_binary.stat.exists | default(false)
+
+        - name: Переключить AW DLP Influx exporter на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/aw-dlp-influx-exporter.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/aw-dlp-influx-exporter-rust
+          when:
+            - aw_dlp_influx_enabled | default(false) | bool
+            - aw_dlp_influx_exporter_rust_binary.stat.exists | default(false)
+
         - name: Установить systemd timer AW DLP Influx exporter
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/aw-dlp-influx-exporter.timer"
@@ -928,6 +1838,19 @@
             name: aw-rus-healthd.timer
             enabled: true
             state: started
+
+        - name: Включить таймер AW-RUS SLO monitor
+          ansible.builtin.systemd:
+            name: aw-slo-monitor.timer
+            enabled: true
+            state: started
+
+        - name: Включить таймер AW-RUS browser smoke
+          ansible.builtin.systemd:
+            name: aw-browser-smoke.timer
+            enabled: true
+            state: started
+          when: aw_browser_smoke_enabled | default(true) | bool
 
         - name: Включить и перезапустить DLP policy engine
           ansible.builtin.systemd:
@@ -1012,6 +1935,18 @@
         - name: Выполнить разовый прогон AW worktime autoheal
           ansible.builtin.systemd:
             name: aw-worktime-autoheal.service
+            state: started
+          failed_when: false
+
+        - name: Включить и перезапустить AW worktime prewarm timer
+          ansible.builtin.systemd:
+            name: aw-worktime-prewarm.timer
+            enabled: true
+            state: restarted
+
+        - name: Выполнить разовый прогон AW worktime prewarm
+          ansible.builtin.systemd:
+            name: aw-worktime-prewarm.service
             state: started
           failed_when: false
 
@@ -1101,6 +2036,22 @@
             group: root
             mode: "0755"
 
+        - name: Check Rust merge AW DB binary artifact
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/merge-aw-server-dbs"
+          register: aw_merge_db_rust_binary
+          delegate_to: localhost
+          become: false
+
+        - name: Install Rust merge AW DB binary
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/merge-aw-server-dbs"
+            dest: /usr/local/bin/merge-aw-server-dbs
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_merge_db_rust_binary.stat.exists | default(false)
+
         - name: Проверить наличие legacy root DB
           ansible.builtin.stat:
             path: /root/.local/share/activitywatch/aw-server-rust/sqlite.db
@@ -1115,7 +2066,9 @@
           ansible.builtin.systemd:
             name: activitywatch-server.service
             state: stopped
-          when: aw_legacy_root_db.stat.exists | default(false)
+          when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
+            - aw_legacy_root_db.stat.exists | default(false)
 
         - name: Создать backup каталоги server DB
           ansible.builtin.file:
@@ -1124,7 +2077,9 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0755"
-          when: aw_legacy_root_db.stat.exists | default(false)
+          when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
+            - aw_legacy_root_db.stat.exists | default(false)
 
         - name: Backup target DB перед merge
           ansible.builtin.copy:
@@ -1135,6 +2090,7 @@
             group: "{{ aw_server_group }}"
             mode: "0644"
           when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
             - aw_legacy_root_db.stat.exists | default(false)
             - aw_target_db.stat.exists | default(false)
 
@@ -1146,7 +2102,9 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0644"
-          when: aw_legacy_root_db.stat.exists | default(false)
+          when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
+            - aw_legacy_root_db.stat.exists | default(false)
 
         - name: Merge legacy root DB в target DB
           ansible.builtin.command:
@@ -1162,6 +2120,7 @@
           register: aw_merge_result
           failed_when: false
           when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
             - aw_legacy_root_db.stat.exists | default(false)
             - aw_target_db.stat.exists | default(false)
 
@@ -1169,6 +2128,7 @@
           ansible.builtin.debug:
             msg: "{{ aw_merge_result.stdout | default(aw_merge_result.stderr | default('merge not executed')) }}"
           when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
             - aw_legacy_root_db.stat.exists | default(false)
             - aw_target_db.stat.exists | default(false)
 
@@ -1181,6 +2141,7 @@
             group: "{{ aw_server_group }}"
             mode: "0644"
           when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
             - aw_legacy_root_db.stat.exists | default(false)
             - aw_target_db.stat.exists | default(false)
             - aw_merge_result is defined
@@ -1195,6 +2156,7 @@
             group: "{{ aw_server_group }}"
             mode: "0644"
           when:
+            - aw_legacy_db_merge_enabled | default(false) | bool
             - aw_legacy_root_db.stat.exists | default(false)
             - not (aw_target_db.stat.exists | default(false))
 
@@ -1306,6 +2268,46 @@
               [Install]
               WantedBy=multi-user.target
 
+        - name: Проверить локальный Rust DLP aggregator
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/dlp-aggregator"
+          delegate_to: localhost
+          register: dlp_aggregator_rust_binary
+          become: false
+
+        - name: Установить Rust DLP aggregator
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/dlp-aggregator"
+            dest: /usr/local/bin/dlp-aggregator-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: dlp_aggregator_rust_binary.stat.exists | default(false)
+
+        - name: Создать drop-in каталог DLP aggregator
+          ansible.builtin.file:
+            path: /etc/systemd/system/activitywatch-dlp-aggregator.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+          when: dlp_aggregator_rust_binary.stat.exists | default(false)
+
+        - name: Переключить DLP aggregator на Rust
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/activitywatch-dlp-aggregator.service.d/20-rust-switch.conf
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Service]
+              ExecStart=
+              ExecStart=/usr/local/bin/dlp-aggregator-rust \
+                --aw-url http://127.0.0.1:{{ aw_server_port }}/api/0 \
+                --sqlite-path {{ aw_server_data_dir }}/dlp_warehouse.sqlite \
+                --state-path {{ aw_server_data_dir }}/dlp-aggregator-state.json
+          when: dlp_aggregator_rust_binary.stat.exists | default(false)
+
         - name: Установить systemd timer для агрегатора
           ansible.builtin.copy:
             dest: /etc/systemd/system/activitywatch-dlp-aggregator.timer
@@ -1314,9 +2316,10 @@
               Description=Run ActivityWatch DLP Aggregator every 5 minutes
 
               [Timer]
-              OnBootSec=1min
-              OnUnitActiveSec=5min
-              AccuracySec=1s
+              OnCalendar=*:3/10:10
+              AccuracySec=30s
+              RandomizedDelaySec=30s
+              Persistent=false
 
               [Install]
               WantedBy=timers.target
@@ -1681,9 +2684,31 @@
             group: root
             mode: "0755"
 
+        - name: Проверить локальный Rust helper link-case для Hayabusa
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-hayabusa-link-case-rust"
+          delegate_to: localhost
+          register: aw_hayabusa_link_case_rust_binary
+          become: false
+
+        - name: Установить Rust helper link-case для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-hayabusa-link-case-rust"
+            dest: /usr/local/bin/aw-hayabusa-link-case-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_hayabusa_link_case_rust_binary.stat.exists | default(false)
+
         - name: Установить helper link-case для Hayabusa
           ansible.builtin.copy:
-            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-link-case.py"
+            content: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [[ -x /usr/local/bin/aw-hayabusa-link-case-rust ]]; then
+                exec /usr/local/bin/aw-hayabusa-link-case-rust "$@"
+              fi
+              exec /usr/bin/python3 /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-link-case.py "$@"
             dest: /usr/local/bin/aw-hayabusa-link-case
             owner: root
             group: root
@@ -1697,9 +2722,31 @@
             group: root
             mode: "0755"
 
+        - name: Проверить локальный Rust helper from-windows для Hayabusa
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-hayabusa-from-windows-rust"
+          delegate_to: localhost
+          register: aw_hayabusa_from_windows_rust_binary
+          become: false
+
+        - name: Установить Rust helper from-windows для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-hayabusa-from-windows-rust"
+            dest: /usr/local/bin/aw-hayabusa-from-windows-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_hayabusa_from_windows_rust_binary.stat.exists | default(false)
+
         - name: Установить helper from-windows для Hayabusa
           ansible.builtin.copy:
-            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-from-windows.py"
+            content: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [[ -x /usr/local/bin/aw-hayabusa-from-windows-rust ]]; then
+                exec /usr/local/bin/aw-hayabusa-from-windows-rust "$@"
+              fi
+              exec /usr/bin/python3 /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-from-windows.py "$@"
             dest: /usr/local/bin/aw-hayabusa-from-windows
             owner: root
             group: root
@@ -1721,9 +2768,31 @@
             group: root
             mode: "0644"
 
+        - name: Проверить локальный Rust helper autoprocess для Hayabusa
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-hayabusa-autoprocess-rust"
+          delegate_to: localhost
+          register: aw_hayabusa_autoprocess_rust_binary
+          become: false
+
+        - name: Установить Rust helper autoprocess для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-hayabusa-autoprocess-rust"
+            dest: /usr/local/bin/aw-hayabusa-autoprocess-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_hayabusa_autoprocess_rust_binary.stat.exists | default(false)
+
         - name: Установить helper autoprocess для Hayabusa
           ansible.builtin.copy:
-            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-autoprocess.py"
+            content: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [[ -x /usr/local/bin/aw-hayabusa-autoprocess-rust ]]; then
+                exec /usr/local/bin/aw-hayabusa-autoprocess-rust "$@"
+              fi
+              exec /usr/bin/python3 /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-autoprocess.py "$@"
             dest: /usr/local/bin/aw-hayabusa-autoprocess
             owner: root
             group: root
@@ -1737,9 +2806,31 @@
             group: root
             mode: "0755"
 
+        - name: Проверить локальный Rust helper case-alert для Hayabusa
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-hayabusa-case-alert-rust"
+          delegate_to: localhost
+          register: aw_hayabusa_case_alert_rust_binary
+          become: false
+
+        - name: Установить Rust helper case-alert для Hayabusa
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-hayabusa-case-alert-rust"
+            dest: /usr/local/bin/aw-hayabusa-case-alert-rust
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_hayabusa_case_alert_rust_binary.stat.exists | default(false)
+
         - name: Установить helper case-alert для Hayabusa
           ansible.builtin.copy:
-            src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa-case-alert.py"
+            content: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              if [[ -x /usr/local/bin/aw-hayabusa-case-alert-rust ]]; then
+                exec /usr/local/bin/aw-hayabusa-case-alert-rust "$@"
+              fi
+              exec /usr/bin/python3 /opt/activitywatch/aw-rus-ops/hayabusa/aw-hayabusa-case-alert.py "$@"
             dest: /usr/local/bin/aw-hayabusa-case-alert
             owner: root
             group: root

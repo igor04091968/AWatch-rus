@@ -3,14 +3,44 @@
 # Сервер: 10.10.10.13:5600
 # RDP-хост: 192.168.100.18 (SHARKON2025)
 
+if [[ "${CHECK_AW_FULL_FORCE_LEGACY:-0}" != "1" ]]; then
+  ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  for candidate in \
+    "${CHECK_AW_FULL_RUST:-}" \
+    "${CARGO_TARGET_DIR:-}/release/check-aw-full" \
+    "$ROOT_DIR/adk-rust/target/release/check-aw-full" \
+    "/usr/local/bin/check-aw-full"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      exec "$candidate" "$@"
+    fi
+  done
+fi
+
 SERVER="http://10.10.10.13:5600"
 HOSTNAME_FILTER="SHARKON2025"
 RDP_HOST="192.168.100.18"
 NOW=$(date -u +%s)
+HOST_INACTIVE=false
+GUARD_HEALTHY=false
 
 classify_bucket_age() {
     local bucket="$1"
     local age_sec="$2"
+
+    case "$bucket" in
+        aw-watcher-window)
+            if [ "$HOST_INACTIVE" = "true" ]; then
+                printf 'INACTIVE|%s' "${CYAN}INACTIVE${NC}"
+                return
+            fi
+            ;;
+        aw-dlp-endpoint-signals)
+            if [ "$HOST_INACTIVE" = "true" ] && [ "$GUARD_HEALTHY" = "true" ]; then
+                printf 'INACTIVE|%s' "${CYAN}INACTIVE${NC}"
+                return
+            fi
+            ;;
+    esac
 
     case "$bucket" in
         aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
@@ -30,6 +60,31 @@ classify_bucket_age() {
             fi
             ;;
     esac
+}
+
+classify_bucket_no_events() {
+    local bucket="$1"
+
+    case "$bucket" in
+        aw-watcher-window)
+            if [ "$HOST_INACTIVE" = "true" ]; then
+                printf 'INACTIVE|%s' "${CYAN}INACTIVE${NC}"
+                return
+            fi
+            ;;
+        aw-dlp-endpoint-signals)
+            if [ "$HOST_INACTIVE" = "true" ] && [ "$GUARD_HEALTHY" = "true" ]; then
+                printf 'INACTIVE|%s' "${CYAN}INACTIVE${NC}"
+                return
+            fi
+            ;;
+        aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
+            printf 'EVENT|%s' "${CYAN}EVENT-DRIVEN${NC}"
+            return
+            ;;
+    esac
+
+    printf 'DEAD|%s' "${RED}EMPTY${NC}"
 }
 
 # Цвета
@@ -62,6 +117,34 @@ else
     echo -e "${RED}FAIL${NC} (HTTP $CORS_RESP)"
 fi
 echo ""
+
+# 1b. Context for inactive/event-driven classification
+WORKTIME_EVENT_DATA=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/aw-worktime-sessions_$HOSTNAME_FILTER/events?limit=1" 2>&1)
+WORKTIME_TS=$(echo "$WORKTIME_EVENT_DATA" | jq -r '.[0].timestamp // ""' 2>/dev/null)
+WORKTIME_ACTIVE=$(echo "$WORKTIME_EVENT_DATA" | jq -r '.[0].data.active // false' 2>/dev/null)
+if [ -n "$WORKTIME_TS" ]; then
+  WORKTIME_EPOCH=$(date -d "$WORKTIME_TS" +%s 2>/dev/null || echo 0)
+  if [ "$WORKTIME_EPOCH" -gt 0 ]; then
+    WORKTIME_AGE=$((NOW - WORKTIME_EPOCH))
+    if [ "$WORKTIME_AGE" -lt 900 ] && [ "$WORKTIME_ACTIVE" != "true" ]; then
+      HOST_INACTIVE=true
+    fi
+  fi
+fi
+
+GUARD_EVENT_DATA=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/aw-rus-collector-guard_$HOSTNAME_FILTER/events?limit=1" 2>&1)
+GUARD_TS=$(echo "$GUARD_EVENT_DATA" | jq -r '.[0].timestamp // ""' 2>/dev/null)
+GUARD_STATUS=$(echo "$GUARD_EVENT_DATA" | jq -r '.[0].data.status // ""' 2>/dev/null)
+GUARD_PROBLEMS=$(echo "$GUARD_EVENT_DATA" | jq -r '([.[0].data.problems[]?] | length) // 0' 2>/dev/null)
+if [ -n "$GUARD_TS" ]; then
+  GUARD_EPOCH=$(date -d "$GUARD_TS" +%s 2>/dev/null || echo 0)
+  if [ "$GUARD_EPOCH" -gt 0 ]; then
+    GUARD_AGE=$((NOW - GUARD_EPOCH))
+    if [ "$GUARD_AGE" -lt 300 ] && [ "$GUARD_STATUS" = "ok" ] && [ "$GUARD_PROBLEMS" = "0" ]; then
+      GUARD_HEALTHY=true
+    fi
+  fi
+fi
 
 # 2. Проверка бакетов
 echo -e "${CYAN}--- 2. Data Buckets ---${NC}"
@@ -110,8 +193,9 @@ for entry in "${BUCKETS[@]}"; do
   else
     AGE="none"
     LAST_ID="0"
-    STATUS="${RED}EMPTY${NC}"
-    STATUS_KEY="DEAD"
+    CLASSIFICATION="$(classify_bucket_no_events "$bucket")"
+    STATUS_KEY="${CLASSIFICATION%%|*}"
+    STATUS="${CLASSIFICATION#*|}"
   fi
   
   printf "  %-42s %-8s %-20s %b\n" "$label" "$LAST_ID" "$AGE" "$STATUS"
@@ -157,7 +241,7 @@ for entry in "${BUCKETS[@]}"; do
       CLASSIFICATION="$(classify_bucket_age "$bucket" "$AGE_SEC")"
       STATUS_KEY="${CLASSIFICATION%%|*}"
       case "$STATUS_KEY" in
-        FRESH|EVENT)
+        FRESH|EVENT|INACTIVE)
           FRESH_COUNT=$((FRESH_COUNT + 1))
           ;;
         STALE)
@@ -169,8 +253,13 @@ for entry in "${BUCKETS[@]}"; do
       esac
     fi
   else
-    case "$bucket" in
-      aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
+    CLASSIFICATION="$(classify_bucket_no_events "$bucket")"
+    STATUS_KEY="${CLASSIFICATION%%|*}"
+    case "$STATUS_KEY" in
+      FRESH|EVENT|INACTIVE)
+        FRESH_COUNT=$((FRESH_COUNT + 1))
+        ;;
+      STALE)
         STALE_COUNT=$((STALE_COUNT + 1))
         ;;
       *)

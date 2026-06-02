@@ -32,6 +32,11 @@ aw_monitored_windows_hostname: "SHARKON2025"
 aw_rus_health_worktime_api_base: "http://127.0.0.1:5610"
 aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
 aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
+aw_browser_smoke_enabled: true
+aw_browser_smoke_engine: "chromium-cli"
+aw_legacy_db_merge_enabled: false
+aw_browser_smoke_timeout_ms: 20000
+aw_browser_smoke_render_timeout_ms: 15000
 aw_hayabusa_auto_case_enabled: true
 aw_hayabusa_auto_case_min_severity: "medium"
 aw_hayabusa_telegram_enabled: true
@@ -62,7 +67,7 @@ aw_worktime_from: "00:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
 aw_server_always_active_pattern: "aw-watcher-window"
-aw_server_landingpage: "/activity/SHARKON2025/view/"
+aw_server_landingpage: "/#/activity/SHARKON2025/view/"
 aw_health_strict_fileops: 0
 
 aw_dlp_policy_engine_enabled: true

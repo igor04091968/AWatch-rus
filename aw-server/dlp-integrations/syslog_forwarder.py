@@ -57,7 +57,7 @@ def iter_new_incidents(aw_base: str, state: dict[str, Any], per_bucket_limit: in
     for bid in bucket_ids:
         try:
             events = http_json(f"{aw_base}/buckets/{bid}/events?limit={int(per_bucket_limit)}")
-        except error.HTTPError as exc:
+        except (TimeoutError, OSError, error.URLError, error.HTTPError) as exc:
             LOG.warning("skip bucket %s: %s", bid, exc)
             continue
         prev = int(last_ids.get(bid, 0))
@@ -126,7 +126,11 @@ def main() -> None:
     app_name = str(cfg.get("app_name", "aw-dlp"))
 
     state = load_json(state_path)
-    incidents, max_ids = iter_new_incidents(aw_base=aw_base, state=state, per_bucket_limit=per_bucket_limit)
+    try:
+        incidents, max_ids = iter_new_incidents(aw_base=aw_base, state=state, per_bucket_limit=per_bucket_limit)
+    except (TimeoutError, OSError, error.URLError, error.HTTPError) as exc:
+        LOG.warning("skip syslog forwarder run: AW API unavailable: %s", exc)
+        return
 
     sent = 0
     for event in incidents:

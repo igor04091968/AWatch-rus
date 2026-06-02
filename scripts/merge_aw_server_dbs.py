@@ -2,9 +2,32 @@
 import argparse
 import json
 import os
-import shutil
 import sqlite3
+import sys
 from pathlib import Path
+
+
+def maybe_exec_rust() -> None:
+    if os.environ.get("MERGE_AW_SERVER_DBS_FORCE_LEGACY") == "1":
+        return
+    script_path = Path(__file__).resolve()
+    repo_root = script_path.parent.parent if script_path.parent.name == "scripts" else None
+    candidates = [
+        os.environ.get("MERGE_AW_SERVER_DBS_RUST"),
+        str(Path(os.environ.get("CARGO_TARGET_DIR", "")) / "release" / "merge-aw-server-dbs")
+        if os.environ.get("CARGO_TARGET_DIR")
+        else None,
+        str(repo_root / "adk-rust" / "target" / "release" / "merge-aw-server-dbs")
+        if repo_root
+        else None,
+        "/usr/local/bin/merge-aw-server-dbs",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            os.execv(candidate, [candidate, *sys.argv[1:]])
+
+
+maybe_exec_rust()
 
 
 def connect(path: Path) -> sqlite3.Connection:
@@ -130,43 +153,48 @@ def main() -> int:
                 if dest_rowid is None:
                     dest_rowid = dest_bucket_map.get(key)
                 if dest_rowid is None:
-                    # Use UPSERT to handle UNIQUE(name) constraint gracefully
-                    cursor = dest.execute(
-                        """
-                        INSERT INTO buckets (name, type, client, hostname, created, data_deprecated, data)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(name) DO UPDATE SET
-                            type=excluded.type,
-                            client=excluded.client,
-                            hostname=excluded.hostname,
-                            created=excluded.created,
-                            data_deprecated=excluded.data_deprecated,
-                            data=excluded.data
-                        WHERE rowid = (SELECT rowid FROM buckets WHERE name = ? LIMIT 1)
-                        """,
-                        (
-                            src_bucket["name"],
-                            src_bucket["type"],
-                            src_bucket["client"],
-                            src_bucket["hostname"],
-                            src_bucket["created"],
-                            src_bucket["data_deprecated"],
-                            src_bucket["data"],
-                            str(src_bucket["name"]),
-                        ),
-                    )
-                    # Get the rowid of the affected bucket (either inserted or updated)
-                    cursor.execute("SELECT last_insert_rowid(), (SELECT rowid FROM buckets WHERE name = ? LIMIT 1)", 
-                                   (str(src_bucket["name"]),))
-                    result = cursor.fetchone()
-                    dest_rowid = result[0] if result[0] != 0 else result[1]
-                    
-                    if dest_rowid:
-                        dest_bucket_map[key] = dest_rowid
-                        # Only count as inserted if it was a true insert (not update)
-                        cursor.execute("SELECT changes() FROM buckets WHERE rowid = ?", (dest_rowid,))
-                        if cursor.fetchone()[0] > 0:
-                            inserted_buckets += 1
+                    dest_rowid = find_bucket_by_name(dest, str(src_bucket["name"]))
+                    if dest_rowid is not None:
+                        dest.execute(
+                            """
+                            UPDATE buckets
+                            SET type = ?, client = ?, hostname = ?, created = ?,
+                                data_deprecated = ?, data = ?
+                            WHERE rowid = ?
+                            """,
+                            (
+                                src_bucket["type"],
+                                src_bucket["client"],
+                                src_bucket["hostname"],
+                                src_bucket["created"],
+                                src_bucket["data_deprecated"],
+                                src_bucket["data"],
+                                dest_rowid,
+                            ),
+                        )
+                    else:
+                        cursor = dest.execute(
+                            """
+                            INSERT INTO buckets (id, name, type, client, hostname, created, data_deprecated, data)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                src_bucket["id"],
+                                src_bucket["name"],
+                                src_bucket["type"],
+                                src_bucket["client"],
+                                src_bucket["hostname"],
+                                src_bucket["created"],
+                                src_bucket["data_deprecated"],
+                                src_bucket["data"],
+                            ),
+                        )
+                        dest_rowid = int(cursor.lastrowid)
+                        inserted_buckets += 1
+
+                    dest_bucket_map[key] = dest_rowid
+                    if src_id:
+                        dest_id_map[str(src_id)] = dest_rowid
 
                 existing_events = load_existing_events(dest, dest_rowid)
                 for starttime, endtime, data in source.execute(

@@ -3,6 +3,28 @@
 
 set -uo pipefail
 
+TARGET_ROOT="${CARGO_TARGET_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/adk-rust/target}"
+RUST_BIN="${AW_CONTOUR_SMOKE_RUST:-}"
+rust_candidates=()
+if [ -n "$RUST_BIN" ]; then
+  rust_candidates+=("$RUST_BIN")
+fi
+rust_candidates+=(
+  "$TARGET_ROOT/release/aw-contour-smoke"
+  "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/adk-rust/target/release/aw-contour-smoke"
+  "/usr/local/sbin/aw-contour-smoke"
+  "/usr/local/bin/aw-contour-smoke"
+)
+
+for candidate in "${rust_candidates[@]}"; do
+  if [ -x "$candidate" ]; then
+    if [ "$#" -gt 0 ]; then
+      exec "$candidate" "$@"
+    fi
+    exec "$candidate" --mode proxmox-remote
+  fi
+done
+
 OK_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0

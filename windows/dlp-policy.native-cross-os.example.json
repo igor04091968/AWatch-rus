@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "defaults": {
+    "enabled": true,
+    "cooldownSeconds": 300,
+    "action": "alert",
+    "severity": "medium"
+  },
+  "nativeControls": {
+    "mode": "monitor",
+    "rollout": {
+      "baselineDays": 7,
+      "requireGuardHeartbeat": true,
+      "allowGlobalBlock": false
+    },
+    "channels": {
+      "removableStorage": {
+        "action": "audit",
+        "windows": {
+          "mechanisms": ["gpo-device-restrictions", "set-disk-readonly"],
+          "target": "write"
+        },
+        "linux": {
+          "mechanisms": ["fanotify", "auditd"],
+          "target": "mountpoints"
+        },
+        "macos": {
+          "mechanisms": ["mdm-restrictions", "endpoint-security"],
+          "target": "managed-devices"
+        },
+        "chromeos": {
+          "mechanisms": ["data-controls"],
+          "target": "removable-storage"
+        }
+      },
+      "print": {
+        "action": "audit",
+        "windows": {
+          "mechanisms": ["printservice-operational-log", "spooler-cancel-job"]
+        },
+        "linux": {
+          "mechanisms": ["cups-logs"],
+          "enforcement": "monitor-only"
+        },
+        "macos": {
+          "mechanisms": ["mdm-printing-restrictions"],
+          "enforcement": "managed-only"
+        },
+        "chromeos": {
+          "mechanisms": ["data-controls"]
+        }
+      },
+      "clipboard": {
+        "action": "audit",
+        "windows": {
+          "mechanisms": ["clipboard-monitor", "clear-clipboard"],
+          "blockScope": "high-confidence-only"
+        },
+        "linux": {
+          "mechanisms": ["desktop-clipboard-monitor"],
+          "enforcement": "monitor-only"
+        },
+        "macos": {
+          "mechanisms": ["endpoint-monitor", "mdm-restrictions"],
+          "enforcement": "monitor-first"
+        },
+        "chromeos": {
+          "mechanisms": ["data-controls"]
+        }
+      },
+      "browserUpload": {
+        "action": "audit",
+        "windows": {
+          "mechanisms": ["managed-browser-policy", "browser-extension"]
+        },
+        "linux": {
+          "mechanisms": ["managed-browser-policy", "proxy-logs"]
+        },
+        "macos": {
+          "mechanisms": ["managed-browser-policy", "network-extension"]
+        },
+        "chromeos": {
+          "mechanisms": ["data-controls"]
+        }
+      },
+      "appExecution": {
+        "action": "audit",
+        "windows": {
+          "mechanisms": ["applocker", "wdac"]
+        },
+        "linux": {
+          "mechanisms": ["auditd", "fanotify", "bpf-lsm"],
+          "enforcement": "fanotify-or-lsm-only"
+        },
+        "macos": {
+          "mechanisms": ["mdm-restrictions", "endpoint-security"]
+        },
+        "chromeos": {
+          "mechanisms": ["admin-console-app-policy"]
+        }
+      }
+    }
+  },
+  "endpoint": {
+    "clipboard": [
+      {
+        "id": "clipboard-sensitive-keywords",
+        "enabled": true,
+        "cooldownSeconds": 300,
+        "action": "alert",
+        "severity": "high",
+        "message": "В буфере обнаружены чувствительные ключевые слова",
+        "minLength": 20,
+        "regexPatterns": [
+          "(?i)парол(ь|и)",
+          "(?i)password",
+          "(?i)secret",
+          "(?i)cvv",
+          "(?i)паспорт"
+        ]
+      }
+    ],
+    "usb": [
+      {
+        "id": "usb-media-connected",
+        "enabled": true,
+        "cooldownSeconds": 300,
+        "action": "alert",
+        "severity": "medium",
+        "message": "Подключен съемный носитель"
+      }
+    ],
+    "print": [
+      {
+        "id": "print-sensitive-docs",
+        "enabled": true,
+        "cooldownSeconds": 300,
+        "action": "alert",
+        "severity": "high",
+        "message": "Печать документа с признаками чувствительных данных",
+        "documentRegex": "(?i)(salary|зарплат|passport|паспорт|договор|contract)"
+      }
+    ]
+  }
+}

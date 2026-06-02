@@ -122,8 +122,9 @@ Playbook:
 - выгружает полный `windows/*` toolkit на целевой хост в InnoSetup-compatible каталог `C:\Program Files\AWatch-rus\windows`, включая DLP и `worktime-session-collector.ps1`;
 - если найден legacy config `C:\ProgramData\ActivityWatch-Phase2\deployment-config.json`, выполняет безопасную миграцию через `migrate-awatch-rus-paths.ps1`: backup, остановка задач, перенос данных, переписывание путей, пересоздание scheduled tasks и validation;
 - выполняет `deploy-ensemble.ps1` (deploy + hardening/recovery) с policy/rules из AWatch-rus toolkit;
-- после deploy принудительно запускает `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи;
-- включает (`Enable-ScheduledTask`) `ActivityWatch Recovery` и все `ActivityWatch Launch *` задачи перед запуском (иначе WebUI может показывать `Active time: 0s`);
+- после deploy принудительно запускает `ActivityWatch Recovery` и managed `ActivityWatch Launch *` задачи;
+- включает (`Enable-ScheduledTask`) `ActivityWatch Recovery` и managed `ActivityWatch Launch *` задачи перед запуском (иначе WebUI может показывать `Active time: 0s`);
+- оставляет `ActivityWatch Recovery` включённым даже при активном `AWatchRusCollectorGuard`: guard является основным контроллером, recovery остаётся fallback/bootstrap path;
 - выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие события;
 - выполняет API smoke-check bucket `aw-watcher-window_<COMPUTERNAME>` и ожидает свежие события (по умолчанию включено);
 - запускает `validate-deployment.ps1`;

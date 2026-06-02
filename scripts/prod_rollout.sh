@@ -4,6 +4,43 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+if [[ -f "${ROOT_DIR}/secrets/runtime.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${ROOT_DIR}/secrets/runtime.env"
+  set +a
+fi
+
+if [[ "${1:-}" == "--apply-legacy" ]]; then
+  shift
+else
+  TARGET_ROOT="${CARGO_TARGET_DIR:-$ROOT_DIR/adk-rust/target}"
+  for candidate in \
+    "${PROD_ROLLOUT_RUST:-}" \
+    "$TARGET_ROOT/release/prod-rollout" \
+    "$ROOT_DIR/adk-rust/target/release/prod-rollout" \
+    "/usr/local/bin/prod-rollout"; do
+    if [[ -n "$candidate" && -x "$candidate" ]]; then
+      exec "$candidate" --root "$ROOT_DIR" "$@"
+    fi
+  done
+  cat >&2 <<'EOF'
+prod_rollout.sh now requires the Rust planner/orchestrator for safe default runs.
+Build it first:
+  cd adk-rust && cargo build --release -p prod-rollout
+
+Safe checks:
+  scripts/prod_rollout.sh --check-inputs --json
+
+Explicit Rust rollout:
+  scripts/prod_rollout.sh --apply
+
+Old Bash rollout:
+  scripts/prod_rollout.sh --apply-legacy
+EOF
+  exit 2
+fi
+
 timestamp() { date +"%Y%m%d-%H%M%S"; }
 
 LOG_DIR="${ROOT_DIR}/.rollout-logs/$(timestamp)"

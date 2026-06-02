@@ -154,4 +154,6 @@ function Save-CachedDlpPolicyBundle {
     Set-Content -LiteralPath $CachePath -Value $json -Encoding UTF8
 }
 
-Export-ModuleMember -Function Invoke-DlpPolicyGetJson, Get-RemoteDlpPolicyBundle, Get-RemoteDlpPolicyDesired, Send-DlpPolicyAgentHeartbeat, Read-CachedDlpPolicyBundle, Save-CachedDlpPolicyBundle
+if ($ExecutionContext.SessionState.Module) {
+    Export-ModuleMember -Function Invoke-DlpPolicyGetJson, Get-RemoteDlpPolicyBundle, Get-RemoteDlpPolicyDesired, Send-DlpPolicyAgentHeartbeat, Read-CachedDlpPolicyBundle, Save-CachedDlpPolicyBundle
+}

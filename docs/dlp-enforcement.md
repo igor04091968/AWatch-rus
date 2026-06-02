@@ -13,9 +13,30 @@ Phase 2.5 расширяет DLP endpoint collector функциями **акт�
 
 Во всех случаях пользователь получает Windows-уведомление (balloon notification) с описанием причины блокировки.
 
+Для cross-OS развития используется отдельный native-first профиль:
+`docs/dlp-cross-os-native-enforcement.md`. Он задает правило: Windows enforcement оставляем
+на штатных GPO/AppLocker/Spooler/Storage механизмах, macOS строим через System Extensions/MDM,
+Linux через fanotify/auditd/eBPF, ChromeOS через Data Controls. Тяжелый универсальный агент
+не является целевой архитектурой.
+
 ## Конфигурация политики
 
 Формат `dlp-policy.json` не изменился — поле `action` в правиле теперь поддерживает значение `"block"` наряду с `"alert"` (по умолчанию).
+
+Важно: для production safety `action: "block"` в конкретном endpoint-правиле не включает
+блокировку сам по себе. Реальное enforcement-действие выполняется только если:
+
+- `nativeControls.mode` равно `"enforce"`;
+- `nativeControls.rollout.allowGlobalBlock=true`;
+- и `nativeControls.channels.<channel>.action` равно `"block"` или `"blockWithOverride"`.
+
+Если правило просит `block`, но native controls находятся в `monitor`, collector пишет инцидент
+как `alert` и добавляет поля:
+
+- `requestedAction: "block"`;
+- `enforcementMode`;
+- `nativeChannelAction`;
+- `enforcementSuppressed: true`.
 
 ### Пример: блокировка USB записи
 
@@ -26,6 +47,17 @@ Phase 2.5 расширяет DLP endpoint collector функциями **акт�
     "action": "alert",
     "severity": "medium",
     "cooldownSeconds": 300
+  },
+  "nativeControls": {
+    "mode": "enforce",
+    "rollout": {
+      "allowGlobalBlock": false
+    },
+    "channels": {
+      "clipboard": {"action": "block"},
+      "usb": {"action": "block"},
+      "print": {"action": "block"}
+    }
   },
   "endpoint": {
     "usb": [

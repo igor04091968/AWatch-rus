@@ -44,6 +44,9 @@ Source: "..\..\aw-standalone-service.ps1"; DestDir: "{app}\windows"; Flags: igno
 Source: "..\..\deploy-single-user.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\deploy-domain-users.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\deploy-ensemble.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\AWatchRusCollectorGuardService.cs"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\aw-collector-guard.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\install-collector-guard-service.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\hardening-recovery.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\validate-deployment.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\migrate-awatch-rus-paths.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
@@ -54,6 +57,7 @@ Source: "..\..\file-operations-collector.ps1"; DestDir: "{app}\windows"; Flags: 
 Source: "..\..\email-outbound-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\web-category-rules.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-policy.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\dlp-policy.native-cross-os.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 ; Offline payload (optional): place ZIP into windows/installkit/innosetup/payload/ before compiling.
 Source: "payload\{#AwDefaultZipName}"; DestDir: "{app}\payload"; Flags: ignoreversion skipifsourcedoesntexist
 Source: "innosetup-rdp-package-filelist.md"; DestDir: "{app}\windows\installkit\innosetup"; Flags: ignoreversion

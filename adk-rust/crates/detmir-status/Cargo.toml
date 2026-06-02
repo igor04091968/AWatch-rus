@@ -1,0 +1,23 @@
+[package]
+name = "detmir-status"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "detmir-status"
+path = "src/bin/detmir-status.rs"
+
+[[bin]]
+name = "detmir-adk-status"
+path = "src/bin/detmir-adk-status.rs"
+
+[dependencies]
+adk-rust.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+detmir-state.workspace = true
+serde.workspace = true
+serde_json.workspace = true

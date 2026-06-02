@@ -9,6 +9,8 @@ AW_WORKTIME_HOST="${AW_WORKTIME_HOST:-SHARKON2025}"
 AW_WORKTIME_DEFAULT_SAMPLE_SECONDS="${AW_WORKTIME_DEFAULT_SAMPLE_SECONDS:-30}"
 AW_WORKTIME_MAX_SAMPLE_SECONDS="${AW_WORKTIME_MAX_SAMPLE_SECONDS:-300}"
 OUT_DIR="${OUT_DIR:-reports}"
+TARGET_ROOT="${CARGO_TARGET_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/adk-rust/target}"
+RUST_BIN="${RDP_WORKTIME_REPORT_RUST:-}"
 
 usage() {
   cat <<EOF
@@ -53,6 +55,22 @@ fi
 mkdir -p "$OUT_DIR"
 CSV_OUT="${OUT_DIR}/rdp-worktime-${FROM}_${TO}.csv"
 JSON_OUT="${OUT_DIR}/rdp-worktime-${FROM}_${TO}.json"
+
+rust_candidates=()
+if [[ -n "$RUST_BIN" ]]; then
+  rust_candidates+=("$RUST_BIN")
+fi
+rust_candidates+=(
+  "$TARGET_ROOT/release/rdp-worktime-report"
+  "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/adk-rust/target/release/rdp-worktime-report"
+  "/usr/local/bin/rdp-worktime-report"
+)
+
+for candidate in "${rust_candidates[@]}"; do
+  if [[ -x "$candidate" ]]; then
+    exec "$candidate" --from "$FROM" --to "$TO"
+  fi
+done
 
 python3 - "$AW_BASE_URL" "$AW_WORKTIME_HOST" "$AW_WORKTIME_DEFAULT_SAMPLE_SECONDS" "$AW_WORKTIME_MAX_SAMPLE_SECONDS" "$FROM" "$TO" "$CSV_OUT" "$JSON_OUT" <<'PY'
 import csv

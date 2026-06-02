@@ -11,8 +11,9 @@ systemctl status nginx --no-pager
 nginx -t
 curl -I -sS -H 'Host: dm.iri1968.dpdns.org' http://127.0.0.1/
 curl -k -fsS -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/healthz
-curl -k -I -sS -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/go/proxmox-gui
-curl -k -H 'Host: dm.iri1968.dpdns.org' -fsS https://127.0.0.1/ | grep -F 'dm.iri1968.dpdns.org'
+curl -k -I -sS -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/ | head
+curl -k -u "$(awk -F= '/^user=/{u=$2}/^password=/{p=$2}END{print u\":\"p}' /root/proxmox-web-gateway.credentials)" \
+  -H 'Host: dm.iri1968.dpdns.org' -fsS https://127.0.0.1/ | grep -F 'dm.iri1968.dpdns.org'
 ```
 
 Playbook для повторного rollout:
@@ -21,6 +22,49 @@ Playbook для повторного rollout:
 ANSIBLE_HOST_KEY_CHECKING=False \
 ansible-playbook -i ansible/inventory.ini ansible/deploy_proxmox_web_gateway.yml
 ```
+
+### Public gateway через pfSense
+
+Публичная схема:
+
+```text
+Internet -> dm.iri1968.dpdns.org -> pfSense WAN 178.178.98.83 -> NAT 80/443 -> nginx 10.10.10.2
+```
+
+Нормальное состояние:
+
+- `https://dm.iri1968.dpdns.org/healthz` -> `200 ok` без auth;
+- `https://dm.iri1968.dpdns.org/` без auth -> `401`;
+- `http://dm.iri1968.dpdns.org/healthz` -> `301` на HTTPS;
+- после Basic Auth:
+  - `/` -> gateway index;
+  - `/r/file1c/brief` -> 1C brief;
+  - `/r/grafana/api/health` -> Grafana health;
+  - `/r/aw/api/0/info` -> AW server info.
+
+Gateway credential хранится только на `10.10.10.2`:
+
+```sh
+sudo cat /root/proxmox-web-gateway.credentials
+```
+
+pfSense NAT backup перед автоматической правкой:
+
+```sh
+ls -1t /opt/infra-admin/backups/pfsense-gateway-nat-*.json | head
+```
+
+Проверка pfSense REST/API и pending firewall changes:
+
+```sh
+set -a
+. /home/igor/.config/tsj-bot/pfsense.env.readonly
+set +a
+curl -ksS -H "X-API-Key: $PFSENSE_API_KEY" "$PFSENSE_URL/api/v2/firewall/apply"
+```
+
+NAT должен содержать `WAN tcp 443 -> 10.10.10.2:443` и `WAN tcp 80 -> 10.10.10.2:80`.
+WAN rules должны содержать pass на `10.10.10.2:80` и `10.10.10.2:443`.
 
 ### На Proxmox
 
@@ -61,16 +105,41 @@ ss -ltnp | grep 5600
 
 ```sh
 /usr/local/bin/aw-health-check
+/usr/local/bin/dlp-health-check --json
 ```
 
 Что проверяет дополнительно:
 - свежесть DLP bucket-ов (`aw-dlp-endpoint-signals_*`, `aw-file-operations_*`);
 - наличие transport/self-test telemetry (`queueDepth`, `eventsEnqueued`, `eventsFlushed`, `sendFailures`) в endpoint self-test;
+- последние значения transport-счетчиков по каждому `aw-dlp-endpoint-signals_*` bucket;
+- runtime-срез `aw-file-operations_*`: последние `collector_health`, счетчики очереди/отправки, последние операции без полного пути;
+- runtime-срез `aw-dlp-incidents_*`: по умолчанию только metadata/age без тяжёлого чтения events; при ручном `--incident-sample-limit > 0` — количество реальных incident events в sample, self-test count, severity/action/rule rollup и до 5 последних incidents с коротким `message_excerpt`;
 - API-доступность базовых сервисов.
 
 Интерпретация:
 - `FAIL` — есть критичная проблема (service/API/stale transport);
-- `WARN` — сигнал для оператора (например, bucket еще не активирован на хосте), но без hard-fail.
+- `WARN` — сигнал для оператора (например, bucket еще не активирован на хосте, `queueDepth > 100`, новый рост `sendFailuresDelta >= 1`, нет `collector_health` в sample), но без hard-fail.
+- `sendFailures` — накопительный счётчик collector-а; основной health-check предупреждает только по delta относительно сохранённого baseline в `AW_DLP_HEALTH_STATE_DIR`, чтобы старые восстановленные ошибки не висели вечным warning.
+
+Пороги можно переопределить без изменения collector-ов:
+
+```sh
+/usr/local/bin/dlp-health-check --json \
+  --endpoint-queue-warn-depth 100 \
+  --endpoint-send-failure-warn-count 1 \
+  --incident-sample-limit 0 \
+  --fileops-sample-limit 20 \
+  --fileops-queue-warn-depth 100 \
+  --fileops-send-failure-warn-count 1
+```
+
+Для разового разбора последних DLP incidents можно включить sampling вручную:
+
+```sh
+/usr/local/bin/dlp-health-check --json --incident-sample-limit 20
+```
+
+Если AW-server медленно отдаёт большой `aw-dlp-incidents_*` bucket, такой запуск может вернуть `incident-runtime: WARN` по timeout. Это не должно использоваться как hard-fail основного мониторинга.
 
 ## Проверка RU patch
 
@@ -399,8 +468,8 @@ curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/even
 1) Проверить/обнулить очереди:
 
 ```powershell
-$q1 = 'C:\ProgramData\AWatch-rus\file-operations-queue.jsonl'
-$q2 = 'C:\ProgramData\AWatch-rus\dlp-endpoint-signals-queue.jsonl'
+$q1 = 'C:\ProgramData\AWatch-rus\file-operations-queue*.jsonl'
+$q2 = 'C:\ProgramData\AWatch-rus\dlp-endpoint-signals-queue*.jsonl'
 Get-Item $q1,$q2 | Select Name,Length,LastWriteTime
 ```
 

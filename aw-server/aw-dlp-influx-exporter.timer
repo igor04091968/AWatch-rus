@@ -2,9 +2,9 @@
 Description=Run AW DLP InfluxDB exporter every 10 minutes
 
 [Timer]
-OnBootSec=4min
-OnUnitActiveSec=10min
+OnCalendar=*:5/10:20
 AccuracySec=1min
+RandomizedDelaySec=30s
 Unit=aw-dlp-influx-exporter.service
 
 [Install]

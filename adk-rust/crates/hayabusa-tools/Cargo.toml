@@ -1,0 +1,37 @@
+[package]
+name = "hayabusa-tools"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "aw-hayabusa-case-alert-rust"
+path = "src/bin/case_alert.rs"
+
+[[bin]]
+name = "aw-hayabusa-link-case-rust"
+path = "src/bin/link_case.rs"
+
+[[bin]]
+name = "aw-hayabusa-from-windows-rust"
+path = "src/bin/from_windows.rs"
+
+[[bin]]
+name = "aw-hayabusa-autoprocess-rust"
+path = "src/bin/autoprocess.rs"
+
+[dependencies]
+anyhow.workspace = true
+chrono.workspace = true
+clap.workspace = true
+fs2.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+urlencoding.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

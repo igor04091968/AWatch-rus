@@ -115,6 +115,9 @@ class GuardianState:
         self.pending_update_install_confirm = False
         self.pending_rollback_confirm = False
         self.last_warning_signature = ""
+        self.failure_streak_signature = ""
+        self.failure_streak_count = 0
+        self.failure_streak_first_ts = 0
         self.last_openvpn_expiry_signature = ""
         self.ai_chat_intro_variant = -1
 
@@ -128,6 +131,9 @@ class GuardianState:
         self.pending_update_install_confirm = bool(raw.get("pending_update_install_confirm", False))
         self.pending_rollback_confirm = bool(raw.get("pending_rollback_confirm", False))
         self.last_warning_signature = str(raw.get("last_warning_signature", ""))
+        self.failure_streak_signature = str(raw.get("failure_streak_signature", ""))
+        self.failure_streak_count = int(raw.get("failure_streak_count", 0))
+        self.failure_streak_first_ts = int(raw.get("failure_streak_first_ts", 0))
         self.last_openvpn_expiry_signature = str(raw.get("last_openvpn_expiry_signature", ""))
         self.ai_chat_intro_variant = int(raw.get("ai_chat_intro_variant", -1))
         pi = raw.get("pending_incident")
@@ -159,6 +165,9 @@ class GuardianState:
             "pending_update_install_confirm": self.pending_update_install_confirm,
             "pending_rollback_confirm": self.pending_rollback_confirm,
             "last_warning_signature": self.last_warning_signature,
+            "failure_streak_signature": self.failure_streak_signature,
+            "failure_streak_count": self.failure_streak_count,
+            "failure_streak_first_ts": self.failure_streak_first_ts,
             "last_openvpn_expiry_signature": self.last_openvpn_expiry_signature,
             "ai_chat_intro_variant": self.ai_chat_intro_variant,
         }
@@ -369,8 +378,7 @@ class TSJGuardianBot:
         self.aw_dlp_policy_actor = os.getenv("AW_DLP_POLICY_ACTOR", "tsj-guardian-bot").strip() or "tsj-guardian-bot"
         self.aw_rus_worktime_heal_cmd = os.getenv(
             "AW_RUS_WORKTIME_HEAL_CMD",
-            "sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 "
-            "'sudo -S /usr/local/bin/aw-worktime-autoheal.sh && sudo -S systemctl reset-failed aw-worktime-ui-bridge.service && sudo -S systemctl start aw-worktime-ui-bridge.service'",
+            "",
         ).strip()
         self.aw_rus_dlp_heal_cmd = os.getenv(
             "AW_RUS_DLP_HEAL_CMD",
@@ -380,11 +388,19 @@ class TSJGuardianBot:
         self.aw_rus_hayabusa_enabled = env_bool("AW_RUS_HAYABUSA_ENABLED", True)
         self.aw_rus_hayabusa_ssh_cmd = os.getenv(
             "AW_RUS_HAYABUSA_SSH_CMD",
-            "sshpass -p '04091968' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13",
+            "",
         ).strip()
         self.aw_rus_host = os.getenv("AW_RUS_HOST", "SHARKON2025").strip()
         self.aw_rus_primary_user = os.getenv("AW_RUS_PRIMARY_USER", "USER1").strip()
         self.aw_rus_stale_sec = max(60, env_int("AW_RUS_STALE_SEC", 900))
+        self.aw_rus_slo_enabled = env_bool("AW_RUS_SLO_ENABLED", True)
+        self.aw_rus_slo_alert_window = os.getenv("AW_RUS_SLO_ALERT_WINDOW", "24h").strip() or "24h"
+        self.aw_rus_slo_min_samples = max(1, env_int("AW_RUS_SLO_MIN_SAMPLES", 4))
+        self.aw_rus_slo_max_age_sec = max(15, env_int("AW_RUS_SLO_MAX_AGE_SEC", 90))
+        self.aw_rus_slo_summary_cmd = os.getenv(
+            "AW_RUS_SLO_SUMMARY_CMD",
+            "",
+        ).strip()
         self.aw_rus_windows_host = os.getenv("AW_RUS_WINDOWS_HOST", "192.168.100.18").strip() or "192.168.100.18"
         self.aw_rus_windows_ssh_user = os.getenv("AW_RUS_WINDOWS_SSH_USER", "Администратор").strip() or "Администратор"
         self.aw_rus_windows_ssh_password = os.getenv("AW_RUS_WINDOWS_SSH_PASSWORD", "").strip()
@@ -400,6 +416,11 @@ class TSJGuardianBot:
             "AW_RUS_WINDOWS_SESSION_COLLECTOR_PATH",
             r"C:\ProgramData\AWatch-rus\worktime-session-collector.ps1",
         ).strip() or r"C:\ProgramData\AWatch-rus\worktime-session-collector.ps1"
+        launch_tasks_raw = os.getenv(
+            "AW_RUS_WINDOWS_LAUNCH_TASKS",
+            "ActivityWatch Launch [SHARKON2025_Администратор];ActivityWatch Launch [SHARKON2025_user5]",
+        )
+        self.aw_rus_windows_launch_tasks = [item.strip() for item in launch_tasks_raw.split(";") if item.strip()]
         self.aw_rus_windows_policy_path = os.getenv(
             "AW_RUS_WINDOWS_POLICY_PATH",
             r"C:\ProgramData\AWatch-rus\dlp-policy.json",
@@ -425,6 +446,7 @@ class TSJGuardianBot:
             "HEARTBEAT_FILE", f"{self.infra_admin_root}/.state/tsj_guardian_heartbeat"
         )
         self.check_interval = env_int("CHECK_INTERVAL_SEC", 60)
+        self.incident_failure_quorum_checks = max(1, env_int("INCIDENT_FAILURE_QUORUM_CHECKS", 2))
         self.operator_timeout = env_int("OPERATOR_TIMEOUT_SEC", 900)  # 15 min
         self.retry_autoheal_sec = env_int("RETRY_AUTORECOVERY_EVERY_SEC", 300)
         self.exit_on_autoheal_success = env_bool("EXIT_ON_AUTORECOVERY_SUCCESS", True)
@@ -496,6 +518,8 @@ class TSJGuardianBot:
                 f"{self.infra_admin_root}/.state/proxmox_lxc_pending_rollback.json",
             )
         )
+        self.detmir_state_file = Path(os.getenv("DETMIR_AI_STATE_FILE", "/var/lib/detmir-ai/latest-state.json"))
+        self.tsj_guardian_status_bin = os.getenv("TSJ_GUARDIAN_STATUS_BIN", "/usr/local/bin/tsj-guardian-status").strip()
         self.proxmox_selection_ttl_sec = env_int("PROXMOX_SELECTION_TTL_SEC", 900)
         self.proxmox_restore_confirm_ttl_sec = env_int("PROXMOX_RESTORE_CONFIRM_TTL_SEC", 900)
         self.proxmox_manual_snapshot_name = (
@@ -883,6 +907,7 @@ class TSJGuardianBot:
         timeout_sec: int = 180,
         input_text: str = "",
         env_extra: Optional[Dict[str, str]] = None,
+        cwd: Optional[str] = None,
     ) -> subprocess.CompletedProcess:
         env = os.environ.copy()
         if env_extra:
@@ -895,6 +920,7 @@ class TSJGuardianBot:
             timeout=timeout_sec,
             check=False,
             env=env,
+            cwd=cwd,
         )
         return subprocess.CompletedProcess(
             proc.args,
@@ -961,24 +987,62 @@ class TSJGuardianBot:
             cmd = f"sudo -u {shlex.quote(self.ai_exec_user)} bash -lc {shlex.quote(cmd)}"
         return self._run_shell(cmd, timeout_sec=timeout_sec)
 
+    def _run_ai_user_argv(
+        self,
+        argv: List[str],
+        timeout_sec: int = 180,
+        env_extra: Optional[Dict[str, str]] = None,
+    ) -> subprocess.CompletedProcess:
+        cmd = list(argv)
+        if self.ai_exec_user:
+            preserve = []
+            if env_extra and env_extra.get("PFSENSE_MCP_BEARER"):
+                preserve.append("PFSENSE_MCP_BEARER")
+            sudo_argv = ["sudo", "-u", self.ai_exec_user]
+            if preserve:
+                sudo_argv.append(f"--preserve-env={','.join(preserve)}")
+            cmd = [*sudo_argv, "--", *cmd]
+        return self._run_argv(
+            cmd,
+            timeout_sec=timeout_sec,
+            env_extra=env_extra,
+            cwd=self.ai_chat_workdir,
+        )
+
     def _run_codex_exec_prompt(self, prompt: str, timeout_sec: int, model: Optional[str] = None) -> Tuple[int, str, str]:
         with tempfile.NamedTemporaryFile("w+", encoding="utf-8", delete=False) as tmp:
             tmp_path = tmp.name
         os.chmod(tmp_path, 0o666)
         selected_model = (model or self.codex_model).strip() or self.codex_model
 
-        cmd = (
-            f"cd {shlex.quote(self.ai_chat_workdir)} && "
-            f"PFSENSE_MCP_BEARER={shlex.quote(os.getenv('PFSENSE_MCP_BEARER', ''))} "
-            f"codex exec --ephemeral --skip-git-repo-check "
-            f"--model {shlex.quote(selected_model)} "
-            f"-C {shlex.quote(self.ai_chat_workdir)} "
-            f"-s {shlex.quote(self.ai_chat_sandbox)} "
-            f"--color never -o {shlex.quote(tmp_path)} "
-            f"{shlex.quote(prompt)}"
-        )
+        # Do not forward PFSENSE_MCP_BEARER into sudo/codex. sudo logs
+        # preserved env values, so passing the bearer here leaks it to journald.
+        env_extra = None
+        argv = [
+            "codex",
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--model",
+            selected_model,
+            "-C",
+            self.ai_chat_workdir,
+            "-s",
+            self.ai_chat_sandbox,
+            "--color",
+            "never",
+            "-o",
+            tmp_path,
+            prompt,
+        ]
         try:
-            rc, out = self._run_ai_user_shell(cmd, timeout_sec=timeout_sec)
+            proc = self._run_ai_user_argv(
+                argv,
+                timeout_sec=timeout_sec,
+                env_extra=env_extra,
+            )
+            rc = proc.returncode
+            out = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
             try:
                 with open(tmp_path, "r", encoding="utf-8") as f:
                     reply = f.read().strip()
@@ -1027,6 +1091,8 @@ class TSJGuardianBot:
     @staticmethod
     def _summarize_exec_error(output: str, rc: int) -> str:
         lowered = (output or "").lower()
+        if TSJGuardianBot._is_codex_auth_error(output):
+            return "Канал расширенной диагностики недоступен: требуется повторная авторизация Codex на сервере."
         if "403 forbidden" in lowered or "unable to load site" in lowered:
             return "Сервис ответов временно недоступен. Повторите запрос чуть позже."
         if "selected model is at capacity" in lowered:
@@ -1034,6 +1100,20 @@ class TSJGuardianBot:
         if "transport channel closed" in lowered or "unexpectedcontenttype" in lowered:
             return "Сервис ответов временно недоступен из-за сетевой ошибки. Повторите запрос чуть позже."
         return f"Обработка запроса завершилась с ошибкой.\nrc={rc}"
+
+    @staticmethod
+    def _is_codex_auth_error(output: str) -> bool:
+        lowered = (output or "").lower()
+        return any(
+            marker in lowered
+            for marker in (
+                "401 unauthorized",
+                "token_invalidated",
+                "refresh_token_reused",
+                "access token could not be refreshed",
+                "authentication token has been invalidated",
+            )
+        )
 
     def _run_ai_chat_codex_exec(self, operator_text: str) -> str:
         clean_text = operator_text.strip()
@@ -1093,6 +1173,14 @@ class TSJGuardianBot:
         ppc = self.state.pending_pfsense_change
         if not ppc:
             return False
+        decision = self._confirmation_decision(
+            "pfsense",
+            "expire",
+            ppc,
+            self.pfsense_change_confirm_ttl_sec,
+        )
+        if isinstance(decision, dict):
+            return bool(decision.get("expired"))
         return int(time.time()) - ppc.created_ts > self.pfsense_change_confirm_ttl_sec
 
     def _expire_pending_pfsense_change_if_needed(self) -> None:
@@ -1140,6 +1228,30 @@ class TSJGuardianBot:
         ppc = self.state.pending_pfsense_change
         if not ppc:
             return "Нет ожидающего изменения pfSense."
+        decision = self._confirmation_decision(
+            "pfsense",
+            "first_confirm",
+            ppc,
+            self.pfsense_change_confirm_ttl_sec,
+        )
+        if isinstance(decision, dict):
+            if decision.get("clear_pending"):
+                self.state.pending_pfsense_change = None
+                self.state.save()
+                return str(decision.get("message") or "Нет ожидающего изменения pfSense.")
+            if not decision.get("allowed"):
+                return str(decision.get("message") or "Первое подтверждение уже принято.")
+            ppc.stage = str(decision.get("next_stage") or "awaiting_second_confirm")
+            ppc.first_confirmed_ts = int(decision.get("first_confirmed_ts") or time.time())
+            self.state.save()
+            return (
+                "Первое подтверждение принято.\n"
+                f"- request_id: {ppc.request_id}\n"
+                f"- запрос: {ppc.operator_request}\n"
+                "- Второе подтверждение должно быть отдельным действием.\n"
+                f"- Для выполнения отправьте: `/pfsense_apply {ppc.confirm_code}`\n"
+                f"- Код подтверждения действует {self.pfsense_change_confirm_ttl_sec} секунд с момента создания запроса."
+            )
         if ppc.stage != "awaiting_first_confirm":
             return (
                 "Первое подтверждение уже принято.\n"
@@ -1159,14 +1271,30 @@ class TSJGuardianBot:
         )
 
     def _cancel_pfsense_change(self) -> str:
+        decision = self._confirmation_decision(
+            "pfsense",
+            "cancel",
+            self.state.pending_pfsense_change,
+            self.pfsense_change_confirm_ttl_sec,
+        )
         self.state.pending_pfsense_change = None
         self.state.save()
+        if isinstance(decision, dict):
+            return str(decision.get("message") or "Ожидающее изменение pfSense отменено.")
         return "Ожидающее изменение pfSense отменено."
 
     def _pending_openvpn_config_expired(self) -> bool:
         povpn = self.state.pending_openvpn_config
         if not povpn:
             return False
+        decision = self._confirmation_decision(
+            "openvpn",
+            "expire",
+            povpn,
+            self.openvpn_config_confirm_ttl_sec,
+        )
+        if isinstance(decision, dict):
+            return bool(decision.get("expired"))
         return int(time.time()) - povpn.created_ts > self.openvpn_config_confirm_ttl_sec
 
     def _expire_pending_openvpn_config_if_needed(self) -> None:
@@ -1409,6 +1537,29 @@ class TSJGuardianBot:
         povpn = self.state.pending_openvpn_config
         if not povpn:
             return "Нет ожидающего запроса на OpenVPN конфиг."
+        decision = self._confirmation_decision(
+            "openvpn",
+            "first_confirm",
+            povpn,
+            self.openvpn_config_confirm_ttl_sec,
+        )
+        if isinstance(decision, dict):
+            if decision.get("clear_pending"):
+                self.state.pending_openvpn_config = None
+                self.state.save()
+                return str(decision.get("message") or "Нет ожидающего запроса на OpenVPN конфиг.")
+            if not decision.get("allowed"):
+                return str(decision.get("message") or "Первое подтверждение уже принято.")
+            povpn.stage = str(decision.get("next_stage") or "awaiting_second_confirm")
+            povpn.first_confirmed_ts = int(decision.get("first_confirmed_ts") or time.time())
+            self.state.save()
+            return (
+                "Первое подтверждение OpenVPN-конфига принято.\n"
+                f"- request_id: {povpn.request_id}\n"
+                f"- common_name: {povpn.common_name}\n"
+                f"- Для второго подтверждения отправьте: `/openvpn_config_apply {povpn.confirm_code}`\n"
+                f"- Код действует {self.openvpn_config_confirm_ttl_sec} секунд с момента создания запроса."
+            )
         if povpn.stage != "awaiting_first_confirm":
             return (
                 "Первое подтверждение уже принято.\n"
@@ -1426,14 +1577,30 @@ class TSJGuardianBot:
         )
 
     def _cancel_openvpn_config(self) -> str:
+        decision = self._confirmation_decision(
+            "openvpn",
+            "cancel",
+            self.state.pending_openvpn_config,
+            self.openvpn_config_confirm_ttl_sec,
+        )
         self.state.pending_openvpn_config = None
         self.state.save()
+        if isinstance(decision, dict):
+            return str(decision.get("message") or "Ожидающий запрос на OpenVPN конфиг отменён.")
         return "Ожидающий запрос на OpenVPN конфиг отменён."
 
     def _pending_proxmox_selection_expired(self) -> bool:
         pending = self.state.pending_proxmox_selection
         if not pending:
             return False
+        decision = self._confirmation_decision(
+            "proxmox_selection",
+            "expire",
+            pending,
+            self.proxmox_selection_ttl_sec,
+        )
+        if isinstance(decision, dict):
+            return bool(decision.get("expired"))
         return int(time.time()) - pending.created_ts > self.proxmox_selection_ttl_sec
 
     def _expire_pending_proxmox_selection_if_needed(self) -> None:
@@ -1445,6 +1612,14 @@ class TSJGuardianBot:
         pending = self.state.pending_proxmox_restore
         if not pending:
             return False
+        decision = self._confirmation_decision(
+            "proxmox_restore",
+            "expire",
+            pending,
+            self.proxmox_restore_confirm_ttl_sec,
+        )
+        if isinstance(decision, dict):
+            return bool(decision.get("expired"))
         return int(time.time()) - pending.created_ts > self.proxmox_restore_confirm_ttl_sec
 
     def _expire_pending_proxmox_restore_if_needed(self) -> None:
@@ -1668,13 +1843,29 @@ class TSJGuardianBot:
         )
 
     def _cancel_proxmox_selection(self) -> str:
+        decision = self._confirmation_decision(
+            "proxmox_selection",
+            "cancel",
+            self.state.pending_proxmox_selection,
+            self.proxmox_selection_ttl_sec,
+        )
         self.state.pending_proxmox_selection = None
         self.state.save()
+        if isinstance(decision, dict):
+            return str(decision.get("message") or "Выбор узла Proxmox отменён.")
         return "Выбор узла Proxmox отменён."
 
     def _cancel_proxmox_restore(self) -> str:
+        decision = self._confirmation_decision(
+            "proxmox_restore",
+            "cancel",
+            self.state.pending_proxmox_restore,
+            self.proxmox_restore_confirm_ttl_sec,
+        )
         self.state.pending_proxmox_restore = None
         self.state.save()
+        if isinstance(decision, dict):
+            return str(decision.get("message") or "Ожидающее восстановление Proxmox отменено.")
         return "Ожидающее восстановление Proxmox отменено."
 
     def _apply_proxmox_restore(self, code: str) -> str:
@@ -1682,7 +1873,21 @@ class TSJGuardianBot:
         pending = self.state.pending_proxmox_restore
         if not pending:
             return "Нет ожидающего восстановления Proxmox."
-        if code.strip() != pending.confirm_code:
+        decision = self._confirmation_decision(
+            "proxmox_restore",
+            "apply",
+            pending,
+            self.proxmox_restore_confirm_ttl_sec,
+            code=code,
+        )
+        if isinstance(decision, dict):
+            if decision.get("clear_pending"):
+                self.state.pending_proxmox_restore = None
+                self.state.save()
+                return str(decision.get("message") or "Нет ожидающего восстановления Proxmox.")
+            if not decision.get("allowed"):
+                return str(decision.get("message") or "Неверный код подтверждения восстановления Proxmox.")
+        elif code.strip() != pending.confirm_code:
             return "Неверный код подтверждения восстановления Proxmox."
         if not self._snapshot_exists(pending.kind, pending.guest_id, pending.snapshot):
             self.state.pending_proxmox_restore = None
@@ -1949,12 +2154,32 @@ class TSJGuardianBot:
         if not povpn:
             self._send_text(chat_id, "Нет ожидающего запроса на OpenVPN конфиг.")
             return
-        if povpn.stage != "awaiting_second_confirm":
-            self._send_text(chat_id, "Второе подтверждение пока недоступно. Сначала выполните первый шаг подтверждения.")
-            return
-        if code.strip() != povpn.confirm_code:
-            self._send_text(chat_id, "Неверный код второго подтверждения OpenVPN-конфига.")
-            return
+        decision = self._confirmation_decision(
+            "openvpn",
+            "apply",
+            povpn,
+            self.openvpn_config_confirm_ttl_sec,
+            code=code,
+        )
+        if isinstance(decision, dict):
+            if decision.get("clear_pending"):
+                self.state.pending_openvpn_config = None
+                self.state.save()
+                self._send_text(chat_id, str(decision.get("message") or "Нет ожидающего запроса на OpenVPN конфиг."))
+                return
+            if not decision.get("allowed"):
+                self._send_text(
+                    chat_id,
+                    str(decision.get("message") or "Неверный код второго подтверждения OpenVPN-конфига."),
+                )
+                return
+        else:
+            if povpn.stage != "awaiting_second_confirm":
+                self._send_text(chat_id, "Второе подтверждение пока недоступно. Сначала выполните первый шаг подтверждения.")
+                return
+            if code.strip() != povpn.confirm_code:
+                self._send_text(chat_id, "Неверный код второго подтверждения OpenVPN-конфига.")
+                return
 
         try:
             filename, summary, config_bytes = self._prepare_openvpn_config(povpn)
@@ -1999,10 +2224,25 @@ class TSJGuardianBot:
         ppc = self.state.pending_pfsense_change
         if not ppc:
             return "Нет ожидающего изменения pfSense."
-        if ppc.stage != "awaiting_second_confirm":
-            return "Второе подтверждение пока недоступно. Сначала выполните первый шаг подтверждения."
-        if code.strip() != ppc.confirm_code:
-            return "Неверный код второго подтверждения pfSense."
+        decision = self._confirmation_decision(
+            "pfsense",
+            "apply",
+            ppc,
+            self.pfsense_change_confirm_ttl_sec,
+            code=code,
+        )
+        if isinstance(decision, dict):
+            if decision.get("clear_pending"):
+                self.state.pending_pfsense_change = None
+                self.state.save()
+                return str(decision.get("message") or "Нет ожидающего изменения pfSense.")
+            if not decision.get("allowed"):
+                return str(decision.get("message") or "Неверный код второго подтверждения pfSense.")
+        else:
+            if ppc.stage != "awaiting_second_confirm":
+                return "Второе подтверждение пока недоступно. Сначала выполните первый шаг подтверждения."
+            if code.strip() != ppc.confirm_code:
+                return "Неверный код второго подтверждения pfSense."
 
         result = self._run_pfsense_change_codex_exec(ppc)
         self.state.pending_pfsense_change = None
@@ -2055,6 +2295,167 @@ class TSJGuardianBot:
     def _warning_signature(self, warnings: List[str]) -> str:
         return "\n".join(sorted(set(warnings)))
 
+    def _failure_signature(self, failures: List[str]) -> str:
+        return "\n".join(sorted(set(failures)))
+
+    def _state_decision_payload(self) -> Dict:
+        return {
+            "pending_incident": asdict(self.state.pending_incident) if self.state.pending_incident else None,
+            "failure_streak_signature": self.state.failure_streak_signature,
+            "failure_streak_count": self.state.failure_streak_count,
+            "failure_streak_first_ts": self.state.failure_streak_first_ts,
+        }
+
+    def _operator_action_state_payload(self) -> Dict:
+        return {
+            "pending_update_install_confirm": bool(
+                getattr(self.state, "pending_update_install_confirm", False)
+            ),
+            "pending_rollback_confirm": bool(
+                getattr(self.state, "pending_rollback_confirm", False)
+            ),
+            "pending_incident": asdict(self.state.pending_incident)
+            if getattr(self.state, "pending_incident", None)
+            else None,
+        }
+
+    def _run_status_helper_json(
+        self,
+        args: List[str],
+        payload: Dict,
+        timeout_sec: int = 10,
+    ) -> Optional[Dict]:
+        status_bin_raw = (getattr(self, "tsj_guardian_status_bin", "") or "").strip()
+        if not status_bin_raw:
+            return None
+        status_bin = Path(status_bin_raw)
+        if not status_bin.exists():
+            return None
+        try:
+            proc = self._run_argv(
+                [str(status_bin), *args],
+                timeout_sec=timeout_sec,
+                input_text=json.dumps(payload, ensure_ascii=False),
+            )
+            if proc.returncode != 0:
+                self._log(
+                    "WARN",
+                    f"tsj-guardian-status decision failed rc={proc.returncode}: {((proc.stderr or '') + (proc.stdout or ''))[-500:]}",
+                )
+                return None
+            return json.loads(proc.stdout or "{}")
+        except Exception as exc:
+            self._log("WARN", f"tsj-guardian-status decision unavailable: {exc}")
+            return None
+
+    def _operator_action_decision(self, action: str) -> Optional[Dict]:
+        return self._run_status_helper_json(
+            ["--operator-action-decision"],
+            {
+                "action": action,
+                "state": self._operator_action_state_payload(),
+            },
+        )
+
+    def _confirmation_decision(
+        self,
+        kind: str,
+        action: str,
+        pending: object,
+        ttl_seconds: int,
+        code: str = "",
+    ) -> Optional[Dict]:
+        state = asdict(pending) if pending else {}
+        return self._run_status_helper_json(
+            [
+                "--confirmation-decision",
+                "--confirmation-ttl-seconds",
+                str(ttl_seconds),
+                "--now-epoch",
+                str(int(time.time())),
+            ],
+            {
+                "kind": kind,
+                "action": action,
+                "code": code,
+                "state": state,
+            },
+        )
+
+    def _autoheal_plan_decision(self, failures: List[str], slo_stale: bool = False) -> Optional[Dict]:
+        return self._run_status_helper_json(
+            ["--autoheal-plan-decision"],
+            {
+                "failures": failures,
+                "slo_stale": bool(slo_stale),
+            },
+        )
+
+    def _reset_failure_streak(self) -> None:
+        changed = bool(
+            self.state.failure_streak_signature
+            or self.state.failure_streak_count
+            or self.state.failure_streak_first_ts
+        )
+        self.state.failure_streak_signature = ""
+        self.state.failure_streak_count = 0
+        self.state.failure_streak_first_ts = 0
+        if changed:
+            self.state.save()
+
+    def _defer_transient_new_incident(self, failures: List[str]) -> bool:
+        threshold = getattr(self, "incident_failure_quorum_checks", 1)
+        decision = self._run_status_helper_json(
+            [
+                "--incident-defer-decision",
+                "--incident-failure-quorum-checks",
+                str(threshold),
+                "--now-epoch",
+                str(int(time.time())),
+            ],
+            {
+                "failures": failures,
+                "state": self._state_decision_payload(),
+            },
+        )
+        if isinstance(decision, dict):
+            self.state.failure_streak_signature = str(decision.get("failure_streak_signature") or "")
+            self.state.failure_streak_count = int(decision.get("failure_streak_count") or 0)
+            self.state.failure_streak_first_ts = int(decision.get("failure_streak_first_ts") or 0)
+            if decision.get("reset_failure_streak"):
+                self.state.save()
+                self._reset_failure_streak()
+            else:
+                self.state.save()
+            if decision.get("defer"):
+                log_line = str(decision.get("log_line") or "")
+                self._log("WARN", log_line or f"Suppressing transient incident failures={len(failures)}")
+                return True
+            return False
+
+        if threshold <= 1 or self._has_filesystem_critical(failures):
+            return False
+
+        now = int(time.time())
+        signature = self._failure_signature(failures)
+        if signature == self.state.failure_streak_signature:
+            self.state.failure_streak_count += 1
+        else:
+            self.state.failure_streak_signature = signature
+            self.state.failure_streak_count = 1
+            self.state.failure_streak_first_ts = now
+        self.state.save()
+
+        if self.state.failure_streak_count < threshold:
+            self._log(
+                "WARN",
+                "Suppressing transient incident "
+                f"streak={self.state.failure_streak_count}/{threshold} "
+                f"failures={len(failures)}",
+            )
+            return True
+        return False
+
     def _filesystem_failures(self, failures: List[str]) -> List[str]:
         return [line for line in failures if "filesystem_usage" in line.lower()]
 
@@ -2084,6 +2485,8 @@ class TSJGuardianBot:
             return False
         if key == "worktime":
             return text.startswith("- worktime(") or text.startswith("- worktime:")
+        if key == "slo":
+            return text.startswith("- slo-alert:")
         return text.startswith(f"- {key}:")
 
     def _aw_rus_failure_log_lines(self, lines: List[str], failures: List[str]) -> List[str]:
@@ -2094,13 +2497,141 @@ class TSJGuardianBot:
             rendered.append(f"[FAIL] aw-rus:{key}: {summary}")
         return rendered
 
+    def _load_aw_rus_slo_summary(self) -> Optional[Dict]:
+        cmd = (getattr(self, "aw_rus_slo_summary_cmd", "") or "").strip()
+        if not cmd:
+            return None
+        rc, out = self._run_shell(cmd, timeout_sec=30)
+        if rc != 0:
+            self._log("WARN", f"AW-Rus SLO summary command failed rc={rc}: {out[-500:]}")
+            return None
+        try:
+            payload = json.loads(out)
+        except json.JSONDecodeError as exc:
+            self._log("WARN", f"AW-Rus SLO summary JSON parse failed: {exc}")
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    def _aw_rus_slo_lines_and_failures(self) -> Tuple[List[str], List[str]]:
+        if not getattr(self, "aw_rus_slo_enabled", True):
+            return [], []
+        summary = self._load_aw_rus_slo_summary()
+        if not summary:
+            return [], []
+
+        lines = ["Проверка AW-Rus SLO:"]
+        failures: List[str] = []
+        generated_raw = str(summary.get("generated_at_utc") or "")
+        age = None
+        try:
+            generated = datetime.fromisoformat(generated_raw.replace("Z", "+00:00")).astimezone(timezone.utc)
+            age = int((datetime.now(timezone.utc) - generated).total_seconds())
+        except Exception:
+            generated = None
+
+        if generated is None or age is None or age > self.aw_rus_slo_max_age_sec:
+            lines.append(f"- slo-summary: STALE age={age}s generated={generated_raw or 'unknown'}")
+            failures.append("slo")
+            return lines, failures
+
+        windows = summary.get("windows") if isinstance(summary.get("windows"), dict) else {}
+        window_name = self.aw_rus_slo_alert_window if self.aw_rus_slo_alert_window in windows else "24h"
+        window = windows.get(window_name) if isinstance(windows.get(window_name), dict) else {}
+        samples = int(window.get("samples") or 0)
+        availability = window.get("availability_percent")
+        remaining = int(window.get("budget_remaining_seconds") or 0)
+        bad = int(window.get("bad_samples") or 0)
+        current = summary.get("current_sample") if isinstance(summary.get("current_sample"), dict) else {}
+        current_ok = bool(current.get("ok"))
+        lines.append(
+            f"- {window_name}: availability={availability if availability is not None else 'n/a'}% "
+            f"samples={samples} bad={bad} budget_remaining_seconds={remaining}"
+        )
+        lines.append(f"- current_sample: {'OK' if current_ok else 'FAIL'} age={age}s")
+
+        if samples < self.aw_rus_slo_min_samples:
+            lines.append(f"- slo-alert: WARMUP samples={samples}/{self.aw_rus_slo_min_samples}")
+            return lines, []
+        if remaining < 0 and not current_ok:
+            lines.append(f"- slo-alert: FAIL error budget exhausted ({remaining}s)")
+            failures.append("slo")
+        elif remaining < 0:
+            lines.append(f"- slo-alert: RECOVERED error budget exhausted ({remaining}s), current sample OK")
+        return lines, failures
+
     def _background_aw_rus_failures(self, failures: List[str]) -> Tuple[List[str], List[str]]:
         if not self._aw_rus_probe_should_run(failures):
             return [], []
+        slo_lines, slo_failures = self._aw_rus_slo_lines_and_failures()
+        if slo_lines:
+            return self._aw_rus_failure_log_lines(slo_lines, slo_failures), slo_failures
         lines, aw_failures = self._aw_rus_dlp_probe()
         return self._aw_rus_failure_log_lines(lines, aw_failures), aw_failures
 
+    def _aw_rus_slo_status_line(self) -> str:
+        if getattr(self, "tsj_guardian_status_bin", ""):
+            status_bin = Path(self.tsj_guardian_status_bin)
+            if status_bin.exists():
+                try:
+                    proc = self._run_argv(
+                        [
+                            str(status_bin),
+                            "--aw-slo-status-line",
+                            "--aw-slo-summary-command",
+                            self.aw_rus_slo_summary_cmd,
+                            "--aw-slo-alert-window",
+                            self.aw_rus_slo_alert_window,
+                        ],
+                        timeout_sec=35,
+                    )
+                    line = (proc.stdout or "").strip().splitlines()
+                    if proc.returncode == 0 and line:
+                        return line[-1]
+                    if proc.returncode != 0:
+                        self._log(
+                            "WARN",
+                            f"tsj-guardian-status aw-slo failed rc={proc.returncode}: {((proc.stderr or '') + (proc.stdout or ''))[-500:]}",
+                        )
+                except Exception as exc:
+                    self._log("WARN", f"tsj-guardian-status aw-slo unavailable: {exc}")
+
+        summary = self._load_aw_rus_slo_summary()
+        if not summary:
+            return "- aw_rus_slo: unavailable"
+        windows = summary.get("windows") if isinstance(summary.get("windows"), dict) else {}
+        window_name = self.aw_rus_slo_alert_window if self.aw_rus_slo_alert_window in windows else "24h"
+        window = windows.get(window_name) if isinstance(windows.get(window_name), dict) else {}
+        availability = window.get("availability_percent")
+        remaining = window.get("budget_remaining_seconds")
+        samples = window.get("samples")
+        status = window.get("status", "unknown")
+        current = summary.get("current_sample") if isinstance(summary.get("current_sample"), dict) else {}
+        current_ok = bool(current.get("ok"))
+        display_status = status
+        try:
+            remaining_value = int(remaining)
+        except (TypeError, ValueError):
+            remaining_value = 0
+        if remaining_value < 0 and current_ok:
+            display_status = "recovered"
+        elif remaining_value < 0 and not current_ok:
+            display_status = "fail"
+        availability_text = "n/a" if availability is None else f"{float(availability):.5f}%"
+        return (
+            f"- aw_rus_slo: {display_status} {window_name} current_sample={'OK' if current_ok else 'FAIL'} "
+            f"availability={availability_text} samples={samples} budget_remaining_seconds={remaining}"
+        )
+
     def _suggestions_from_failures(self, failures: List[str]) -> List[str]:
+        decision = self._run_status_helper_json(
+            ["--incident-suggestions"],
+            {"failures": failures},
+        )
+        if isinstance(decision, dict) and isinstance(decision.get("suggestions"), list):
+            suggestions = [str(item) for item in decision["suggestions"] if str(item)]
+            if suggestions:
+                return suggestions
+
         suggestions = []
         text = "\n".join(failures).lower()
         if "proxmox_api" in text:
@@ -2201,6 +2732,7 @@ class TSJGuardianBot:
             if self.state.pending_incident:
                 self._notify("Инцидент закрыт: система снова в норме.")
                 self.state.pending_incident = None
+            self._reset_failure_streak()
             self._sync_warning_state(warnings)
             self.state.save()
             self._log("INFO", "Check OK")
@@ -2221,6 +2753,8 @@ class TSJGuardianBot:
         now = int(time.time())
         new_incident_created = False
         if not self.state.pending_incident:
+            if self._defer_transient_new_incident(failures):
+                return
             incident_id = time.strftime("%Y%m%d-%H%M%S")
             suggestions = self._suggestions_from_failures(failures)
             self.state.pending_incident = PendingIncident(
@@ -2235,6 +2769,7 @@ class TSJGuardianBot:
                 fallback_executed=False,
             )
             new_incident_created = True
+            self._reset_failure_streak()
         else:
             self.state.pending_incident.failures = failures or self.state.pending_incident.failures
             self.state.pending_incident.suggestions = self._suggestions_from_failures(
@@ -2380,6 +2915,10 @@ class TSJGuardianBot:
             if rc != 0:
                 self._log("WARN", f"Incident codex exec returned rc={rc} but produced final message")
             return True
+        if self._is_codex_auth_error(out):
+            self._log("WARN", "Incident codex exec skipped after authentication failure; server fallback remains active")
+            self._notify(self._summarize_exec_error(out, rc))
+            return True
         self._log("ERROR", f"Incident codex exec failed rc={rc}: {out[-2000:]}")
         return False
 
@@ -2410,13 +2949,31 @@ class TSJGuardianBot:
         pi = self.state.pending_incident
         if not pi:
             return
-        if pi.operator_acked:
-            return
         now = int(time.time())
-        if now - pi.created_ts < self.operator_timeout:
-            return
+        decision = self._run_status_helper_json(
+            [
+                "--escalation-decision",
+                "--operator-timeout-seconds",
+                str(self.operator_timeout),
+                "--now-epoch",
+                str(now),
+            ],
+            {"state": self._state_decision_payload()},
+        )
+        if isinstance(decision, dict):
+            if not decision.get("timed_out"):
+                return
+            should_escalate = bool(decision.get("should_escalate"))
+            should_fallback = bool(decision.get("should_fallback"))
+        else:
+            if pi.operator_acked:
+                return
+            if now - pi.created_ts < self.operator_timeout:
+                return
+            should_escalate = not pi.escalated_to_ai
+            should_fallback = not pi.fallback_executed
 
-        if not pi.escalated_to_ai:
+        if should_escalate:
             ai_ok = self._escalate_to_ai()
             pi.escalated_to_ai = ai_ok
             self.state.save()
@@ -2425,7 +2982,7 @@ class TSJGuardianBot:
             else:
                 self._notify("Оператор не ответил. Эскалация не удалась.")
 
-        if not pi.fallback_executed:
+        if should_fallback:
             fallback_ok = self._run_server_fallback()
             pi.fallback_executed = True
             self.state.save()
@@ -2564,8 +3121,105 @@ class TSJGuardianBot:
             "Резервные slash-команды: /status /check /aw_dlp_check /dlp_mode /dlp_mode_toggle /aw_dfir PACKAGE HOST [CASE_ID] [MODE] /heal /ack /resolve /run ... /openvpn_certs [filter] /openvpn_expiring /openvpn_config USER /openvpn_config_confirm /openvpn_config_cancel /openvpn_config_apply CODE /pfsense_confirm /pfsense_cancel /pfsense_apply CODE /proxmox_snapshot TARGET /proxmox_restore TARGET /proxmox_restore_apply CODE /proxmox_restore_cancel /proxmox_selection_cancel"
         )
 
+    def _detmir_auto_status_line(self) -> str:
+        if self.tsj_guardian_status_bin:
+            status_bin = Path(self.tsj_guardian_status_bin)
+            if status_bin.exists():
+                try:
+                    proc = self._run_argv(
+                        [
+                            str(status_bin),
+                            "--state",
+                            str(self.detmir_state_file),
+                        ],
+                        timeout_sec=5,
+                    )
+                    line = (proc.stdout or "").strip().splitlines()
+                    if proc.returncode == 0 and line:
+                        return line[-1]
+                    if proc.returncode != 0:
+                        self._log(
+                            "WARN",
+                            f"tsj-guardian-status failed rc={proc.returncode}: {((proc.stderr or '') + (proc.stdout or ''))[-500:]}",
+                        )
+                except Exception as exc:
+                    self._log("WARN", f"tsj-guardian-status unavailable: {exc}")
+
+        try:
+            state = json.loads(self.detmir_state_file.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return f"- detmir_auto: unavailable state_file={self.detmir_state_file}"
+        except Exception as exc:
+            return f"- detmir_auto: unavailable ({exc})"
+
+        summary = state.get("detmir_summary")
+        if not isinstance(summary, dict):
+            check = state.get("check") if isinstance(state.get("check"), dict) else {}
+            summary = check.get("summary") if isinstance(check.get("summary"), dict) else {}
+        dlp_counts = state.get("dlp_counts") if isinstance(state.get("dlp_counts"), dict) else {}
+        severity = str(state.get("severity", "UNKNOWN"))
+        check_ok = state.get("check_ok")
+        if check_ok is None and isinstance(state.get("check"), dict):
+            check_ok = state["check"].get("ok")
+        dlp_ok = state.get("dlp_ok")
+
+        return (
+            f"- detmir_auto: {severity} check_ok={check_ok} dlp_ok={dlp_ok} "
+            f"bucket_stale={summary.get('bucket_stale', 'n/a')} "
+            f"bucket_dead={summary.get('bucket_dead', 'n/a')} "
+            f"service_fail={summary.get('service_failures', 'n/a')} "
+            f"service_warn={summary.get('service_warnings', 'n/a')} "
+            f"dlp_warn={dlp_counts.get('warn', 'n/a')} "
+            f"dlp_fail={dlp_counts.get('fail', 'n/a')}"
+        )
+
+    def _cmd_status_from_rust(self) -> Optional[str]:
+        if not getattr(self, "tsj_guardian_status_bin", ""):
+            return None
+        status_bin = Path(self.tsj_guardian_status_bin)
+        if not status_bin.exists():
+            return None
+        pfsense_cmd = f"/usr/bin/python3 {shlex.quote(self.infra_admin_root)}/scripts/pfsense_security_status.py"
+        try:
+            proc = self._run_argv(
+                [
+                    str(status_bin),
+                    "--status-text",
+                    "--state",
+                    str(self.detmir_state_file),
+                    "--bot-state",
+                    str(self.state_file),
+                    "--rollback-file",
+                    str(self.updates_rollback_file),
+                    "--pfsense-status-command",
+                    pfsense_cmd,
+                    "--aw-slo-summary-command",
+                    self.aw_rus_slo_summary_cmd,
+                    "--aw-slo-alert-window",
+                    self.aw_rus_slo_alert_window,
+                ],
+                timeout_sec=90,
+            )
+            text = (proc.stdout or "").strip()
+            if proc.returncode == 0 and text:
+                return text
+            if proc.returncode != 0:
+                self._log(
+                    "WARN",
+                    f"tsj-guardian-status status-text failed rc={proc.returncode}: {((proc.stderr or '') + (proc.stdout or ''))[-500:]}",
+                )
+        except Exception as exc:
+            self._log("WARN", f"tsj-guardian-status status-text unavailable: {exc}")
+        return None
+
     def _cmd_status(self) -> str:
+        rust_status = self._cmd_status_from_rust()
+        if rust_status:
+            return rust_status
+
         pfsense_status = self._pfsense_security_status_lines()
+        aw_slo_status = self._aw_rus_slo_status_line()
+        detmir_status = self._detmir_auto_status_line()
         pi = self.state.pending_incident
         if not pi:
             ppc = self.state.pending_pfsense_change
@@ -2600,6 +3254,8 @@ class TSJGuardianBot:
             return (
                 "Статус: инцидентов нет.\n"
                 f"{pfsense_status}\n"
+                f"{aw_slo_status}\n"
+                f"{detmir_status}\n"
                 f"{ppc_line}\n"
                 f"{ovpn_warn_line}\n"
                 f"{pps_line}\n"
@@ -2642,6 +3298,8 @@ class TSJGuardianBot:
         return (
             f"Статус: активный инцидент {pi.incident_id}\n"
             f"{pfsense_status}\n"
+            f"{aw_slo_status}\n"
+            f"{detmir_status}\n"
             f"- возраст: {age}s\n"
             f"- autoheal attempts: {pi.autoheal_attempts}\n"
             f"- operator_acked: {pi.operator_acked}\n"
@@ -2664,7 +3322,44 @@ class TSJGuardianBot:
         host = self.aw_rus_host
         now = datetime.now(timezone.utc)
 
+        def latest_bucket_event(bucket_id: str) -> Tuple[Optional[Dict], str]:
+            try:
+                r = requests.get(f"{base}/buckets/{bucket_id}/events?limit=20", timeout=20)
+                r.raise_for_status()
+                events = r.json()
+                if not isinstance(events, list) or not events:
+                    return None, "no-events"
+
+                latest_event = None
+                latest_ts = None
+                for event in events:
+                    raw_ts = event.get("timestamp") if isinstance(event, dict) else None
+                    if not raw_ts:
+                        continue
+                    try:
+                        event_ts = datetime.fromisoformat(raw_ts.replace("Z", "+00:00")).astimezone(timezone.utc)
+                    except Exception:
+                        continue
+                    if latest_ts is None or event_ts > latest_ts:
+                        latest_ts = event_ts
+                        latest_event = event
+                if latest_event is None:
+                    return None, "no-valid-events"
+                return latest_event, str(latest_event.get("timestamp") or "unknown")
+            except Exception as exc:
+                return None, f"events-error:{exc}"
+
         def bucket_age(bucket_id: str) -> Tuple[Optional[int], str]:
+            event, event_tail = latest_bucket_event(bucket_id)
+            if event:
+                end = str(event.get("timestamp") or "").strip()
+                try:
+                    end_dt = datetime.fromisoformat(end.replace("Z", "+00:00")).astimezone(timezone.utc)
+                    age = int((now - end_dt).total_seconds())
+                    return age, end
+                except Exception as exc:
+                    return None, f"event-ts-error:{exc}"
+
             try:
                 r = requests.get(f"{base}/buckets/{bucket_id}", timeout=20)
                 r.raise_for_status()
@@ -2676,7 +3371,7 @@ class TSJGuardianBot:
                 age = int((now - end_dt).total_seconds())
                 return age, end
             except Exception as exc:
-                return None, f"error:{exc}"
+                return None, f"{event_tail}; metadata-error:{exc}"
 
         def load_worktime_activity() -> Tuple[Optional[Dict[str, Dict[str, Optional[int]]]], Optional[str]]:
             try:
@@ -2723,6 +3418,7 @@ class TSJGuardianBot:
                 activity[bucket_host] = {
                     "active": bool(latest_ts and latest_active and (age_seconds or 0) <= self.aw_rus_stale_sec),
                     "age_seconds": age_seconds,
+                    "fresh": bool(latest_ts and age_seconds is not None and age_seconds <= self.aw_rus_stale_sec),
                 }
 
             return activity, None
@@ -2732,6 +3428,33 @@ class TSJGuardianBot:
         worktime_activity, worktime_error = load_worktime_activity()
         current_host_activity = worktime_activity.get(host) if worktime_activity else None
         interactive_required = bool(current_host_activity and current_host_activity.get("active"))
+
+        guard_event, guard_tail = latest_bucket_event(f"aw-rus-collector-guard_{host}")
+        guard_data = (guard_event or {}).get("data") if guard_event else {}
+        guard_problems = guard_data.get("problems") if isinstance(guard_data, dict) else []
+        guard_actions = guard_data.get("actions") if isinstance(guard_data, dict) else []
+        guard_age = None
+        if guard_event:
+            try:
+                guard_ts = datetime.fromisoformat(str(guard_event["timestamp"]).replace("Z", "+00:00")).astimezone(timezone.utc)
+                guard_age = int((now - guard_ts).total_seconds())
+            except Exception:
+                guard_age = None
+        guard_healthy = bool(
+            guard_age is not None
+            and guard_age <= max(300, self.aw_rus_stale_sec)
+            and isinstance(guard_data, dict)
+            and guard_data.get("status") == "ok"
+            and not guard_problems
+        )
+        if guard_event:
+            mode = guard_data.get("mode", "unknown") if isinstance(guard_data, dict) else "unknown"
+            if guard_healthy:
+                lines.append(f"- collector-guard: OK age={guard_age}s mode={mode} actions={len(guard_actions or [])}")
+            else:
+                lines.append(f"- collector-guard: WARN age={guard_age}s mode={mode} tail={guard_tail}")
+        else:
+            lines.append(f"- collector-guard: WARN ({guard_tail})")
 
         checks = [
             (f"aw-watcher-window_{host}", "watcher-window"),
@@ -2748,6 +3471,8 @@ class TSJGuardianBot:
             if age is None:
                 if label.startswith("watcher-") and not interactive_required:
                     lines.append(f"- {label}: WARN ({tail}; host inactive)")
+                elif label == "dlp-endpoint" and not interactive_required and guard_healthy:
+                    lines.append(f"- {label}: WARN ({tail}; host inactive; guard healthy)")
                 else:
                     lines.append(f"- {label}: FAIL ({tail})")
                     failures.append(label)
@@ -2755,6 +3480,8 @@ class TSJGuardianBot:
             if age > self.aw_rus_stale_sec:
                 if label.startswith("watcher-") and not interactive_required:
                     lines.append(f"- {label}: WARN age={age}s end={tail} (host inactive)")
+                elif label == "dlp-endpoint" and not interactive_required and guard_healthy:
+                    lines.append(f"- {label}: WARN age={age}s end={tail} (host inactive; guard healthy)")
                 else:
                     lines.append(f"- {label}: STALE age={age}s end={tail}")
                     failures.append(label)
@@ -2852,8 +3579,13 @@ class TSJGuardianBot:
             else:
                 lines.append(f"- worktime({target}): OK active_seconds=0 (no active sessions)")
         except Exception as exc:
-            lines.append(f"- worktime: FAIL ({exc})")
-            failures.append("worktime")
+            if current_host_activity and current_host_activity.get("fresh"):
+                age_seconds = current_host_activity.get("age_seconds")
+                age_tail = f"; session bucket age={age_seconds}s" if age_seconds is not None else ""
+                lines.append(f"- worktime: WARN report unavailable ({exc}{age_tail})")
+            else:
+                lines.append(f"- worktime: FAIL ({exc})")
+                failures.append("worktime")
 
         return lines, failures
 
@@ -2977,38 +3709,56 @@ class TSJGuardianBot:
         out = (proc.stdout or "") + (("\n" + proc.stderr) if proc.stderr else "")
         return proc.returncode, out.strip()
 
-    def _aw_rus_windows_collectors_heal(self, include_watchers: bool, include_worktime: bool) -> Tuple[bool, List[str]]:
+    def _aw_rus_windows_collectors_heal(
+        self,
+        include_watchers: bool,
+        include_worktime: bool,
+        include_dlp: bool = False,
+    ) -> Tuple[bool, List[str]]:
         report: List[str] = []
-        if not (include_watchers or include_worktime):
-            report.append("- windows-heal: skipped (no watcher/worktime targets)")
+        if not (include_watchers or include_worktime or include_dlp):
+            report.append("- windows-heal: skipped (no Windows collector targets)")
             return True, report
         if not self.aw_rus_windows_ssh_password:
             report.append("- windows-heal: FAIL (AW_RUS_WINDOWS_SSH_PASSWORD not configured)")
             return False, report
 
+        task_items = ", ".join("'" + task.replace("'", "''") + "'" for task in self.aw_rus_windows_launch_tasks)
+        launch_tasks_expr = f"@({task_items})" if task_items else "@()"
         script = (
             "$ErrorActionPreference = 'Stop'\n"
             "$ProgressPreference = 'SilentlyContinue'\n"
             f"$sessionCollectorScript = '{self.aw_rus_windows_session_collector_path}'\n"
+            f"$launchTasks = {launch_tasks_expr}\n"
+            "$stopSessionCollector = " + ("$true" if include_worktime else "$false") + "\n"
+            "$runRecovery = " + ("$true" if (include_watchers or include_worktime) else "$false") + "\n"
+            "if ($stopSessionCollector) {\n"
             "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |\n"
             "  Where-Object { ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and $_.CommandLine -and $_.CommandLine -match [Regex]::Escape($sessionCollectorScript) } |\n"
             "  ForEach-Object { Stop-Process -Id ([int]$_.ProcessId) -Force -ErrorAction SilentlyContinue }\n"
-            f"if (Test-Path '{self.aw_rus_windows_hardening_recovery_path}') {{ try {{ & '{self.aw_rus_windows_hardening_recovery_path}' -ConfigPath '{self.aw_rus_windows_config_path}' }} catch {{ Write-Output ('HARDENING_RECOVERY_WARN: ' + $_.Exception.Message) }} }}\n"
+            "}\n"
+            "if ($runRecovery) {\n"
+            f"  if (Test-Path '{self.aw_rus_windows_hardening_recovery_path}') {{ try {{ & '{self.aw_rus_windows_hardening_recovery_path}' -ConfigPath '{self.aw_rus_windows_config_path}' }} catch {{ Write-Output ('HARDENING_RECOVERY_WARN: ' + $_.Exception.Message) }} }}\n"
+            "  Start-Sleep -Seconds 2\n"
+            "  schtasks /Run /TN 'ActivityWatch Recovery' | Out-Null\n"
+            "}\n"
             "Start-Sleep -Seconds 2\n"
-            "schtasks /Run /TN 'ActivityWatch Recovery' | Out-Null\n"
-            "Start-Sleep -Seconds 2\n"
-            "Get-ScheduledTask -ErrorAction SilentlyContinue |\n"
-            "  Where-Object { $_.TaskName -like 'ActivityWatch Launch *' } |\n"
-            "  ForEach-Object { try { Start-ScheduledTask -TaskName $_.TaskName -ErrorAction Stop } catch {} }\n"
-            "Start-Sleep -Seconds 8\n"
+            "$allTasks = Get-ScheduledTask -ErrorAction SilentlyContinue\n"
+            "foreach ($taskName in $launchTasks) {\n"
+            "  $task = $allTasks | Where-Object { $_.TaskName -eq $taskName } | Select-Object -First 1\n"
+            "  if (-not $task) { Write-Output ('MISSING ' + $taskName); continue }\n"
+            "  if ($task.State -eq 'Running') { Write-Output ('SKIP running ' + $taskName); continue }\n"
+            "  try { schtasks /Run /TN $taskName | Out-String | Write-Output } catch { Write-Output ('START_WARN ' + $taskName + ': ' + $_.Exception.Message) }\n"
+            "}\n"
+            "Start-Sleep -Seconds 20\n"
             "Write-Output 'WATCHERS'\n"
             "Get-Process aw-watcher-afk,aw-watcher-window -ErrorAction SilentlyContinue |\n"
             "  Select-Object Name, Id, SessionId, StartTime |\n"
             "  Sort-Object SessionId, Name |\n"
             "  Format-Table -AutoSize\n"
-            "Write-Output 'WORKTIME'\n"
+            "Write-Output 'AW_POWERSHELL'\n"
             "Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |\n"
-            "  Where-Object { ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and $_.CommandLine -and $_.CommandLine -match [Regex]::Escape($sessionCollectorScript) } |\n"
+            "  Where-Object { ($_.Name -ieq 'powershell.exe' -or $_.Name -ieq 'pwsh.exe') -and $_.CommandLine -and $_.CommandLine -match 'AWatch-rus' } |\n"
             "  Select-Object Name, ProcessId, SessionId, CommandLine |\n"
             "  Format-List\n"
         )
@@ -3026,34 +3776,81 @@ class TSJGuardianBot:
         return True, report
 
     def _perform_aw_rus_autoheal(self, failures: List[str]) -> Tuple[bool, List[str], List[str], List[str]]:
-        watcher_failures = [item for item in failures if item.startswith("watcher-")]
-        dlp_failures = [item for item in failures if item.startswith("dlp-")]
-        worktime_failed = "worktime" in failures
+        if "slo" in failures:
+            slo_lines, slo_failures = self._aw_rus_slo_lines_and_failures()
+            stale = any(line.strip().startswith("- slo-summary: STALE") for line in slo_lines)
+            plan = self._autoheal_plan_decision(failures, slo_stale=stale)
+            if isinstance(plan, dict) and plan.get("slo_only"):
+                triggers = [str(item) for item in (plan.get("report_triggers") or []) if str(item)]
+                return False, triggers, slo_lines, slo_failures
+            trigger = (
+                "- heal trigger: SLO summary stale, check aw-slo-monitor.timer/service"
+                if stale
+                else "- heal trigger: SLO error budget exhausted, no direct autoheal target"
+            )
+            return False, [trigger], slo_lines, slo_failures
+
+        plan = self._autoheal_plan_decision(failures)
+        if isinstance(plan, dict):
+            watcher_failed = bool(plan.get("include_watchers"))
+            worktime_failed = bool(plan.get("include_worktime"))
+            windows_dlp_failed = bool(plan.get("include_windows_dlp"))
+            server_dlp_failures = [str(item) for item in (plan.get("server_dlp_failures") or []) if str(item)]
+            run_windows_heal = bool(plan.get("run_windows_heal"))
+            run_server_dlp_heal = bool(plan.get("run_server_dlp_heal"))
+            run_worktime_heal = bool(plan.get("run_worktime_heal"))
+            report_triggers = [str(item) for item in (plan.get("report_triggers") or []) if str(item)]
+            sleep_after_seconds = int(plan.get("sleep_after_seconds") or 5)
+        else:
+            watcher_failures = [item for item in failures if item.startswith("watcher-")]
+            dlp_failures = [item for item in failures if item.startswith("dlp-")]
+            windows_dlp_failures = [item for item in dlp_failures if item in {"dlp-endpoint", "dlp-fileops-host"}]
+            server_dlp_failures = [item for item in dlp_failures if item not in set(windows_dlp_failures)]
+            worktime_failed = "worktime" in failures
+            watcher_failed = bool(watcher_failures)
+            windows_dlp_failed = bool(windows_dlp_failures)
+            run_windows_heal = watcher_failed or worktime_failed or windows_dlp_failed
+            run_server_dlp_heal = bool(server_dlp_failures)
+            run_worktime_heal = watcher_failed or worktime_failed
+            report_triggers = []
+            if run_windows_heal:
+                report_triggers.append("- heal trigger: Windows session collectors degraded, starting remediation")
+            if run_server_dlp_heal:
+                report_triggers.append("- heal trigger: server-side DLP degraded, starting remediation")
+            if run_worktime_heal:
+                report_triggers.append("- heal trigger: worktime/watchers degraded, rebuilding server-side worktime views")
+            sleep_after_seconds = 30 if (watcher_failed or windows_dlp_failed) else 5
         report: List[str] = []
         heal_ok = True
 
-        if watcher_failures or worktime_failed:
+        if run_windows_heal:
             windows_ok, windows_lines = self._aw_rus_windows_collectors_heal(
-                include_watchers=bool(watcher_failures),
+                include_watchers=watcher_failed,
                 include_worktime=worktime_failed,
+                include_dlp=windows_dlp_failed,
             )
             heal_ok = heal_ok and windows_ok
-            report.append("- heal trigger: Windows session collectors degraded, starting remediation")
+            if report_triggers:
+                report.append(report_triggers.pop(0))
+            else:
+                report.append("- heal trigger: Windows session collectors degraded, starting remediation")
             report.extend(windows_lines)
 
-        if dlp_failures:
-            dlp_ok, dlp_lines = self._aw_rus_dlp_heal(dlp_failures)
+        if run_server_dlp_heal:
+            dlp_ok, dlp_lines = self._aw_rus_dlp_heal(server_dlp_failures)
             heal_ok = heal_ok and dlp_ok
-            report.append("- heal trigger: DLP degraded, starting remediation")
+            trigger = next((item for item in report_triggers if "server-side DLP" in item), None)
+            report.append(trigger or "- heal trigger: server-side DLP degraded, starting remediation")
             report.extend(dlp_lines)
 
-        if watcher_failures or worktime_failed:
+        if run_worktime_heal:
             wt_ok, wt_lines = self._aw_rus_worktime_heal()
             heal_ok = heal_ok and wt_ok
-            report.append("- heal trigger: worktime/watchers degraded, rebuilding server-side worktime views")
+            trigger = next((item for item in report_triggers if "worktime/watchers" in item), None)
+            report.append(trigger or "- heal trigger: worktime/watchers degraded, rebuilding server-side worktime views")
             report.extend(wt_lines)
 
-        time.sleep(5)
+        time.sleep(sleep_after_seconds)
         after_lines, after_failures = self._aw_rus_dlp_probe()
         return heal_ok and not after_failures, report, after_lines, after_failures
 
@@ -3187,7 +3984,7 @@ class TSJGuardianBot:
         return "\n".join(lines)
 
     def _pfsense_security_status_lines(self) -> str:
-        cmd = "/usr/bin/python3 /home/codex/infra-admin/scripts/pfsense_security_status.py"
+        cmd = f"/usr/bin/python3 {shlex.quote(self.infra_admin_root)}/scripts/pfsense_security_status.py"
         try:
             rc, out = self._run_shell(cmd, timeout_sec=40)
         except Exception as exc:
@@ -3290,6 +4087,22 @@ class TSJGuardianBot:
         updated["_tsj_meta"] = meta
         return updated, changed, changed_rules
 
+    def _aw_dlp_policy_decision(self, policy: Dict, target_mode: str = "") -> Optional[Dict]:
+        decision = self._run_status_helper_json(
+            [
+                "--dlp-policy-decision",
+                "--now-epoch",
+                str(int(time.time())),
+            ],
+            {
+                "policy": policy if isinstance(policy, dict) else {},
+                "target_mode": target_mode,
+            },
+        )
+        if isinstance(decision, dict):
+            return decision
+        return None
+
     def _aw_rus_windows_sync_dlp_policy(self, policy: Dict) -> Tuple[bool, List[str]]:
         report: List[str] = []
         if not self.aw_rus_windows_ssh_password:
@@ -3345,18 +4158,27 @@ class TSJGuardianBot:
     def _aw_dlp_policy_mode_text(self) -> str:
         active = self._aw_dlp_policy_request("GET", "/dlp/policies/active", timeout_sec=15)
         policy = active.get("policy") or {}
-        mode = self._aw_dlp_mode_from_policy(policy if isinstance(policy, dict) else {})
-        details = []
-        for group_name, rules in self._aw_dlp_toggle_rule_groups(policy if isinstance(policy, dict) else {}):
-            block_count = 0
-            total_count = 0
-            for rule in rules:
-                if not isinstance(rule, dict) or rule.get("enabled") is False:
-                    continue
-                total_count += 1
-                if str(rule.get("action") or "").strip().lower() == "block":
-                    block_count += 1
-            details.append(f"- {group_name}: block={block_count}/{total_count}")
+        decision = self._aw_dlp_policy_decision(policy if isinstance(policy, dict) else {})
+        if isinstance(decision, dict):
+            mode = str(decision.get("current_mode") or "unknown")
+            details = [
+                f"- {item.get('name')}: block={item.get('blocked', 0)}/{item.get('total', 0)}"
+                for item in (decision.get("groups") or [])
+                if isinstance(item, dict)
+            ]
+        else:
+            mode = self._aw_dlp_mode_from_policy(policy if isinstance(policy, dict) else {})
+            details = []
+            for group_name, rules in self._aw_dlp_toggle_rule_groups(policy if isinstance(policy, dict) else {}):
+                block_count = 0
+                total_count = 0
+                for rule in rules:
+                    if not isinstance(rule, dict) or rule.get("enabled") is False:
+                        continue
+                    total_count += 1
+                    if str(rule.get("action") or "").strip().lower() == "block":
+                        block_count += 1
+                details.append(f"- {group_name}: block={block_count}/{total_count}")
         lines = [
             "DLP режим:",
             f"- policy: {active.get('name') or '-'} (id={active.get('policyId') or '-'})",
@@ -3376,9 +4198,23 @@ class TSJGuardianBot:
         if not isinstance(policy, dict):
             raise RuntimeError("Active DLP policy payload is invalid")
 
-        current_mode = self._aw_dlp_mode_from_policy(policy)
-        target_mode = "monitor" if current_mode in {"enforce", "mixed"} else "enforce"
-        updated_policy, changed_count, changed_rules = self._aw_dlp_policy_for_mode(policy, target_mode)
+        decision = self._aw_dlp_policy_decision(policy, target_mode="toggle")
+        if isinstance(decision, dict):
+            current_mode = str(decision.get("current_mode") or "unknown")
+            target_mode = str(decision.get("target_mode") or "")
+            updated_policy = decision.get("updated_policy")
+            changed_count = int(decision.get("changed_count") or 0)
+            changed_rules = [
+                str(item)
+                for item in (decision.get("changed_rules") or [])
+                if str(item)
+            ]
+            if target_mode not in {"monitor", "enforce"} or not isinstance(updated_policy, dict):
+                raise RuntimeError("Rust DLP policy decision returned invalid toggle plan")
+        else:
+            current_mode = self._aw_dlp_mode_from_policy(policy)
+            target_mode = "monitor" if current_mode in {"enforce", "mixed"} else "enforce"
+            updated_policy, changed_count, changed_rules = self._aw_dlp_policy_for_mode(policy, target_mode)
         if changed_count == 0:
             return (
                 "DLP режим не изменён.\n"
@@ -3416,7 +4252,19 @@ class TSJGuardianBot:
         return "\n".join(lines)
 
     def _run_operator_action(self, action: str) -> str:
-        action = action.strip().lower()
+        requested_action = action
+        decision = self._operator_action_decision(requested_action)
+        if isinstance(decision, dict):
+            if not bool(decision.get("allowed")):
+                return str(decision.get("message") or "Неизвестное действие.")
+            action = str(decision.get("canonical_action") or requested_action).strip().lower()
+            if action and action != requested_action.strip().lower():
+                self._log(
+                    "INFO",
+                    f"Operator action routed by Rust: {requested_action!r} -> {action!r}",
+                )
+        else:
+            action = requested_action.strip().lower()
         if action == "check":
             rc, out, started = self._run_check_script_once(timeout_sec=240)
             if not started:

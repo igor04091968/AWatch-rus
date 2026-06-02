@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+from pathlib import Path
+from urllib import error, request
+
+
+DEFAULT_BASE_URL = "https://gen.pollinations.ai"
+DEFAULT_KEY_PATH = Path.home() / ".pollinations" / "credentials.json"
+
+ALIASES = {
+    "daily": "gpt-5.4-mini",
+    "cheap": "gemini-flash-lite-3.1",
+    "heavy": "gpt-5.5",
+    "coding_primary": "qwen-coder",
+    "coding_backup": "qwen-coder-large",
+    "search": "perplexity-fast",
+    "search_reasoning": "perplexity-reasoning",
+    "vision_primary": "qwen-vision",
+    "vision_heavy": "qwen-vision-pro",
+    "guardrail": "qwen-safety",
+    "text.daily": "gpt-5.4-mini",
+    "text.cheap": "gemini-flash-lite-3.1",
+    "text.heavy": "gpt-5.5",
+    "text.coding_primary": "qwen-coder",
+    "text.coding_backup": "qwen-coder-large",
+    "text.search": "perplexity-fast",
+    "text.search_reasoning": "perplexity-reasoning",
+    "text.vision_primary": "qwen-vision",
+    "text.vision_heavy": "qwen-vision-pro",
+    "text.guardrail": "qwen-safety",
+    "embeddings.primary": "openai-3-small",
+    "embeddings.quality": "openai-3-large",
+    "image.fast_preview": "zimage",
+    "image.background_change": "kontext",
+    "image.final_quality": "gptimage-large",
+    "video.primary": "ltx-2",
+    "video.backup": "wan",
+    "audio.tts_primary": "qwen-tts-instruct",
+    "audio.tts_fast": "qwen-tts",
+    "audio.tts_premium": "elevenlabs",
+}
+
+
+def load_api_key() -> str:
+    inline = os.getenv("POLLINATIONS_API_KEY", "").strip()
+    if inline:
+        return inline
+    key_path = Path(os.getenv("POLLINATIONS_KEY_PATH", str(DEFAULT_KEY_PATH))).expanduser()
+    data = json.loads(key_path.read_text(encoding="utf-8"))
+    key = str(data.get("apiKey", "")).strip()
+    if not key:
+        raise RuntimeError(f"apiKey not found in {key_path}")
+    return key
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Pollinations OpenAI-compatible chat helper.")
+    parser.add_argument("prompt", nargs="?", help="Prompt. If omitted, stdin is used.")
+    parser.add_argument("--model", default="text.daily", help="Model alias or exact model id.")
+    parser.add_argument("--system", default="", help="Optional system prompt.")
+    parser.add_argument("--temperature", type=float, default=0.2)
+    parser.add_argument("--max-tokens", type=int, default=1200)
+    parser.add_argument("--json", action="store_true", help="Print raw JSON.")
+    parser.add_argument("--list-aliases", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    if args.list_aliases:
+        print(json.dumps(ALIASES, ensure_ascii=False, indent=2, sort_keys=True))
+        return 0
+
+    prompt = args.prompt if args.prompt is not None else sys.stdin.read()
+    prompt = prompt.strip()
+    if not prompt:
+        raise RuntimeError("prompt is empty")
+
+    model = ALIASES.get(args.model.strip(), args.model.strip())
+    messages = []
+    if args.system.strip():
+        messages.append({"role": "system", "content": args.system.strip()})
+    messages.append({"role": "user", "content": prompt})
+
+    base_url = os.getenv("POLLINATIONS_BASE_URL", DEFAULT_BASE_URL).rstrip("/")
+    payload = {
+        "model": model,
+        "messages": messages,
+        "temperature": args.temperature,
+        "max_tokens": args.max_tokens,
+    }
+    req = request.Request(
+        f"{base_url}/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {load_api_key()}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": "curl/8.5 detmir-proxmox",
+        },
+        method="POST",
+    )
+    try:
+        with request.urlopen(req, timeout=180) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+    except error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"pollinations http {exc.code}: {body[:2000]}") from exc
+
+    data = json.loads(body)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+        return 0
+
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError(f"no choices in response: {body[:2000]}")
+    message = choices[0].get("message") or {}
+    content = message.get("content")
+    if isinstance(content, list):
+        text = "\n".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
+    else:
+        text = str(content or "")
+    print(text.strip())
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"polli-chat error: {exc}", file=sys.stderr)
+        raise SystemExit(1)

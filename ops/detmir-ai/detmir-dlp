@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+exec "${DETMIR_DLP_BIN:-/usr/local/bin/detmir-dlp}" "$@"

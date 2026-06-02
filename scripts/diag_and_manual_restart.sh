@@ -4,6 +4,24 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+TARGET_ROOT="${CARGO_TARGET_DIR:-$ROOT_DIR/adk-rust/target}"
+RUST_BIN="${DIAG_AND_MANUAL_RESTART_RUST:-}"
+rust_candidates=()
+if [[ -n "$RUST_BIN" ]]; then
+  rust_candidates+=("$RUST_BIN")
+fi
+rust_candidates+=(
+  "$TARGET_ROOT/release/diag-and-manual-restart"
+  "$ROOT_DIR/adk-rust/target/release/diag-and-manual-restart"
+  "/usr/local/bin/diag-and-manual-restart"
+)
+
+for candidate in "${rust_candidates[@]}"; do
+  if [[ -x "$candidate" ]]; then
+    exec "$candidate" "$@"
+  fi
+done
+
 INVENTORY="${INVENTORY:-ansible/inventory.ini}"
 WITH_WINDOWS=0
 AUTO_YES=0

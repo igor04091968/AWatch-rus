@@ -6,6 +6,19 @@
     "action": "log",
     "severity": "low"
   },
+  "nativeControls": {
+    "mode": "monitor",
+    "rollout": {
+      "baselineDays": 7,
+      "requireGuardHeartbeat": true,
+      "allowGlobalBlock": false
+    },
+    "channels": {
+      "clipboard": {"action": "audit"},
+      "usb": {"action": "audit"},
+      "print": {"action": "audit"}
+    }
+  },
   "rules": [
     {
       "id": "personal-web-during-workhours",

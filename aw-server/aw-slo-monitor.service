@@ -1,0 +1,16 @@
+[Unit]
+Description=AW-RUS SLO sampler
+After=network-online.target activitywatch-server.service aw-worktime-api.service aw-rus-healthd.service
+Wants=network-online.target activitywatch-server.service aw-worktime-api.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/activitywatch/aw-server.env
+ExecStart=/usr/bin/python3 /usr/local/bin/aw-slo-monitor.py
+SuccessExitStatus=1
+User=activitywatch
+Group=activitywatch
+Nice=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-slo-monitor

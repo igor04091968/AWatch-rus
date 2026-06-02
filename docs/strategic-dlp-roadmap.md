@@ -16,6 +16,24 @@
 | Deployment | Ansible + PowerShell ensemble + InnoSetup + Proxmox LXC |
 | Linux | Remote worker, console/SSH logger, web category logger |
 
+## Cross-OS enforcement strategy update
+
+Новый целевой путь зафиксирован в `docs/dlp-cross-os-native-enforcement.md`: AWatch-rus
+расширяется не тяжелым универсальным агентом, а нативными механизмами ОС и managed browser.
+
+Приоритет платформ:
+
+| Платформа | Легкий естественный путь | Enforcement-first канал |
+|-----------|--------------------------|--------------------------|
+| Windows | GPO/AppLocker/Spooler/Storage + текущие PowerShell collectors | USB write-block, print cancel |
+| macOS | MDM + System Extensions/Endpoint Security, без kext | monitor-first, затем managed deny |
+| Linux | fanotify + auditd, eBPF как telemetry/LSM extension | sensitive directory/removable gate |
+| ChromeOS | Google Admin Data Controls | copy/paste, print, file transfer/upload |
+| Managed browser | Edge/Chrome enterprise policy, extension только для inline upload | cloud upload policy |
+
+Общее правило rollout: `audit` -> `warn` -> точечный `block`; глобальный `block` запрещен
+до baseline и guard heartbeat.
+
 ## Ключевые разрывы до InfoWatch TM уровня
 
 ### 🔴 Критические (без них это не DLP, а мониторинг)

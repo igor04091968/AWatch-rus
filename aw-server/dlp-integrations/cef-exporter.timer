@@ -2,10 +2,11 @@
 Description=Run AWatch DLP CEF Exporter every 5 minutes
 
 [Timer]
-OnBootSec=2min
-OnUnitActiveSec=5min
+OnCalendar=*:6/10:30
+AccuracySec=30s
+RandomizedDelaySec=30s
 Unit=aw-dlp-cef-exporter.service
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

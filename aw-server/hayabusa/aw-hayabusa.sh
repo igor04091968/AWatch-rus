@@ -417,7 +417,7 @@ process_one_package() {
     fail "normalized zip extraction failed for ${package_path}"
   fi
 
-  local manifest_path host evtx_root archive_pkg_dir archive_pkg_path archive_extract_dir status report_dir
+  local manifest_path host evtx_root archive_pkg_dir archive_extract_dir status report_dir
   manifest_path="$(find_manifest_path "${stage_dir}")"
   host="${forced_host}"
   if [ -z "${host}" ] && [ -f "${package_path}.host" ]; then

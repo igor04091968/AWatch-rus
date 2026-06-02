@@ -1,0 +1,12 @@
+[Unit]
+Description=Run AW-RUS browser-visible WebUI smoke check hourly
+
+[Timer]
+OnCalendar=hourly
+AccuracySec=5min
+RandomizedDelaySec=10min
+Persistent=false
+Unit=aw-browser-smoke.service
+
+[Install]
+WantedBy=timers.target

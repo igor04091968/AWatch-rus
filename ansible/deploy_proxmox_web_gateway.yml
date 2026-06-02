@@ -14,67 +14,94 @@
     proxmox_web_gateway_tls_cert_path: "{{ proxmox_web_gateway_tls_dir }}/fullchain.pem"
     proxmox_web_gateway_tls_key_path: "{{ proxmox_web_gateway_tls_dir }}/privkey.pem"
     proxmox_web_gateway_health_path: "/healthz"
+    proxmox_web_gateway_auth_realm: "DetMir operations gateway"
+    proxmox_web_gateway_auth_user: "detmir"
+    proxmox_web_gateway_auth_file: "/etc/nginx/proxmox-web-gateway.htpasswd"
+    proxmox_web_gateway_credentials_file: "/root/proxmox-web-gateway.credentials"
     proxmox_web_gateway_routes:
       - slug: "proxmox-gui"
         title: "Proxmox VE"
         category: "Host"
         description: "Основная панель управления Proxmox VE."
         target_url: "https://10.10.10.2:8006/"
+        external_enabled: false
       - slug: "file1c-brief"
         title: "1C Executive Brief"
         category: "Management"
         description: "Сводка по предприятиям и рискам 1С."
         target_url: "http://10.10.10.2:8710/manager/brief"
+        proxy_path: "/r/file1c/brief"
+        proxy_target_url: "http://10.10.10.2:8710/manager/brief"
+        external_enabled: true
       - slug: "file1c-actions"
         title: "1C Management Actions"
         category: "Management"
         description: "Очередь действий по предприятиям в 1С."
         target_url: "http://10.10.10.2:8710/manager/actions"
+        proxy_path: "/r/file1c/actions"
+        proxy_target_url: "http://10.10.10.2:8710/manager/actions"
+        external_enabled: true
       - slug: "file1c-finance"
         title: "1C Financial Reporting"
         category: "Management"
         description: "Первый financial board по файловой 1С с разделением ledger/proxy."
         target_url: "http://10.10.10.11:3000/d/1c-file-finance/1c-file-financial-reporting?orgId=1"
+        proxy_path: "/d/1c-file-finance/1c-file-financial-reporting?orgId=1"
+        external_enabled: true
       - slug: "file1c-telemetry"
         title: "1C Telemetry Board"
         category: "Dashboards"
         description: "Read-only telemetry экран по состоянию файловых баз, reglog и host."
         target_url: "http://10.10.10.11:3000/d/1c-file-telemetry/1c-file-telemetry-board?orgId=1"
+        proxy_path: "/d/1c-file-telemetry/1c-file-telemetry-board?orgId=1"
+        external_enabled: true
       - slug: "grafana-1c"
         title: "Grafana 1C"
         category: "Dashboards"
         description: "Рабочий file-1c dashboard contour в внешней Grafana."
         target_url: "http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board?orgId=1"
+        proxy_path: "/d/1c-file-mgmt/1c-file-management-board?orgId=1"
+        external_enabled: true
       - slug: "clickhouse-http"
         title: "ClickHouse HTTP"
         category: "Data"
         description: "HTTP endpoint ClickHouse для file-1C analytics."
         target_url: "http://10.10.10.2:8123/"
+        external_enabled: false
       - slug: "influxdb"
         title: "InfluxDB"
         category: "Data"
         description: "InfluxDB LXC на CT 200."
         target_url: "http://10.10.10.10:8086/"
+        external_enabled: false
       - slug: "grafana-core"
         title: "Grafana Core"
         category: "Dashboards"
         description: "Отдельный Grafana CT 201."
         target_url: "http://10.10.10.11:3000/"
+        proxy_path: "/dashboards"
+        external_enabled: true
       - slug: "loki-alloy"
         title: "Grafana Alloy"
         category: "Logs"
         description: "Web UI Alloy на CT 202."
         target_url: "http://10.10.10.12:12345/"
+        external_enabled: false
       - slug: "aw-ui"
         title: "AW-rus UI"
         category: "Operations"
         description: "Основной ActivityWatch-Russian Web UI на CT 203."
         target_url: "http://10.10.10.13:5600/"
+        proxy_path: "/r/aw/"
+        external_enabled: true
       - slug: "aw-worktime"
         title: "AW-rus Management Report"
         category: "Operations"
         description: "Управленческий worktime/report API на CT 203."
         target_url: "http://10.10.10.13:5610/reports/worktime/management?day=today"
+        proxy_path: "/r/aw-worktime"
+        proxy_target_url: "http://10.10.10.13:5610/reports/worktime/management?day=today"
+        external_enabled: true
 
   tasks:
     - name: Установить nginx
@@ -122,6 +149,50 @@
           - "subjectAltName=DNS:{{ proxmox_web_gateway_public_hostname }}"
       args:
         creates: "{{ proxmox_web_gateway_tls_cert_path }}"
+
+    - name: Проверить наличие gateway Basic Auth файла
+      ansible.builtin.stat:
+        path: "{{ proxmox_web_gateway_auth_file }}"
+      register: proxmox_web_gateway_auth_stat
+
+    - name: Создать gateway Basic Auth credential при первом запуске
+      ansible.builtin.shell: |
+        set -eu
+        umask 077
+        password="$(openssl rand -base64 24 | tr -d '\n')"
+        hash="$(openssl passwd -apr1 "$password")"
+        printf '%s:%s\n' '{{ proxmox_web_gateway_auth_user }}' "$hash" > '{{ proxmox_web_gateway_auth_file }}'
+        printf 'url=https://{{ proxmox_web_gateway_public_hostname }}/\nuser={{ proxmox_web_gateway_auth_user }}\npassword=%s\n' "$password" > '{{ proxmox_web_gateway_credentials_file }}'
+      args:
+        executable: /bin/sh
+        creates: "{{ proxmox_web_gateway_auth_file }}"
+      no_log: true
+      when: not proxmox_web_gateway_auth_stat.stat.exists
+
+    - name: Зафиксировать права gateway Basic Auth файла
+      ansible.builtin.file:
+        path: "{{ proxmox_web_gateway_auth_file }}"
+        owner: root
+        group: www-data
+        mode: "0640"
+
+    - name: Зафиксировать права файла с gateway credential
+      ansible.builtin.file:
+        path: "{{ proxmox_web_gateway_credentials_file }}"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Прочитать gateway credential для локальной проверки
+      ansible.builtin.slurp:
+        src: "{{ proxmox_web_gateway_credentials_file }}"
+      register: proxmox_web_gateway_credentials_slurp
+      no_log: true
+
+    - name: Подготовить gateway auth password для проверок
+      ansible.builtin.set_fact:
+        proxmox_web_gateway_auth_password: "{{ (proxmox_web_gateway_credentials_slurp.content | b64decode).split('password=')[1].split('\n')[0] }}"
+      no_log: true
 
     - name: Развернуть index.html gateway
       ansible.builtin.template:
@@ -180,31 +251,105 @@
         - proxmox_web_gateway_http_redirect.location != "https://{{ proxmox_web_gateway_public_hostname }}/"
       changed_when: false
 
-    - name: Проверить redirect на Proxmox GUI
+    - name: Проверить старый /go путь без auth закрыт
       ansible.builtin.uri:
         url: "https://127.0.0.1/go/proxmox-gui"
         headers:
           Host: "{{ proxmox_web_gateway_public_hostname }}"
         validate_certs: false
         follow_redirects: none
-        status_code: 302
+        status_code: 401
       register: proxmox_web_gateway_redirect
       failed_when:
-        - proxmox_web_gateway_redirect.status != 302
-        - proxmox_web_gateway_redirect.location != "https://10.10.10.2:8006/"
+        - proxmox_web_gateway_redirect.status != 401
       changed_when: false
 
-    - name: Проверить index по public hostname
+    - name: Проверить index без auth закрыт
       ansible.builtin.uri:
         url: "https://127.0.0.1/"
         headers:
           Host: "{{ proxmox_web_gateway_public_hostname }}"
+        validate_certs: false
+        status_code: 401
+      changed_when: false
+
+    - name: Проверить index по public hostname с auth
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        url_username: "{{ proxmox_web_gateway_auth_user }}"
+        url_password: "{{ proxmox_web_gateway_auth_password }}"
+        force_basic_auth: true
         return_content: true
         validate_certs: false
       register: proxmox_web_gateway_named_index
       failed_when:
         - proxmox_web_gateway_named_index.status != 200
         - proxmox_web_gateway_public_hostname not in proxmox_web_gateway_named_index.content
+      changed_when: false
+
+    - name: Проверить reverse proxy к 1C brief с auth
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/r/file1c/brief"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        url_username: "{{ proxmox_web_gateway_auth_user }}"
+        url_password: "{{ proxmox_web_gateway_auth_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+      changed_when: false
+
+    - name: Проверить reverse proxy к Grafana health с auth
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/r/grafana/api/health"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        url_username: "{{ proxmox_web_gateway_auth_user }}"
+        url_password: "{{ proxmox_web_gateway_auth_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+      changed_when: false
+
+    - name: Проверить reverse proxy к AW info с auth
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/r/aw/api/0/info"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        url_username: "{{ proxmox_web_gateway_auth_user }}"
+        url_password: "{{ proxmox_web_gateway_auth_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+      changed_when: false
+
+    - name: Проверить browser-origin AW API query без 403
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/api/0/query/"
+        method: POST
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+          Origin: "https://{{ proxmox_web_gateway_public_hostname }}"
+          Referer: "https://{{ proxmox_web_gateway_public_hostname }}/r/aw/"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          timeperiods:
+            - "1970-01-01T00:00:00+00:00/1970-01-01T00:01:00+00:00"
+          query:
+            - "RETURN = [];"
+        url_username: "{{ proxmox_web_gateway_auth_user }}"
+        url_password: "{{ proxmox_web_gateway_auth_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        return_content: true
+      register: proxmox_web_gateway_aw_query
+      failed_when:
+        - proxmox_web_gateway_aw_query.status != 200
+        - proxmox_web_gateway_aw_query.content != "[[]]"
       changed_when: false
 
     - name: Проверить локальный HTTPS health endpoint gateway

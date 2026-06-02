@@ -19,6 +19,8 @@ ANSIBLE_DIR="$REPO_ROOT/ansible"
 INVENTORY="${AW_SMOKE_INVENTORY:-$ANSIBLE_DIR/inventory.ini}"
 REMOTE_SCRIPT_SRC="$REPO_ROOT/scripts/aw-contour-smoke-10.10.10.2.sh"
 REMOTE_SCRIPT_DST="${AW_SMOKE_REMOTE_SCRIPT:-/usr/local/sbin/aw-contour-smoke.sh}"
+REMOTE_RUST_SRC="${AW_SMOKE_REMOTE_RUST_SRC:-${CARGO_TARGET_DIR:-$REPO_ROOT/adk-rust/target}/release/aw-contour-smoke}"
+REMOTE_RUST_DST="${AW_SMOKE_REMOTE_RUST_BIN:-/usr/local/sbin/aw-contour-smoke}"
 AW_SERVER="${AW_SMOKE_AW_SERVER:-http://10.10.10.13:5600}"
 WORKTIME_API="${AW_SMOKE_WORKTIME_API:-http://10.10.10.13:5610}"
 GRAFANA_URL="${AW_SMOKE_GRAFANA_URL:-http://10.10.10.11:3000}"
@@ -447,6 +449,18 @@ run_remote_proxmox_script() {
   fi
 
   section "Deploy Remote Script To 10.10.10.2"
+  if [ -x "$REMOTE_RUST_SRC" ]; then
+    if ANSIBLE_NOCOLOR=1 ansible proxmox -i "$INVENTORY" -m copy -a "src=$REMOTE_RUST_SRC dest=$REMOTE_RUST_DST owner=root group=root mode=0755" >/tmp/aw-smoke-copy-rust.$$ 2>&1; then
+      pass "remote Rust smoke deployed to $REMOTE_RUST_DST"
+    else
+      warn "remote Rust smoke deploy failed; shell fallback remains available"
+      sed 's/^/       /' /tmp/aw-smoke-copy-rust.$$ | head -120
+    fi
+    rm -f /tmp/aw-smoke-copy-rust.$$
+  else
+    skip "remote Rust smoke binary not found: $REMOTE_RUST_SRC"
+  fi
+
   if ANSIBLE_NOCOLOR=1 ansible proxmox -i "$INVENTORY" -m copy -a "src=$REMOTE_SCRIPT_SRC dest=$REMOTE_SCRIPT_DST owner=root group=root mode=0755" >/tmp/aw-smoke-copy.$$ 2>&1; then
     pass "remote script deployed to $REMOTE_SCRIPT_DST"
   else

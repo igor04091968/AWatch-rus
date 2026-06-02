@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+out_dir="${DETMIR_AI_OUT_DIR:-/var/tmp/detmir-ai-${USER:-$(id -un)}}"
+mkdir -p "$out_dir"
+stamp="$(date -u +%Y%m%d-%H%M%S)"
+check_file="$out_dir/detmir-check-$stamp.json"
+dlp_file="$out_dir/detmir-dlp-$stamp.json"
+bundle_file="$out_dir/detmir-ai-bundle-$stamp.txt"
+
+check_rc=0
+dlp_rc=0
+
+detmir-check --json >"$check_file" || check_rc=$?
+detmir-dlp >"$dlp_file" || dlp_rc=$?
+
+{
+  echo "Ты операторский AI-помощник DetMir. По фактам ниже дай короткий русский отчет."
+  echo "Структура ответа:"
+  echo "1. Состояние: OK/WARN/FAIL"
+  echo "2. Что важно"
+  echo "3. Что сделать дальше"
+  echo
+  echo "Правила:"
+  echo "- Не предлагай рестарты, если факты чистые."
+  echo "- Отличай event-driven bucket от dead/stale."
+  echo "- DLP sendFailures важны только при новом sendFailuresDelta или warn/fail."
+  echo
+  echo "=== detmir-check exit=$check_rc ==="
+  sed -n '1,1600p' "$check_file"
+  echo
+  echo "=== detmir-dlp exit=$dlp_rc ==="
+  sed -n '1,1600p' "$dlp_file"
+} >"$bundle_file"
+
+echo "Files:"
+echo "  $check_file"
+echo "  $dlp_file"
+echo "  $bundle_file"
+echo
+
+polli-chat --model text.daily --max-tokens 700 <"$bundle_file"
+
+if [ "$check_rc" -ne 0 ] || [ "$dlp_rc" -ne 0 ]; then
+  exit 2
+fi

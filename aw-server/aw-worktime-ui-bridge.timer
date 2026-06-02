@@ -2,10 +2,10 @@
 Description=Run AW Worktime UI bridge every 30 seconds
 
 [Timer]
-OnBootSec=20s
-OnUnitActiveSec=30s
+OnCalendar=*:0/1:15
+AccuracySec=10s
 Unit=aw-worktime-ui-bridge.service
-Persistent=true
+Persistent=false
 
 [Install]
 WantedBy=timers.target

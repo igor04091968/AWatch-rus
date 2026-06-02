@@ -6,11 +6,16 @@
 
 ## `aw-prune-local-state.sh`
 
-Скрипт `aw-server/aw-prune-local-state.sh` устанавливается в:
+Команда `aw-server/aw-prune-local-state.sh` устанавливается в:
 
 ```text
 /usr/local/bin/aw-prune-local-state.sh
 ```
+
+Сейчас это Rust-first wrapper. Если доступен
+`/usr/local/bin/aw-prune-local-state-rust`, wrapper использует его; иначе
+fallback идет на legacy shell script из
+`/opt/activitywatch/aw-rus-ops/aw-prune-local-state.sh`.
 
 Назначение:
 
@@ -18,6 +23,20 @@
 - отдельно удерживает последние DB backups и JSON backups;
 - удаляет временные архивы из `/tmp`: `activitywatch-*.zip`, `hayabusa-*.zip`, `aw-hayabusa-profiles.txt`;
 - удаляет временные WebUI/worktime artifacts старше одного дня: `aw-worktime-ui-bridge.py`, `views-default.json`, `apply_webui_ru_patch.out`.
+- чистит старые `browser-smoke` run-директории в
+  `{{ aw_server_data_dir }}/browser-smoke`, удерживая последние запуски.
+
+Rust binary по умолчанию работает в dry-run режиме. Production wrapper без
+аргументов запускает его с `--apply`, чтобы сохранить поведение systemd timer.
+
+Safety policy:
+
+- не удалять основную ActivityWatch SQLite DB;
+- не удалять rollback-critical backups: `switch-backups`, `before-rust`,
+  `rollback`;
+- не удалять корневые state-каталоги;
+- удалять только пути из явного allowlist: `backups`, `backups/db`,
+  `browser-smoke`, ограниченный набор временных файлов в `/tmp`.
 
 ## systemd unit и timer
 
