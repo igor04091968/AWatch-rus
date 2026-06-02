@@ -98,9 +98,9 @@
         title: "AW-rus Management Report"
         category: "Operations"
         description: "Управленческий worktime/report API на CT 203."
-        target_url: "http://10.10.10.13:5610/reports/worktime/management?day=today"
+        target_url: "http://10.10.10.13:5610/reports/worktime/management?format=html&host=SHARKON2025"
         proxy_path: "/r/aw-worktime"
-        proxy_target_url: "http://10.10.10.13:5610/reports/worktime/management?day=today"
+        proxy_target_url: "http://10.10.10.13:5610/reports/worktime/management?format=html&host=SHARKON2025"
         external_enabled: true
       - slug: "detmir-portal"
         title: "DetMir Portal"

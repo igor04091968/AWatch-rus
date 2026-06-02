@@ -52,12 +52,14 @@ function label(name) {
 }
 
 function renderLinks(links) {
+  const link = (text, href) => `<a class="button" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
   return `<div class="links">
-    <a class="button" href="${links.detmir_activitywatch}">DetMir ActivityWatch</a>
-    <a class="button" href="${links.grafana_dashboards}">Grafana</a>
-    <a class="button" href="${links.aw_ui}">AW UI</a>
-    <a class="button" href="${links.worktime_report}">Worktime</a>
-    <a class="button" href="${links.file1c_brief}">1C brief</a>
+    ${link("DetMir ActivityWatch", links.detmir_activitywatch)}
+    ${link("Grafana", links.grafana_dashboards)}
+    ${link("AW UI", links.aw_ui)}
+    ${link("Рабочее время", links.worktime_report)}
+    ${link("1С сводка", links.file1c_brief)}
+    ${link("1С действия", links.file1c_actions)}
   </div>`;
 }
 

@@ -622,7 +622,7 @@ fn links() -> PortalLinks {
             "/d/detmir-aw-main/detmir-activitywatch?orgId=1&from=now-48h&to=now&timezone=browser&var-host=SHARKON2025&refresh=5m"
                 .to_string(),
         aw_ui: "/r/aw/".to_string(),
-        worktime_report: "/r/aw-worktime".to_string(),
+        worktime_report: "/reports/worktime/management?format=html&host=SHARKON2025".to_string(),
         file1c_brief: "/r/file1c/brief".to_string(),
         file1c_actions: "/r/file1c/actions".to_string(),
     }
@@ -935,7 +935,12 @@ mod tests {
     fn links_are_gateway_relative() {
         let links = links();
         assert!(links.detmir_activitywatch.starts_with("/d/"));
-        assert_eq!(links.worktime_report, "/r/aw-worktime");
+        assert!(
+            links
+                .worktime_report
+                .starts_with("/reports/worktime/management?")
+        );
+        assert!(links.worktime_report.contains("format=html"));
     }
 
     #[test]

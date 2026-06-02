@@ -1580,6 +1580,13 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `.playwright-cli/page-2026-06-02T17-31-49-049Z.png`,
       `.playwright-cli/page-2026-06-02T17-33-50-318Z.png`,
       `.playwright-cli/page-2026-06-02T17-34-04-725Z.png`.
+    - portal link repair after Grafana/gateway smoke: quick links now open in a
+      separate tab, `worktime_report` points to explicit HTML
+      `/reports/worktime/management?format=html&host=SHARKON2025`,
+      `1С действия` is shown in the portal, and gateway `/r/aw-worktime` is
+      pinned to the same HTML report. Production smoke: AW UI, Worktime, 1C
+      brief, and 1C actions returned `200 text/html`; Grafana links correctly
+      redirect to `/login` when no Grafana session exists.
 
 Отложить:
 
