@@ -25,6 +25,7 @@ members = [
     "crates/aw-browser-smoke",
     "crates/diag-and-manual-restart",
     "crates/detmir-grafana-check",
+    "crates/detmir-portal",
     "crates/aw-slo-monitor",
     "crates/aw-rus-healthd",
     "crates/detmir-check",

@@ -1546,11 +1546,47 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       timer active, Grafana CT failed units 0, Proxmox failed units 0,
       `detmir-check` `service_failures=0`, `detmir-auto --no-heal` rc 0,
       `detmir-status` OK / `ok_for_operator=true`.
+56. `[done]` Реализовать read-only MVP `detmir-portal`:
+    - добавлен crate `detmir-portal`;
+    - portal работает как Rust web service на Proxmox:
+      `/usr/local/bin/detmir-portal`, `detmir-portal.service`,
+      bind `127.0.0.1:8720`;
+    - внешний route добавлен в существующий nginx gateway:
+      `https://dm.iri1968.dpdns.org/portal/`;
+    - UI содержит вкладки `Оператор`, `Руководитель`, `Владелец`,
+      `Инциденты`;
+    - API реализованы: `/api/health`, `/api/summary`, `/api/operator`,
+      `/api/manager`, `/api/owner`, `/api/incidents`, `/api/links`;
+    - источники read-only: `detmir-status --json`, `detmir-check --json`,
+      `systemctl --failed`, AW Worktime API, 1C analytics health;
+    - portal не делает write/heal/restart actions и не трогает pfSense,
+      Telegram runtime, NAT/DNS/VPN;
+    - добавлен deployment playbook `ansible/deploy_detmir_portal.yml`;
+    - gateway playbook теперь проверяет `/portal/api/health` с auth;
+    - `scripts/check_detmir_rust_release_artifacts.sh` теперь требует
+      `detmir-portal`;
+    - gates: `cargo fmt --all -- --check`, `cargo test -p detmir-portal`
+      (`3 passed`), `cargo clippy -p detmir-portal --all-targets -- -D
+      warnings`, release build OK, `ansible-playbook
+      deploy_detmir_portal.yml --syntax-check`, `ansible-playbook
+      deploy_proxmox_web_gateway.yml --syntax-check`, artifact check OK;
+    - production verification: `detmir-portal` active, nginx active,
+      `/portal/api/health` OK through gateway auth, all sources true,
+      external `/portal/` returns protected `401` without auth, gateway
+      `/healthz` returns `ok`, `detmir-status` OK / `ok_for_operator=true`,
+      Proxmox failed units 0;
+    - browser verification through production tunnel: desktop and mobile
+      nonblank, tabs work, API requests 200, console errors 0. Screenshots:
+      `.playwright-cli/page-2026-06-02T17-31-49-049Z.png`,
+      `.playwright-cli/page-2026-06-02T17-33-50-318Z.png`,
+      `.playwright-cli/page-2026-06-02T17-34-04-725Z.png`.
 
 Отложить:
 
-- новый этап: сделать `detmir-portal` - единый read-only Rust web portal для
-  оператора, руководителя и владельца. Детальный план:
+- post-MVP развитие `detmir-portal`: role-aware views, incident comments,
+  acknowledge/assign, safe check-now action, daily owner report, historical
+  trends, AI summary with strict source citations, action buttons with
+  allowlist and audit log. Детальный план:
   `docs/DETMIR_PORTAL_GUI_PLAN_RU.md`;
 - перенос Telegram bot runtime снят с плана: Python остается постоянным
   runtime, Rust используется только для backend helpers;

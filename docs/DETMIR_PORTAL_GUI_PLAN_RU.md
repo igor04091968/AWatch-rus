@@ -4,6 +4,23 @@
 надо угадывать архитектуру: идти по фазам, проверять каждый слой, не ломать
 текущий контур.
 
+## Статус На 2026-06-02
+
+Read-only MVP выполнен и развернут:
+
+- Rust crate: `adk-rust/crates/detmir-portal`;
+- production service: `detmir-portal.service` на Proxmox;
+- bind: `127.0.0.1:8720`;
+- gateway route: `https://dm.iri1968.dpdns.org/portal/`;
+- API: `/api/health`, `/api/summary`, `/api/operator`, `/api/manager`,
+  `/api/owner`, `/api/incidents`, `/api/links`;
+- UI tabs: `Оператор`, `Руководитель`, `Владелец`, `Инциденты`;
+- verification: local Rust gates OK, Ansible deploy OK, gateway health OK,
+  Playwright desktop/mobile smoke OK.
+
+Следующий агент не должен начинать MVP заново. Работать дальше от deployed
+baseline и раздела `Phase 8: Post-MVP Enhancements`.
+
 ## Цель
 
 Сделать единый web GUI для работы с контуром DetMir:

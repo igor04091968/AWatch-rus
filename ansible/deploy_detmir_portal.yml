@@ -1,0 +1,93 @@
+---
+- name: Deploy DetMir read-only portal
+  hosts: proxmox
+  become: true
+  gather_facts: false
+
+  vars:
+    aw_repo_root: "{{ playbook_dir | dirname }}"
+    aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
+    detmir_portal_bind: "{{ detmir_portal_bind_override | default('127.0.0.1:8720') }}"
+    detmir_portal_env_path: "/etc/detmir-portal.env"
+
+  tasks:
+    - name: Check local detmir-portal binary
+      ansible.builtin.stat:
+        path: "{{ aw_rust_release_dir }}/detmir-portal"
+      delegate_to: localhost
+      become: false
+      register: detmir_portal_binary
+
+    - name: Fail when detmir-portal binary is absent
+      ansible.builtin.fail:
+        msg: "Missing {{ aw_rust_release_dir }}/detmir-portal. Build with cargo build --release -p detmir-portal."
+      when: not (detmir_portal_binary.stat.exists | default(false))
+
+    - name: Install detmir-portal binary
+      ansible.builtin.copy:
+        src: "{{ aw_rust_release_dir }}/detmir-portal"
+        dest: /usr/local/bin/detmir-portal
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install detmir-portal environment
+      ansible.builtin.copy:
+        dest: "{{ detmir_portal_env_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          DETMIR_PORTAL_BIND={{ detmir_portal_bind }}
+          DETMIR_PORTAL_STATUS_CMD=detmir-status --json
+          DETMIR_PORTAL_CHECK_CMD=detmir-check --json
+          DETMIR_PORTAL_FAILED_UNITS_CMD=systemctl --failed --no-pager
+          DETMIR_PORTAL_WORKTIME_URL=http://10.10.10.13:5610
+          DETMIR_PORTAL_ONE_C_URL=http://10.10.10.2:8710
+          DETMIR_PORTAL_TIMEOUT_SECONDS=10
+
+    - name: Install detmir-portal systemd service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/detmir-portal.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=DetMir Operator Portal
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          EnvironmentFile=-{{ detmir_portal_env_path }}
+          ExecStart=/usr/local/bin/detmir-portal
+          Restart=on-failure
+          RestartSec=5s
+
+          [Install]
+          WantedBy=multi-user.target
+      register: detmir_portal_service_unit
+
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: detmir_portal_service_unit.changed
+
+    - name: Enable and restart detmir-portal
+      ansible.builtin.systemd:
+        name: detmir-portal.service
+        enabled: true
+        state: restarted
+
+    - name: Verify detmir-portal local health
+      ansible.builtin.uri:
+        url: "http://{{ detmir_portal_bind }}/api/health"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: detmir_portal_health
+      failed_when:
+        - detmir_portal_health.status != 200
+        - "'sources' not in detmir_portal_health.content"
+      changed_when: false

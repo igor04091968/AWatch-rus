@@ -37,6 +37,7 @@ required_bins=(
   aw-browser-smoke
   diag-and-manual-restart
   detmir-grafana-check
+  detmir-portal
   dlp-health-check
   dlp-content-analyzer
   dlp-admin-cli

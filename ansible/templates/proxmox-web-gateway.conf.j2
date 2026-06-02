@@ -257,6 +257,16 @@ server {
 {% endif %}
 {% endfor %}
 
+    location = /portal {
+        return 302 /portal/;
+    }
+
+    location /portal/ {
+        proxy_set_header Authorization "";
+        proxy_pass http://127.0.0.1:8720/;
+        proxy_redirect off;
+    }
+
     location /go/ {
         try_files /index.html =404;
     }

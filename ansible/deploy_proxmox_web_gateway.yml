@@ -102,6 +102,13 @@
         proxy_path: "/r/aw-worktime"
         proxy_target_url: "http://10.10.10.13:5610/reports/worktime/management?day=today"
         external_enabled: true
+      - slug: "detmir-portal"
+        title: "DetMir Portal"
+        category: "Operations"
+        description: "Единый read-only портал для оператора, руководителя и владельца."
+        target_url: "http://127.0.0.1:8720/"
+        proxy_path: "/portal/"
+        external_enabled: true
 
   tasks:
     - name: Установить nginx
@@ -323,6 +330,23 @@
         force_basic_auth: true
         validate_certs: false
         status_code: 200
+      changed_when: false
+
+    - name: Проверить reverse proxy к DetMir Portal health с auth
+      ansible.builtin.uri:
+        url: "https://127.0.0.1/portal/api/health"
+        headers:
+          Host: "{{ proxmox_web_gateway_public_hostname }}"
+        url_username: "{{ proxmox_web_gateway_auth_user }}"
+        url_password: "{{ proxmox_web_gateway_auth_password }}"
+        force_basic_auth: true
+        validate_certs: false
+        status_code: 200
+        return_content: true
+      register: proxmox_web_gateway_portal_health
+      failed_when:
+        - proxmox_web_gateway_portal_health.status != 200
+        - "'sources' not in proxmox_web_gateway_portal_health.content"
       changed_when: false
 
     - name: Проверить browser-origin AW API query без 403
