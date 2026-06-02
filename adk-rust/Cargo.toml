@@ -7,6 +7,7 @@ members = [
     "crates/aw-db-maintenance",
     "crates/aw-ensure-reliability",
     "crates/aw-health-check",
+    "crates/aw-linux-install",
     "crates/aw-prune-local-state",
     "crates/check-aw-data",
     "crates/check-aw-full",

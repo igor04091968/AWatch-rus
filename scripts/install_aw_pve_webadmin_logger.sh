@@ -9,6 +9,39 @@ STATE_DIR="/var/lib/aw-pve-webadmin-logger"
 LOG_DIR="/var/log/aw-pve-webadmin-logger"
 CONFIG_PATH="/etc/aw-pve-webadmin-logger/config.json"
 SERVICE_PATH="/etc/systemd/system/aw-pve-webadmin-logger.service"
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+ROOT_DIR="$(CDPATH= cd -- "${SCRIPT_DIR}/.." && pwd)"
+SELF_PATH="${SCRIPT_DIR}/$(basename -- "$0")"
+
+if [ "${1:-}" = "--apply-legacy" ]; then
+    shift
+else
+    TARGET_ROOT="${CARGO_TARGET_DIR:-${ROOT_DIR}/adk-rust/target}"
+    for candidate in \
+        "${AW_LINUX_INSTALL_RUST:-}" \
+        "${TARGET_ROOT}/release/aw-linux-install" \
+        "${ROOT_DIR}/adk-rust/target/release/aw-linux-install" \
+        "/usr/local/bin/aw-linux-install"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+            exec "$candidate" --kind pve-webadmin --legacy-script "$SELF_PATH" "$@"
+        fi
+    done
+    cat >&2 <<'EOF'
+install_aw_pve_webadmin_logger.sh now requires the Rust planner for safe default runs.
+Build it first:
+  cd adk-rust && cargo build --release -p aw-linux-install
+
+Safe dry-run:
+  scripts/install_aw_pve_webadmin_logger.sh --json
+
+Explicit install:
+  scripts/install_aw_pve_webadmin_logger.sh --apply
+
+Old shell install:
+  scripts/install_aw_pve_webadmin_logger.sh --apply-legacy
+EOF
+    exit 2
+fi
 
 usage() {
     cat <<'EOF'

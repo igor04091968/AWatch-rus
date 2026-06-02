@@ -19,6 +19,7 @@ required_bins=(
   aw-db-maintenance
   aw-ensure-reliability
   aw-health-check
+  aw-linux-install
   aw-prune-local-state
   check-aw-data
   check-aw-full

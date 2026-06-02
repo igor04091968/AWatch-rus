@@ -1501,6 +1501,28 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       aw-ensure-reliability --all-targets -- -D warnings`, release build OK,
       `bash -n aw-server/ensure-reliability.sh`, artifact check OK,
       `ansible-playbook deploy_aw_server.yml --syntax-check` OK.
+54. `[done]` Перевести Linux install scripts в Rust-first safe planner слой:
+    - добавлен crate `aw-linux-install`;
+    - wrappers теперь Rust-first и dry-run по умолчанию:
+      `scripts/install_aw_linux_client.sh`,
+      `scripts/install_aw_linux_remote_worker.sh`,
+      `scripts/install_aw_linux_web_category_logger.sh`,
+      `scripts/install_aw_console_ssh_logger.sh`,
+      `scripts/install_aw_pve_webadmin_logger.sh`;
+    - real install требует explicit `--apply`;
+    - old shell install требует explicit `--apply-legacy`;
+    - `aw-linux-install --apply` запускает соответствующий legacy script с
+      `--apply-legacy`, сохраняя embedded Python collectors и shell install
+      contract;
+    - `remote_worker` legacy path исправлен: вложенные client/console/web
+      installers вызываются с `--apply-legacy`, чтобы real legacy install не
+      превратился в dry-run после оборачивания;
+    - PVE webadmin logger не запускался и Proxmox platform не менялся; это
+      только safe planner wrapper;
+    - gates: `cargo fmt --all -- --check`, `cargo test -p aw-linux-install`
+      (`2 passed`), `cargo clippy -p aw-linux-install --all-targets -- -D
+      warnings`, release build OK, `sh -n` для всех пяти wrappers OK,
+      dry-run JSON для всех пяти wrappers OK, artifact check OK.
 
 Отложить:
 

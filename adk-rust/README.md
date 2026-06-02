@@ -25,6 +25,8 @@ scripts with durable standalone Rust modules.
   process-level session events, with backup-before-delete.
 - `aw-ensure-reliability` - safe dry-run/apply planner for AW service
   reliability repair actions that were previously immediate Bash mutations.
+- `aw-linux-install` - safe dry-run/apply planner for Linux ActivityWatch
+  install wrappers; legacy shell install is explicit.
 - `check-aw-full` - read-only local AW/RDP full check replacement for the
   legacy shell helper.
 - `dlp-aggregator` - AW server DLP warehouse aggregator replacement.

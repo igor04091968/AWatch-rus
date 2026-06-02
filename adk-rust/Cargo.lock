@@ -234,6 +234,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aw-linux-install"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "aw-prune-local-state"
 version = "0.1.0"
 dependencies = [
