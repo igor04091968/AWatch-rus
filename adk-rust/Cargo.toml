@@ -5,6 +5,7 @@ members = [
     "crates/detmir-aw-client",
     "crates/aw-db-health",
     "crates/aw-db-maintenance",
+    "crates/aw-ensure-reliability",
     "crates/aw-health-check",
     "crates/aw-prune-local-state",
     "crates/check-aw-data",

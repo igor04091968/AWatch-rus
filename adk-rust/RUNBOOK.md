@@ -1470,6 +1470,37 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       (`3 passed`), `cargo clippy -p prod-rollout --all-targets -- -D
       warnings`, release build OK, `bash -n scripts/prod_rollout.sh`,
       artifact check OK.
+53. `[done]` Перенести `aw-server/ensure-reliability.sh` в Rust-first
+    dry-run/apply helper:
+    - добавлен crate `aw-ensure-reliability`;
+    - `aw-server/ensure-reliability.sh` теперь Rust-first wrapper:
+      ищет `AW_ENSURE_RELIABILITY_RUST`,
+      `$CARGO_TARGET_DIR/release/aw-ensure-reliability`,
+      `adk-rust/target/release/aw-ensure-reliability`,
+      `/usr/local/bin/aw-ensure-reliability`;
+    - обычный запуск больше не делает `chown`, `systemctl stop/start`,
+      logrotate write или health timer write; он показывает dry-run plan;
+    - реальный Rust repair требует explicit `--apply`;
+    - старый Bash repair доступен только explicit `--apply-legacy`;
+    - Rust helper сохраняет legacy action set: env check,
+      ownership/mode repair for `/var/lib/activitywatch`,
+      `/var/log/activitywatch`, `/opt/activitywatch`, logrotate install,
+      health-check script/timer/service install, ordered AW service restart and
+      enable;
+    - `deploy_aw_server.yml` optional устанавливает
+      `/usr/local/bin/aw-ensure-reliability` до Influx token checks, если
+      release artifact доступен;
+    - production binary доставлен на AW server, но `--apply` не запускался;
+    - production dry-run: `apply=false`, `ok=true`, `missing=0`,
+      `executed=0`, `steps=25`;
+    - final production gates: AW failed units `0`, DetMir status OK with
+      `service_warnings=0`, `dlp_counts={ok:22,warn:0,fail:0}`,
+      `ok_for_operator=true`;
+    - gates: `cargo fmt --all -- --check`, `cargo test -p
+      aw-ensure-reliability` (`2 passed`), `cargo clippy -p
+      aw-ensure-reliability --all-targets -- -D warnings`, release build OK,
+      `bash -n aw-server/ensure-reliability.sh`, artifact check OK,
+      `ansible-playbook deploy_aw_server.yml --syntax-check` OK.
 
 Отложить:
 

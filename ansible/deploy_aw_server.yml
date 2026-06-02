@@ -471,6 +471,22 @@
             mode: "0755"
           when: aw_db_health_rust_binary_early.stat.exists | default(false)
 
+        - name: Проверить локальный Rust aw-ensure-reliability до Influx проверок
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/aw-ensure-reliability"
+          delegate_to: localhost
+          register: aw_ensure_reliability_rust_binary_early
+          become: false
+
+        - name: Установить Rust aw-ensure-reliability до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/aw-ensure-reliability"
+            dest: /usr/local/bin/aw-ensure-reliability
+            owner: root
+            group: root
+            mode: "0755"
+          when: aw_ensure_reliability_rust_binary_early.stat.exists | default(false)
+
         - name: Проверить локальный Rust aw-db-maintenance до Influx проверок
           ansible.builtin.stat:
             path: "{{ aw_rust_release_dir }}/aw-db-maintenance"

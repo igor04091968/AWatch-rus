@@ -213,6 +213,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aw-ensure-reliability"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "aw-health-check"
 version = "0.1.0"
 dependencies = [

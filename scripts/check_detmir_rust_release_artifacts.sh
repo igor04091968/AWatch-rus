@@ -17,6 +17,7 @@ required_bins=(
   aw-rus-healthd
   aw-db-health
   aw-db-maintenance
+  aw-ensure-reliability
   aw-health-check
   aw-prune-local-state
   check-aw-data

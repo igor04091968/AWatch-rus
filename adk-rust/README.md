@@ -23,6 +23,8 @@ scripts with durable standalone Rust modules.
 - `dlp-health-check` - AW server DLP health check replacement.
 - `aw-db-maintenance` - guarded weekly SQLite maintenance for old allowlisted
   process-level session events, with backup-before-delete.
+- `aw-ensure-reliability` - safe dry-run/apply planner for AW service
+  reliability repair actions that were previously immediate Bash mutations.
 - `check-aw-full` - read-only local AW/RDP full check replacement for the
   legacy shell helper.
 - `dlp-aggregator` - AW server DLP warehouse aggregator replacement.

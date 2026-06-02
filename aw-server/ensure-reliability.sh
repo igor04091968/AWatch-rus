@@ -5,7 +5,38 @@ set -euo pipefail
 # Fixes common issues and ensures proper configuration
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 ENV_FILE="/etc/activitywatch/aw-server.env"
+
+if [[ "${1:-}" == "--apply-legacy" ]]; then
+    shift
+else
+    TARGET_ROOT="${CARGO_TARGET_DIR:-$ROOT_DIR/adk-rust/target}"
+    for candidate in \
+        "${AW_ENSURE_RELIABILITY_RUST:-}" \
+        "$TARGET_ROOT/release/aw-ensure-reliability" \
+        "$ROOT_DIR/adk-rust/target/release/aw-ensure-reliability" \
+        "/usr/local/bin/aw-ensure-reliability"; do
+        if [[ -n "$candidate" && -x "$candidate" ]]; then
+            exec "$candidate" --health-script-source "$SCRIPT_DIR/health-check.sh" "$@"
+        fi
+    done
+    cat >&2 <<'EOF'
+ensure-reliability.sh now requires the Rust planner for safe default runs.
+Build it first:
+  cd adk-rust && cargo build --release -p aw-ensure-reliability
+
+Safe dry-run:
+  aw-server/ensure-reliability.sh --json
+
+Explicit Rust apply:
+  aw-server/ensure-reliability.sh --apply
+
+Old Bash apply:
+  aw-server/ensure-reliability.sh --apply-legacy
+EOF
+    exit 2
+fi
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"
