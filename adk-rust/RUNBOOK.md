@@ -1587,13 +1587,28 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       pinned to the same HTML report. Production smoke: AW UI, Worktime, 1C
       brief, and 1C actions returned `200 text/html`; Grafana links correctly
       redirect to `/login` when no Grafana session exists.
+    - incident operator workflow added to portal: incidents now have stable
+      IDs, operator state is persisted in
+      `/var/lib/detmir-portal/incidents-state.json`, audit events append to
+      `/var/lib/detmir-portal/audit.jsonl`, nginx passes `$remote_user` as
+      `X-Remote-User`, and the UI exposes `В работу` / `Назначить` actions.
+      This layer only records acknowledgement/assignment metadata; it does not
+      heal, restart, mutate AW/DLP/1C, or touch pfSense/Telegram. Gates:
+      `cargo fmt --all -- --check`, `cargo test -p detmir-portal` (`5 passed`),
+      `cargo clippy -p detmir-portal --all-targets -- -D warnings`, release
+      build OK. Production smoke: `POST /portal/api/incidents/action` returned
+      `200 application/json`, actor resolved to `detmir`, state/audit files
+      were written, smoke state was removed after validation, portal health
+      stayed `200`, `detmir-status` stayed `OK / ok_for_operator=true`, and
+      failed units stayed `0`. Local Playwright smoke against a temporary
+      portal instance verified `Инциденты ИБ`, `В работу`, persisted UI state,
+      disabled ack button, and zero JS errors.
 
 Отложить:
 
-- post-MVP развитие `detmir-portal`: role-aware views, incident comments,
-  acknowledge/assign, safe check-now action, daily owner report, historical
-  trends, AI summary with strict source citations, action buttons with
-  allowlist and audit log. Детальный план:
+- post-MVP развитие `detmir-portal`: role-aware views, safe check-now action,
+  daily owner report, historical trends, AI summary with strict source
+  citations, action buttons with allowlist and audit log. Детальный план:
   `docs/DETMIR_PORTAL_GUI_PLAN_RU.md`;
 - перенос Telegram bot runtime снят с плана: Python остается постоянным
   runtime, Rust используется только для backend helpers;

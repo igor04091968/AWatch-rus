@@ -45,6 +45,7 @@
           DETMIR_PORTAL_WORKTIME_URL=http://10.10.10.13:5610
           DETMIR_PORTAL_ONE_C_URL=http://10.10.10.2:8710
           DETMIR_PORTAL_TIMEOUT_SECONDS=10
+          DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
 
     - name: Install detmir-portal systemd service
       ansible.builtin.copy:

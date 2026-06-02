@@ -11,6 +11,16 @@ async function loadJson(path) {
   return response.json();
 }
 
+async function postJson(path, payload) {
+  const response = await fetch(`${apiBase()}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+  return response.json();
+}
+
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
   if (s === "ok" || s === "true") return "status-ok";
@@ -153,10 +163,20 @@ function renderOwner(data) {
 function renderIncidentsList(items) {
   if (!items || items.length === 0) return `<p class="muted">Активных проблем нет.</p>`;
   return `<div class="list">${items.map(item => `
-    <div class="row">
-      <strong>${escapeHtml(item.source)}</strong>
-      <span class="muted">${escapeHtml(item.summary)}</span>
+    <div class="row incident-row">
+      <div>
+        <strong>${escapeHtml(item.source)}</strong>
+        <div class="muted small">${escapeHtml(item.kind)} · ${escapeHtml(item.id)}</div>
+      </div>
+      <div>
+        <span class="muted">${escapeHtml(item.summary)}</span>
+        ${item.acknowledged ? `<div class="muted small">В работе: ${escapeHtml(item.assigned_to || item.actor || "оператор")} · ${escapeHtml(item.comment || "")}</div>` : ""}
+      </div>
       <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status)}</span>
+      <div class="actions">
+        <button class="small-button" data-incident-action="ack" data-incident-id="${escapeHtml(item.id)}"${item.acknowledged ? " disabled" : ""}>В работу</button>
+        <button class="small-button" data-incident-action="assign" data-incident-id="${escapeHtml(item.id)}">Назначить</button>
+      </div>
     </div>
   `).join("")}</div>`;
 }
@@ -195,6 +215,34 @@ function showError(error) {
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
 });
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-incident-action]");
+  if (!button) return;
+  incidentAction(button).catch(showError);
+});
+
+async function incidentAction(button) {
+  const id = button.dataset.incidentId;
+  const action = button.dataset.incidentAction;
+  const payload = { id, action };
+  if (action === "ack") {
+    const comment = window.prompt("Комментарий к взятию в работу", "");
+    if (comment === null) return;
+    payload.comment = comment;
+  }
+  if (action === "assign") {
+    const assignedTo = window.prompt("Кому назначить", "");
+    if (assignedTo === null || assignedTo.trim() === "") return;
+    payload.assigned_to = assignedTo;
+    const comment = window.prompt("Комментарий", "");
+    if (comment === null) return;
+    payload.comment = comment;
+  }
+  button.disabled = true;
+  await postJson("/incidents/action", payload);
+  await refresh();
+}
 
 refresh().catch(showError);
 setInterval(() => refresh().catch(showError), 60000);

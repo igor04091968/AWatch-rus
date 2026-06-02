@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
-use std::io::Read;
+use std::fs::{self, OpenOptions};
+use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -9,7 +11,7 @@ use chrono::{SecondsFormat, Utc};
 use clap::Parser;
 use reqwest::blocking::Client;
 use reqwest::header::{CONNECTION, HeaderValue};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
@@ -61,6 +63,13 @@ struct Cli {
     #[arg(long, default_value_t = 10, env = "DETMIR_PORTAL_TIMEOUT_SECONDS")]
     timeout_seconds: u64,
 
+    #[arg(
+        long,
+        default_value = "/var/lib/detmir-portal",
+        env = "DETMIR_PORTAL_STATE_DIR"
+    )]
+    state_dir: PathBuf,
+
     #[arg(long)]
     json_smoke: bool,
 }
@@ -101,12 +110,71 @@ struct SummaryResponse {
 
 #[derive(Debug, Serialize)]
 struct IncidentItem {
+    id: String,
     status: String,
     kind: String,
     source: String,
     summary: String,
     generated_at_utc: String,
     link: String,
+    acknowledged: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acknowledged_at_utc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    actor: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assigned_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    updated_at_utc: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct IncidentStateFile {
+    incidents: BTreeMap<String, IncidentActionState>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct IncidentActionState {
+    state: String,
+    actor: String,
+    updated_at_utc: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    acknowledged_at_utc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assigned_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct IncidentActionRequest {
+    id: String,
+    action: String,
+    #[serde(default)]
+    assigned_to: Option<String>,
+    #[serde(default)]
+    comment: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct IncidentActionResponse {
+    ok: bool,
+    id: String,
+    state: IncidentActionState,
+}
+
+#[derive(Debug, Serialize)]
+struct IncidentAuditEntry {
+    generated_at_utc: String,
+    actor: String,
+    id: String,
+    action: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    assigned_to: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -145,10 +213,11 @@ fn run() -> Result<i32> {
     let args = Cli::parse();
     if args.json_smoke {
         let snapshot = build_snapshot(&args);
+        let incident_state = load_incident_state_best_effort(&args);
         let smoke = json!({
             "health": build_health(&snapshot),
             "summary": build_summary(&snapshot),
-            "incidents": build_incidents(&snapshot),
+            "incidents": build_incidents(&snapshot, &incident_state),
         });
         println!("{}", serde_json::to_string_pretty(&smoke)?);
         return Ok(if build_health(&snapshot).ok { 0 } else { 2 });
@@ -165,10 +234,14 @@ fn run() -> Result<i32> {
 }
 
 fn handle_request(request: Request, args: &Cli) -> Result<()> {
-    if request.method() != &Method::Get {
+    let method = request.method().clone();
+    let path = normalize_path(request.url());
+    if method == Method::Post && path == "/api/incidents/action" {
+        return handle_incident_action(request, args);
+    }
+    if method != Method::Get {
         return respond_text(request, StatusCode(405), "Method Not Allowed", "text/plain");
     }
-    let path = normalize_path(request.url());
     match path.as_str() {
         "/" | "/operator" | "/manager" | "/owner" | "/incidents" => respond_text(
             request,
@@ -188,7 +261,8 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
         "/api/summary" => respond_json(request, &build_summary(&build_snapshot(args))),
         "/api/operator" => {
             let snapshot = build_snapshot(args);
-            respond_json(request, &build_operator(&snapshot))
+            let incident_state = load_incident_state_best_effort(args);
+            respond_json(request, &build_operator(&snapshot, &incident_state))
         }
         "/api/manager" => {
             let snapshot = build_snapshot(args);
@@ -200,7 +274,8 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
         }
         "/api/incidents" => {
             let snapshot = build_snapshot(args);
-            respond_json(request, &build_incidents(&snapshot))
+            let incident_state = load_incident_state_best_effort(args);
+            respond_json(request, &build_incidents(&snapshot, &incident_state))
         }
         "/api/links" => respond_json(request, &links()),
         _ => respond_text(
@@ -465,7 +540,7 @@ fn build_summary(snapshot: &Snapshot) -> SummaryResponse {
     }
 }
 
-fn build_operator(snapshot: &Snapshot) -> Value {
+fn build_operator(snapshot: &Snapshot, incident_state: &IncidentStateFile) -> Value {
     json!({
         "generated_at_utc": snapshot.generated_at_utc,
         "summary": build_summary(snapshot),
@@ -474,7 +549,7 @@ fn build_operator(snapshot: &Snapshot) -> Value {
         "failed_units": snapshot.failed_units,
         "grafana_data": grafana_service(snapshot),
         "links": links(),
-        "incidents": build_incidents(snapshot),
+        "incidents": build_incidents(snapshot, incident_state),
     })
 }
 
@@ -530,7 +605,7 @@ fn build_owner(snapshot: &Snapshot) -> Value {
     })
 }
 
-fn build_incidents(snapshot: &Snapshot) -> Vec<IncidentItem> {
+fn build_incidents(snapshot: &Snapshot, state: &IncidentStateFile) -> Vec<IncidentItem> {
     let mut incidents = Vec::new();
     for source in [
         ("detmir_status", &snapshot.detmir_status),
@@ -540,60 +615,62 @@ fn build_incidents(snapshot: &Snapshot) -> Vec<IncidentItem> {
         ("one_c", &snapshot.one_c),
     ] {
         if !source.1.ok {
-            incidents.push(IncidentItem {
-                status: source.1.status.clone(),
-                kind: "health".to_string(),
-                source: source.0.to_string(),
-                summary: source.1.summary.clone(),
-                generated_at_utc: snapshot.generated_at_utc.clone(),
-                link: "/portal/operator".to_string(),
-            });
+            incidents.push(incident_item(
+                &source.1.status,
+                "health",
+                source.0,
+                &source.1.summary,
+                &snapshot.generated_at_utc,
+                "/portal/operator",
+                state,
+            ));
         }
     }
     if let Some(check) = snapshot.detmir_check.payload.as_ref() {
         if let Some(services) = check.get("services").and_then(Value::as_array) {
             for service in services {
                 if service.get("ok").and_then(Value::as_bool) == Some(false) {
-                    incidents.push(IncidentItem {
-                        status: if service.get("required").and_then(Value::as_bool) == Some(true) {
-                            "FAIL"
-                        } else {
-                            "WARN"
-                        }
-                        .to_string(),
-                        kind: "service".to_string(),
-                        source: service
-                            .get("name")
-                            .and_then(Value::as_str)
-                            .unwrap_or("service")
-                            .to_string(),
-                        summary: service
-                            .get("error")
-                            .and_then(Value::as_str)
-                            .unwrap_or("service check failed")
-                            .to_string(),
-                        generated_at_utc: snapshot.generated_at_utc.clone(),
-                        link: "/portal/operator".to_string(),
-                    });
+                    let status = if service.get("required").and_then(Value::as_bool) == Some(true) {
+                        "FAIL"
+                    } else {
+                        "WARN"
+                    };
+                    let source = service
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("service");
+                    let summary = service
+                        .get("error")
+                        .and_then(Value::as_str)
+                        .unwrap_or("service check failed");
+                    incidents.push(incident_item(
+                        status,
+                        "service",
+                        source,
+                        summary,
+                        &snapshot.generated_at_utc,
+                        "/portal/operator",
+                        state,
+                    ));
                 }
             }
         }
         if let Some(buckets) = check.get("buckets").and_then(Value::as_array) {
             for bucket in buckets {
                 if bucket.get("ok").and_then(Value::as_bool) == Some(false) {
-                    incidents.push(IncidentItem {
-                        status: bucket
-                            .get("status")
-                            .and_then(Value::as_str)
-                            .unwrap_or("WARN")
-                            .to_string(),
-                        kind: "collector".to_string(),
-                        source: bucket
-                            .get("bucket")
-                            .and_then(Value::as_str)
-                            .unwrap_or("bucket")
-                            .to_string(),
-                        summary: format!(
+                    let status = bucket
+                        .get("status")
+                        .and_then(Value::as_str)
+                        .unwrap_or("WARN");
+                    let source = bucket
+                        .get("bucket")
+                        .and_then(Value::as_str)
+                        .unwrap_or("bucket");
+                    incidents.push(incident_item(
+                        status,
+                        "collector",
+                        source,
+                        &format!(
                             "{} is {}",
                             bucket
                                 .get("label")
@@ -604,14 +681,239 @@ fn build_incidents(snapshot: &Snapshot) -> Vec<IncidentItem> {
                                 .and_then(Value::as_str)
                                 .unwrap_or("not OK")
                         ),
-                        generated_at_utc: snapshot.generated_at_utc.clone(),
-                        link: "/portal/operator".to_string(),
-                    });
+                        &snapshot.generated_at_utc,
+                        "/portal/operator",
+                        state,
+                    ));
                 }
             }
         }
     }
     incidents
+}
+
+fn incident_item(
+    status: &str,
+    kind: &str,
+    source: &str,
+    summary: &str,
+    generated_at_utc: &str,
+    link: &str,
+    state: &IncidentStateFile,
+) -> IncidentItem {
+    let id = incident_id(kind, source, summary);
+    let saved = state.incidents.get(&id);
+    IncidentItem {
+        id,
+        status: status.to_string(),
+        kind: kind.to_string(),
+        source: source.to_string(),
+        summary: summary.to_string(),
+        generated_at_utc: generated_at_utc.to_string(),
+        link: link.to_string(),
+        acknowledged: saved
+            .map(|item| item.state == "acknowledged")
+            .unwrap_or(false),
+        acknowledged_at_utc: saved.and_then(|item| item.acknowledged_at_utc.clone()),
+        actor: saved.map(|item| item.actor.clone()),
+        assigned_to: saved.and_then(|item| item.assigned_to.clone()),
+        comment: saved.and_then(|item| item.comment.clone()),
+        updated_at_utc: saved.map(|item| item.updated_at_utc.clone()),
+    }
+}
+
+fn incident_id(kind: &str, source: &str, summary: &str) -> String {
+    let mut hash = 0xcbf29ce484222325u64;
+    for byte in format!("{kind}\n{source}\n{summary}").as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{kind}-{hash:016x}")
+}
+
+fn handle_incident_action(mut request: Request, args: &Cli) -> Result<()> {
+    let actor = request_actor(&request);
+    let mut body = String::new();
+    request
+        .as_reader()
+        .take(32 * 1024)
+        .read_to_string(&mut body)?;
+    let response = apply_incident_action(args, &actor, &body);
+    match response {
+        Ok(response) => respond_json(request, &response),
+        Err(err) => respond_text(
+            request,
+            StatusCode(400),
+            &serde_json::to_string_pretty(&json!({
+                "ok": false,
+                "error": err.to_string()
+            }))?,
+            "application/json; charset=utf-8",
+        ),
+    }
+}
+
+fn apply_incident_action(args: &Cli, actor: &str, body: &str) -> Result<IncidentActionResponse> {
+    let action: IncidentActionRequest =
+        serde_json::from_str(body).map_err(|err| anyhow!("invalid incident action JSON: {err}"))?;
+    let id = validate_short_token(&action.id, "id", 128)?;
+    let action_name = validate_action(&action.action)?;
+    let assigned_to = sanitize_optional_text(action.assigned_to, 80);
+    let comment = sanitize_optional_text(action.comment, 500);
+    let now = now();
+
+    let mut state_file = load_incident_state(args)?;
+    let previous = state_file.incidents.get(&id).cloned();
+    let acknowledged_at_utc = if action_name == "ack" {
+        previous
+            .as_ref()
+            .and_then(|item| item.acknowledged_at_utc.clone())
+            .or_else(|| Some(now.clone()))
+    } else if action_name == "clear" {
+        None
+    } else {
+        previous
+            .as_ref()
+            .and_then(|item| item.acknowledged_at_utc.clone())
+    };
+    let state_name = if action_name == "clear" {
+        "open"
+    } else if acknowledged_at_utc.is_some() {
+        "acknowledged"
+    } else {
+        "assigned"
+    };
+    let next = IncidentActionState {
+        state: state_name.to_string(),
+        actor: actor.to_string(),
+        updated_at_utc: now.clone(),
+        acknowledged_at_utc,
+        assigned_to: assigned_to
+            .clone()
+            .or_else(|| previous.and_then(|item| item.assigned_to)),
+        comment: comment.clone(),
+    };
+    state_file.incidents.insert(id.clone(), next.clone());
+    save_incident_state(args, &state_file)?;
+    append_incident_audit(
+        args,
+        &IncidentAuditEntry {
+            generated_at_utc: now,
+            actor: actor.to_string(),
+            id: id.clone(),
+            action: action_name.to_string(),
+            assigned_to,
+            comment,
+        },
+    )?;
+    Ok(IncidentActionResponse {
+        ok: true,
+        id,
+        state: next,
+    })
+}
+
+fn load_incident_state_best_effort(args: &Cli) -> IncidentStateFile {
+    match load_incident_state(args) {
+        Ok(state) => state,
+        Err(err) => {
+            eprintln!("detmir-portal incident state read failed: {err:#}");
+            IncidentStateFile::default()
+        }
+    }
+}
+
+fn load_incident_state(args: &Cli) -> Result<IncidentStateFile> {
+    let path = incident_state_path(args);
+    if !path.exists() {
+        return Ok(IncidentStateFile::default());
+    }
+    let data = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    serde_json::from_str(&data).with_context(|| format!("parse {}", path.display()))
+}
+
+fn save_incident_state(args: &Cli, state: &IncidentStateFile) -> Result<()> {
+    fs::create_dir_all(&args.state_dir)
+        .with_context(|| format!("create {}", args.state_dir.display()))?;
+    let path = incident_state_path(args);
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, serde_json::to_vec_pretty(state)?)
+        .with_context(|| format!("write {}", tmp.display()))?;
+    fs::rename(&tmp, &path).with_context(|| format!("rename {}", path.display()))?;
+    Ok(())
+}
+
+fn append_incident_audit(args: &Cli, entry: &IncidentAuditEntry) -> Result<()> {
+    fs::create_dir_all(&args.state_dir)
+        .with_context(|| format!("create {}", args.state_dir.display()))?;
+    let path = args.state_dir.join("audit.jsonl");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("open {}", path.display()))?;
+    serde_json::to_writer(&mut file, entry)?;
+    file.write_all(b"\n")?;
+    Ok(())
+}
+
+fn incident_state_path(args: &Cli) -> PathBuf {
+    args.state_dir.join("incidents-state.json")
+}
+
+fn request_actor(request: &Request) -> String {
+    for name in ["X-Remote-User", "X-Gateway-User", "Remote-User"] {
+        if let Some(value) = request
+            .headers()
+            .iter()
+            .find(|header| header.field.equiv(name))
+            .map(|header| header.value.as_str().trim())
+        {
+            if !value.is_empty() {
+                return sanitize_text(value, 80);
+            }
+        }
+    }
+    "local".to_string()
+}
+
+fn validate_short_token(value: &str, name: &str, max_len: usize) -> Result<String> {
+    let value = value.trim();
+    if value.is_empty() || value.len() > max_len {
+        return Err(anyhow!("{name} length is invalid"));
+    }
+    if !value
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | ':' | '.'))
+    {
+        return Err(anyhow!("{name} contains unsupported characters"));
+    }
+    Ok(value.to_string())
+}
+
+fn validate_action(value: &str) -> Result<&'static str> {
+    match value.trim() {
+        "ack" | "acknowledge" => Ok("ack"),
+        "assign" => Ok("assign"),
+        "clear" | "reopen" => Ok("clear"),
+        _ => Err(anyhow!("unsupported incident action")),
+    }
+}
+
+fn sanitize_optional_text(value: Option<String>, max_len: usize) -> Option<String> {
+    value
+        .map(|text| sanitize_text(&text, max_len))
+        .filter(|text| !text.is_empty())
+}
+
+fn sanitize_text(value: &str, max_len: usize) -> String {
+    value
+        .chars()
+        .filter(|ch| !ch.is_control())
+        .take(max_len)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 fn links() -> PortalLinks {
@@ -948,5 +1250,47 @@ mod tests {
         let value = json!({"summary":{"bucket_stale":0,"bucket_dead":0,"service_failures":0}});
         let block = collection_block(Some(&value));
         assert_eq!(block.status, "OK");
+    }
+
+    #[test]
+    fn incident_id_is_stable() {
+        assert_eq!(
+            incident_id("service", "grafana-data", "stale"),
+            incident_id("service", "grafana-data", "stale")
+        );
+        assert_ne!(
+            incident_id("service", "grafana-data", "stale"),
+            incident_id("service", "grafana-data", "fresh")
+        );
+    }
+
+    #[test]
+    fn incident_item_applies_ack_state() {
+        let id = incident_id("service", "grafana-data", "stale");
+        let mut state = IncidentStateFile::default();
+        state.incidents.insert(
+            id.clone(),
+            IncidentActionState {
+                state: "acknowledged".to_string(),
+                actor: "detmir".to_string(),
+                updated_at_utc: "2026-06-02T18:00:00Z".to_string(),
+                acknowledged_at_utc: Some("2026-06-02T18:00:00Z".to_string()),
+                assigned_to: Some("operator".to_string()),
+                comment: Some("checking".to_string()),
+            },
+        );
+        let item = incident_item(
+            "FAIL",
+            "service",
+            "grafana-data",
+            "stale",
+            "2026-06-02T18:01:00Z",
+            "/portal/operator",
+            &state,
+        );
+        assert_eq!(item.id, id);
+        assert!(item.acknowledged);
+        assert_eq!(item.actor.as_deref(), Some("detmir"));
+        assert_eq!(item.assigned_to.as_deref(), Some("operator"));
     }
 }

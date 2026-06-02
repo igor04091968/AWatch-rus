@@ -263,6 +263,7 @@ server {
 
     location /portal/ {
         proxy_set_header Authorization "";
+        proxy_set_header X-Remote-User $remote_user;
         proxy_pass http://127.0.0.1:8720/;
         proxy_redirect off;
     }

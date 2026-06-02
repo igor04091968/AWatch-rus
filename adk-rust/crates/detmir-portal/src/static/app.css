@@ -109,6 +109,12 @@ h1 {
   color: var(--muted);
 }
 
+.small {
+  font-size: 12px;
+  line-height: 1.35;
+  margin-top: 4px;
+}
+
 .status-pill,
 .badge {
   display: inline-flex;
@@ -146,6 +152,35 @@ h1 {
   border-radius: 8px;
 }
 
+.incident-row {
+  grid-template-columns: minmax(150px, 1fr) minmax(220px, 2fr) auto auto;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.small-button {
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--link);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.small-button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
 .links {
   display: flex;
   flex-wrap: wrap;
@@ -179,4 +214,6 @@ pre {
   .topbar { flex-direction: column; }
   h1 { font-size: 24px; }
   .row { grid-template-columns: 1fr; }
+  .incident-row { grid-template-columns: 1fr; }
+  .actions { justify-content: flex-start; }
 }
