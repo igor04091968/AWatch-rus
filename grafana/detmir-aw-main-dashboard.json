@@ -16,7 +16,23 @@
       "fieldConfig": {
         "defaults": {
           "decimals": 0,
-          "unit": "suffix: мин"
+          "unit": "suffix: мин",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "yellow",
+                "value": 120
+              },
+              {
+                "color": "red",
+                "value": 360
+              }
+            ]
+          }
         },
         "overrides": []
       },
@@ -27,8 +43,16 @@
         "y": 0
       },
       "id": 5,
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => (r._measurement == \"aw_rdp_worktime_hourly\" or r._measurement == \"aw_rdp_worktime_daily\" or r._measurement == \"aw_true_active_app_daily\") and (r._field == \"active_seconds\" or r._field == \"proved_work_seconds\"))\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: (float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0) / 60.0 }))\n  |> set(key: \"_field\", value: \"Свежесть\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"freshness_minutes\")\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Свежесть worktime данных",
+      "type": "stat",
       "options": {
-        "colorMode": "background",
+        "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -41,15 +65,7 @@
         },
         "textMode": "value",
         "noValue": "0"
-      },
-      "targets": [
-        {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => (r._measurement == \"aw_window_event\" or r._measurement == \"aw_afk_event\") and r._field == \"duration_s\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: (float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0) / 60.0 }))\n  |> set(key: \"_field\", value: \"Свежесть данных\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"freshness_minutes\")\n",
-          "refId": "A"
-        }
-      ],
-      "title": "Свежесть данных AW",
-      "type": "stat"
+      }
     },
     {
       "datasource": {
@@ -58,76 +74,49 @@
       },
       "fieldConfig": {
         "defaults": {
-          "unit": "suffix: мин",
-          "displayName": "${__field.labels.host}"
+          "decimals": 1,
+          "unit": "suffix: ч",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          }
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 18,
+        "h": 4,
+        "w": 6,
         "x": 6,
         "y": 0
       },
-      "id": 1,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
+      "id": 4,
       "targets": [
         {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> map(fn: (r) => ({ r with _value: r._value / 60.0 }))\n  |> set(key: \"_field\", value: \"Активность, мин\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"active_minutes\")\n",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> group()\n  |> sort(columns:[\"report_date\"])\n  |> tail(n:1)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> keep(columns:[\"_value\"])\n  |> yield(name: \"total_today_hours\")\n",
           "refId": "A"
         }
       ],
-      "title": "Активность окон (сумма за 5 минут)",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "influxdb",
-        "uid": "influxdb_aw"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "suffix: мин",
-          "displayName": "${__field.labels.host}"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 8
-      },
-      "id": 2,
+      "title": "Сегодня: активное время",
+      "type": "stat",
       "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
         },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_afk_event\" and r._field == \"duration_s\" and r.status == \"afk\")\n  |> aggregateWindow(every: 5m, fn: sum, createEmpty: false)\n  |> map(fn: (r) => ({ r with _value: r._value / 60.0 }))\n  |> set(key: \"_field\", value: \"AFK, мин\")\n  |> keep(columns: [\"_time\", \"_value\", \"_field\", \"host\"])\n  |> group(columns: [\"host\"])\n  |> yield(name: \"afk_minutes\")\n",
-          "refId": "A"
-        }
-      ],
-      "title": "AFK (сумма за 5 минут)",
-      "type": "timeseries"
+        "textMode": "value",
+        "noValue": "0"
+      }
     },
     {
       "datasource": {
@@ -137,7 +126,91 @@
       "fieldConfig": {
         "defaults": {
           "unit": "suffix: ч",
-          "displayName": "${__field.labels.category_view}"
+          "displayName": "${__field.labels.user}"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 1,
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -48h)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_hourly\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))\n  |> set(key: \"_field\", value: \"Активность, ч\")\n  |> group(columns: [\"user\"])\n  |> yield(name: \"hourly_active_hours\")\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Активность RDP по часам",
+      "type": "timeseries",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 1,
+          "unit": "suffix: ч",
+          "displayName": "${__field.labels.user}"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "id": 2,
+      "targets": [
+        {
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns: [\"user\"])\n  |> last()\n  |> filter(fn: (r) => r._value > 0)\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))\n  |> set(key: \"_field\", value: \"Часы\")\n  |> yield(name: \"today_user_hours\")\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Сегодня: активность по сотрудникам",
+      "type": "bargauge",
+      "options": {
+        "displayMode": "gradient",
+        "minVizWidth": 8,
+        "minVizHeight": 16,
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showUnfilled": true,
+        "valueMode": "color"
+      }
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 2,
+          "unit": "suffix: ч",
+          "displayName": "${__field.labels.application}"
         },
         "overrides": []
       },
@@ -148,6 +221,14 @@
         "y": 8
       },
       "id": 3,
+      "targets": [
+        {
+          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nfrom(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r._field == \"proved_work_seconds\" and r.host == \"${host}\" and r.report_date == today)\n  |> group(columns: [\"application\"])\n  |> last()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))\n  |> set(key: \"_field\", value: \"Доказано, ч\")\n  |> sort(columns: [\"_value\"], desc: true)\n  |> yield(name: \"apps_today_hours\")\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Сегодня: доказанная работа по приложениям",
+      "type": "barchart",
       "options": {
         "legend": {
           "displayMode": "table",
@@ -156,17 +237,9 @@
         },
         "tooltip": {
           "mode": "single",
-          "sort": "none"
+          "sort": "desc"
         }
-      },
-      "targets": [
-        {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> map(fn: (r) => ({ r with category_view: if r.category == \"erp_1c\" then \"1С-Бухгалтерия\" else if r.category == \"file_manager\" then \"Файловый менеджер\" else if r.category == \"terminal_shell\" then \"Терминальная оболочка\" else if r.category == \"browser\" then \"Интернет-браузер\" else if r.category == \"office_docs\" then \"Офисные документы\" else if r.category == \"remote_admin\" then \"Удаленное администрирование\" else if r.category == \"development\" then \"Разработка и программирование\" else if r.category == \"communication\" then \"Средства связи\" else if r.category == \"database\" then \"Работа с базами данных\" else if r.category == \"monitoring\" then \"Мониторинг и диагностика\" else if r.category == \"virtualization\" then \"Виртуализация\" else if r.category == \"system\" or r.category == \"misc_user\" or r.category == \"other\" or r.category == \"\" then \"Системные приложения\" else r.category }))\n  |> group(columns: [\"category_view\"])\n  |> sum()\n  |> map(fn: (r) => ({ r with _value: r._value / 3600.0 }))\n  |> set(key: \"_field\", value: \"Часы\")\n  |> keep(columns: [\"_value\", \"_field\", \"category_view\"])\n  |> sort(columns: [\"_value\"], desc: true)\n  |> yield(name: \"categories_hours\")\n",
-          "refId": "A"
-        }
-      ],
-      "title": "Категории по активному времени",
-      "type": "barchart"
+      }
     },
     {
       "datasource": {
@@ -175,61 +248,151 @@
       },
       "fieldConfig": {
         "defaults": {
-          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 1,
+            "showPoints": "never"
+          },
+          "decimals": 1,
+          "displayName": "Команда",
           "unit": "suffix: ч"
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 6,
-        "w": 24,
+        "h": 8,
+        "w": 12,
         "x": 0,
-        "y": 16
+        "y": 12
       },
-      "id": 4,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "sum"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "value",
-        "noValue": "0"
-      },
+      "id": 6,
       "targets": [
         {
-          "query": "import \"date\"\nstartBound = if v.timeRangeStart > date.sub(d: 2h, from: now()) then date.sub(d: 2h, from: now()) else v.timeRangeStart\nfrom(bucket: \"aw_metrics\")\n  |> range(start: startBound, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"aw_window_event\" and r._field == \"duration_s\")\n  |> group()\n  |> sum()\n  |> map(fn: (r) => ({ r with _value: r._value / 3600.0 }))\n  |> set(key: \"_field\", value: \"Активное время\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"total_active_hours\")\n",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_summary_daily\" and r._field == \"total_active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\"])\n  |> last()\n  |> sort(columns:[\"report_date\"])\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> set(key: \"_field\", value: \"Команда, ч\")\n  |> yield(name: \"team_daily_hours\")\n",
           "refId": "A"
         }
       ],
-      "title": "Общее активное время",
-      "type": "stat"
+      "title": "Команда: активное время по дням",
+      "type": "timeseries",
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb_aw"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Доказано, ч"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: ч"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Подтверждений"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 7,
+      "targets": [
+        {
+          "query": "import \"date\"\nimport \"strings\"\nimport \"timezone\"\noption location = timezone.location(name: \"Europe/Moscow\")\ntoday = strings.substring(v: string(v: date.add(d: 3h, to: date.truncate(t: now(), unit: 1d))), start: 0, end: 10)\nbase = from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_true_active_app_daily\" and r.host == \"${host}\" and r.report_date == today)\n\nnums = base\n  |> filter(fn: (r) => r._field == \"proved_work_seconds\" or r._field == \"evidence_events\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\ntexts = base\n  |> filter(fn: (r) => r._field == \"last_action\" or r._field == \"last_action_local\")\n  |> group(columns:[\"application\",\"_field\"])\n  |> last()\n  |> group()\n  |> pivot(rowKey:[\"application\",\"report_date\"], columnKey:[\"_field\"], valueColumn:\"_value\")\n\njoin(tables: {n: nums, t: texts}, on: [\"application\", \"report_date\"])\n  |> map(fn:(r)=>({ r with hours: float(v:r.proved_work_seconds) / 3600.0 }))\n  |> sort(columns:[\"proved_work_seconds\"], desc:true)\n  |> group()\n  |> keep(columns:[\"report_date\",\"application\",\"hours\",\"last_action_local\",\"last_action\",\"evidence_events\"])\n  |> rename(columns:{report_date:\"Дата\", application:\"Приложение\", hours:\"Доказано, ч\", last_action_local:\"Последнее действие\", last_action:\"Окно / действие\", evidence_events:\"Подтверждений\"})\n",
+          "refId": "A"
+        }
+      ],
+      "title": "Сегодня: приложения и подтверждения",
+      "type": "table"
     }
   ],
-  "refresh": "30s",
-  "schemaVersion": 39,
+  "refresh": "5m",
+  "schemaVersion": 41,
   "style": "dark",
   "tags": [
     "detmir",
     "activitywatch"
   ],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "selected": false,
+          "text": "SHARKON2025",
+          "value": "SHARKON2025"
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb_aw"
+        },
+        "definition": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"aw_metrics\", tag: \"host\", predicate: (r) => r._measurement == \"aw_rdp_worktime_daily\", start: -30d)",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Хост",
+        "multi": false,
+        "name": "host",
+        "options": [],
+        "query": "import \"influxdata/influxdb/schema\"\nschema.tagValues(bucket: \"aw_metrics\", tag: \"host\", predicate: (r) => r._measurement == \"aw_rdp_worktime_daily\", start: -30d)",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
   },
   "time": {
-    "from": "now-12h",
+    "from": "now-48h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "",
   "title": "DetMir ActivityWatch",
   "uid": "detmir-aw-main",
-  "version": 3,
+  "version": 4,
   "weekStart": ""
 }
