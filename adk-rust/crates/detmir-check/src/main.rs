@@ -1,8 +1,9 @@
 use std::net::{SocketAddr, TcpStream};
+use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use clap::Parser;
 use detmir_aw_client::ActivityWatchClient;
 use detmir_core::{exit_codes, now_utc_rfc3339};
@@ -43,6 +44,18 @@ struct Cli {
 
     #[arg(long, default_value_t = 3.0)]
     tcp_timeout_seconds: f64,
+
+    #[arg(long, default_value_t = 201)]
+    grafana_ct_id: u32,
+
+    #[arg(long, default_value = "/var/lib/detmir-grafana-check/latest.json")]
+    grafana_check_json: String,
+
+    #[arg(long, default_value_t = 30 * 60)]
+    grafana_check_max_age_seconds: i64,
+
+    #[arg(long, default_value_t = false)]
+    disable_grafana_check: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -296,7 +309,118 @@ fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
         args.tcp_timeout_seconds,
         true,
     ));
+    if !args.disable_grafana_check {
+        checks.push(grafana_data_check(args));
+    }
     checks
+}
+
+fn grafana_data_check(args: &Cli) -> ServiceCheck {
+    let name = "grafana-data".to_string();
+    let output = read_grafana_check_json_from_ct(args);
+    let output = match output {
+        Ok(output) => output,
+        Err(err) => {
+            return ServiceCheck {
+                name,
+                required: true,
+                ok: false,
+                url: None,
+                payload: None,
+                error: Some(format!("cannot execute pct for Grafana check: {err}")),
+            };
+        }
+    };
+    if !output.status.success() {
+        return ServiceCheck {
+            name,
+            required: true,
+            ok: false,
+            url: None,
+            payload: None,
+            error: Some(format!(
+                "pct grafana check read failed with status {:?}: {}",
+                output.status.code(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+        };
+    }
+    let raw = String::from_utf8_lossy(&output.stdout);
+    let payload = match serde_json::from_str::<Value>(&raw) {
+        Ok(payload) => payload,
+        Err(err) => {
+            return ServiceCheck {
+                name,
+                required: true,
+                ok: false,
+                url: None,
+                payload: None,
+                error: Some(format!("cannot parse Grafana check JSON: {err}")),
+            };
+        }
+    };
+    let check_ok = payload.get("ok").and_then(Value::as_bool).unwrap_or(false);
+    let fail_count = payload
+        .pointer("/counts/fail")
+        .and_then(Value::as_u64)
+        .unwrap_or(1);
+    let generated_at = payload
+        .get("generated_at_utc")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let age_seconds = DateTime::parse_from_rfc3339(generated_at)
+        .map(|ts| (Utc::now() - ts.with_timezone(&Utc)).num_seconds())
+        .unwrap_or(i64::MAX);
+    let fresh = (0..=args.grafana_check_max_age_seconds).contains(&age_seconds);
+    let ok = check_ok && fail_count == 0 && fresh;
+    ServiceCheck {
+        name,
+        required: true,
+        ok,
+        url: None,
+        payload: Some(serde_json::json!({
+            "generated_at_utc": generated_at,
+            "age_seconds": age_seconds,
+            "max_age_seconds": args.grafana_check_max_age_seconds,
+            "check_ok": check_ok,
+            "fail_count": fail_count,
+            "dashboard_uid": payload.get("dashboard_uid"),
+            "counts": payload.get("counts"),
+        })),
+        error: if ok {
+            None
+        } else {
+            Some(format!(
+                "Grafana check unhealthy: ok={check_ok} fail_count={fail_count} age_seconds={age_seconds}"
+            ))
+        },
+    }
+}
+
+fn read_grafana_check_json_from_ct(args: &Cli) -> std::io::Result<std::process::Output> {
+    let ct_id = args.grafana_ct_id.to_string();
+    let pct_args = [
+        "exec",
+        ct_id.as_str(),
+        "--",
+        "cat",
+        args.grafana_check_json.as_str(),
+    ];
+    if let Some(custom_pct) = std::env::var("DETMIR_PCT_BIN")
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        return Command::new(custom_pct).args(pct_args).output();
+    }
+    let sudo_output = Command::new("/usr/bin/sudo")
+        .args(["-n", "/usr/sbin/pct"])
+        .args(pct_args)
+        .output();
+    match sudo_output {
+        Ok(output) if output.status.success() => Ok(output),
+        Ok(output) if output.status.code() != Some(127) => Ok(output),
+        _ => Command::new("/usr/sbin/pct").args(pct_args).output(),
+    }
 }
 
 fn tcp_check(host: &str, port: u16, timeout_seconds: f64, required: bool) -> ServiceCheck {
@@ -507,6 +631,7 @@ fn main() -> Result<()> {
     args.worktime_url = env_or_default("DETMIR_WORKTIME_URL", &args.worktime_url);
     args.one_c_url = env_or_default("DETMIR_ONE_C_URL", &args.one_c_url);
     args.hostname = env_or_default("DETMIR_HOSTNAME", &args.hostname);
+    args.grafana_check_json = env_or_default("DETMIR_GRAFANA_CHECK_JSON", &args.grafana_check_json);
 
     let report = build_report(&args)?;
     if args.json {

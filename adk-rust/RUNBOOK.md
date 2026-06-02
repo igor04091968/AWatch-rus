@@ -1523,6 +1523,29 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       (`2 passed`), `cargo clippy -p aw-linux-install --all-targets -- -D
       warnings`, release build OK, `sh -n` для всех пяти wrappers OK,
       dry-run JSON для всех пяти wrappers OK, artifact check OK.
+55. `[done]` Закрепить проверку актуализации и правильности Grafana данных:
+    - добавлен crate `detmir-grafana-check`;
+    - check читает Grafana dashboard API, валидирует форму dashboard,
+      отсутствие старых `aw_window_event`/`aw_afk_event`, наличие текущих
+      worktime measurements и выполняет все panel queries через Grafana
+      datasource API;
+    - freshness panel считается обязательным: значение свежести должно быть не
+      старше `DETMIR_GRAFANA_MAX_FRESHNESS_MINUTES` (production default 360);
+    - результат пишется в Grafana CT 201:
+      `/var/lib/detmir-grafana-check/latest.json` и `latest.txt`;
+    - установлен `detmir-grafana-check.service` и timer каждые 15 минут;
+    - `detmir-check` теперь читает последний Grafana-check artifact через
+      `sudo -n /usr/sbin/pct exec 201` и считает `grafana-data` required
+      service check, так что общий `detmir-status` краснеет при сломанной или
+      устаревшей Grafana;
+    - добавлен playbook `ansible/deploy_grafana_check.yml`;
+    - `scripts/check_detmir_rust_release_artifacts.sh` теперь требует
+      `detmir-grafana-check`;
+    - production verification: `detmir-grafana-check` OK
+      (`ok=13,warn=0,fail=0`), 7/7 panels have rows, freshness около 120 min,
+      timer active, Grafana CT failed units 0, Proxmox failed units 0,
+      `detmir-check` `service_failures=0`, `detmir-auto --no-heal` rc 0,
+      `detmir-status` OK / `ok_for_operator=true`.
 
 Отложить:
 

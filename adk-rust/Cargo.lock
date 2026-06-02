@@ -550,6 +550,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "detmir-grafana-check"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "detmir-heal-safe"
 version = "0.1.0"
 dependencies = [

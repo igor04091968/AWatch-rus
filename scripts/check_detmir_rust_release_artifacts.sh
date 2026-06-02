@@ -36,6 +36,7 @@ required_bins=(
   aw-contour-smoke
   aw-browser-smoke
   diag-and-manual-restart
+  detmir-grafana-check
   dlp-health-check
   dlp-content-analyzer
   dlp-admin-cli
