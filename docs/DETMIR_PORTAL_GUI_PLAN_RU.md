@@ -14,7 +14,7 @@ Read-only MVP выполнен и развернут:
 - gateway route: `https://dm.iri1968.dpdns.org/portal/`;
 - API: `/api/health`, `/api/summary`, `/api/operator`, `/api/manager`,
   `/api/owner`, `/api/incidents`, `/api/links`;
-- UI tabs: `Оператор`, `Руководитель`, `Владелец`, `Инциденты`;
+- UI tabs: `Оператор`, `Руководитель`, `Владелец`, `Инциденты ИБ`;
 - verification: local Rust gates OK, Ansible deploy OK, gateway health OK,
   Playwright desktop/mobile smoke OK.
 
@@ -240,7 +240,7 @@ base path.
   - "Риски ИБ";
   - "1С / финансы";
   - "Сбор данных";
-  - "Инциденты";
+  - "Инциденты ИБ";
   - "Что требует внимания";
 - короткие выводы в человеческом языке;
 - links на глубокие Grafana/1C/AW страницы.
@@ -346,7 +346,7 @@ card.
   - Оператор;
   - Руководитель;
   - Владелец;
-  - Инциденты.
+  - Инциденты ИБ.
 - Иконки можно использовать inline SVG только если нет frontend dependency.
   Если позже появится frontend dependency, использовать lucide icons.
 
@@ -605,7 +605,7 @@ Required visible text:
 - "Оператор";
 - "Руководитель";
 - "Владелец";
-- "Инциденты";
+- "Инциденты ИБ";
 - "Контур";
 - "Данные";
 - "Риски";

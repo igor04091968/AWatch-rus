@@ -161,7 +161,7 @@ function renderIncidentsList(items) {
 
 function renderIncidents(data) {
   return `
-    <h2 class="section-title">Инциденты</h2>
+    <h2 class="section-title">Инциденты ИБ</h2>
     ${renderIncidentsList(data)}
   `;
 }

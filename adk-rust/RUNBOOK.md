@@ -1554,7 +1554,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
     - внешний route добавлен в существующий nginx gateway:
       `https://dm.iri1968.dpdns.org/portal/`;
     - UI содержит вкладки `Оператор`, `Руководитель`, `Владелец`,
-      `Инциденты`;
+      `Инциденты ИБ`;
     - API реализованы: `/api/health`, `/api/summary`, `/api/operator`,
       `/api/manager`, `/api/owner`, `/api/incidents`, `/api/links`;
     - источники read-only: `detmir-status --json`, `detmir-check --json`,
