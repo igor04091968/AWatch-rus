@@ -1630,6 +1630,25 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       verified byte-identical screenshot serving and audit logging; local
       Playwright smoke verified the `Доказательства` block, `СКРИН`, `Открыть`,
       `Скачать`, and zero JS errors.
+    - DLP evidence screenshot delivery is now automated in production:
+      the AW evidence API accepts authenticated uploads at
+      `POST /api/dlp/evidence/upload` in evidence-only mode. Uploads require a
+      server-generated Bearer token stored outside git, validate base64 body,
+      PNG/JPEG magic, max size, and exact SHA-256 before atomic write to
+      `/var/lib/activitywatch/dlp-evidence/screenshots/<sha256>.(png|jpg)`.
+      Windows RDP host runs `sync-dlp-evidence-artifacts.ps1` through scheduled
+      task `ActivityWatch DLP Evidence Sync` every 5 minutes as SYSTEM. The
+      sync scans `C:\ProgramData\AWatch-rus\incident-artifacts` plus configured
+      artifact roots, uploads new PNG screenshots, and keeps local upload state
+      in `C:\ProgramData\AWatch-rus\dlp-evidence-sync-state.json`. Production
+      controlled test: a visible PNG was created on Windows, sync uploaded it
+      (`uploaded=1`, `failed=0`), a temporary warehouse row made it visible in
+      the portal with `screenshot_available=true`, gateway preview returned
+      `image/png` with matching SHA, external Playwright verified the portal UI
+      and preview, audit recorded upload/view, unauthenticated upload returned
+      403, and the synthetic row/files/state were removed. Final state:
+      evidence count returned to 11, synthetic hit false, AW/Proxmox failed
+      units 0, `detmir-status` OK, sync task Ready with `lastTaskResult=0`.
     - during this deploy, `detmir-grafana-check` was corrected so empty
       detail-only panels for employees/applications are WARN, not FAIL. The
       mandatory freshness/summary panels still fail the check when stale or

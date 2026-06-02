@@ -1,0 +1,146 @@
+---
+- name: Deploy DLP evidence upload sync on Windows endpoints
+  hosts: aw_windows
+  gather_facts: false
+
+  vars:
+    aw_repo_root: "{{ playbook_dir | dirname }}"
+    aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
+    aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
+    aw_windows_evidence_sync_task_name: "ActivityWatch DLP Evidence Sync"
+    aw_windows_evidence_sync_interval_minutes: 5
+    aw_windows_evidence_sync_api_url: "http://10.10.10.13:8721/api/dlp/evidence/upload"
+    aw_windows_evidence_sync_script: "{{ aw_windows_state_root }}\\sync-dlp-evidence-artifacts.ps1"
+    aw_windows_evidence_sync_token_path: "{{ aw_windows_state_root }}\\dlp-evidence-upload-token.txt"
+    aw_windows_evidence_sync_state_path: "{{ aw_windows_state_root }}\\dlp-evidence-sync-state.json"
+    aw_windows_evidence_sync_log_path: "{{ aw_windows_state_root }}\\logs\\dlp-evidence-sync.log"
+    detmir_evidence_upload_token_path: "/var/lib/activitywatch/dlp-evidence/upload-token"
+
+  tasks:
+    - name: Read evidence upload token from AW server
+      ansible.builtin.slurp:
+        src: "{{ detmir_evidence_upload_token_path }}"
+      delegate_to: "{{ (groups['aw_server'] | first) }}"
+      become: true
+      register: detmir_evidence_upload_token_slurp
+      no_log: true
+
+    - name: Ensure AWatch-rus state and log directories
+      ansible.windows.win_file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ aw_windows_state_root }}"
+        - "{{ aw_windows_state_root }}\\logs"
+
+    - name: Install DLP evidence sync script
+      ansible.windows.win_copy:
+        src: "{{ aw_repo_root }}/windows/sync-dlp-evidence-artifacts.ps1"
+        dest: "{{ aw_windows_evidence_sync_script }}"
+
+    - name: Normalize DLP evidence sync script encoding
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $path = "{{ aw_windows_evidence_sync_script }}"
+          $text = [System.IO.File]::ReadAllText($path, [System.Text.Encoding]::UTF8)
+          $utf8Bom = New-Object System.Text.UTF8Encoding($true)
+          [System.IO.File]::WriteAllText($path, $text, $utf8Bom)
+
+    - name: Prepare existing DLP evidence upload token ACL for update
+      ansible.windows.win_powershell:
+        script: |
+          $path = "{{ aw_windows_evidence_sync_token_path }}"
+          if (Test-Path -LiteralPath $path) {
+            icacls.exe $path /grant:r "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null
+          }
+      no_log: true
+
+    - name: Install DLP evidence upload token
+      ansible.windows.win_copy:
+        dest: "{{ aw_windows_evidence_sync_token_path }}"
+        content: "{{ detmir_evidence_upload_token_slurp.content | b64decode | trim }}"
+      no_log: true
+
+    - name: Lock down DLP evidence upload token ACL
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $path = "{{ aw_windows_evidence_sync_token_path }}"
+          icacls.exe $path /inheritance:r | Out-Null
+          icacls.exe $path /grant:r "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null
+      no_log: true
+
+    - name: Register DLP evidence sync scheduled task
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $taskName = "{{ aw_windows_evidence_sync_task_name }}"
+          $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $args = @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', '"{{ aw_windows_evidence_sync_script }}"',
+            '-EvidenceApiUrl', '"{{ aw_windows_evidence_sync_api_url }}"',
+            '-TokenPath', '"{{ aw_windows_evidence_sync_token_path }}"',
+            '-StatePath', '"{{ aw_windows_evidence_sync_state_path }}"',
+            '-LogPath', '"{{ aw_windows_evidence_sync_log_path }}"'
+          ) -join ' '
+          $action = New-ScheduledTaskAction -Execute $ps -Argument $args
+          $trigger = New-ScheduledTaskTrigger `
+            -Once `
+            -At ((Get-Date).AddMinutes(1)) `
+            -RepetitionInterval (New-TimeSpan -Minutes {{ aw_windows_evidence_sync_interval_minutes | int }}) `
+            -RepetitionDuration (New-TimeSpan -Days 3650)
+          $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+          $settings = New-ScheduledTaskSettingsSet `
+            -AllowStartIfOnBatteries `
+            -StartWhenAvailable `
+            -MultipleInstances IgnoreNew `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+          $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if ($existing) {
+            Set-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+          } else {
+            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
+          }
+          Enable-ScheduledTask -TaskName $taskName | Out-Null
+          Start-ScheduledTask -TaskName $taskName
+          [pscustomobject]@{ taskName = $taskName; started = $true }
+
+    - name: Smoke-run DLP evidence sync once
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = 'Stop'
+          $result = & "{{ aw_windows_evidence_sync_script }}" `
+            -EvidenceApiUrl "{{ aw_windows_evidence_sync_api_url }}" `
+            -TokenPath "{{ aw_windows_evidence_sync_token_path }}" `
+            -StatePath "{{ aw_windows_evidence_sync_state_path }}" `
+            -LogPath "{{ aw_windows_evidence_sync_log_path }}"
+          $result
+      register: aw_windows_evidence_sync_smoke
+
+    - name: Verify DLP evidence sync smoke result
+      ansible.builtin.assert:
+        that:
+          - aw_windows_evidence_sync_smoke.output is defined
+          - aw_windows_evidence_sync_smoke.output | length > 0
+        fail_msg: "DLP evidence sync smoke did not return output."
+
+    - name: Read DLP evidence sync task status
+      ansible.windows.win_powershell:
+        script: |
+          $task = Get-ScheduledTask -TaskName "{{ aw_windows_evidence_sync_task_name }}" -ErrorAction Stop
+          $info = Get-ScheduledTaskInfo -TaskName "{{ aw_windows_evidence_sync_task_name }}" -ErrorAction Stop
+          [pscustomobject]@{
+            taskName = $task.TaskName
+            state = [string]$task.State
+            lastRunTime = $info.LastRunTime
+            lastTaskResult = $info.LastTaskResult
+            nextRunTime = $info.NextRunTime
+          } | ConvertTo-Json -Compress
+      register: aw_windows_evidence_sync_task_status
+
+    - name: Show DLP evidence sync task status
+      ansible.builtin.debug:
+        var: aw_windows_evidence_sync_task_status.output

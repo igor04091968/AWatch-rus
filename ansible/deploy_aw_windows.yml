@@ -181,6 +181,7 @@
         - export-evtx-for-hayabusa.ps1
         - export-upload-hayabusa-to-aw-server.ps1
         - export-upload-file-1c-telemetry.ps1
+        - sync-dlp-evidence-artifacts.ps1
         - migrate-awatch-rus-paths.ps1
         - deploy-domain-users.ps1
         - deploy-ensemble.ps1

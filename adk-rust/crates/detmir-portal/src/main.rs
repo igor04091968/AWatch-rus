@@ -7,6 +7,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, anyhow};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use chrono::{SecondsFormat, Utc};
 use clap::Parser;
 use reqwest::blocking::Client;
@@ -101,6 +103,9 @@ struct Cli {
 
     #[arg(long, env = "DETMIR_PORTAL_EVIDENCE_ONLY")]
     evidence_only: bool,
+
+    #[arg(long, env = "DETMIR_PORTAL_EVIDENCE_UPLOAD_TOKEN")]
+    evidence_upload_token: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -216,6 +221,33 @@ struct EvidenceAuditEntry {
     sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     source_file: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EvidenceUploadRequest {
+    sha256: String,
+    #[serde(default)]
+    content_base64: String,
+    #[serde(default)]
+    content_type: Option<String>,
+    #[serde(default)]
+    source_file: Option<String>,
+    #[serde(default)]
+    source_path: Option<String>,
+    #[serde(default)]
+    hostname: Option<String>,
+    #[serde(default)]
+    username: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct EvidenceUploadResponse {
+    ok: bool,
+    sha256: String,
+    content_type: String,
+    bytes: u64,
+    stored: bool,
+    path: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -429,6 +461,9 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
 fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
     let method = request.method().clone();
     let path = normalize_path(request.url());
+    if method == Method::Post && path == "/api/dlp/evidence/upload" {
+        return handle_evidence_upload(request, args);
+    }
     if method != Method::Get {
         return respond_text(request, StatusCode(405), "Method Not Allowed", "text/plain");
     }
@@ -441,6 +476,7 @@ fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
                 "mode": "evidence-only",
                 "db_available": args.dlp_db_path.exists(),
                 "screenshot_root_available": args.evidence_root.exists(),
+                "upload_enabled": upload_enabled(args),
             }),
         );
     }
@@ -1212,6 +1248,123 @@ fn parse_evidence_screenshot_path(path: &str) -> Option<(String, bool)> {
     }
 }
 
+fn handle_evidence_upload(mut request: Request, args: &Cli) -> Result<()> {
+    if !upload_authorized(&request, args) {
+        return respond_text(
+            request,
+            StatusCode(403),
+            "Forbidden",
+            "text/plain; charset=utf-8",
+        );
+    }
+    let body_limit = args
+        .evidence_max_bytes
+        .saturating_mul(2)
+        .saturating_add(64 * 1024)
+        .min(32 * 1024 * 1024);
+    let mut body = String::new();
+    request
+        .as_reader()
+        .take(body_limit)
+        .read_to_string(&mut body)?;
+    match apply_evidence_upload(args, &request_actor(&request), &body) {
+        Ok(response) => respond_json(request, &response),
+        Err(err) => respond_text(
+            request,
+            StatusCode(400),
+            &serde_json::to_string_pretty(&json!({
+                "ok": false,
+                "error": err.to_string()
+            }))?,
+            "application/json; charset=utf-8",
+        ),
+    }
+}
+
+fn apply_evidence_upload(args: &Cli, actor: &str, body: &str) -> Result<EvidenceUploadResponse> {
+    let upload: EvidenceUploadRequest =
+        serde_json::from_str(body).map_err(|err| anyhow!("invalid evidence upload JSON: {err}"))?;
+    let expected_sha256 = upload.sha256.trim().to_ascii_lowercase();
+    if !is_sha256_hex(&expected_sha256) {
+        return Err(anyhow!("sha256 is invalid"));
+    }
+    if upload.content_base64.is_empty() {
+        return Err(anyhow!("content_base64 is empty"));
+    }
+    let bytes = BASE64_STANDARD
+        .decode(upload.content_base64.as_bytes())
+        .map_err(|err| anyhow!("content_base64 decode failed: {err}"))?;
+    if bytes.is_empty() {
+        return Err(anyhow!("content is empty"));
+    }
+    if bytes.len() as u64 > args.evidence_max_bytes {
+        return Err(anyhow!("content is too large"));
+    }
+    let actual_sha256 = sha256_bytes(&bytes);
+    if actual_sha256 != expected_sha256 {
+        return Err(anyhow!("sha256 mismatch"));
+    }
+    let (content_type, extension) = evidence_image_type(&bytes, upload.content_type.as_deref())?;
+    let root = ensure_evidence_root(args)?;
+    let screenshots = root.join("screenshots");
+    fs::create_dir_all(&screenshots)
+        .with_context(|| format!("create {}", screenshots.display()))?;
+    let path = screenshots.join(format!("{expected_sha256}.{extension}"));
+    let mut stored = false;
+    if path.exists() {
+        let existing = sha256_file(&path)?;
+        if existing != expected_sha256 {
+            return Err(anyhow!("existing evidence file hash mismatch"));
+        }
+    } else {
+        let tmp = screenshots.join(format!(
+            "{expected_sha256}.{extension}.tmp-{}",
+            std::process::id()
+        ));
+        fs::write(&tmp, &bytes).with_context(|| format!("write {}", tmp.display()))?;
+        fs::rename(&tmp, &path).with_context(|| format!("rename {}", path.display()))?;
+        stored = true;
+    }
+    append_evidence_audit(
+        args,
+        &EvidenceAuditEntry {
+            generated_at_utc: now(),
+            actor: actor.to_string(),
+            action: "upload".to_string(),
+            evidence_id: format!("sha256:{expected_sha256}"),
+            sha256: Some(expected_sha256.clone()),
+            source_file: upload
+                .source_file
+                .as_deref()
+                .and_then(screenshot_basename)
+                .or_else(|| upload.source_path.as_deref().and_then(screenshot_basename)),
+        },
+    )?;
+    let meta = json!({
+        "generated_at_utc": now(),
+        "hostname": upload.hostname.as_deref().map(|value| sanitize_text(value, 80)),
+        "username": upload.username.as_deref().map(|value| sanitize_text(value, 80)),
+        "source_file": upload.source_file.as_deref().and_then(screenshot_basename),
+        "source_path_basename": upload.source_path.as_deref().and_then(screenshot_basename),
+        "sha256": expected_sha256,
+        "content_type": content_type,
+        "bytes": bytes.len(),
+        "path": path.file_name().and_then(|name| name.to_str()).unwrap_or(""),
+    });
+    let _ = fs::write(
+        screenshots.join(format!("{}.json", meta["sha256"].as_str().unwrap_or(""))),
+        serde_json::to_vec_pretty(&meta)?,
+    );
+    Ok(EvidenceUploadResponse {
+        ok: true,
+        sha256: meta["sha256"].as_str().unwrap_or("").to_string(),
+        content_type: content_type.to_string(),
+        bytes: bytes.len() as u64,
+        stored,
+        path: path.display().to_string(),
+    })
+}
+
 fn handle_evidence_screenshot(
     request: Request,
     args: &Cli,
@@ -1373,7 +1526,17 @@ fn resolve_screenshot_file(
         root.join("screenshots")
             .join(format!("{expected_sha256}.png")),
     );
+    candidates.push(
+        root.join("screenshots")
+            .join(format!("{expected_sha256}.jpg")),
+    );
+    candidates.push(
+        root.join("screenshots")
+            .join(format!("{expected_sha256}.jpeg")),
+    );
     candidates.push(root.join(format!("{expected_sha256}.png")));
+    candidates.push(root.join(format!("{expected_sha256}.jpg")));
+    candidates.push(root.join(format!("{expected_sha256}.jpeg")));
     candidates.push(root.join(expected_sha256));
     if let Some(file_name) = source_file
         .as_deref()
@@ -1521,6 +1684,96 @@ fn sha256_file(path: &Path) -> Result<String> {
         hasher.update(&buffer[..n]);
     }
     Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn sha256_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
+}
+
+fn evidence_image_type(
+    bytes: &[u8],
+    claimed_content_type: Option<&str>,
+) -> Result<(&'static str, &'static str)> {
+    let detected = if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some(("image/png", "png"))
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some(("image/jpeg", "jpg"))
+    } else {
+        None
+    };
+    let Some((content_type, extension)) = detected else {
+        return Err(anyhow!("unsupported evidence image type"));
+    };
+    if let Some(claimed) = claimed_content_type.map(|value| value.trim().to_ascii_lowercase()) {
+        let allowed = match content_type {
+            "image/png" => claimed == "image/png" || claimed == "application/octet-stream",
+            "image/jpeg" => {
+                claimed == "image/jpeg"
+                    || claimed == "image/jpg"
+                    || claimed == "application/octet-stream"
+            }
+            _ => false,
+        };
+        if !allowed {
+            return Err(anyhow!("claimed content_type does not match image bytes"));
+        }
+    }
+    Ok((content_type, extension))
+}
+
+fn ensure_evidence_root(args: &Cli) -> Result<PathBuf> {
+    fs::create_dir_all(&args.evidence_root)
+        .with_context(|| format!("create {}", args.evidence_root.display()))?;
+    args.evidence_root
+        .canonicalize()
+        .with_context(|| format!("canonicalize {}", args.evidence_root.display()))
+}
+
+fn upload_enabled(args: &Cli) -> bool {
+    args.evidence_upload_token
+        .as_deref()
+        .map(|token| !token.trim().is_empty())
+        .unwrap_or(false)
+}
+
+fn upload_authorized(request: &Request, args: &Cli) -> bool {
+    let Some(expected) = args
+        .evidence_upload_token
+        .as_deref()
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+    else {
+        return false;
+    };
+    let Some(actual) = bearer_token(request) else {
+        return false;
+    };
+    constant_time_eq(actual.as_bytes(), expected.as_bytes())
+}
+
+fn bearer_token(request: &Request) -> Option<String> {
+    request
+        .headers()
+        .iter()
+        .find(|header| header.field.equiv("Authorization"))
+        .map(|header| header.value.as_str().trim())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut diff = 0_u8;
+    for (a, b) in left.iter().zip(right.iter()) {
+        diff |= a ^ b;
+    }
+    diff == 0
 }
 
 fn request_actor(request: &Request) -> String {
@@ -2027,6 +2280,7 @@ mod tests {
             evidence_max_bytes: 1024,
             json_smoke: false,
             evidence_only: false,
+            evidence_upload_token: None,
         };
         let found = resolve_screenshot_file(&args, &None, &Some(digest.clone()))
             .unwrap()
@@ -2043,5 +2297,28 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn evidence_image_type_checks_magic_and_claim() {
+        let png = b"\x89PNG\r\n\x1a\nrest";
+        assert_eq!(
+            evidence_image_type(png, Some("image/png")).unwrap(),
+            ("image/png", "png")
+        );
+        assert!(evidence_image_type(png, Some("image/jpeg")).is_err());
+        let jpg = &[0xff, 0xd8, 0xff, 0xe0, 0x00];
+        assert_eq!(
+            evidence_image_type(jpg, Some("application/octet-stream")).unwrap(),
+            ("image/jpeg", "jpg")
+        );
+        assert!(evidence_image_type(b"plain text", None).is_err());
+    }
+
+    #[test]
+    fn constant_time_eq_requires_same_bytes() {
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"other"));
+        assert!(!constant_time_eq(b"secret", b"secret2"));
     }
 }

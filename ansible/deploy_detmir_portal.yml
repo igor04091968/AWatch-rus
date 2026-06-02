@@ -119,6 +119,7 @@
     aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
     detmir_evidence_bind: "{{ detmir_evidence_bind_override | default('10.10.10.13:8721') }}"
     detmir_evidence_env_path: "/etc/detmir-portal-evidence.env"
+    detmir_evidence_upload_token_path: "/var/lib/activitywatch/dlp-evidence/upload-token"
 
   tasks:
     - name: Check local detmir-portal binary for evidence service
@@ -152,6 +153,39 @@
         - /var/lib/activitywatch/dlp-evidence
         - /var/lib/activitywatch/dlp-evidence/screenshots
 
+    - name: Check detmir evidence upload token
+      ansible.builtin.stat:
+        path: "{{ detmir_evidence_upload_token_path }}"
+      register: detmir_evidence_upload_token_stat
+      no_log: true
+
+    - name: Generate detmir evidence upload token
+      ansible.builtin.shell: |
+        set -euo pipefail
+        umask 077
+        python3 - <<'PY' > '{{ detmir_evidence_upload_token_path }}'
+        import secrets
+        print(secrets.token_urlsafe(48))
+        PY
+      args:
+        executable: /bin/bash
+      when: not (detmir_evidence_upload_token_stat.stat.exists | default(false))
+      no_log: true
+
+    - name: Fix detmir evidence upload token permissions
+      ansible.builtin.file:
+        path: "{{ detmir_evidence_upload_token_path }}"
+        owner: root
+        group: root
+        mode: "0600"
+      no_log: true
+
+    - name: Read detmir evidence upload token
+      ansible.builtin.slurp:
+        src: "{{ detmir_evidence_upload_token_path }}"
+      register: detmir_evidence_upload_token_slurp
+      no_log: true
+
     - name: Install detmir evidence API environment
       ansible.builtin.copy:
         dest: "{{ detmir_evidence_env_path }}"
@@ -166,6 +200,8 @@
           DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/activitywatch/dlp-evidence
           DETMIR_PORTAL_EVIDENCE_LIMIT=30
           DETMIR_PORTAL_EVIDENCE_MAX_BYTES=8388608
+          DETMIR_PORTAL_EVIDENCE_UPLOAD_TOKEN={{ detmir_evidence_upload_token_slurp.content | b64decode | trim }}
+      no_log: true
 
     - name: Install detmir evidence API systemd service
       ansible.builtin.copy:
