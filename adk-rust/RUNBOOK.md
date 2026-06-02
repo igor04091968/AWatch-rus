@@ -1663,6 +1663,13 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       or FSTEC SZI. It also records Igor as the declared product owner, lists
       assets, trust zones, attacker/operator-failure classes, implemented
       evidence controls, residual risks, and the hardening roadmap.
+    - `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` added as the
+      registry/product positioning note. Current decision: lead with DetMir as
+      an operational control and IT infrastructure management platform, use
+      `09.10` as the primary Russian software registry class target, keep
+      DLP/security/evidence/Hayabusa as applied modules, and prepare website,
+      operator/admin docs, ownership package, screenshots, and dependency
+      inventory before any registry filing.
 
 Отложить:
 

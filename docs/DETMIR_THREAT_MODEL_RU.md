@@ -308,6 +308,7 @@
 
 ## 12. Связанные документы
 
+- `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`
 - `docs/DETMIR_UNIFIED_OPERATING_MODEL_RU.md`
 - `docs/DETMIR_PORTAL_GUI_PLAN_RU.md`
 - `docs/dlp-security-functional-spec-ru.md`
