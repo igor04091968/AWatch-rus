@@ -17,6 +17,15 @@ evidence и Hayabusa используются как прикладные мод
 - Автоматизация runbook-проверок, health-check, SLO и безопасного auto-heal.
 - Сбор evidence по инцидентам и аудит действий оператора.
 
+## Rust-first runtime
+
+Основной серверный runtime DetMir переведен на Rust: status/check/auto-heal,
+SLO, worktime, DLP server-side helpers, evidence и install-kit tooling.
+
+Python в репозитории остается для вспомогательных направлений: Telegram bot
+runtime, OCR/content-analysis, 1C/AI/ETL integration и MCP/dev helpers. Эти
+части не являются ядром Rust-first runtime.
+
 ## Что видит оператор
 
 - Работал ли пользователь за компьютером или в удаленной сессии.
@@ -42,6 +51,7 @@ evidence и Hayabusa используются как прикладные мод
 - [Описание продукта](PRODUCT_DESCRIPTION_RU.md)
 - [Установка для эксперта](INSTALL_FOR_EXPERT_RU.md)
 - [Сторонние компоненты](THIRD_PARTY_COMPONENTS.md)
+- [Сторонние лицензии](THIRD_PARTY_LICENSES_RU.md)
 - [Архитектура](docs/ARCHITECTURE_RU.md)
 - [Установка](docs/INSTALL_RU.md)
 - [Руководство администратора](docs/ADMIN_GUIDE_RU.md)

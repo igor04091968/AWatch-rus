@@ -35,3 +35,7 @@ data/
 /.graphify_*.json
 /.graphify_*.txt
 /.graphify_python/
+
+# Release assets kept outside git
+/install-kit-awindows-*.zip
+/install-kit-awindows-*.tar.gz
