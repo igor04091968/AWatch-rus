@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily DetMir production readiness bundle
+
+[Timer]
+OnCalendar=*-*-* 06:20:00
+AccuracySec=5m
+RandomizedDelaySec=10m
+Unit=detmir-readiness.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

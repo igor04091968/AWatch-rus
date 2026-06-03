@@ -73,6 +73,63 @@ PDF-вывод требует один из render tools на хосте: `weasy
 используйте `--output-markdown` и `--output-html` как обязательный минимальный
 артефакт внедрения.
 
+## Readiness bundle
+
+Для промышленного контура предпочтителен единый bundle:
+
+```bash
+detmir-readiness --output-dir /var/lib/activitywatch/health/readiness-bundle
+```
+
+Команда создает:
+
+- `detmir-readiness-latest.json` - машинный отчет;
+- `detmir-readiness-act.md` - акт готовности для оператора;
+- `detmir-readiness-act.html` - HTML-версия акта;
+- `sha256sums.txt` - контрольные суммы bundle-файлов.
+
+Проверка целостности:
+
+```bash
+cd /var/lib/activitywatch/health/readiness-bundle
+sha256sum -c sha256sums.txt
+```
+
+В JSON и акт добавляются технические поля `generated_by`, `host`, `version`,
+`git_commit`, а также раздел `Ограничения проверки`. Секреты, токены и пароли
+в артефакты не включаются.
+
+## Ежедневное формирование
+
+При штатном развертывании Ansible устанавливает:
+
+- `detmir-readiness.service`;
+- `detmir-readiness.timer`.
+
+Таймер ежедневно формирует readiness bundle в
+`/var/lib/activitywatch/health/readiness-bundle`.
+
+Операторская проверка:
+
+```bash
+systemctl list-timers detmir-readiness.timer
+systemctl start detmir-readiness.service
+systemctl status detmir-readiness.service --no-pager
+```
+
+Если Grafana находится на отдельном узле, параметры доступа передаются через
+серверный private env-файл `/etc/detmir-grafana-check.env` или
+`/etc/detmir-readiness.env`. Эти файлы не входят в публичный репозиторий.
+
+Поддерживаемые private env-переключатели:
+
+- `DETMIR_READINESS_SKIP_SYSTEMD=true`;
+- `DETMIR_READINESS_SKIP_INFLUX_WRITE=true`;
+- `DETMIR_READINESS_ALLOW_DISABLED_INFLUX=true`;
+- `DETMIR_READINESS_SKIP_GRAFANA=true`;
+- `DETMIR_GRAFANA_DATASOURCE_UID=<uid>`;
+- `DETMIR_GIT_COMMIT=<commit>`.
+
 ## Полезные параметры
 
 ```bash

@@ -12,6 +12,7 @@ use detmir_core::{StatusLevel, exit_codes, now_utc_rfc3339};
 use reqwest::blocking::Client;
 use serde::Serialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 const DEFAULT_AW_ENV_FILE: &str = "/etc/activitywatch/aw-server.env";
 const DEFAULT_GRAFANA_ENV_FILE: &str = "/etc/detmir-grafana-check.env";
@@ -39,16 +40,16 @@ struct Cli {
     #[arg(long, default_value_t = 15)]
     timeout_seconds: u64,
 
-    #[arg(long)]
+    #[arg(long, env = "DETMIR_READINESS_SKIP_SYSTEMD")]
     skip_systemd: bool,
 
-    #[arg(long)]
+    #[arg(long, env = "DETMIR_READINESS_SKIP_INFLUX_WRITE")]
     skip_influx_write: bool,
 
-    #[arg(long)]
+    #[arg(long, env = "DETMIR_READINESS_ALLOW_DISABLED_INFLUX")]
     allow_disabled_influx: bool,
 
-    #[arg(long)]
+    #[arg(long, env = "DETMIR_READINESS_SKIP_GRAFANA")]
     skip_grafana: bool,
 
     #[arg(long)]
@@ -60,7 +61,11 @@ struct Cli {
     #[arg(long)]
     grafana_password: Option<String>,
 
-    #[arg(long, default_value = DEFAULT_GRAFANA_DATASOURCE_UID)]
+    #[arg(
+        long,
+        env = "DETMIR_GRAFANA_DATASOURCE_UID",
+        default_value = DEFAULT_GRAFANA_DATASOURCE_UID
+    )]
     grafana_datasource_uid: String,
 
     #[arg(long)]
@@ -74,6 +79,12 @@ struct Cli {
 
     #[arg(long)]
     output_pdf: Option<PathBuf>,
+
+    #[arg(long)]
+    output_dir: Option<PathBuf>,
+
+    #[arg(long, env = "DETMIR_GIT_COMMIT", default_value = "unknown")]
+    git_commit: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -81,8 +92,19 @@ struct Report {
     ok: bool,
     status: StatusLevel,
     generated_at_utc: String,
+    generated_by: GeneratedBy,
+    host: String,
+    version: String,
+    git_commit: String,
     counts: Counts,
     checks: Vec<Check>,
+    limitations: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct GeneratedBy {
+    name: String,
+    version: String,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -192,12 +214,21 @@ fn run(cli: &Cli) -> Result<Report> {
     }
 
     let (status, counts) = summarize(&checks);
+    let version = env!("CARGO_PKG_VERSION").to_string();
     Ok(Report {
         ok: status == StatusLevel::Ok,
         status,
         generated_at_utc: now_utc_rfc3339(),
+        generated_by: GeneratedBy {
+            name: "detmir-readiness".to_string(),
+            version: version.clone(),
+        },
+        host: hostname(),
+        version,
+        git_commit: cli.git_commit.clone(),
         counts,
         checks,
+        limitations: build_limitations(cli),
     })
 }
 
@@ -263,6 +294,48 @@ fn split_csv(value: &str) -> Vec<String> {
         .filter(|item| !item.is_empty())
         .map(ToOwned::to_owned)
         .collect()
+}
+
+fn hostname() -> String {
+    Command::new("hostname")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
+fn build_limitations(cli: &Cli) -> Vec<String> {
+    let mut limitations = Vec::new();
+    limitations.push(
+        "Проверка подтверждает состояние runtime на момент формирования акта и не заменяет аудит конфигурации, нагрузочное тестирование или приемочные испытания заказчика.".to_string(),
+    );
+    limitations.push(
+        "Секреты, токены и пароли не включаются в JSON, Markdown, HTML, PDF и checksum bundle."
+            .to_string(),
+    );
+    if cli.skip_systemd {
+        limitations.push("Проверки systemd были пропущены параметром --skip-systemd.".to_string());
+    }
+    if cli.skip_influx_write {
+        limitations.push(
+            "Реальная запись тестовой точки в InfluxDB была пропущена параметром --skip-influx-write."
+                .to_string(),
+        );
+    }
+    if cli.skip_grafana {
+        limitations.push(
+            "Проверки Grafana API/datasource были пропущены параметром --skip-grafana.".to_string(),
+        );
+    }
+    if cli.allow_disabled_influx {
+        limitations.push(
+            "Отключенный Influx тракт допускается как WARN из-за параметра --allow-disabled-influx."
+                .to_string(),
+        );
+    }
+    limitations
 }
 
 fn influx_config(env: &BTreeMap<String, String>, prefix: &'static str) -> InfluxConfig {
@@ -609,6 +682,9 @@ fn readiness_exit_code(status: StatusLevel) -> i32 {
 }
 
 fn write_outputs(cli: &Cli, report: &Report) -> Result<()> {
+    if let Some(dir) = &cli.output_dir {
+        write_bundle(dir, report)?;
+    }
     if let Some(path) = &cli.output_json {
         write_text(path, &serde_json::to_string_pretty(report)?)?;
     }
@@ -622,6 +698,38 @@ fn write_outputs(cli: &Cli, report: &Report) -> Result<()> {
         write_pdf(path, report)?;
     }
     Ok(())
+}
+
+fn write_bundle(dir: &Path, report: &Report) -> Result<()> {
+    fs::create_dir_all(dir).with_context(|| format!("create output dir: {}", dir.display()))?;
+    let files = [
+        (
+            "detmir-readiness-latest.json",
+            serde_json::to_string_pretty(report)?,
+        ),
+        ("detmir-readiness-act.md", render_markdown(report)),
+        ("detmir-readiness-act.html", render_html(report)),
+    ];
+    let mut sums = Vec::new();
+    for (name, content) in files {
+        let path = dir.join(name);
+        write_text(&path, &content)?;
+        sums.push((name.to_string(), sha256_file(&path)?));
+    }
+    let sums_text = sums
+        .into_iter()
+        .map(|(name, sum)| format!("{sum}  {name}\n"))
+        .collect::<String>();
+    write_text(&dir.join("sha256sums.txt"), &sums_text)?;
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    let bytes =
+        fs::read(path).with_context(|| format!("read file for sha256: {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn write_text(path: &Path, text: &str) -> Result<()> {
@@ -712,6 +820,10 @@ fn render_markdown(report: &Report) -> String {
         "- Сформировано UTC: `{}`\n",
         report.generated_at_utc
     ));
+    out.push_str(&format!("- Узел: `{}`\n", report.host));
+    out.push_str(&format!("- Утилита: `{}`\n", report.generated_by.name));
+    out.push_str(&format!("- Версия: `{}`\n", report.version));
+    out.push_str(&format!("- Git commit: `{}`\n", report.git_commit));
     out.push_str(&format!(
         "- Проверки: OK `{}`, WARN `{}`, FAIL `{}`\n\n",
         report.counts.ok, report.counts.warn, report.counts.fail
@@ -738,6 +850,10 @@ fn render_markdown(report: &Report) -> String {
         StatusLevel::Fail | StatusLevel::Unknown => {
             out.push_str("Стенд не готов к промышленной эксплуатации до устранения отказов.\n")
         }
+    }
+    out.push_str("\n## Ограничения проверки\n\n");
+    for item in &report.limitations {
+        out.push_str(&format!("- {}\n", item));
     }
     out
 }
@@ -780,6 +896,8 @@ th {{ background: #f1f5f9; }}
 <p class="status">Статус: <span class="{status_class}">{status}</span></p>
 <p>Готовность: <strong>{ready}</strong></p>
 <p>Сформировано UTC: <code>{generated}</code></p>
+<p>Узел: <code>{host}</code></p>
+<p>Утилита: <code>{generated_by}</code>, версия <code>{version}</code>, git commit <code>{git_commit}</code></p>
 <p>Проверки: OK <strong>{ok}</strong>, WARN <strong>{warn}</strong>, FAIL <strong>{fail}</strong></p>
 <h2>Результаты проверок</h2>
 <table>
@@ -790,16 +908,30 @@ th {{ background: #f1f5f9; }}
 </table>
 <h2>Решение</h2>
 <p>{decision}</p>
+<h2>Ограничения проверки</h2>
+<ul>
+{limitations}
+</ul>
 </body>
 </html>"#,
         status_class = html_escape(&report.status.to_string().to_ascii_lowercase()),
         status = html_escape(&report.status.to_string()),
         ready = if report.ok { "да" } else { "нет" },
         generated = html_escape(&report.generated_at_utc),
+        host = html_escape(&report.host),
+        generated_by = html_escape(&report.generated_by.name),
+        version = html_escape(&report.version),
+        git_commit = html_escape(&report.git_commit),
         ok = report.counts.ok,
         warn = report.counts.warn,
         fail = report.counts.fail,
         rows = rows,
+        limitations = report
+            .limitations
+            .iter()
+            .map(|item| format!("<li>{}</li>", html_escape(item)))
+            .collect::<Vec<_>>()
+            .join("\n"),
         decision = html_escape(match report.status {
             StatusLevel::Ok => "Стенд готов к промышленной эксплуатации по проверенным критериям.",
             StatusLevel::Warn =>
@@ -825,6 +957,25 @@ fn html_escape(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_report(checks: Vec<Check>) -> Report {
+        let (status, counts) = summarize(&checks);
+        Report {
+            ok: status == StatusLevel::Ok,
+            status,
+            generated_at_utc: "2026-06-03T12:00:00Z".to_string(),
+            generated_by: GeneratedBy {
+                name: "detmir-readiness".to_string(),
+                version: "0.1.0".to_string(),
+            },
+            host: "HOST-TEST".to_string(),
+            version: "0.1.0".to_string(),
+            git_commit: "abc123".to_string(),
+            counts,
+            checks,
+            limitations: vec!["Test limitation".to_string()],
+        }
+    }
 
     #[test]
     fn parses_env_file_without_quotes() {
@@ -889,20 +1040,29 @@ mod tests {
             "Influx runtime env is production-ready",
             json!({ "token_redacted": true }),
         )];
-        let (status, counts) = summarize(&checks);
-        let report = Report {
-            ok: status == StatusLevel::Ok,
-            status,
-            generated_at_utc: "2026-06-03T12:00:00Z".to_string(),
-            counts,
-            checks,
-        };
+        let report = test_report(checks);
         let markdown = render_markdown(&report);
         assert!(markdown.contains("Акт готовности стенда DetMir"));
         assert!(markdown.contains("env:AW_WORKTIME_INFLUX"));
+        assert!(markdown.contains("Ограничения проверки"));
+        assert!(markdown.contains("abc123"));
         assert!(!markdown.contains("prod-write-token-value"));
         assert_eq!(readiness_exit_code(StatusLevel::Ok), 0);
         assert_eq!(readiness_exit_code(StatusLevel::Warn), 2);
         assert_eq!(readiness_exit_code(StatusLevel::Fail), 3);
+    }
+
+    #[test]
+    fn writes_bundle_with_sha256sums() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = test_report(vec![ok("env:test", "ok", json!({}))]);
+        write_bundle(dir.path(), &report).unwrap();
+        assert!(dir.path().join("detmir-readiness-latest.json").is_file());
+        assert!(dir.path().join("detmir-readiness-act.md").is_file());
+        assert!(dir.path().join("detmir-readiness-act.html").is_file());
+        let sums = fs::read_to_string(dir.path().join("sha256sums.txt")).unwrap();
+        assert!(sums.contains("detmir-readiness-latest.json"));
+        assert!(sums.contains("detmir-readiness-act.md"));
+        assert!(sums.contains("detmir-readiness-act.html"));
     }
 }

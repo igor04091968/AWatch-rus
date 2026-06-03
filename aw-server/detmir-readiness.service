@@ -1,0 +1,17 @@
+[Unit]
+Description=DetMir production readiness bundle
+After=network-online.target activitywatch-server.service aw-worktime-api.service
+Wants=network-online.target activitywatch-server.service aw-worktime-api.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/activitywatch/aw-server.env
+EnvironmentFile=-/etc/detmir-grafana-check.env
+EnvironmentFile=-/etc/detmir-readiness.env
+ExecStart=/usr/local/bin/detmir-readiness --output-dir /var/lib/activitywatch/health/readiness-bundle
+User=root
+Group=root
+SuccessExitStatus=0 2 3
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=detmir-readiness

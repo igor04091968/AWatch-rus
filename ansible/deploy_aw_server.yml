@@ -1608,6 +1608,22 @@
             mode: "0755"
           when: detmir_readiness_rust_binary.stat.exists | default(false)
 
+        - name: Установить systemd service DetMir readiness bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/detmir-readiness.service"
+            dest: /etc/systemd/system/detmir-readiness.service
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Установить systemd timer DetMir readiness bundle
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/detmir-readiness.timer"
+            dest: /etc/systemd/system/detmir-readiness.timer
+            owner: root
+            group: root
+            mode: "0644"
+
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
             daemon_reload: true
@@ -1621,6 +1637,12 @@
         - name: Включить таймер AW-RUS SLO monitor
           ansible.builtin.systemd:
             name: aw-slo-monitor.timer
+            enabled: true
+            state: started
+
+        - name: Включить daily DetMir readiness bundle timer
+          ansible.builtin.systemd:
+            name: detmir-readiness.timer
             enabled: true
             state: started
 

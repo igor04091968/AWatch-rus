@@ -639,10 +639,16 @@ Production readiness checklist:
 - [ ] `aw-worktime-influx-exporter.service` and `aw-dlp-influx-exporter.service`
       complete once and write points;
 - [ ] `detmir-readiness --json` returns `status=OK`;
-- [ ] readiness act is generated with
-      `--output-markdown /var/lib/activitywatch/health/detmir-readiness-act.md`
-      and, when PDF renderer exists,
-      `--output-pdf /var/lib/activitywatch/health/detmir-readiness-act.pdf`;
+- [ ] readiness bundle is generated with
+      `--output-dir /var/lib/activitywatch/health/readiness-bundle`;
+- [ ] readiness bundle integrity passes:
+
+  ```bash
+  cd /var/lib/activitywatch/health/readiness-bundle
+  sha256sum -c sha256sums.txt
+  ```
+
+- [ ] `detmir-readiness.timer` is enabled for daily bundle generation;
 - [ ] `detmir-check --json`, `detmir-status --json` and Grafana check are green;
 - [ ] rollback path for changed binaries/env files is known.
 
