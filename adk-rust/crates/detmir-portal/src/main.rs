@@ -415,6 +415,7 @@ struct WeightedActivity {
 struct ReportWorkforceSummary {
     departments_count: usize,
     owners_count: usize,
+    insights_count: usize,
     trend_status: String,
 }
 
@@ -936,6 +937,7 @@ fn build_reports(
     let department_items = workforce_rollup_items(snapshot, "department_rollups");
     let owner_items = workforce_rollup_items(snapshot, "owner_rollups");
     let trend = workforce_trend_json(snapshot);
+    let insight_items = workforce_insight_items(snapshot);
     let weighted = load_workforce_policy(workforce_policy_path)
         .ok()
         .flatten()
@@ -972,6 +974,7 @@ fn build_reports(
     let workforce_summary = ReportWorkforceSummary {
         departments_count: department_items.len(),
         owners_count: owner_items.len(),
+        insights_count: insight_items.len(),
         trend_status: trend_status(&trend),
     };
     let markdown = render_report_markdown(
@@ -1023,6 +1026,10 @@ fn build_reports(
                 ]
             },
             {
+                "title": "Выводы Workforce",
+                "items": insight_items.clone()
+            },
+            {
                 "title": "Подразделения сегодня",
                 "items": department_items.clone()
             },
@@ -1049,6 +1056,7 @@ fn build_reports(
             "department_comparison": department_items,
             "owner_comparison": owner_items,
             "trend": trend,
+            "insights": insight_items,
             "trend_status": trend_status(&trend),
             "history_note": "Месячный тренд требует накопленной daily history; текущий слой показывает validated daily management snapshot."
         },
@@ -1105,6 +1113,51 @@ fn workforce_trend_json(snapshot: &Snapshot) -> Value {
         .and_then(|payload| payload.get("trend"))
         .cloned()
         .unwrap_or_else(|| json!([]))
+}
+
+fn workforce_insight_items(snapshot: &Snapshot) -> Vec<Value> {
+    snapshot
+        .worktime_management
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("trend_insights"))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| {
+                    let title = item
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Вывод Workforce");
+                    let subject = item
+                        .get("subject")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Workforce");
+                    let severity = item
+                        .get("severity")
+                        .and_then(Value::as_str)
+                        .unwrap_or("INFO");
+                    let evidence = item.get("evidence").and_then(Value::as_str).unwrap_or("");
+                    let recommendation = item
+                        .get("recommendation")
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    report_item(
+                        &format!("{title}: {subject}"),
+                        severity,
+                        format!("{evidence} {recommendation}").trim().to_string(),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_else(|| {
+            vec![report_item(
+                "История еще накапливается",
+                "INFO",
+                "Worktime API пока не вернул trend_insights.",
+            )]
+        })
 }
 
 fn trend_status(trend: &Value) -> String {
@@ -1336,6 +1389,10 @@ fn render_report_markdown(
     text.push_str(&format!(
         "- Подразделения/ответственные: {}/{}\n",
         workforce.departments_count, workforce.owners_count
+    ));
+    text.push_str(&format!(
+        "- Автоматические выводы Workforce: {}\n",
+        workforce.insights_count
     ));
     text.push_str(&format!("- Статус тренда: {}\n", workforce.trend_status));
     text.push_str(&format!(
@@ -3075,6 +3132,17 @@ mod tests {
                             "report_date": "2026-06-03",
                             "portfolio_coverage_pct": 50.0
                         }
+                    ],
+                    "trend_insights": [
+                        {
+                            "code": "history_insufficient",
+                            "severity": "INFO",
+                            "scope": "portfolio",
+                            "subject": "Workforce",
+                            "title": "История еще накапливается",
+                            "evidence": "Накоплено 1 daily point.",
+                            "recommendation": "Использовать текущий дневной срез."
+                        }
                     ]
                 })),
             },
@@ -3137,6 +3205,7 @@ mod tests {
         assert!(report["kpis"].as_array().unwrap().len() >= 6);
         assert_eq!(report["workforce_policy"]["configured"], false);
         assert_eq!(report["workforce"]["trend_status"], "daily_only");
+        assert_eq!(report["workforce"]["insights"].as_array().unwrap().len(), 1);
         assert_eq!(
             report["workforce"]["department_comparison"]
                 .as_array()

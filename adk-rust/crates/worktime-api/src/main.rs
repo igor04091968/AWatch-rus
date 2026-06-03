@@ -44,6 +44,10 @@ struct Config {
     workday_end_hour: u32,
     manager_target_coverage_pct: i64,
     manager_low_coverage_pct: i64,
+    manager_overload_coverage_pct: i64,
+    manager_trend_min_points: usize,
+    manager_trend_delta_pct: f64,
+    manager_off_hours_threshold_seconds: i64,
     manager_late_start_grace_minutes: i64,
     manager_early_finish_grace_minutes: i64,
     manager_critical_source_max_age_seconds: i64,
@@ -167,6 +171,8 @@ fn load_config() -> Config {
         env_i64("AW_WORKTIME_MANAGER_TARGET_COVERAGE_PCT", 75).clamp(1, 100);
     let manager_low_coverage_pct =
         env_i64("AW_WORKTIME_MANAGER_LOW_COVERAGE_PCT", 35).clamp(1, 100);
+    let manager_overload_coverage_pct =
+        env_i64("AW_WORKTIME_MANAGER_OVERLOAD_COVERAGE_PCT", 115).clamp(100, 300);
     let report_cache_ttl_seconds = env_i64("AW_WORKTIME_REPORT_CACHE_TTL_SECONDS", 60).max(0);
     let report_stale_ttl_seconds =
         env_i64("AW_WORKTIME_REPORT_STALE_TTL_SECONDS", 900).max(report_cache_ttl_seconds);
@@ -182,6 +188,15 @@ fn load_config() -> Config {
         workday_end_hour: env_i64("AW_WORKTIME_MANAGER_END_HOUR", 18).clamp(0, 23) as u32,
         manager_target_coverage_pct,
         manager_low_coverage_pct,
+        manager_overload_coverage_pct,
+        manager_trend_min_points: env_usize("AW_WORKTIME_MANAGER_TREND_MIN_POINTS", 3).clamp(2, 31),
+        manager_trend_delta_pct: env_f64("AW_WORKTIME_MANAGER_TREND_DELTA_PCT", 10.0)
+            .clamp(1.0, 100.0),
+        manager_off_hours_threshold_seconds: env_i64(
+            "AW_WORKTIME_MANAGER_OFF_HOURS_THRESHOLD_SECONDS",
+            1800,
+        )
+        .max(60),
         manager_late_start_grace_minutes: env_i64(
             "AW_WORKTIME_MANAGER_LATE_START_GRACE_MINUTES",
             60,
@@ -1476,6 +1491,8 @@ impl App {
             "portfolio_coverage_pct": summary["portfolio_coverage_pct"],
             "actions_count": summary["actions_count"],
             "critical_actions_count": summary["critical_actions_count"],
+            "department_rollups": compact_rollup_points(&department_rollups),
+            "owner_rollups": compact_rollup_points(&owner_rollups),
         });
         let history_saved = self.save_management_history_point(
             host,
@@ -1493,6 +1510,15 @@ impl App {
             &current_trend_point,
         );
         let trend_points = trend.len();
+        let insights = build_management_insights(
+            &self.config,
+            &summary,
+            &roster,
+            &owner_rollups,
+            &department_rollups,
+            &trend,
+            report_date,
+        );
         json!({
             "generated_at_utc": to_iso_utc(Utc::now()),
             "host": host,
@@ -1513,6 +1539,7 @@ impl App {
             "sources": sources,
             "trend": trend,
             "trend_scope": "portfolio",
+            "trend_insights": insights,
             "history": {
                 "enabled": true,
                 "saved_current_point": history_saved,
@@ -2046,6 +2073,378 @@ fn build_rollups(rows: &[Value], actions: &[Value], field: &str) -> Vec<Value> {
 fn inc(map: &mut Map<String, Value>, key: &str, amount: i64) {
     let old = map.get(key).and_then(Value::as_i64).unwrap_or(0);
     map.insert(key.into(), json!(old + amount));
+}
+
+fn compact_rollup_points(rollups: &[Value]) -> Vec<Value> {
+    rollups
+        .iter()
+        .map(|item| {
+            json!({
+                "name": item.get("name").cloned().unwrap_or(json!("")),
+                "users_count": item.get("users_count").cloned().unwrap_or(json!(0)),
+                "active_users": item.get("active_users").cloned().unwrap_or(json!(0)),
+                "inactive_users": item.get("inactive_users").cloned().unwrap_or(json!(0)),
+                "below_target_users": item.get("below_target_users").cloned().unwrap_or(json!(0)),
+                "workday_total_active_seconds": item.get("workday_total_active_seconds").cloned().unwrap_or(json!(0)),
+                "workday_total_active_hhmm": item.get("workday_total_active_hhmm").cloned().unwrap_or(json!("00:00")),
+                "portfolio_coverage_pct": item.get("portfolio_coverage_pct").cloned().unwrap_or(json!(0.0)),
+                "actions_count": item.get("actions_count").cloned().unwrap_or(json!(0)),
+                "critical_actions_count": item.get("critical_actions_count").cloned().unwrap_or(json!(0)),
+                "high_actions_count": item.get("high_actions_count").cloned().unwrap_or(json!(0)),
+            })
+        })
+        .collect()
+}
+
+fn build_management_insights(
+    config: &Config,
+    summary: &Value,
+    rows: &[Value],
+    owner_rollups: &[Value],
+    department_rollups: &[Value],
+    trend: &[Value],
+    report_date: NaiveDate,
+) -> Vec<Value> {
+    let mut insights = Vec::new();
+    let min_points = config.manager_trend_min_points;
+    let portfolio_values = trend_values(trend, "portfolio_coverage_pct");
+    if portfolio_values.len() < min_points {
+        insights.push(insight(
+            "history_insufficient",
+            "INFO",
+            "portfolio",
+            "Workforce",
+            "История еще накапливается",
+            &format!(
+                "Накоплено {} daily point(s), для устойчивой интерпретации нужно минимум {}.",
+                portfolio_values.len(),
+                min_points
+            ),
+            "Использовать текущий дневной срез; недельные и месячные выводы включатся после накопления истории.",
+        ));
+    } else if monotonic_delta(
+        &portfolio_values,
+        min_points,
+        config.manager_trend_delta_pct,
+        true,
+    ) {
+        insights.push(insight(
+            "portfolio_activity_growing",
+            "OK",
+            "portfolio",
+            "Workforce",
+            "Активность растет несколько дней подряд",
+            &format!(
+                "Portfolio coverage вырос за последние {} точек минимум на {:.0} п.п.",
+                min_points, config.manager_trend_delta_pct
+            ),
+            "Проверить, связано ли улучшение с реальным ростом загрузки или с изменением состава сотрудников.",
+        ));
+    } else if monotonic_delta(
+        &portfolio_values,
+        min_points,
+        config.manager_trend_delta_pct,
+        false,
+    ) {
+        insights.push(insight(
+            "portfolio_activity_falling",
+            "WARN",
+            "portfolio",
+            "Workforce",
+            "Активность падает несколько дней подряд",
+            &format!(
+                "Portfolio coverage снизился за последние {} точек минимум на {:.0} п.п.",
+                min_points, config.manager_trend_delta_pct
+            ),
+            "Разобрать причины снижения: простой, отсутствие задач, сбой сбора или изменение рабочего процесса.",
+        ));
+    }
+
+    add_rollup_current_insights(
+        &mut insights,
+        department_rollups,
+        "department",
+        config.manager_low_coverage_pct as f64,
+        config.manager_overload_coverage_pct as f64,
+    );
+    add_rollup_current_insights(
+        &mut insights,
+        owner_rollups,
+        "owner",
+        config.manager_low_coverage_pct as f64,
+        config.manager_overload_coverage_pct as f64,
+    );
+    add_rollup_history_insights(
+        &mut insights,
+        trend,
+        "department_rollups",
+        "department",
+        config.manager_low_coverage_pct as f64,
+        config.manager_trend_min_points,
+        config.manager_trend_delta_pct,
+    );
+    add_rollup_history_insights(
+        &mut insights,
+        trend,
+        "owner_rollups",
+        "owner",
+        config.manager_low_coverage_pct as f64,
+        config.manager_trend_min_points,
+        config.manager_trend_delta_pct,
+    );
+    add_off_hours_insights(&mut insights, config, summary, rows, report_date);
+
+    insights.sort_by_key(|item| {
+        (
+            insight_rank(item.get("severity").and_then(Value::as_str).unwrap_or("")),
+            item.get("scope")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+            item.get("subject")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        )
+    });
+    insights.truncate(12);
+    insights
+}
+
+fn trend_values(trend: &[Value], field: &str) -> Vec<f64> {
+    trend
+        .iter()
+        .filter_map(|item| item.get(field).and_then(Value::as_f64))
+        .collect()
+}
+
+fn monotonic_delta(values: &[f64], min_points: usize, min_delta: f64, increasing: bool) -> bool {
+    if values.len() < min_points {
+        return false;
+    }
+    let tail = &values[values.len() - min_points..];
+    let monotonic = tail.windows(2).all(|pair| {
+        if increasing {
+            pair[1] >= pair[0]
+        } else {
+            pair[1] <= pair[0]
+        }
+    });
+    monotonic
+        && if increasing {
+            tail[tail.len() - 1] - tail[0] >= min_delta
+        } else {
+            tail[0] - tail[tail.len() - 1] >= min_delta
+        }
+}
+
+fn add_rollup_current_insights(
+    insights: &mut Vec<Value>,
+    rollups: &[Value],
+    scope: &str,
+    low_pct: f64,
+    overload_pct: f64,
+) {
+    for item in rollups {
+        let users = item.get("users_count").and_then(Value::as_i64).unwrap_or(0);
+        if users <= 0 {
+            continue;
+        }
+        let subject = item
+            .get("name")
+            .and_then(Value::as_str)
+            .unwrap_or("Без группы");
+        let coverage = item
+            .get("portfolio_coverage_pct")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0);
+        let active = item
+            .get("active_users")
+            .and_then(Value::as_i64)
+            .unwrap_or(0);
+        let hhmm = item
+            .get("workday_total_active_hhmm")
+            .and_then(Value::as_str)
+            .unwrap_or("00:00");
+        if coverage < low_pct {
+            insights.push(insight(
+                "current_underload",
+                "WARN",
+                scope,
+                subject,
+                "Текущая недогрузка",
+                &format!("Coverage {coverage:.0}% ниже порога {low_pct:.0}%; active {active}/{users}; workday total {hhmm}."),
+                "Проверить план задач, отсутствие входа в систему и возможный сбой сбора данных.",
+            ));
+        } else if coverage >= overload_pct {
+            insights.push(insight(
+                "current_overload",
+                "WARN",
+                scope,
+                subject,
+                "Возможная перегрузка",
+                &format!("Coverage {coverage:.0}% выше порога {overload_pct:.0}%; active {active}/{users}; workday total {hhmm}."),
+                "Проверить переработку, распределение задач и риск выгорания.",
+            ));
+        }
+    }
+}
+
+fn add_rollup_history_insights(
+    insights: &mut Vec<Value>,
+    trend: &[Value],
+    trend_key: &str,
+    scope: &str,
+    low_pct: f64,
+    min_points: usize,
+    min_delta: f64,
+) {
+    let mut series: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    for point in trend {
+        let Some(items) = point.get(trend_key).and_then(Value::as_array) else {
+            continue;
+        };
+        for item in items {
+            let Some(name) = item.get("name").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(coverage) = item.get("portfolio_coverage_pct").and_then(Value::as_f64) else {
+                continue;
+            };
+            series.entry(name.to_string()).or_default().push(coverage);
+        }
+    }
+    for (subject, values) in series {
+        if values.len() < min_points {
+            continue;
+        }
+        let tail = &values[values.len() - min_points..];
+        if tail.iter().all(|value| *value < low_pct) {
+            insights.push(insight(
+                "stable_underload",
+                "WARN",
+                scope,
+                &subject,
+                "Стабильная недогрузка",
+                &format!("Coverage ниже {low_pct:.0}% последние {} daily points.", tail.len()),
+                "Проверить устойчивую нехватку задач, неверный профиль роли или постоянную проблему сбора.",
+            ));
+        }
+        let avg_previous = if tail.len() > 1 {
+            tail[..tail.len() - 1].iter().sum::<f64>() / (tail.len() - 1) as f64
+        } else {
+            tail[0]
+        };
+        let current = tail[tail.len() - 1];
+        if avg_previous - current >= min_delta {
+            insights.push(insight(
+                "drop_vs_norm",
+                "WARN",
+                scope,
+                &subject,
+                "Резкая просадка относительно своей нормы",
+                &format!(
+                    "Текущий coverage {current:.0}% ниже среднего последних точек на {:.0} п.п.",
+                    avg_previous - current
+                ),
+                "Проверить изменение задач, простой, отпуск/отсутствие и корректность сбора.",
+            ));
+        }
+    }
+}
+
+fn add_off_hours_insights(
+    insights: &mut Vec<Value>,
+    config: &Config,
+    summary: &Value,
+    rows: &[Value],
+    report_date: NaiveDate,
+) {
+    let calendar_total = summary
+        .get("calendar_total_active_seconds")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let workday_total = summary
+        .get("workday_total_active_seconds")
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    let off_hours = (calendar_total - workday_total).max(0);
+    let is_weekend = matches!(
+        report_date.weekday(),
+        chrono::Weekday::Sat | chrono::Weekday::Sun
+    );
+    if is_weekend && calendar_total >= config.manager_off_hours_threshold_seconds {
+        insights.push(insight(
+            "weekend_work",
+            "WARN",
+            "portfolio",
+            "Workforce",
+            "Есть работа в выходной день",
+            &format!(
+                "Зафиксировано {} активности в календарный выходной.",
+                hhmm(calendar_total)
+            ),
+            "Проверить, была ли работа согласована и не маскирует ли она аврал или сбой графика.",
+        ));
+    } else if off_hours >= config.manager_off_hours_threshold_seconds {
+        let users = rows
+            .iter()
+            .filter(|row| {
+                let calendar = row
+                    .get("calendar_active_seconds")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                let workday = row
+                    .get("workday_active_seconds")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
+                calendar > workday
+            })
+            .count();
+        insights.push(insight(
+            "off_hours_work",
+            "WARN",
+            "portfolio",
+            "Workforce",
+            "Есть активность вне рабочего окна",
+            &format!(
+                "Вне рабочего окна зафиксировано {}; сотрудников: {}.",
+                hhmm(off_hours),
+                users
+            ),
+            "Проверить ночную/раннюю работу, регламент смен и корректность рабочего окна.",
+        ));
+    }
+}
+
+fn insight(
+    code: &str,
+    severity: &str,
+    scope: &str,
+    subject: &str,
+    title: &str,
+    evidence: &str,
+    recommendation: &str,
+) -> Value {
+    json!({
+        "code": code,
+        "severity": severity,
+        "scope": scope,
+        "subject": subject,
+        "title": title,
+        "evidence": evidence,
+        "recommendation": recommendation,
+    })
+}
+
+fn insight_rank(severity: &str) -> i32 {
+    match severity {
+        "FAIL" => 0,
+        "WARN" => 1,
+        "OK" => 2,
+        "INFO" => 3,
+        _ => 4,
+    }
 }
 
 fn build_executive_summary(summary: &Value, actions: &[Value], sources: &[Value]) -> Value {
@@ -2796,6 +3195,33 @@ mod tests {
         assert_eq!(
             host_from_buckets_payload(&payload),
             Some("WORKSTATION-01".to_string())
+        );
+    }
+
+    #[test]
+    fn management_insights_detect_falling_portfolio_trend() {
+        let cfg = test_config();
+        let trend = vec![
+            json!({"report_date": "2026-05-12", "portfolio_coverage_pct": 80.0}),
+            json!({"report_date": "2026-05-13", "portfolio_coverage_pct": 65.0}),
+            json!({"report_date": "2026-05-14", "portfolio_coverage_pct": 50.0}),
+        ];
+        let insights = build_management_insights(
+            &cfg,
+            &json!({
+                "calendar_total_active_seconds": 0,
+                "workday_total_active_seconds": 0
+            }),
+            &[],
+            &[],
+            &[],
+            &trend,
+            NaiveDate::from_ymd_opt(2026, 5, 14).unwrap(),
+        );
+        assert!(
+            insights
+                .iter()
+                .any(|item| item["code"] == "portfolio_activity_falling")
         );
     }
 

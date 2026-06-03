@@ -85,6 +85,22 @@ Worktime API сохраняет daily history как агрегированны�
 - `AW_WORKTIME_MANAGEMENT_HISTORY_DIR`;
 - `AW_WORKTIME_MANAGEMENT_HISTORY_DAYS`;
 - `AW_WORKTIME_MANAGEMENT_HISTORY_RETENTION_DAYS`.
+- `AW_WORKTIME_MANAGER_OVERLOAD_COVERAGE_PCT`;
+- `AW_WORKTIME_MANAGER_TREND_MIN_POINTS`;
+- `AW_WORKTIME_MANAGER_TREND_DELTA_PCT`;
+- `AW_WORKTIME_MANAGER_OFF_HOURS_THRESHOLD_SECONDS`.
+
+Слой автоматической интерпретации возвращает `trend_insights`:
+
+- текущая недогрузка/перегрузка подразделения или ответственного;
+- рост/падение portfolio activity несколько daily points подряд;
+- стабильная недогрузка после накопления минимальной истории;
+- резкая просадка подразделения/ответственного относительно своей нормы;
+- активность вне рабочего окна;
+- работа в выходной день.
+
+Если истории мало, вывод должен быть честным: `history_insufficient`, без
+продажи дневного среза как месячной аналитики.
 
 Правило честной интерпретации:
 

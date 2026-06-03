@@ -41,6 +41,10 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
   `workforce.owner_comparison`, `workforce.trend` и `workforce.trend_status`;
 - daily history для `workforce.trend` накапливается в `worktime-api` как
   агрегированные trend-points; портал только отображает готовый массив;
+- `worktime-api` возвращает `trend_insights`, а портал показывает их в секции
+  `Выводы Workforce`;
+- insights включают текущую недогрузку/перегрузку, рост/падение тренда,
+  просадку относительно нормы, работу вне рабочего окна и выходные;
 - `trend_status=daily_only` означает, что месячный тренд еще нельзя
   интерпретировать как полноценный отчет; для `monthly_ready` нужна накопленная
   daily history;

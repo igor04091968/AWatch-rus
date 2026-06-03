@@ -662,6 +662,10 @@
               AW_WORKTIME_MANAGEMENT_HISTORY_DIR={{ aw_worktime_management_history_dir | default(aw_server_data_dir ~ '/worktime-management-history') }}
               AW_WORKTIME_MANAGEMENT_HISTORY_DAYS={{ aw_worktime_management_history_days | default(31) }}
               AW_WORKTIME_MANAGEMENT_HISTORY_RETENTION_DAYS={{ aw_worktime_management_history_retention_days | default(120) }}
+              AW_WORKTIME_MANAGER_OVERLOAD_COVERAGE_PCT={{ aw_worktime_manager_overload_coverage_pct | default(115) }}
+              AW_WORKTIME_MANAGER_TREND_MIN_POINTS={{ aw_worktime_manager_trend_min_points | default(3) }}
+              AW_WORKTIME_MANAGER_TREND_DELTA_PCT={{ aw_worktime_manager_trend_delta_pct | default(10) }}
+              AW_WORKTIME_MANAGER_OFF_HOURS_THRESHOLD_SECONDS={{ aw_worktime_manager_off_hours_threshold_seconds | default(1800) }}
               AW_DLP_INFLUX_ENABLED={{ 'true' if (aw_dlp_influx_enabled | default(false) | bool) else 'false' }}
               AW_DLP_INFLUX_URL={{ aw_dlp_influx_url | default('') }}
               AW_DLP_INFLUX_ORG={{ aw_dlp_influx_org | default('proxmox') }}
