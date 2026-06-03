@@ -32,6 +32,8 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
   active applications, DLP WARN/FAIL, evidence screenshots/items, open issues;
 - отчет содержит read-only UEBA-compatible rule-based risk scoring v1: `score`,
   `level`, `confidence`, `risk_sources`, `baseline_status`, `policy_version`,
+  `baseline_window_days`, `user_baseline_available`,
+  `department_baseline_available`, `deviation_score`, `baseline_samples`,
   `calculated_from`, `reasons`;
 - отчет и вкладка `Руководитель` показывают `Индекс активности` как
   proxy `активное время / плановое рабочее время`;
@@ -66,6 +68,9 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
   настраиваются в `/etc/detmir-portal-ueba-policy.yaml`; evidence используется
   как confidence, а не как отдельный risk reason; слой не выполняет
   pfSense/NAC/SOAR actions;
+- baseline skeleton хранится в state каталоге портала как
+  `ueba-baseline-state.json`: per-user и per-department samples копятся по
+  `report_date`, а deviation включается только после минимальной истории;
 - вкладка `Руководитель` получает этот блок через легкий endpoint
   `/api/workforce/policy/explain`, без загрузки полного `/api/reports`;
 - contract легкого endpoint защищен unit-тестом

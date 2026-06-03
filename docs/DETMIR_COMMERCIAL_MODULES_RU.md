@@ -117,12 +117,24 @@ DetMir Workforce/Security формирует read-only UEBA-compatible rule-base
   но не добавляют risk score сами по себе;
 - `risk_sources`: типы источников, которые дали risk reasons;
 - `baseline_status`: статус baseline-модели, сейчас
-  `portfolio_only_no_per_user_baseline`;
+  `per_user_department_baseline_skeleton`;
+- `baseline_window_days`: rolling window локальной baseline-истории;
+- `user_baseline_available`: есть ли минимум samples для per-user сравнения;
+- `department_baseline_available`: есть ли минимум samples для сравнения
+  подразделений;
+- `deviation_score`: score отклонения текущего дня от baseline;
+- `baseline_samples`: количество накопленных user/department samples;
 - `policy_version`: версия risk policy;
 - `calculated_from`: список источников, участвовавших в расчете;
 - `reasons`: DLP WARN/FAIL, open review queue, off-hours/weekend insights,
   просадки/аномалии Workforce, приложения без явного
   `application_weights` правила.
+
+Baseline skeleton хранится локально в state каталоге портала как
+`ueba-baseline-state.json`. Текущий день записывается атомарно по `report_date`
+и не дублируется при повторном открытии отчета. Отклонение считается только
+после накопления минимального количества исторических samples, поэтому первый
+период эксплуатации честно показывает `*_baseline_available=false`.
 
 Веса настраиваются через YAML policy:
 

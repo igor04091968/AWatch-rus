@@ -403,6 +403,7 @@ function renderUebaRisk(risk) {
   const reasons = Array.isArray(risk.reasons) ? risk.reasons.slice(0, 12) : [];
   const sources = Array.isArray(risk.risk_sources) ? risk.risk_sources.join(", ") : "-";
   const confidence = Number.isFinite(Number(risk.confidence)) ? `${Math.round(Number(risk.confidence) * 100)}%` : "0%";
+  const baselineReady = `user: ${risk.user_baseline_available ? "yes" : "no"} · dept: ${risk.department_baseline_available ? "yes" : "no"}`;
   return `
     <section class="card ueba-risk-card">
       <div class="section-head">
@@ -411,6 +412,7 @@ function renderUebaRisk(risk) {
           <p class="muted">${escapeHtml(risk.note || "Read-only risk score без автоматического воздействия.")}</p>
           <p class="muted small">Формула: ${escapeHtml(risk.formula || "sum(reason_points) capped at 100")}.</p>
           <p class="muted small">Confidence: ${escapeHtml(confidence)} · sources: ${escapeHtml(sources)} · baseline: ${escapeHtml(risk.baseline_status || "-")} · policy: ${escapeHtml(risk.policy_version || "-")}</p>
+          <p class="muted small">Baseline window: ${escapeHtml(risk.baseline_window_days || "-")} days · available: ${escapeHtml(baselineReady)} · deviation: ${escapeHtml(risk.deviation_score ?? 0)}</p>
         </div>
         <span class="badge ${statusClass(risk.status)}">${escapeHtml(risk.level || "unknown")} · ${escapeHtml(risk.score ?? 0)}/100</span>
       </div>

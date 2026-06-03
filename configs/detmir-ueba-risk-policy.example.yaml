@@ -1,5 +1,5 @@
 version: "ueba-rule-v1"
-baseline_status: "portfolio_only_no_per_user_baseline"
+baseline_status: "per_user_department_baseline_skeleton"
 score_cap: 100
 
 weights:
@@ -13,6 +13,7 @@ weights:
   application_classification_gap: 10
   application_classification_gap_large: 15
   worktime_unavailable: 25
+  baseline_deviation: 15
 
 confidence:
   base: 0.55
