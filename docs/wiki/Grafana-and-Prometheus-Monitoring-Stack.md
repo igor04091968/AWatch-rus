@@ -36,8 +36,11 @@ Grafana datasource `InfluxDB-AW` читает тот же bucket.
 
 - если `aw_worktime_influx_enabled=true`, `aw_worktime_influx_token` обязан быть непустым;
 - если `aw_dlp_influx_enabled=true`, `aw_dlp_influx_token` обязан быть непустым.
-- если exporter включен, Influx URL и список hosts не могут быть пустыми,
-  `HOST-EXAMPLE`, `WINDOWS_USER_EXAMPLE` или TEST-NET адресами.
+- если exporter включен, Influx URL, org, bucket и список hosts не могут быть
+  пустыми, `HOST-EXAMPLE`, `WINDOWS_USER_EXAMPLE` или TEST-NET/example
+  значениями;
+- token не может быть пустым или placeholder вроде `CHANGE_ME`, `TOKEN`,
+  `YOUR_*`, `<TOKEN>`.
 
 Кроме того, разовый запуск exporters больше не маскируется `failed_when: false`. Если запись в Influx сломана, playbook должен явно упасть, а не оставлять Grafana со старыми рядами.
 
@@ -59,9 +62,10 @@ aw_dlp_influx_hosts: "HOST-EXAMPLE"
 Защита от повторения ошибки:
 
 - Ansible не даст записать `/etc/activitywatch/aw-server.env`, если включенный
-  exporter получил public placeholder вместо live destination;
+  exporter получил public placeholder вместо live destination/token;
 - Rust exporter дополнительно завершится с понятной ошибкой по переменной
-  `AW_*_INFLUX_URL` или `AW_*_INFLUX_HOSTS`, если такой env все же попал в
+  `AW_*_INFLUX_URL`, `AW_*_INFLUX_ORG`, `AW_*_INFLUX_BUCKET`,
+  `AW_*_INFLUX_TOKEN` или `AW_*_INFLUX_HOSTS`, если такой env все же попал в
   runtime;
 - живые URL, hosts и tokens не переносятся в tracked files.
 

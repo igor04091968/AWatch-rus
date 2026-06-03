@@ -20,6 +20,9 @@ jobs:
         run: |
           find . -type f -name "*.sh" -print0 | xargs -0 -r shellcheck -e SC1007,SC1090,SC2016
 
+      - name: Run production inventory placeholder guard self-test
+        run: bash scripts/check_production_inventory_placeholders.sh --self-test
+
   powershell-analyzer:
     runs-on: ubuntu-latest
     steps:

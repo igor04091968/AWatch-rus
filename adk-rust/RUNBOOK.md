@@ -618,6 +618,29 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 ```
 
+Production readiness checklist:
+
+- [ ] public defaults are still sanitized: no live hosts, IPs, domains, tokens,
+      evidence paths, case IDs, hashes, or operator home paths in tracked files;
+- [ ] live values are supplied only through private inventory/env or server-side
+      runtime env;
+- [ ] enabled Influx exporters have live URL, org, bucket, token and hosts;
+- [ ] private production config passes:
+
+  ```bash
+  scripts/check_production_inventory_placeholders.sh private-config/runtime.env private-config/ansible-vars.yml
+  ```
+
+  Run this guard only on private production override files. Public tracked
+  default/example files may intentionally contain `HOST-EXAMPLE` and TEST-NET
+  values for release hygiene.
+
+- [ ] `ansible-playbook -i ansible/inventory.ini ansible/deploy_aw_server.yml --syntax-check` passes;
+- [ ] `aw-worktime-influx-exporter.service` and `aw-dlp-influx-exporter.service`
+      complete once and write points;
+- [ ] `detmir-check --json`, `detmir-status --json` and Grafana check are green;
+- [ ] rollback path for changed binaries/env files is known.
+
 На Proxmox:
 
 ```bash
