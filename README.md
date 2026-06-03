@@ -50,6 +50,7 @@ runtime, OCR/content-analysis, 1C/AI/ETL integration и MCP/dev helpers. Эти
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)
 - [Описание продукта](PRODUCT_DESCRIPTION_RU.md)
 - [Установка для эксперта](INSTALL_FOR_EXPERT_RU.md)
+- [Сценарий экспертной проверки](docs/EXPERT_TEST_SCENARIO_RU.md)
 - [Сторонние компоненты](THIRD_PARTY_COMPONENTS.md)
 - [Сторонние лицензии](THIRD_PARTY_LICENSES_RU.md)
 - [Архитектура](docs/ARCHITECTURE_RU.md)
