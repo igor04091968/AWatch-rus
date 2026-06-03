@@ -103,6 +103,13 @@ struct Cli {
     )]
     evidence_root: PathBuf,
 
+    #[arg(
+        long,
+        default_value = "/var/lib/activitywatch/health/readiness-bundle",
+        env = "DETMIR_PORTAL_READINESS_BUNDLE_DIR"
+    )]
+    readiness_bundle_dir: PathBuf,
+
     #[arg(long, default_value_t = 30, env = "DETMIR_PORTAL_EVIDENCE_LIMIT")]
     evidence_limit: u32,
 
@@ -610,6 +617,9 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
         ),
         "/favicon.ico" => respond_text(request, StatusCode(204), "", "image/x-icon"),
         "/api/health" => respond_json(request, &build_health(&build_snapshot(args))),
+        "/api/readiness/latest" => respond_json(request, &readiness_latest(args)),
+        "/api/readiness/bundle" => respond_json(request, &readiness_bundle(args)),
+        "/api/readiness/verify" => respond_json(request, &readiness_verify(args)),
         "/api/summary" => respond_json(request, &build_summary(&build_snapshot(args))),
         "/api/operator" => {
             let snapshot = build_snapshot(args);
@@ -686,6 +696,15 @@ fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
             }),
         );
     }
+    if path == "/api/readiness/latest" {
+        return respond_json(request, &readiness_latest(args));
+    }
+    if path == "/api/readiness/bundle" {
+        return respond_json(request, &readiness_bundle(args));
+    }
+    if path == "/api/readiness/verify" {
+        return respond_json(request, &readiness_verify(args));
+    }
     if path == "/api/dlp/evidence" {
         return respond_json(request, &build_dlp_evidence_response(args));
     }
@@ -707,6 +726,121 @@ fn normalize_path(url: &str) -> String {
         "/".to_string()
     } else {
         path.to_string()
+    }
+}
+
+fn readiness_latest(args: &Cli) -> Value {
+    read_json_file(
+        &args
+            .readiness_bundle_dir
+            .join("detmir-readiness-latest.json"),
+    )
+    .unwrap_or_else(|err| {
+        json!({
+            "ok": false,
+            "generated_at_utc": now(),
+            "error": err.to_string(),
+        })
+    })
+}
+
+fn readiness_bundle(args: &Cli) -> Value {
+    let dir = &args.readiness_bundle_dir;
+    let status = read_json_file(&dir.join("detmir-readiness-status.json")).unwrap_or_else(|err| {
+        json!({
+            "ok": false,
+            "error": err.to_string(),
+        })
+    });
+    let latest_dir = fs::read_to_string(dir.join("latest-dir.txt"))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let artifacts = [
+        "detmir-readiness-latest.json",
+        "detmir-readiness-act.md",
+        "detmir-readiness-act.html",
+        "sha256sums.txt",
+        "sha256sums.txt.sig",
+        "public-key.pem",
+        "detmir-readiness-status.json",
+        "detmir-readiness.prom",
+    ]
+    .into_iter()
+    .filter_map(|name| {
+        let path = dir.join(name);
+        path.metadata().ok().map(|meta| {
+            json!({
+                "name": name,
+                "bytes": meta.len(),
+                "available": true,
+            })
+        })
+    })
+    .collect::<Vec<_>>();
+    json!({
+        "ok": status.get("ok").and_then(Value::as_bool).unwrap_or(false),
+        "generated_at_utc": now(),
+        "bundle_dir": dir.display().to_string(),
+        "latest_archive_dir": latest_dir,
+        "status": status,
+        "artifacts": artifacts,
+    })
+}
+
+fn readiness_verify(args: &Cli) -> Value {
+    let dir = &args.readiness_bundle_dir;
+    let checksum = run_in_dir(
+        dir,
+        Command::new("sha256sum").arg("-c").arg("sha256sums.txt"),
+    );
+    let sig_path = dir.join("sha256sums.txt.sig");
+    let pub_path = dir.join("public-key.pem");
+    let signature = if sig_path.is_file() && pub_path.is_file() {
+        run_in_dir(
+            dir,
+            Command::new("openssl")
+                .arg("dgst")
+                .arg("-sha256")
+                .arg("-verify")
+                .arg("public-key.pem")
+                .arg("-signature")
+                .arg("sha256sums.txt.sig")
+                .arg("sha256sums.txt"),
+        )
+    } else {
+        Err("signature files are not available".to_string())
+    };
+    json!({
+        "ok": checksum.is_ok() && signature.is_ok(),
+        "generated_at_utc": now(),
+        "checksum_verified": checksum.is_ok(),
+        "signature_verified": signature.is_ok(),
+        "checksum_error": checksum.err(),
+        "signature_error": signature.err(),
+    })
+}
+
+fn read_json_file(path: &Path) -> Result<Value> {
+    let text = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
+    serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))
+}
+
+fn run_in_dir(dir: &Path, command: &mut Command) -> std::result::Result<(), String> {
+    let output = command
+        .current_dir(dir)
+        .output()
+        .map_err(|err| format!("run command in {}: {err}", dir.display()))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .trim()
+        .to_string())
     }
 }
 
@@ -4434,6 +4568,7 @@ mod tests {
             state_dir: dir.path().join("state"),
             dlp_db_path: dir.path().join("dlp.sqlite"),
             evidence_root: dir.path().to_path_buf(),
+            readiness_bundle_dir: dir.path().join("readiness-bundle"),
             evidence_limit: 10,
             evidence_max_bytes: 1024,
             json_smoke: false,

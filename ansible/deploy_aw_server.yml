@@ -1608,6 +1608,61 @@
             mode: "0755"
           when: detmir_readiness_rust_binary.stat.exists | default(false)
 
+        - name: Создать private каталог DetMir readiness signing
+          ansible.builtin.file:
+            path: /etc/detmir-readiness
+            state: directory
+            owner: root
+            group: root
+            mode: "0700"
+
+        - name: Проверить private key DetMir readiness signing
+          ansible.builtin.stat:
+            path: /etc/detmir-readiness/signing-key.pem
+          register: detmir_readiness_signing_key
+
+        - name: Сгенерировать private key DetMir readiness signing
+          ansible.builtin.command:
+            argv:
+              - openssl
+              - genpkey
+              - -algorithm
+              - RSA
+              - -pkeyopt
+              - rsa_keygen_bits:3072
+              - -out
+              - /etc/detmir-readiness/signing-key.pem
+          when: not (detmir_readiness_signing_key.stat.exists | default(false))
+          no_log: true
+
+        - name: Зафиксировать права private key DetMir readiness signing
+          ansible.builtin.file:
+            path: /etc/detmir-readiness/signing-key.pem
+            owner: root
+            group: root
+            mode: "0600"
+
+        - name: Создать private env DetMir readiness
+          ansible.builtin.copy:
+            dest: /etc/detmir-readiness.env
+            content: ""
+            owner: root
+            group: root
+            mode: "0600"
+            force: false
+
+        - name: Настроить private env DetMir readiness signing
+          ansible.builtin.blockinfile:
+            path: /etc/detmir-readiness.env
+            marker: "# {mark} ANSIBLE MANAGED DETMIR READINESS"
+            block: |
+              DETMIR_READINESS_SIGNING_KEY=/etc/detmir-readiness/signing-key.pem
+              DETMIR_READINESS_REQUIRE_SIGNATURE=true
+              DETMIR_READINESS_RETENTION_DAYS={{ detmir_readiness_retention_days | default(30) }}
+            owner: root
+            group: root
+            mode: "0600"
+
         - name: Установить systemd service DetMir readiness bundle
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/detmir-readiness.service"

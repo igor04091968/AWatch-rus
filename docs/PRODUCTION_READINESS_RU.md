@@ -86,18 +86,49 @@ detmir-readiness --output-dir /var/lib/activitywatch/health/readiness-bundle
 - `detmir-readiness-latest.json` - машинный отчет;
 - `detmir-readiness-act.md` - акт готовности для оператора;
 - `detmir-readiness-act.html` - HTML-версия акта;
-- `sha256sums.txt` - контрольные суммы bundle-файлов.
+- `sha256sums.txt` - контрольные суммы bundle-файлов;
+- `sha256sums.txt.sig` - detached signature для `sha256sums.txt`;
+- `public-key.pem` - публичный ключ проверки подписи;
+- `detmir-readiness-status.json` - короткий machine-readable статус bundle;
+- `detmir-readiness.prom` - Prometheus textfile metric.
+
+Архив хранится по датам:
+
+```text
+/var/lib/activitywatch/health/readiness-bundle/
+  2026-06-03/
+    062000Z/
+      detmir-readiness-latest.json
+      detmir-readiness-act.md
+      detmir-readiness-act.html
+      sha256sums.txt
+      sha256sums.txt.sig
+      public-key.pem
+```
+
+Файлы в корне `readiness-bundle/` являются latest-копией последнего архива.
 
 Проверка целостности:
 
 ```bash
 cd /var/lib/activitywatch/health/readiness-bundle
 sha256sum -c sha256sums.txt
+openssl dgst -sha256 -verify public-key.pem \
+  -signature sha256sums.txt.sig sha256sums.txt
 ```
 
 В JSON и акт добавляются технические поля `generated_by`, `host`, `version`,
 `git_commit`, а также раздел `Ограничения проверки`. Секреты, токены и пароли
 в артефакты не включаются.
+
+Private signing key хранится только на сервере:
+
+```text
+/etc/detmir-readiness/signing-key.pem
+```
+
+Публичный ключ попадает в bundle как `public-key.pem`. Retention архивов
+управляется переменной `DETMIR_READINESS_RETENTION_DAYS`.
 
 ## Ежедневное формирование
 
@@ -123,12 +154,23 @@ systemctl status detmir-readiness.service --no-pager
 
 Поддерживаемые private env-переключатели:
 
+- `DETMIR_READINESS_SIGNING_KEY=/etc/detmir-readiness/signing-key.pem`;
+- `DETMIR_READINESS_REQUIRE_SIGNATURE=true`;
+- `DETMIR_READINESS_RETENTION_DAYS=30`;
 - `DETMIR_READINESS_SKIP_SYSTEMD=true`;
 - `DETMIR_READINESS_SKIP_INFLUX_WRITE=true`;
 - `DETMIR_READINESS_ALLOW_DISABLED_INFLUX=true`;
 - `DETMIR_READINESS_SKIP_GRAFANA=true`;
 - `DETMIR_GRAFANA_DATASOURCE_UID=<uid>`;
 - `DETMIR_GIT_COMMIT=<commit>`.
+
+## Portal endpoints
+
+`detmir-portal` публикует read-only endpoints:
+
+- `/api/readiness/latest` - последний readiness JSON;
+- `/api/readiness/bundle` - индекс latest bundle и список артефактов;
+- `/api/readiness/verify` - проверка `sha256sum -c` и detached signature.
 
 ## Полезные параметры
 

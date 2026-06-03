@@ -646,9 +646,14 @@ Production readiness checklist:
   ```bash
   cd /var/lib/activitywatch/health/readiness-bundle
   sha256sum -c sha256sums.txt
+  openssl dgst -sha256 -verify public-key.pem \
+    -signature sha256sums.txt.sig sha256sums.txt
   ```
 
+- [ ] `detmir-readiness-status.json` and `detmir-readiness.prom` expose the
+      latest OK/WARN/FAIL state independently from systemd unit result;
 - [ ] `detmir-readiness.timer` is enabled for daily bundle generation;
+- [ ] DetMir portal readiness endpoints return latest/bundle/verify data;
 - [ ] `detmir-check --json`, `detmir-status --json` and Grafana check are green;
 - [ ] rollback path for changed binaries/env files is known.
 

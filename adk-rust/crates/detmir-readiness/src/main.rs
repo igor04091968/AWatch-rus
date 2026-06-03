@@ -19,6 +19,7 @@ const DEFAULT_GRAFANA_ENV_FILE: &str = "/etc/detmir-grafana-check.env";
 const DEFAULT_GRAFANA_URL: &str = "http://127.0.0.1:3000";
 const DEFAULT_GRAFANA_DATASOURCE_UID: &str = "influxdb_aw";
 const DEFAULT_SYSTEMD_SERVICES: &str = "activitywatch-server,aw-worktime-api,aw-worktime-influx-exporter.timer,aw-dlp-influx-exporter.timer";
+const DEFAULT_RETENTION_DAYS: i64 = 30;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -83,6 +84,19 @@ struct Cli {
     #[arg(long)]
     output_dir: Option<PathBuf>,
 
+    #[arg(long, env = "DETMIR_READINESS_SIGNING_KEY")]
+    signing_key: Option<PathBuf>,
+
+    #[arg(long, env = "DETMIR_READINESS_REQUIRE_SIGNATURE")]
+    require_signature: bool,
+
+    #[arg(
+        long,
+        env = "DETMIR_READINESS_RETENTION_DAYS",
+        default_value_t = DEFAULT_RETENTION_DAYS
+    )]
+    retention_days: i64,
+
     #[arg(long, env = "DETMIR_GIT_COMMIT", default_value = "unknown")]
     git_commit: String,
 }
@@ -107,7 +121,7 @@ struct GeneratedBy {
     version: String,
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize)]
 struct Counts {
     ok: usize,
     warn: usize,
@@ -120,6 +134,31 @@ struct Check {
     status: StatusLevel,
     summary: String,
     details: Value,
+}
+
+#[derive(Debug, Serialize)]
+struct BundleStatus {
+    ok: bool,
+    status: StatusLevel,
+    generated_at_utc: String,
+    archive_dir: String,
+    latest_dir: String,
+    signature: SignatureStatus,
+    counts: Counts,
+    prometheus_metric_file: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SignatureStatus {
+    required: bool,
+    signed: bool,
+    verified: bool,
+    method: String,
+    summary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signature_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    public_key_file: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -683,7 +722,7 @@ fn readiness_exit_code(status: StatusLevel) -> i32 {
 
 fn write_outputs(cli: &Cli, report: &Report) -> Result<()> {
     if let Some(dir) = &cli.output_dir {
-        write_bundle(dir, report)?;
+        write_bundle(dir, report, cli)?;
     }
     if let Some(path) = &cli.output_json {
         write_text(path, &serde_json::to_string_pretty(report)?)?;
@@ -700,8 +739,12 @@ fn write_outputs(cli: &Cli, report: &Report) -> Result<()> {
     Ok(())
 }
 
-fn write_bundle(dir: &Path, report: &Report) -> Result<()> {
+fn write_bundle(dir: &Path, report: &Report, cli: &Cli) -> Result<()> {
     fs::create_dir_all(dir).with_context(|| format!("create output dir: {}", dir.display()))?;
+    let archive_dir = archive_dir_for(dir);
+    fs::create_dir_all(&archive_dir)
+        .with_context(|| format!("create archive dir: {}", archive_dir.display()))?;
+
     let files = [
         (
             "detmir-readiness-latest.json",
@@ -712,7 +755,7 @@ fn write_bundle(dir: &Path, report: &Report) -> Result<()> {
     ];
     let mut sums = Vec::new();
     for (name, content) in files {
-        let path = dir.join(name);
+        let path = archive_dir.join(name);
         write_text(&path, &content)?;
         sums.push((name.to_string(), sha256_file(&path)?));
     }
@@ -720,7 +763,203 @@ fn write_bundle(dir: &Path, report: &Report) -> Result<()> {
         .into_iter()
         .map(|(name, sum)| format!("{sum}  {name}\n"))
         .collect::<String>();
-    write_text(&dir.join("sha256sums.txt"), &sums_text)?;
+    write_text(&archive_dir.join("sha256sums.txt"), &sums_text)?;
+
+    let signature = sign_bundle(&archive_dir, cli)?;
+    let status = BundleStatus {
+        ok: report.ok && (!cli.require_signature || signature.verified),
+        status: report.status,
+        generated_at_utc: report.generated_at_utc.clone(),
+        archive_dir: archive_dir.display().to_string(),
+        latest_dir: dir.display().to_string(),
+        signature,
+        counts: report.counts.clone(),
+        prometheus_metric_file: dir.join("detmir-readiness.prom").display().to_string(),
+    };
+    write_text(
+        &archive_dir.join("detmir-readiness-status.json"),
+        &serde_json::to_string_pretty(&status)?,
+    )?;
+    write_text(
+        &archive_dir.join("detmir-readiness.prom"),
+        &render_prometheus_metrics(&status),
+    )?;
+    copy_latest_bundle(dir, &archive_dir)?;
+    prune_old_archives(dir, cli.retention_days)?;
+    Ok(())
+}
+
+fn archive_dir_for(root: &Path) -> PathBuf {
+    let now = Utc::now();
+    root.join(now.format("%Y-%m-%d").to_string())
+        .join(now.format("%H%M%SZ").to_string())
+}
+
+fn copy_latest_bundle(root: &Path, archive_dir: &Path) -> Result<()> {
+    for name in [
+        "detmir-readiness-latest.json",
+        "detmir-readiness-act.md",
+        "detmir-readiness-act.html",
+        "sha256sums.txt",
+        "sha256sums.txt.sig",
+        "public-key.pem",
+        "detmir-readiness-status.json",
+        "detmir-readiness.prom",
+    ] {
+        let src = archive_dir.join(name);
+        if src.is_file() {
+            fs::copy(&src, root.join(name))
+                .with_context(|| format!("copy latest bundle file: {}", src.display()))?;
+        } else {
+            let latest = root.join(name);
+            if latest.exists() {
+                fs::remove_file(&latest)
+                    .with_context(|| format!("remove stale latest file: {}", latest.display()))?;
+            }
+        }
+    }
+    write_text(
+        &root.join("latest-dir.txt"),
+        &format!("{}\n", archive_dir.display()),
+    )
+}
+
+fn sign_bundle(archive_dir: &Path, cli: &Cli) -> Result<SignatureStatus> {
+    let sums_path = archive_dir.join("sha256sums.txt");
+    let sig_path = archive_dir.join("sha256sums.txt.sig");
+    let public_key_path = archive_dir.join("public-key.pem");
+    let Some(key_path) = cli.signing_key.as_deref() else {
+        if cli.require_signature {
+            anyhow::bail!(
+                "readiness bundle signature is required but signing key is not configured"
+            );
+        }
+        return Ok(SignatureStatus {
+            required: false,
+            signed: false,
+            verified: false,
+            method: "openssl dgst -sha256".to_string(),
+            summary: "signature not configured".to_string(),
+            signature_file: None,
+            public_key_file: None,
+        });
+    };
+    if !key_path.is_file() {
+        if cli.require_signature {
+            anyhow::bail!("readiness signing key not found: {}", key_path.display());
+        }
+        return Ok(SignatureStatus {
+            required: false,
+            signed: false,
+            verified: false,
+            method: "openssl dgst -sha256".to_string(),
+            summary: "signing key not found".to_string(),
+            signature_file: None,
+            public_key_file: None,
+        });
+    }
+    run_command(
+        Command::new("openssl")
+            .arg("pkey")
+            .arg("-in")
+            .arg(key_path)
+            .arg("-pubout")
+            .arg("-out")
+            .arg(&public_key_path),
+        "extract readiness public key",
+    )?;
+    run_command(
+        Command::new("openssl")
+            .arg("dgst")
+            .arg("-sha256")
+            .arg("-sign")
+            .arg(key_path)
+            .arg("-out")
+            .arg(&sig_path)
+            .arg(&sums_path),
+        "sign readiness sha256sums",
+    )?;
+    run_command(
+        Command::new("openssl")
+            .arg("dgst")
+            .arg("-sha256")
+            .arg("-verify")
+            .arg(&public_key_path)
+            .arg("-signature")
+            .arg(&sig_path)
+            .arg(&sums_path),
+        "verify readiness sha256sums signature",
+    )?;
+    Ok(SignatureStatus {
+        required: cli.require_signature,
+        signed: true,
+        verified: true,
+        method: "openssl dgst -sha256".to_string(),
+        summary: "sha256sums detached signature verified".to_string(),
+        signature_file: Some(sig_path.display().to_string()),
+        public_key_file: Some(public_key_path.display().to_string()),
+    })
+}
+
+fn run_command(command: &mut Command, context: &str) -> Result<()> {
+    let output = command.output().with_context(|| format!("run {context}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!(
+            "{context} failed: {}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
+fn render_prometheus_metrics(status: &BundleStatus) -> String {
+    let ready = if status.ok { 1 } else { 0 };
+    let signed = if status.signature.verified { 1 } else { 0 };
+    let status_value = match status.status {
+        StatusLevel::Ok => 0,
+        StatusLevel::Warn => 1,
+        StatusLevel::Fail | StatusLevel::Unknown => 2,
+    };
+    format!(
+        "# HELP detmir_readiness_ok DetMir readiness result, 1 means OK.\n\
+         # TYPE detmir_readiness_ok gauge\n\
+         detmir_readiness_ok {ready}\n\
+         # HELP detmir_readiness_status DetMir readiness status: 0 OK, 1 WARN, 2 FAIL.\n\
+         # TYPE detmir_readiness_status gauge\n\
+         detmir_readiness_status {status_value}\n\
+         # HELP detmir_readiness_signature_verified DetMir readiness detached signature verification result.\n\
+         # TYPE detmir_readiness_signature_verified gauge\n\
+         detmir_readiness_signature_verified {signed}\n\
+         detmir_readiness_checks_ok {}\n\
+         detmir_readiness_checks_warn {}\n\
+         detmir_readiness_checks_fail {}\n",
+        status.counts.ok, status.counts.warn, status.counts.fail
+    )
+}
+
+fn prune_old_archives(root: &Path, retention_days: i64) -> Result<()> {
+    if retention_days <= 0 {
+        return Ok(());
+    }
+    let cutoff = Utc::now().date_naive() - chrono::Duration::days(retention_days);
+    for entry in
+        fs::read_dir(root).with_context(|| format!("read output dir: {}", root.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let Ok(date) = chrono::NaiveDate::parse_from_str(&name, "%Y-%m-%d") else {
+            continue;
+        };
+        if date < cutoff {
+            fs::remove_dir_all(entry.path())
+                .with_context(|| format!("prune readiness archive: {}", entry.path().display()))?;
+        }
+    }
     Ok(())
 }
 
@@ -977,6 +1216,33 @@ mod tests {
         }
     }
 
+    fn test_cli() -> Cli {
+        Cli {
+            json: false,
+            aw_env_file: PathBuf::from("/nonexistent/aw.env"),
+            grafana_env_file: PathBuf::from("/nonexistent/grafana.env"),
+            systemd_services: DEFAULT_SYSTEMD_SERVICES.to_string(),
+            timeout_seconds: 1,
+            skip_systemd: true,
+            skip_influx_write: true,
+            allow_disabled_influx: true,
+            skip_grafana: true,
+            grafana_url: None,
+            grafana_user: None,
+            grafana_password: None,
+            grafana_datasource_uid: DEFAULT_GRAFANA_DATASOURCE_UID.to_string(),
+            output_json: None,
+            output_markdown: None,
+            output_html: None,
+            output_pdf: None,
+            output_dir: None,
+            signing_key: None,
+            require_signature: false,
+            retention_days: DEFAULT_RETENTION_DAYS,
+            git_commit: "abc123".to_string(),
+        }
+    }
+
     #[test]
     fn parses_env_file_without_quotes() {
         let dir = tempfile::tempdir().unwrap();
@@ -1056,13 +1322,24 @@ mod tests {
     fn writes_bundle_with_sha256sums() {
         let dir = tempfile::tempdir().unwrap();
         let report = test_report(vec![ok("env:test", "ok", json!({}))]);
-        write_bundle(dir.path(), &report).unwrap();
+        let cli = test_cli();
+        write_bundle(dir.path(), &report, &cli).unwrap();
         assert!(dir.path().join("detmir-readiness-latest.json").is_file());
         assert!(dir.path().join("detmir-readiness-act.md").is_file());
         assert!(dir.path().join("detmir-readiness-act.html").is_file());
+        assert!(dir.path().join("detmir-readiness-status.json").is_file());
+        assert!(dir.path().join("detmir-readiness.prom").is_file());
         let sums = fs::read_to_string(dir.path().join("sha256sums.txt")).unwrap();
         assert!(sums.contains("detmir-readiness-latest.json"));
         assert!(sums.contains("detmir-readiness-act.md"));
         assert!(sums.contains("detmir-readiness-act.html"));
+        let status: Value = serde_json::from_str(
+            &fs::read_to_string(dir.path().join("detmir-readiness-status.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(status["signature"]["signed"], false);
+        assert_eq!(status["signature"]["verified"], false);
+        let latest_dir = fs::read_to_string(dir.path().join("latest-dir.txt")).unwrap();
+        assert!(latest_dir.contains("2026") || latest_dir.contains("20"));
     }
 }

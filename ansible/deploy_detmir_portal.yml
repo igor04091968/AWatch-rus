@@ -14,6 +14,7 @@
     detmir_portal_one_c_url: "{{ detmir_portal_one_c_url_override | default('http://' + detmir_portal_one_c_host + ':8710', true) }}"
     detmir_portal_workforce_policy_path: "/etc/detmir-portal-workforce-policy.json"
     detmir_portal_ueba_policy_path: "/etc/detmir-portal-ueba-policy.yaml"
+    detmir_portal_readiness_bundle_dir: "{{ detmir_portal_readiness_bundle_dir_override | default('/var/lib/activitywatch/health/readiness-bundle', true) }}"
 
   tasks:
     - name: Check local detmir-portal binary
@@ -55,6 +56,7 @@
           DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
           DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
           DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/detmir-portal/evidence
+          DETMIR_PORTAL_READINESS_BUNDLE_DIR={{ detmir_portal_readiness_bundle_dir }}
           DETMIR_PORTAL_EVIDENCE_LIMIT=30
           DETMIR_PORTAL_EVIDENCE_MAX_BYTES=8388608
 
@@ -235,6 +237,7 @@
           DETMIR_PORTAL_STATE_DIR=/var/lib/activitywatch/dlp-evidence
           DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
           DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/activitywatch/dlp-evidence
+          DETMIR_PORTAL_READINESS_BUNDLE_DIR=/var/lib/activitywatch/health/readiness-bundle
           DETMIR_PORTAL_EVIDENCE_LIMIT=30
           DETMIR_PORTAL_EVIDENCE_MAX_BYTES=8388608
           DETMIR_PORTAL_EVIDENCE_UPLOAD_TOKEN={{ detmir_evidence_upload_token_slurp.content | b64decode | trim }}
