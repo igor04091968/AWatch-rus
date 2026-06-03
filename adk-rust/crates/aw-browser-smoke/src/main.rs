@@ -1,11 +1,9 @@
 use std::ffi::{OsStr, OsString};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 use clap::Parser;
-
-const PLAYWRIGHT_NODE_MODULES: &str = "/home/igor/.agents/skills/playwright/node_modules";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -73,7 +71,14 @@ fn default_node_path(current: Option<&OsStr>) -> Option<OsString> {
     if current.is_some_and(|value| !value.is_empty()) {
         return None;
     }
-    let path = Path::new(PLAYWRIGHT_NODE_MODULES);
+    let Some(home) = std::env::var_os("HOME") else {
+        return None;
+    };
+    let path = PathBuf::from(home)
+        .join(".agents")
+        .join("skills")
+        .join("playwright")
+        .join("node_modules");
     if path.is_dir() {
         Some(path.as_os_str().to_os_string())
     } else {

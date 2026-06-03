@@ -5,7 +5,7 @@
   gather_facts: true
 
   vars:
-    proxmox_web_gateway_public_hostname: "dm.iri1968.dpdns.org"
+    proxmox_web_gateway_public_hostname: "detmir.example.local"
     proxmox_web_gateway_root: "/var/www/proxmox-web-gateway"
     proxmox_web_gateway_site_name: "proxmox-web-gateway.conf"
     proxmox_web_gateway_site_path: "/etc/nginx/sites-available/{{ proxmox_web_gateway_site_name }}"
@@ -17,7 +17,7 @@
     proxmox_web_gateway_auth_realm: "DetMir operations gateway"
     proxmox_web_gateway_auth_user: "detmir"
     proxmox_web_gateway_auth_file: "/etc/nginx/proxmox-web-gateway.htpasswd"
-    proxmox_web_gateway_credentials_file: "/root/proxmox-web-gateway.credentials"
+    proxmox_web_gateway_credentials_file: "/etc/detmir/proxmox-web-gateway.credentials"
     proxmox_web_gateway_routes:
       - slug: "proxmox-gui"
         title: "Proxmox VE"

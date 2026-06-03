@@ -108,7 +108,7 @@ fn run() -> Result<i32> {
         .root
         .canonicalize()
         .with_context(|| format!("canonicalize root {}", cli.root.display()))?;
-    let env_file = root.join("secrets/runtime.env");
+    let env_file = root.join("private-config/runtime.env");
     let env_values = read_env_file(&env_file).unwrap_or_default();
     let timestamp = cli
         .timestamp
@@ -452,7 +452,7 @@ mod tests {
         env.insert("AW_WINRM_PASSWORD".to_string(), "hidden".to_string());
         let plan = build_plan(
             dir.path(),
-            &dir.path().join("secrets/runtime.env"),
+            &dir.path().join("private-config/runtime.env"),
             &env,
             "10.10.10.13",
             "igor",

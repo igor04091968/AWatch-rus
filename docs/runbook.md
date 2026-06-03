@@ -4,16 +4,16 @@
 
 ### Proxmox web gateway
 
-Если на host `10.10.10.2` развёрнут `nginx` gateway, базовые проверки такие:
+Если на host `<GATEWAY_HOST>` развёрнут `nginx` gateway, базовые проверки такие:
 
 ```sh
 systemctl status nginx --no-pager
 nginx -t
-curl -I -sS -H 'Host: dm.iri1968.dpdns.org' http://127.0.0.1/
-curl -k -fsS -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/healthz
-curl -k -I -sS -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/ | head
-curl -k -u "$(awk -F= '/^user=/{u=$2}/^password=/{p=$2}END{print u\":\"p}' /root/proxmox-web-gateway.credentials)" \
-  -H 'Host: dm.iri1968.dpdns.org' -fsS https://127.0.0.1/ | grep -F 'dm.iri1968.dpdns.org'
+curl -I -sS -H 'Host: <PUBLIC_GATEWAY_FQDN>' http://127.0.0.1/
+curl -k -fsS -H 'Host: <PUBLIC_GATEWAY_FQDN>' https://127.0.0.1/healthz
+curl -k -I -sS -H 'Host: <PUBLIC_GATEWAY_FQDN>' https://127.0.0.1/ | head
+curl -k -u "$(awk -F= '/^user=/{u=$2}/^password=/{p=$2}END{print u\":\"p}' <GATEWAY_CREDENTIALS_FILE>)" \
+  -H 'Host: <PUBLIC_GATEWAY_FQDN>' -fsS https://127.0.0.1/ | grep -F '<PUBLIC_GATEWAY_FQDN>'
 ```
 
 Playbook для повторного rollout:
@@ -28,24 +28,24 @@ ansible-playbook -i ansible/inventory.ini ansible/deploy_proxmox_web_gateway.yml
 Публичная схема:
 
 ```text
-Internet -> dm.iri1968.dpdns.org -> pfSense WAN 178.178.98.83 -> NAT 80/443 -> nginx 10.10.10.2
+Internet -> <PUBLIC_GATEWAY_FQDN> -> pfSense WAN <WAN_IP> -> NAT 80/443 -> nginx <GATEWAY_HOST>
 ```
 
 Нормальное состояние:
 
-- `https://dm.iri1968.dpdns.org/healthz` -> `200 ok` без auth;
-- `https://dm.iri1968.dpdns.org/` без auth -> `401`;
-- `http://dm.iri1968.dpdns.org/healthz` -> `301` на HTTPS;
+- `https://<PUBLIC_GATEWAY_FQDN>/healthz` -> `200 ok` без auth;
+- `https://<PUBLIC_GATEWAY_FQDN>/` без auth -> `401`;
+- `http://<PUBLIC_GATEWAY_FQDN>/healthz` -> `301` на HTTPS;
 - после Basic Auth:
   - `/` -> gateway index;
   - `/r/file1c/brief` -> 1C brief;
   - `/r/grafana/api/health` -> Grafana health;
   - `/r/aw/api/0/info` -> AW server info.
 
-Gateway credential хранится только на `10.10.10.2`:
+Gateway credential хранится только на `<GATEWAY_HOST>`:
 
 ```sh
-sudo cat /root/proxmox-web-gateway.credentials
+sudo cat <GATEWAY_CREDENTIALS_FILE>
 ```
 
 pfSense NAT backup перед автоматической правкой:
@@ -58,13 +58,13 @@ ls -1t /opt/infra-admin/backups/pfsense-gateway-nat-*.json | head
 
 ```sh
 set -a
-. /home/igor/.config/tsj-bot/pfsense.env.readonly
+. <OPERATOR_HOME>/.config/tsj-bot/pfsense.env.readonly
 set +a
 curl -ksS -H "X-API-Key: $PFSENSE_API_KEY" "$PFSENSE_URL/api/v2/firewall/apply"
 ```
 
-NAT должен содержать `WAN tcp 443 -> 10.10.10.2:443` и `WAN tcp 80 -> 10.10.10.2:80`.
-WAN rules должны содержать pass на `10.10.10.2:80` и `10.10.10.2:443`.
+NAT должен содержать `WAN tcp 443 -> <GATEWAY_HOST>:443` и `WAN tcp 80 -> <GATEWAY_HOST>:80`.
+WAN rules должны содержать pass на `<GATEWAY_HOST>:80` и `<GATEWAY_HOST>:443`.
 
 ### На Proxmox
 
@@ -77,7 +77,7 @@ pct exec <CT_ID> -- curl -fsS http://127.0.0.1:5600/api/0/info
 
 ### На host-based инсталляции
 
-Для подтвержденного размещения на `10.10.10.2`:
+Для подтвержденного размещения на `<GATEWAY_HOST>`:
 
 ```sh
 ps -ef | grep -E 'aw-server-rust|pfsense-aw-poller' | grep -v grep
@@ -265,7 +265,7 @@ curl -fsS 'http://127.0.0.1:5610/reports/worktime/management?day=today&departmen
 powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-upload-hayabusa-to-aw-server.ps1 -HoursBack 6 -CaseId 30
 ```
 
-2. Сервер `10.10.10.13` сам:
+2. Сервер `<AW_SERVER_HOST>` сам:
 
 - примет `zip` и `.meta.json` в `/opt/activitywatch/aw-rus-ops/drop`;
 - запустит `aw-hayabusa`;
@@ -293,7 +293,7 @@ curl -fsS http://127.0.0.1:5602/api/0/dlp/cases/30
 Цель: подтвердить один реальный путь
 
 - Windows EVTX export
-- перенос пакета на `10.10.10.13`
+- перенос пакета на `<AW_SERVER_HOST>`
 - intake через `aw-hayabusa`
 - генерация отчёта
 - привязка bounded metadata к операторскому follow-up
@@ -324,7 +324,7 @@ Get-ChildItem 'C:\ProgramData\AWatch-rus\forensics\evtx-exports' |
 
 - `HOST-YYYYMMDD-HHMMSS.zip`
 
-3. Перенести zip на `10.10.10.13` в операторскую рабочую зону.
+3. Перенести zip на `<AW_SERVER_HOST>` в операторскую рабочую зону.
 
 4. На `AW-server` проверить раннер:
 
@@ -463,7 +463,7 @@ curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/even
 
 Цель: подтвердить, что при недоступности AW API события не теряются, а буферизуются в локальной очереди и автоматически отправляются после восстановления связи.
 
-На RDP-хосте (`192.168.100.18`) в PowerShell под администратором:
+На RDP-хосте (`<WINDOWS_HOST>`) в PowerShell под администратором:
 
 1) Проверить/обнулить очереди:
 
@@ -509,7 +509,7 @@ Get-Item $q1,$q2 | Select Name,Length,LastWriteTime
 6) Проверка на AW server:
 
 ```sh
-curl -fsS 'http://10.10.10.13:5600/api/0/buckets/aw-file-operations_10.10.10.13/events?limit=10' | jq '.[0].data'
+curl -fsS 'http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-file-operations_<AW_SERVER_HOST>/events?limit=10' | jq '.[0].data'
 ```
 
 После теста удалить правило:
@@ -520,12 +520,12 @@ Remove-NetFirewallRule -DisplayName 'AWatch WAL Test Block 5600' -ErrorAction Si
 
 ### PowerShell MCP на DetMir Windows host
 
-Для `DetMir` Windows host `192.168.100.18` интерактивный путь из Linux/Codex закреплён через `SSH`, а не через `WSMan`.
+Для `DetMir` Windows host `<WINDOWS_HOST>` интерактивный путь из Linux/Codex закреплён через `SSH`, а не через `WSMan`.
 
 Быстрый вход:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+cd <PROJECT_ROOT>
 bash scripts/install_detmir_powershell_mcp.sh
 ```
 
@@ -592,21 +592,21 @@ chmod 600 /tmp/sharkon_ru.auth
 3. Запустить recovery task:
 
 ```sh
-wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.18 \
+wmiexec.py -nooutput -A /tmp/sharkon_ru.auth <WINDOWS_HOST> \
   "powershell -NoProfile -Command \"Start-ScheduledTask -TaskName 'ActivityWatch Recovery'\""
 ```
 
 4. Запустить все launch tasks:
 
 ```sh
-wmiexec.py -nooutput -A /tmp/sharkon_ru.auth 192.168.100.18 \
+wmiexec.py -nooutput -A /tmp/sharkon_ru.auth <WINDOWS_HOST> \
   "powershell -NoProfile -Command \"Get-ScheduledTask | Where-Object TaskName -like 'ActivityWatch Launch *' | ForEach-Object { Start-ScheduledTask -TaskName \$_.TaskName }\""
 ```
 
-5. Подождать 10-20 секунд и проверить API на AW server (`10.10.10.13:5600`):
+5. Подождать 10-20 секунд и проверить API на AW server (`<AW_SERVER_HOST>:5600`):
 
 ```sh
-curl -fsS 'http://10.10.10.13:5600/api/0/buckets/aw-watcher-afk_SHARKON2025/events?limit=30' \
+curl -fsS 'http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-watcher-afk_SHARKON2025/events?limit=30' \
   | jq '{latest:.[0].timestamp, statuses:(group_by(.data.status)|map({status:.[0].data.status,count:length}))}'
 ```
 
@@ -644,7 +644,7 @@ journalctl -xeu activitywatch-server.service --no-pager
 Повторное применение:
 
 ```sh
-bash /root/bootstrap/apply_webui_ru_patch.sh
+bash <CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh
 systemctl restart activitywatch-server.service
 ```
 
@@ -675,7 +675,7 @@ systemctl restart activitywatch-server.service
 Для повторяемой проверки сертификатов подписантов и встроенных лицензий CryptoPro:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible
+cd <PROJECT_ROOT>/ansible
 ansible-playbook -i inventory.ini audit_cryptopro_windows.yml
 ```
 

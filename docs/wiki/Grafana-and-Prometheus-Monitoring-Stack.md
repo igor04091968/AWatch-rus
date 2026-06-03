@@ -14,7 +14,7 @@ aw_dlp_influx_enabled: true
 ```text
 org: proxmox
 bucket: aw_metrics
-url: http://10.10.10.10:8086
+url: http://<INFLUXDB_HOST>:8086
 ```
 
 Grafana datasource `InfluxDB-AW` читает тот же bucket.
@@ -70,7 +70,7 @@ journalctl -u aw-dlp-influx-exporter.service -n 30 --no-pager
 
 ```bash
 curl -u "$GRAFANA_USER:$GRAFANA_PASSWORD" \
-  http://10.10.10.11:3000/api/datasources/uid/influxdb_aw/health
+  http://<GRAFANA_HOST>:3000/api/datasources/uid/influxdb_aw/health
 ```
 
 Ожидается:

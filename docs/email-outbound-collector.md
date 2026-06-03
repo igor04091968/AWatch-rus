@@ -18,10 +18,10 @@
 .\email-outbound-collector.ps1
 
 # С явными параметрами
-.\email-outbound-collector.ps1 -ServerHost 10.10.10.13 -ServerPort 5600 -Mode outlook
+.\email-outbound-collector.ps1 -ServerHost <AW_SERVER_HOST> -ServerPort 5600 -Mode outlook
 
 # Только SMTP мониторинг (без Outlook)
-.\email-outbound-collector.ps1 -ServerHost 10.10.10.13 -Mode smtp
+.\email-outbound-collector.ps1 -ServerHost <AW_SERVER_HOST> -Mode smtp
 ```
 
 ### Параметры

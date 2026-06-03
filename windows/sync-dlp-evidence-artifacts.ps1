@@ -1,6 +1,6 @@
 param(
     [string]$ConfigPath = 'C:\ProgramData\AWatch-rus\deployment-config.json',
-    [string]$EvidenceApiUrl = 'http://10.10.10.13:8721/api/dlp/evidence/upload',
+    [string]$EvidenceApiUrl = 'http://aw-server.example.local:8721/api/dlp/evidence/upload',
     [string]$TokenPath = 'C:\ProgramData\AWatch-rus\dlp-evidence-upload-token.txt',
     [string]$StatePath = 'C:\ProgramData\AWatch-rus\dlp-evidence-sync-state.json',
     [string]$LogPath = 'C:\ProgramData\AWatch-rus\logs\dlp-evidence-sync.log',

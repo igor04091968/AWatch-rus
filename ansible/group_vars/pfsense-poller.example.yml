@@ -1,14 +1,14 @@
 aw_pfsense_poller_config:
   poll_interval_seconds: 60
   aw:
-    server_host: "10.10.10.13"
+    server_host: "<AW_SERVER_HOST>"
     server_port: 5600
     hostname: "PFSENSE-EDGE01"
     pulse_time_seconds: 120
     timeout_seconds: 15
   pfsense:
     name: "pfSense Edge 01"
-    host: "10.10.10.1"
+    host: "<FIREWALL_HOST>"
     scheme: "https"
     verify_tls: false
     timeout_seconds: 15

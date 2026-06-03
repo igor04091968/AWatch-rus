@@ -5,7 +5,7 @@
 This document converts the high-level production DLP plan into an execution sequence with explicit phase boundaries, dependencies, deliverables, and acceptance gates.
 
 Source plan:
-- [dlp-production-plan-windows-10-19.md](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/docs/dlp-production-plan-windows-10-19.md:1)
+- [dlp-production-plan-windows-10-19.md](<PROJECT_ROOT>/docs/dlp-production-plan-windows-10-19.md:1)
 
 ## Execution Rule
 

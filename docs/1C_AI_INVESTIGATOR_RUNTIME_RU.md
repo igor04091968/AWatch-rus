@@ -12,10 +12,10 @@
 ```text
 File 1C / Windows RDP host
   -> read-only export / telemetry
-  -> ClickHouse on 10.10.10.2
+  -> ClickHouse on <GATEWAY_HOST>
   -> detections / cases / timeline / company intelligence
   -> manager briefs / recovery briefs / weekly digest
-  -> Grafana on 10.10.10.11
+  -> Grafana on <GRAFANA_HOST>
   -> browser pages and read-only API
 ```
 
@@ -33,14 +33,14 @@ File 1C / Windows RDP host
 
 ### Источник
 
-- `192.168.100.18`
+- `<WINDOWS_HOST>`
   - файловая 1С;
   - scheduled task `\ActivityWatch File1C Upload`;
   - read-only export без записи в `1Cv8.1CD`.
 
 ### Analytics node
 
-- `10.10.10.2`
+- `<GATEWAY_HOST>`
   - `ClickHouse`;
   - ETL/ingest;
   - company intelligence refresh;
@@ -51,7 +51,7 @@ File 1C / Windows RDP host
 
 ### Visualization
 
-- `10.10.10.11`
+- `<GRAFANA_HOST>`
   - `Grafana`;
   - folder `file-1c`;
   - dashboards для audit, detections, timeline, company intelligence.
@@ -95,7 +95,7 @@ File 1C / Windows RDP host
 
 ### Browser pages для руководителя
 
-На `10.10.10.2:8710` уже работают human-facing страницы:
+На `<GATEWAY_HOST>:8710` уже работают human-facing страницы:
 
 - `/manager/brief`
 - `/manager/actions`
@@ -143,7 +143,7 @@ File 1C / Windows RDP host
 1. ingest грузит read-only данные;
 2. `ClickHouse` строит canonical marts и signals;
 3. forecasting layer считает `7/30 day` expectations;
-4. local `codex` на `10.10.10.2` превращает это в:
+4. local `codex` на `<GATEWAY_HOST>` превращает это в:
    - manager brief;
    - recovery brief;
    - weekly digest;
@@ -174,7 +174,7 @@ File 1C / Windows RDP host
 
 ## Что именно уже автоматизировано
 
-На `10.10.10.2` автоматизированы:
+На `<GATEWAY_HOST>` автоматизированы:
 
 - ingest cycle;
 - post-ingest refresh manager brief;
@@ -217,23 +217,23 @@ File 1C / Windows RDP host
 
 ### Grafana
 
-- `http://10.10.10.11:3000/dashboards/f/file-1c/?orgId=1`
+- `http://<GRAFANA_HOST>:3000/dashboards/f/file-1c/?orgId=1`
 - management board:
-  - `http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board`
+  - `http://<GRAFANA_HOST>:3000/d/1c-file-mgmt/1c-file-management-board`
 - financial reporting:
-  - `http://10.10.10.11:3000/d/1c-file-finance/1c-file-financial-reporting`
+  - `http://<GRAFANA_HOST>:3000/d/1c-file-finance/1c-file-financial-reporting`
 - telemetry board:
-  - `http://10.10.10.11:3000/d/1c-file-telemetry/1c-file-telemetry-board`
+  - `http://<GRAFANA_HOST>:3000/d/1c-file-telemetry/1c-file-telemetry-board`
 - company intelligence:
-  - `http://10.10.10.11:3000/d/1c-file-companies/1c-file-company-intelligence`
+  - `http://<GRAFANA_HOST>:3000/d/1c-file-companies/1c-file-company-intelligence`
 
 ### Manager UI
 
-- `http://10.10.10.2:8710/manager/brief`
-- `http://10.10.10.2:8710/manager/changes`
-- `http://10.10.10.2:8710/manager/trends/weekly`
-- `http://10.10.10.2:8710/manager/digest/weekly`
-- `http://10.10.10.2:8710/manager/recovery`
+- `http://<GATEWAY_HOST>:8710/manager/brief`
+- `http://<GATEWAY_HOST>:8710/manager/changes`
+- `http://<GATEWAY_HOST>:8710/manager/trends/weekly`
+- `http://<GATEWAY_HOST>:8710/manager/digest/weekly`
+- `http://<GATEWAY_HOST>:8710/manager/recovery`
 
 ### API
 

@@ -898,7 +898,7 @@ class CodexExecSafetyTests(unittest.TestCase):
     def test_codex_exec_does_not_forward_bearer_to_sudo(self):
         bot = object.__new__(MODULE.TSJGuardianBot)
         bot.ai_exec_user = "igor"
-        bot.ai_chat_workdir = "/home/igor"
+        bot.ai_chat_workdir = "~"
         bot.ai_chat_sandbox = "workspace-write"
         bot.codex_model = "gpt-test"
         captured = {}
@@ -916,7 +916,7 @@ class CodexExecSafetyTests(unittest.TestCase):
         self.assertEqual(rc, 1)
         self.assertIn("401 Unauthorized", out)
         self.assertEqual(reply, "")
-        self.assertEqual(captured["cwd"], "/home/igor")
+        self.assertEqual(captured["cwd"], "~")
         self.assertEqual(captured["env_extra"], {})
         self.assertNotIn("--preserve-env=PFSENSE_MCP_BEARER", captured["argv"])
         self.assertNotIn("secret-token", " ".join(captured["argv"]))

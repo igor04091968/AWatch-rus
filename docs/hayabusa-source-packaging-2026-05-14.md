@@ -17,7 +17,7 @@
 
 ## Packaging model
 
-- analysis host: `10.10.10.13`
+- analysis host: `<AW_SERVER_HOST>`
 - install root: `/opt/hayabusa`
 - versioned release root: `/opt/hayabusa/releases/v3.9.0`
 - active symlink target:

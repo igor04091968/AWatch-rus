@@ -4,9 +4,9 @@
 
 ## Открыть дашборды
 
-- [Grafana dashboards](http://10.10.10.11:3000/dashboards) - основная страница со всеми панелями.
-- [ActivityWatch Web UI](http://10.10.10.13:5600) - детальный просмотр исходных событий.
-- [Worktime reports](http://10.10.10.13:5610) - отчеты по рабочему времени, если сервис включен.
+- [Grafana dashboards](http://<GRAFANA_HOST>:3000/dashboards) - основная страница со всеми панелями.
+- [ActivityWatch Web UI](http://<AW_SERVER_HOST>:5600) - детальный просмотр исходных событий.
+- [Worktime reports](http://<AW_SERVER_HOST>:5610) - отчеты по рабочему времени, если сервис включен.
 
 ## Что смотреть в первую очередь
 

@@ -48,7 +48,7 @@ Do not run it for every minor signal. It is meant for escalation and investigati
 powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-evtx-for-hayabusa.ps1
 ```
 
-2. Transfer the resulting zip package to `10.10.10.13`.
+2. Transfer the resulting zip package to `<AW_SERVER_HOST>`.
 
 3. Run server-side processing:
 

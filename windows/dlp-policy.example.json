@@ -116,7 +116,7 @@
   },
   "ioc": {
     "enabled": true,
-    "source": "http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.json",
+    "source": "http://aw-server.example.local:5610/dlp-ioc/ioc_blacklist.json",
     "format": "hayabusa_sigma_v1",
     "refreshMinutes": 360
   }

@@ -6,8 +6,8 @@
 
 Подтвержденный целевой кейс:
 
-- Linux desktop/admin host: `10.10.10.2`
-- удаленный `AW server`: `10.10.10.13:5600`
+- Linux desktop/admin host: `<GATEWAY_HOST>`
+- удаленный `AW server`: `<AW_SERVER_HOST>:5600`
 
 ## Что делает скрипт
 
@@ -24,7 +24,7 @@
 ```bash
 cd /path/to/AWatch-rus
 sh ./scripts/install_aw_linux_client.sh \
-  --server-host 10.10.10.13 \
+  --server-host <AW_SERVER_HOST> \
   --server-port 5600
 ```
 
@@ -62,7 +62,7 @@ cat ~/.config/activitywatch/aw-qt/aw-qt.toml
 Проверка на сервере:
 
 ```bash
-curl -fsS http://10.10.10.13:5600/api/0/buckets | jq -r 'keys[]' | grep '^aw-watcher-'
+curl -fsS http://<AW_SERVER_HOST>:5600/api/0/buckets | jq -r 'keys[]' | grep '^aw-watcher-'
 ```
 
 ## Ограничение

@@ -5,14 +5,14 @@
 ## Источники
 
 - `tmux` session `codex`, scrollback выгружен в `/tmp/codex-tmux-last24.txt`
-- текущий worktree `git status` в `/mnt/usb_hdd2/Projects/ActivityWatch-Russian`
+- текущий worktree `git status` в `<PROJECT_ROOT>`
 - live-проверки на:
-  - `10.10.10.2` Proxmox
-  - `10.10.10.11` Grafana
-  - `10.10.10.12` Loki/Alloy
-  - `10.10.10.13` aw-server
-  - `10.10.10.1` pfSense
-  - `192.168.100.18` Windows RDP host
+  - `<GATEWAY_HOST>` Proxmox
+  - `<GRAFANA_HOST>` Grafana
+  - `<AUX_SERVICE_HOST>` Loki/Alloy
+  - `<AW_SERVER_HOST>` aw-server
+  - `<FIREWALL_HOST>` pfSense
+  - `<WINDOWS_HOST>` Windows RDP host
 
 ## Важная оговорка
 
@@ -25,12 +25,12 @@
 ### 1. Восстановление ActivityWatch-Russian
 
 Симптом:
-- на `10.10.10.13:5600` UI не обновлялся для `SHARKON2025`;
+- на `<AW_SERVER_HOST>:5600` UI не обновлялся для `SHARKON2025`;
 - `aw-server` был жив, но stale были `aw-watcher-afk`, `aw-watcher-window`, `aw-worktime-sessions`.
 
 Действия:
 - проверен `aw-server` и свежесть bucket’ов;
-- через WinRM на `192.168.100.18` проверены процессы, tasks и recovery-скрипты;
+- через WinRM на `<WINDOWS_HOST>` проверены процессы, tasks и recovery-скрипты;
 - запущены:
   - `ActivityWatch Recovery`
   - `ActivityWatch Launch [SHARKON2025_user5]`
@@ -56,10 +56,10 @@
 - тесты обновлены и прогнаны.
 
 Затронутые файлы:
-- [proxmox/tsj_guardian_bot.py](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/tsj_guardian_bot.py)
-- [proxmox/test_tsj_guardian_bot.py](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/test_tsj_guardian_bot.py)
-- [ansible/deploy_tsj_guardian_bot_proxmox.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_tsj_guardian_bot_proxmox.yml)
-- [ansible/group_vars/proxmox-bot.example.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/group_vars/proxmox-bot.example.yml)
+- [proxmox/tsj_guardian_bot.py](<PROJECT_ROOT>/proxmox/tsj_guardian_bot.py)
+- [proxmox/test_tsj_guardian_bot.py](<PROJECT_ROOT>/proxmox/test_tsj_guardian_bot.py)
+- [ansible/deploy_tsj_guardian_bot_proxmox.yml](<PROJECT_ROOT>/ansible/deploy_tsj_guardian_bot_proxmox.yml)
+- [ansible/group_vars/proxmox-bot.example.yml](<PROJECT_ROOT>/ansible/group_vars/proxmox-bot.example.yml)
 
 Проверка:
 - `python3 -m py_compile proxmox/tsj_guardian_bot.py proxmox/test_tsj_guardian_bot.py`
@@ -76,36 +76,36 @@
 - переключены:
   - `AI_EXEC_USER=igor`
   - `TMUX_USER=igor`
-  - `AI_CHAT_WORKDIR=/home/igor`
+  - `AI_CHAT_WORKDIR=<OPERATOR_HOME>`
 - добавлены настраиваемые:
   - `PFSENSE_ENV_PATH`
   - `PFSENSE_INVENTORY_PATH`
 - создан `igor`-readable bundle:
-  - `/home/igor/.config/tsj-bot/pfsense.env.readonly`
-  - `/home/igor/.config/tsj-bot/inventory.md`
+  - `<OPERATOR_HOME>/.config/tsj-bot/pfsense.env.readonly`
+  - `<OPERATOR_HOME>/.config/tsj-bot/inventory.md`
 
 Итог:
 - диалоговая техподдержка и AI-эскалация в боте работают от `igor`;
 - bot-side pfSense/inventory контекст больше не зависит от старого `codex`-домика.
 
-### 4. Исправлен сетевой доступ `10.10.10.2 -> 192.168.100.18`
+### 4. Исправлен сетевой доступ `<GATEWAY_HOST> -> <WINDOWS_HOST>`
 
 Root cause:
-- на `pfSense 10.10.10.1`, интерфейс `opt1/MGMT`:
-  - allow rule для `10.10.10.2 -> 192.168.100.18:22` был ниже `block all`;
-  - allow rule для `10.10.10.2 -> 10.10.10.1:2022` был ниже `block all`;
-  - rule для `10.10.10.2 -> 192.168.100.18:5985` отсутствовал.
+- на `pfSense <FIREWALL_HOST>`, интерфейс `opt1/MGMT`:
+  - allow rule для `<GATEWAY_HOST> -> <WINDOWS_HOST>:22` был ниже `block all`;
+  - allow rule для `<GATEWAY_HOST> -> <FIREWALL_HOST>:2022` был ниже `block all`;
+  - rule для `<GATEWAY_HOST> -> <WINDOWS_HOST>:5985` отсутствовал.
 
 Сделано:
 - подняты нужные allow rules выше `block all`;
 - добавлено недостающее правило на `5985`.
 
 Итог:
-- с `10.10.10.2` подтвержден доступ на:
-  - `10.10.10.1:2022`
-  - `192.168.100.18:22`
-  - `192.168.100.18:5985`
-- SSH вход на `192.168.100.18` под `Администратор` был подтвержден.
+- с `<GATEWAY_HOST>` подтвержден доступ на:
+  - `<FIREWALL_HOST>:2022`
+  - `<WINDOWS_HOST>:22`
+  - `<WINDOWS_HOST>:5985`
+- SSH вход на `<WINDOWS_HOST>` под `Администратор` был подтвержден.
 
 ### 5. Убрано ложное сообщение “автолечение невозможно”
 
@@ -135,8 +135,8 @@ Root cause:
 Проблема была не в Grafana, а в цепочке `pfSense -> Alloy -> Loki`.
 
 Сделано:
-- на `10.10.10.1` поднят `syslogd`;
-- на `10.10.10.12` в Alloy для pfSense syslog включен правильный формат `rfc3164`;
+- на `<FIREWALL_HOST>` поднят `syslogd`;
+- на `<AUX_SERVICE_HOST>` в Alloy для pfSense syslog включен правильный формат `rfc3164`;
 - отключен stale docker self-scrape path, забивавший `loki.write` старыми batch’ами;
 - перезапущен `alloy`.
 
@@ -149,19 +149,19 @@ Root cause:
 Проблема:
 - не обновлялись данные в `1C File - Operations Health`.
 
-Сделано на `192.168.100.18`:
+Сделано на `<WINDOWS_HOST>`:
 - exporter больше не падает на недоступных `ibases.v8i`;
 - `export-upload-file-1c-telemetry.ps1` научен брать `remoteKeyPath` из `deployment-config.json`;
 - рабочий ключ закреплен как `C:\Users\USER1\.ssh\awops_ed25519`;
 - исправлены права к `file1c-telemetry-state.json`.
 
-Сделано на `10.10.10.2`:
+Сделано на `<GATEWAY_HOST>`:
 - прогнан ingest;
 - `proofcheck` выведен в green.
 
 Затронутые файлы:
-- [windows/export-upload-file-1c-telemetry.ps1](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/export-upload-file-1c-telemetry.ps1)
-- [ansible/deploy_file_1c_windows_telemetry.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_windows_telemetry.yml)
+- [windows/export-upload-file-1c-telemetry.ps1](<PROJECT_ROOT>/windows/export-upload-file-1c-telemetry.ps1)
+- [ansible/deploy_file_1c_windows_telemetry.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_windows_telemetry.yml)
 
 Итог:
 - `1C File - Operations Health` снова обновляется;
@@ -198,9 +198,9 @@ Live-итог:
 
 Сделано:
 - добавлен SQL слой:
-  - [clickhouse-1c/clickhouse/init/05_financial_reporting.sql](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/clickhouse/init/05_financial_reporting.sql)
+  - [clickhouse-1c/clickhouse/init/05_financial_reporting.sql](<PROJECT_ROOT>/clickhouse-1c/clickhouse/init/05_financial_reporting.sql)
 - добавлен dashboard:
-  - [clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json)
+  - [clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json](<PROJECT_ROOT>/clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json)
 - обновлен gateway route:
   - `go/file1c-finance`
 
@@ -211,7 +211,7 @@ Live-итог:
 
 ### 12. Проведено расследование production-source для `postings`
 
-Что подтверждено на `192.168.100.18`:
+Что подтверждено на `<WINDOWS_HOST>`:
 - готового `toolkit`/REST/service под postings нет;
 - порт `6003` и типовые service-порты не слушаются;
 - текущий Windows upload path шлет только telemetry/snapshot, без `postings`.
@@ -221,9 +221,9 @@ Live-итог:
 - COMConnector в user-token path;
 - интерактивные scheduled tasks под `USER1`;
 - явные 1С-креды:
-  - `Администратор / Sergei2009@`
-  - `user / Sergei2009@`
-  - `user1 / Sergei2009@`
+  - `Администратор / <WINDOWS_PASSWORD>`
+  - `user / <WINDOWS_PASSWORD>`
+  - `user1 / <WINDOWS_PASSWORD>`
 
 Итог:
 - blocker остался прежним: нужен реальный пользователь 1С с read-only доступом;
@@ -233,7 +233,7 @@ Live-итог:
 
 Сделано:
 - добавлен новый dashboard:
-  - [clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json)
+  - [clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json](<PROJECT_ROOT>/clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json)
 - добавлена ссылка на него из `1C File - Management Board`;
 - добавлен gateway route:
   - `go/file1c-telemetry`
@@ -241,12 +241,12 @@ Live-итог:
 Live-итог:
 - в Grafana зарегистрирован `uid=1c-file-telemetry`;
 - все 1C dashboards лежат в folder `1C File Analytics`;
-- `https://10.10.10.2/go/file1c-telemetry` редиректит на новый board.
+- `https://<GATEWAY_HOST>/go/file1c-telemetry` редиректит на новый board.
 
 ### 14. Live-путь `1C File Analytics` в Grafana был приведен к устойчивому состоянию
 
 Выяснилось:
-- file-based provisioning на `10.10.10.11` не был основной точкой для 1C dashboards;
+- file-based provisioning на `<GRAFANA_HOST>` не был основной точкой для 1C dashboards;
 - текущие `file-1c` dashboards жили в DB Grafana.
 
 Сделано:
@@ -264,19 +264,19 @@ Live-итог:
 
 ## Файлы, которые точно редактировались в этом окне по данным tmux
 
-- [proxmox/tsj_guardian_bot.py](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/tsj_guardian_bot.py)
-- [proxmox/test_tsj_guardian_bot.py](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/test_tsj_guardian_bot.py)
-- [ansible/deploy_tsj_guardian_bot_proxmox.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_tsj_guardian_bot_proxmox.yml)
-- [ansible/group_vars/proxmox-bot.example.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/group_vars/proxmox-bot.example.yml)
-- [windows/export-upload-file-1c-telemetry.ps1](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/export-upload-file-1c-telemetry.ps1)
-- [ansible/deploy_file_1c_windows_telemetry.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_windows_telemetry.yml)
-- [clickhouse-1c/clickhouse/init/05_financial_reporting.sql](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/clickhouse/init/05_financial_reporting.sql)
-- [ansible/deploy_proxmox_web_gateway.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_proxmox_web_gateway.yml)
+- [proxmox/tsj_guardian_bot.py](<PROJECT_ROOT>/proxmox/tsj_guardian_bot.py)
+- [proxmox/test_tsj_guardian_bot.py](<PROJECT_ROOT>/proxmox/test_tsj_guardian_bot.py)
+- [ansible/deploy_tsj_guardian_bot_proxmox.yml](<PROJECT_ROOT>/ansible/deploy_tsj_guardian_bot_proxmox.yml)
+- [ansible/group_vars/proxmox-bot.example.yml](<PROJECT_ROOT>/ansible/group_vars/proxmox-bot.example.yml)
+- [windows/export-upload-file-1c-telemetry.ps1](<PROJECT_ROOT>/windows/export-upload-file-1c-telemetry.ps1)
+- [ansible/deploy_file_1c_windows_telemetry.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_windows_telemetry.yml)
+- [clickhouse-1c/clickhouse/init/05_financial_reporting.sql](<PROJECT_ROOT>/clickhouse-1c/clickhouse/init/05_financial_reporting.sql)
+- [ansible/deploy_proxmox_web_gateway.yml](<PROJECT_ROOT>/ansible/deploy_proxmox_web_gateway.yml)
 
 Новые dashboard JSON, подтвержденные live-выкладкой:
-- [clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json)
-- [clickhouse-1c/grafana/provisioning/dashboards/files/1c-management-board.json](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/grafana/provisioning/dashboards/files/1c-management-board.json)
-- [clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json)
+- [clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json](<PROJECT_ROOT>/clickhouse-1c/grafana/provisioning/dashboards/files/1c-financial-reporting.json)
+- [clickhouse-1c/grafana/provisioning/dashboards/files/1c-management-board.json](<PROJECT_ROOT>/clickhouse-1c/grafana/provisioning/dashboards/files/1c-management-board.json)
+- [clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json](<PROJECT_ROOT>/clickhouse-1c/grafana/provisioning/dashboards/files/1c-telemetry-board.json)
 
 ## Проверки, которые были явно пройдены
 

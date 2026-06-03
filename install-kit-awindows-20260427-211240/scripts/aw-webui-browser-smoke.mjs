@@ -8,13 +8,14 @@ import { promisify } from "node:util";
 
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
+const homeDir = process.env.HOME || "";
 
 function loadPlaywright() {
   const candidates = [
     "playwright",
     "playwright-core",
     process.env.PLAYWRIGHT_CORE_MODULE,
-    "/home/igor/.agents/skills/playwright/node_modules/playwright-core",
+    homeDir ? path.join(homeDir, ".agents/skills/playwright/node_modules/playwright-core") : "",
   ].filter(Boolean);
   const errors = [];
   for (const candidate of candidates) {
@@ -104,9 +105,9 @@ function commandInPath(name) {
 function findChromiumExecutable(explicitPath) {
   return firstExisting([
     explicitPath,
-    "/home/igor/.cache/ms-playwright/chromium-1217/chrome-linux64/chrome",
-    "/home/igor/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome",
-    "/home/igor/.cache/rod/browser/chromium-1321438/chrome",
+    homeDir ? path.join(homeDir, ".cache/ms-playwright/chromium-1217/chrome-linux64/chrome") : "",
+    homeDir ? path.join(homeDir, ".cache/ms-playwright/chromium-1208/chrome-linux64/chrome") : "",
+    homeDir ? path.join(homeDir, ".cache/rod/browser/chromium-1321438/chrome") : "",
     commandInPath("chromium"),
     commandInPath("chromium-browser"),
     commandInPath("google-chrome"),
@@ -365,8 +366,8 @@ async function runPageCheckWithRetries(runOnce, spec, maxRetries) {
 async function main() {
   const requestedEngine = env("AW_BROWSER_SMOKE_ENGINE", "auto");
   const playwright = requestedEngine === "chromium-cli" ? null : loadPlaywright();
-  const awBase = normalizeBase(env("AW_BROWSER_SMOKE_AW_BASE", env("AW_SMOKE_AW_SERVER", "http://10.10.10.13:5600")));
-  const worktimeBase = normalizeBase(env("AW_BROWSER_SMOKE_WORKTIME_BASE", env("AW_SMOKE_WORKTIME_API", "http://10.10.10.13:5610")));
+  const awBase = normalizeBase(env("AW_BROWSER_SMOKE_AW_BASE", env("AW_SMOKE_AW_SERVER", "http://127.0.0.1:5600")));
+  const worktimeBase = normalizeBase(env("AW_BROWSER_SMOKE_WORKTIME_BASE", env("AW_SMOKE_WORKTIME_API", "http://127.0.0.1:5610")));
   const host = env("AW_BROWSER_SMOKE_HOST", env("AW_SMOKE_SOURCE_HOSTNAME", "SHARKON2025"));
   const timeoutMs = Number(env("AW_BROWSER_SMOKE_TIMEOUT_MS", "20000"));
   const settleMs = Number(env("AW_BROWSER_SMOKE_SETTLE_MS", "6000"));

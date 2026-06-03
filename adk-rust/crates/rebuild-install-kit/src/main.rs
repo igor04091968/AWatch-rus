@@ -10,8 +10,6 @@ use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
 
 const KIT_DIR: &str = "install-kit-awindows-20260427-211240";
-const SERVER_CONFIG_DIR: &str = "server-configs-192.168.100.18";
-const OLD_SERVER_CONFIG_DIR: &str = "server-configs-192.168.100.21";
 const README: &str = r#"ActivityWatch DetMir Windows Install Kit
 
 Includes:
@@ -19,10 +17,13 @@ Includes:
 - ansible/* (Windows and AW server playbooks, examples, inventory, tasks)
 - aw-server/* (server installer, health orchestrator, RU patch loader, host groups, default settings)
 - scripts/* (install-kit rebuild/validation, quality gates, browser/web smoke checks)
-- server-configs-192.168.100.18/* (working Windows/RDP config snapshots)
 
 Source:
 - Local project snapshot at build time.
+
+Customer-specific deployment configs, inventories, passwords, tokens, domains,
+IP addresses and runtime snapshots are intentionally excluded from this public
+install-kit.
 "#;
 
 const ANSIBLE_FILES: &[&str] = &[
@@ -124,7 +125,6 @@ fn run() -> Result<()> {
 
 fn rebuild(root: &Path) -> Result<()> {
     let kit = root.join(KIT_DIR);
-    let preserved_configs = preserve_server_configs(&kit)?;
     for name in ["ansible", "aw-server", "windows", "scripts"] {
         remove_if_exists(&kit.join(name))?;
     }
@@ -139,48 +139,12 @@ fn rebuild(root: &Path) -> Result<()> {
         copy_file(root, &kit, rel)?;
     }
 
-    let server_config_dir = kit.join(SERVER_CONFIG_DIR);
-    fs::create_dir_all(&server_config_dir)
-        .with_context(|| format!("create {}", server_config_dir.display()))?;
-    for (name, bytes) in preserved_configs {
-        let path = server_config_dir.join(name);
-        write_file_replace(&path, &bytes).with_context(|| {
-            format!("restore server config into {}", server_config_dir.display())
-        })?;
-    }
-
     write_file_replace(&kit.join("README-INSTALL-KIT.txt"), README.as_bytes())
         .with_context(|| format!("write {}", kit.join("README-INSTALL-KIT.txt").display()))?;
     write_manifest(root, &kit)?;
     write_zip(root, &kit)?;
     write_tar(root, &kit)?;
     Ok(())
-}
-
-fn preserve_server_configs(kit: &Path) -> Result<Vec<(String, Vec<u8>)>> {
-    let mut out = std::collections::BTreeMap::new();
-    for dir in [OLD_SERVER_CONFIG_DIR, SERVER_CONFIG_DIR] {
-        let path = kit.join(dir);
-        if !path.is_dir() {
-            continue;
-        }
-        for entry in fs::read_dir(&path).with_context(|| format!("read dir {}", path.display()))? {
-            let entry = entry.with_context(|| format!("read dir entry {}", path.display()))?;
-            let entry_path = entry.path();
-            if entry_path
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.ends_with(".deployment-config.json"))
-                && entry_path.is_file()
-            {
-                let name = entry.file_name().to_string_lossy().to_string();
-                let bytes = fs::read(&entry_path)
-                    .with_context(|| format!("read {}", entry_path.display()))?;
-                out.insert(name, bytes);
-            }
-        }
-    }
-    Ok(out.into_iter().collect())
 }
 
 fn remove_server_config_dirs(kit: &Path) -> Result<()> {
@@ -343,23 +307,7 @@ mod tests {
 
     use tempfile::tempdir;
 
-    use super::{preserve_server_configs, remove_server_config_dirs};
-
-    #[test]
-    fn preserves_new_server_configs_over_old_duplicates() {
-        let tmp = tempdir().unwrap();
-        let kit = tmp.path();
-        let old = kit.join("server-configs-192.168.100.21");
-        let new = kit.join("server-configs-192.168.100.18");
-        fs::create_dir_all(&old).unwrap();
-        fs::create_dir_all(&new).unwrap();
-        fs::write(old.join("a.deployment-config.json"), "old").unwrap();
-        fs::write(new.join("a.deployment-config.json"), "new").unwrap();
-        let configs = preserve_server_configs(kit).unwrap();
-        assert_eq!(configs.len(), 1);
-        assert_eq!(configs[0].0, "a.deployment-config.json");
-        assert_eq!(configs[0].1, b"new");
-    }
+    use super::remove_server_config_dirs;
 
     #[test]
     fn removes_server_config_dirs_only() {

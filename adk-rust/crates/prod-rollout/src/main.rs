@@ -101,7 +101,7 @@ fn run() -> Result<i32> {
         .timestamp
         .clone()
         .unwrap_or_else(|| Local::now().format("%Y%m%d-%H%M%S").to_string());
-    let env_file = root.join("secrets/runtime.env");
+    let env_file = root.join("private-config/runtime.env");
     let env_values = read_env_file(&env_file).unwrap_or_default();
     let inventory = absolute_path(&root, &cli.inventory);
     let log_dir = root.join(".rollout-logs").join(&timestamp);
@@ -609,7 +609,7 @@ mod tests {
         env.insert("AW_WINRM_PASSWORD".to_string(), "hidden".to_string());
         let plan = build_plan(
             dir.path(),
-            &dir.path().join("secrets/runtime.env"),
+            &dir.path().join("private-config/runtime.env"),
             &env,
             &dir.path().join("ansible/inventory.ini"),
             &dir.path().join(".rollout-logs/test"),
@@ -645,7 +645,7 @@ mod tests {
         create_file(dir.path().join("ansible/post_validate_aw_windows.yml"));
         let plan = build_plan(
             dir.path(),
-            &dir.path().join("secrets/runtime.env"),
+            &dir.path().join("private-config/runtime.env"),
             &HashMap::new(),
             &dir.path().join("ansible/inventory.ini"),
             &dir.path().join(".rollout-logs/test"),

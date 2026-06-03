@@ -5,12 +5,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 OUT_DIR="${METAGPT_AW_OUT_DIR:-$ROOT/.ai/metagpt}"
-METAGPT_BIN="${METAGPT_BIN:-/home/igor/bin/metagpt-lab}"
+METAGPT_BIN="${METAGPT_BIN:-~/bin/metagpt-lab}"
 METAGPT_AW_INVESTMENT="${METAGPT_AW_INVESTMENT:-0.1}"
 METAGPT_AW_N_ROUND="${METAGPT_AW_N_ROUND:-2}"
 METAGPT_AW_TIMEOUT="${METAGPT_AW_TIMEOUT:-90}"
 METAGPT_AW_ENGINE="${METAGPT_AW_ENGINE:-direct}"
-METAGPT_CONFIG="${METAGPT_CONFIG:-/home/igor/.metagpt/config2.yaml}"
+METAGPT_CONFIG="${METAGPT_CONFIG:-~/.metagpt/config2.yaml}"
 
 usage() {
   cat <<'USAGE'
@@ -124,7 +124,7 @@ set +e
 if [[ "$METAGPT_AW_ENGINE" == "team" ]]; then
   timeout "$METAGPT_AW_TIMEOUT" "$METAGPT_BIN" --investment "$METAGPT_AW_INVESTMENT" --n-round "$METAGPT_AW_N_ROUND" --no-implement --project-name "aw-scout-$STAMP" "$PROMPT" 2>&1 | tee -a "$OUT"
 else
-  /home/igor/labs/metagpt-lab/.venv/bin/python - "$METAGPT_CONFIG" "$PROMPT" <<'PY' 2>&1 | tee -a "$OUT"
+  ~/labs/metagpt-lab/.venv/bin/python - "$METAGPT_CONFIG" "$PROMPT" <<'PY' 2>&1 | tee -a "$OUT"
 import sys
 from pathlib import Path
 

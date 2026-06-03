@@ -4,13 +4,13 @@
 
 ## Полные пути
 
-- `/home/igor/tmp/AWatch-rus/windows/deploy-ensemble.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/deploy-domain-users.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/deploy-single-user.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/hardening-recovery.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/validate-deployment.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/ActivityWatch.Windows.Common.psm1`
-- `/home/igor/tmp/AWatch-rus/windows/ActivityWatch.Windows.Common.psd1`
+- `<PROJECT_ROOT>/windows/deploy-ensemble.ps1`
+- `<PROJECT_ROOT>/windows/deploy-domain-users.ps1`
+- `<PROJECT_ROOT>/windows/deploy-single-user.ps1`
+- `<PROJECT_ROOT>/windows/hardening-recovery.ps1`
+- `<PROJECT_ROOT>/windows/validate-deployment.ps1`
+- `<PROJECT_ROOT>/windows/ActivityWatch.Windows.Common.psm1`
+- `<PROJECT_ROOT>/windows/ActivityWatch.Windows.Common.psd1`
 
 ## Рекомендованный запуск
 
@@ -18,7 +18,7 @@
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
 C:\Program Files\AWatch-rus\windows\deploy-ensemble.ps1 `
-  -ServerHost 10.10.10.13 `
+  -ServerHost <AW_SERVER_HOST> `
   -ServerPort 5600 `
   -Domain SHARKON2025 `
   -Users user1,user2,user3,user4,user5 `

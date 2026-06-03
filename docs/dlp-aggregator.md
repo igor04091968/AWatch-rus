@@ -15,7 +15,7 @@ SQLite is the default so the collector can be tested without deploying PostgreSQ
 
 ```bash
 python3 scripts/aggregate_dlp_events.py \
-  --aw-url http://10.10.10.13:5600/api/0 \
+  --aw-url http://<AW_SERVER_HOST>:5600/api/0 \
   --sqlite-path data/dlp-events.sqlite3 \
   --lookback-hours 24
 ```
@@ -38,7 +38,7 @@ For centralized reporting, pass a DSN through an environment variable instead of
 export DLP_AGGREGATOR_POSTGRES_DSN='postgresql://aw_dlp:${PASSWORD}@postgres.internal:5432/aw_dlp'
 python3 -m pip install 'psycopg[binary]'
 python3 scripts/aggregate_dlp_events.py \
-  --aw-url http://10.10.10.13:5600/api/0
+  --aw-url http://<AW_SERVER_HOST>:5600/api/0
 ```
 
 Minimum database bootstrap:
@@ -71,7 +71,7 @@ Future runs resume from that timestamp with a small overlap window to avoid miss
 Cron every minute:
 
 ```cron
-* * * * * cd /opt/AWatch-rus && /usr/bin/python3 scripts/aggregate_dlp_events.py --aw-url http://10.10.10.13:5600/api/0 >> /var/log/aw-dlp-aggregator.log 2>&1
+* * * * * cd /opt/AWatch-rus && /usr/bin/python3 scripts/aggregate_dlp_events.py --aw-url http://<AW_SERVER_HOST>:5600/api/0 >> /var/log/aw-dlp-aggregator.log 2>&1
 ```
 
 ## Example Grafana queries

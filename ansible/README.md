@@ -248,7 +248,7 @@ Playbook:
    - `telegram_allowed_chat_ids`
    - `tsj_bot_source_local_path`
 3. Убедитесь, что в inventory есть группа `[proxmox]`.
-   Для текущего контура AW-Rus bot ожидает Proxmox host `10.10.10.2`.
+   Для текущего контура AW-Rus bot ожидает Proxmox host `<GATEWAY_HOST>`.
    Рабочая модель для этого контура: `igor` + `sudo`, а не обязательный `root` login.
 4. При необходимости задайте recovery-команды для AW-Rus:
    - `tsj_bot_aw_rus_worktime_heal_cmd`

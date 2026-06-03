@@ -11,7 +11,7 @@ Read-only MVP выполнен и развернут:
 - Rust crate: `adk-rust/crates/detmir-portal`;
 - production service: `detmir-portal.service` на Proxmox;
 - bind: `127.0.0.1:8720`;
-- gateway route: `https://dm.iri1968.dpdns.org/portal/`;
+- gateway route: `https://<PUBLIC_GATEWAY_FQDN>/portal/`;
 - API: `/api/health`, `/api/summary`, `/api/operator`, `/api/manager`,
   `/api/owner`, `/api/incidents`, `/api/links`;
 - UI tabs: `Оператор`, `Руководитель`, `Владелец`, `Инциденты ИБ`;
@@ -51,11 +51,11 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - `detmir-status --json` на Proxmox;
 - `detmir-check --json` на Proxmox, включая `grafana-data`;
 - `detmir-grafana-check` в Grafana CT 201;
-- AW Worktime API на `10.10.10.13:5610`;
-- ActivityWatch API на `10.10.10.13:5600`;
+- AW Worktime API на `<AW_SERVER_HOST>:5610`;
+- ActivityWatch API на `<AW_SERVER_HOST>:5600`;
 - DLP health/case/policy services на AW server;
-- 1C analytics API на `10.10.10.2:8710`;
-- внешний gateway `https://dm.iri1968.dpdns.org/`;
+- 1C analytics API на `<GATEWAY_HOST>:8710`;
+- внешний gateway `https://<PUBLIC_GATEWAY_FQDN>/`;
 - nginx Basic Auth на gateway.
 
 ## Целевая архитектура MVP
@@ -87,7 +87,7 @@ Bind:
 External route через существующий nginx gateway:
 
 ```text
-https://dm.iri1968.dpdns.org/portal/
+https://<PUBLIC_GATEWAY_FQDN>/portal/
 ```
 
 Почему Proxmox host:
@@ -291,7 +291,7 @@ sudo -n /usr/sbin/pct exec 201 -- cat /var/lib/detmir-grafana-check/latest.json
 Основной URL:
 
 ```text
-http://10.10.10.13:5610/reports/worktime/today
+http://<AW_SERVER_HOST>:5610/reports/worktime/today
 ```
 
 Правило:
@@ -317,9 +317,9 @@ ssh aw-server 'sudo -n /usr/local/bin/dlp-health-check --json'
 Минимум:
 
 ```text
-http://10.10.10.2:8710/api/health
-http://10.10.10.2:8710/manager/brief
-http://10.10.10.2:8710/manager/actions
+http://<GATEWAY_HOST>:8710/api/health
+http://<GATEWAY_HOST>:8710/manager/brief
+http://<GATEWAY_HOST>:8710/manager/actions
 ```
 
 Если `/manager/brief` HTML, для MVP не парсить его глубоко. Дать link и health
@@ -494,11 +494,11 @@ MVP read-only.
 Команды:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+cd <PROJECT_ROOT>
 git status --short
-export CARGO_TARGET_DIR=/home/igor/.cache/detmir-adk-rust-target
+export CARGO_TARGET_DIR=<OPERATOR_HOME>/.cache/detmir-adk-rust-target
 cd ansible
-export no_proxy='localhost,127.0.0.1,192.168.100.18,10.10.10.13,10.10.10.2,10.10.10.0/24,192.168.100.0/24'
+export no_proxy='localhost,127.0.0.1,<WINDOWS_HOST>,<AW_SERVER_HOST>,<GATEWAY_HOST>,<SERVER_SUBNET_CIDR>,<ENDPOINT_SUBNET_CIDR>'
 export NO_PROXY="$no_proxy"
 ansible proxmox -i inventory.ini -m shell -a 'detmir-status --json'
 ansible proxmox -i inventory.ini -m shell -a 'detmir-check --json'
@@ -548,9 +548,9 @@ Acceptance:
 ```bash
 cd adk-rust
 cargo fmt --all -- --check
-CARGO_TARGET_DIR=/home/igor/.cache/detmir-adk-rust-target cargo test -p detmir-portal
-CARGO_TARGET_DIR=/home/igor/.cache/detmir-adk-rust-target cargo clippy -p detmir-portal --all-targets -- -D warnings
-CARGO_TARGET_DIR=/home/igor/.cache/detmir-adk-rust-target cargo build --release -p detmir-portal
+CARGO_TARGET_DIR=<OPERATOR_HOME>/.cache/detmir-adk-rust-target cargo test -p detmir-portal
+CARGO_TARGET_DIR=<OPERATOR_HOME>/.cache/detmir-adk-rust-target cargo clippy -p detmir-portal --all-targets -- -D warnings
+CARGO_TARGET_DIR=<OPERATOR_HOME>/.cache/detmir-adk-rust-target cargo build --release -p detmir-portal
 ```
 
 ## Phase 2: Backend Aggregation
@@ -717,13 +717,13 @@ Acceptance:
 ```bash
 systemctl is-active detmir-portal
 curl -fsS http://127.0.0.1:8720/api/health
-curl -k -I -H 'Host: dm.iri1968.dpdns.org' https://127.0.0.1/portal/
+curl -k -I -H 'Host: <PUBLIC_GATEWAY_FQDN>' https://127.0.0.1/portal/
 ```
 
 External:
 
 ```text
-https://dm.iri1968.dpdns.org/portal/
+https://<PUBLIC_GATEWAY_FQDN>/portal/
 ```
 
 ## Phase 6: Integrate Into Health Gates
@@ -795,7 +795,7 @@ MVP is done only when all are true:
 - portal serves HTML and JSON locally;
 - portal deployed as systemd service on Proxmox;
 - gateway URL works:
-  `https://dm.iri1968.dpdns.org/portal/`;
+  `https://<PUBLIC_GATEWAY_FQDN>/portal/`;
 - browser screenshots checked desktop and mobile;
 - no secrets in HTML/JSON/journald;
 - `detmir-status` stays OK after deployment;

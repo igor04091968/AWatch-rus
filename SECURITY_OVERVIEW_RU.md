@@ -19,11 +19,11 @@
 
 Подтвержденный runtime для `DetMir`:
 
-- `10.10.10.13` — основной `AW-rus` server, health, worktime/reporting, DLP server-side services, `Hayabusa` processing.
-- `10.10.10.2` — operator/gateway host, Telegram bot, web gateway, часть `1C` analytics runtime.
-- `192.168.100.18` — `SHARKON2025`, Windows/RDP host с collector toolkit.
-- `10.10.10.11` — Grafana.
-- `10.10.10.1` — `pfSense`, сетевой perimeter и VPN.
+- `<AW_SERVER_HOST>` — основной `AW-rus` server, health, worktime/reporting, DLP server-side services, `Hayabusa` processing.
+- `<GATEWAY_HOST>` — operator/gateway host, Telegram bot, web gateway, часть `1C` analytics runtime.
+- `<WINDOWS_HOST>` — `SHARKON2025`, Windows/RDP host с collector toolkit.
+- `<GRAFANA_HOST>` — Grafana.
+- `<FIREWALL_HOST>` — `pfSense`, сетевой perimeter и VPN.
 
 Ключевые потоки данных:
 
@@ -343,7 +343,7 @@ Collector и server-side сервисы проектировались так, �
 
 - operator/Codex remote path к Windows host;
 - `SSH + powershell.exe` вместо `WSMan` для interactive operations;
-- преднастроенный управляемый PowerShell path для `192.168.100.18`.
+- преднастроенный управляемый PowerShell path для `<WINDOWS_HOST>`.
 
 ## Деплой и эксплуатация
 

@@ -134,7 +134,7 @@ Endpoints:
 Что делает:
 
 - собирает live context по портфелю компаний из `ClickHouse`;
-- вызывает локальный `codex exec` на `10.10.10.2` от пользователя `codex`;
+- вызывает локальный `codex exec` на `<GATEWAY_HOST>` от пользователя `codex`;
 - требует structured JSON по schema, а не свободный текст;
 - рендерит итог в `latest.json` и `latest.md`;
 - при сбое `codex` даёт deterministic fallback, чтобы контур не оставался пустым.

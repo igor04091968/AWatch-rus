@@ -38,7 +38,7 @@ Keep this file minimal and high-signal: only include facts an agent would otherw
 - Do NOT commit secrets (secrets/ are local-only; PRs must not contain real secrets).
 - Many scripts assume they run on the target CT or on a Linux admin host with `pct` available. Don't try to run them on macOS without adapting dependencies.
 - `aw-server/install_aw_server.sh` expects network access to download the AW release URL provided by AW_SERVER_DOWNLOAD_URL.
-- `aw-server/apply_webui_ru_patch.sh` must run after AW webui files are present; it will fail if required bootstrap files under `/root/bootstrap` are missing.
+- `aw-server/apply_webui_ru_patch.sh` must run after AW webui files are present; it will fail if required bootstrap files under `<CT_BOOTSTRAP_DIR>` are missing.
 - When pushing AW_SERVER env via `push-aw-artifacts.sh` the script will only write `/etc/activitywatch/aw-server.env` if all AW_SERVER_* variables are set; otherwise it warns and skips.
 
 8) PR / commit checklist for agents

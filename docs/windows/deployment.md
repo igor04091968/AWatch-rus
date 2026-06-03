@@ -189,7 +189,7 @@ Ansible playbook `ansible/deploy_aw_windows.yml` выполняет этот mig
 
 ```powershell
 .\windows\deploy-domain-users.ps1 `
-  -ServerHost 10.10.10.13 `
+  -ServerHost <AW_SERVER_HOST> `
   -ServerPort 5600 `
   -Domain SHARKON2025 `
   -Users user2,user3,user4,user5 `
@@ -203,7 +203,7 @@ Single-user pilot в таком же стиле:
 
 ```powershell
 .\windows\deploy-single-user.ps1 `
-  -ServerHost 10.10.10.13 `
+  -ServerHost <AW_SERVER_HOST> `
   -ServerPort 5600 `
   -TargetUser 'SHARKON2025\user1' `
   -InstallRoot 'C:\Program Files\AWatch-rus\bin' `

@@ -12,7 +12,7 @@ runbook.
 Текущий resume snapshot проекта хранится в
 `.ai/runtime/detmir-current-session.md`. Перед продолжением миграции после
 перерыва или context reset сначала читать его, затем `RUNBOOK.md` и
-`/home/igor/.codex/skills/detmir-rust-migration/references/current-state.md`.
+`<OPERATOR_CODEX_HOME>/skills/detmir-rust-migration/references/current-state.md`.
 
 ## 1. Целевое состояние
 
@@ -703,7 +703,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
     binary `stat`/`copy`, чтобы `CARGO_TARGET_DIR` работал одинаково для
     Proxmox/Telegram и AW-server deploy. Добавлен
     `scripts/check_detmir_rust_release_artifacts.sh`; проверено
-    `CARGO_TARGET_DIR=/home/igor/.cache/detmir-adk-rust-target cargo build
+    `CARGO_TARGET_DIR=<OPERATOR_HOME>/.cache/detmir-adk-rust-target cargo build
     --release --workspace`, artifact check OK, `deploy_aw_server.yml
     --syntax-check` OK.
 20. `[done]` Прогнать production AW-server deploy contract и закрыть найденные
@@ -938,7 +938,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       перезапускались в рамках этого шага;
     - artifact check расширен `aw-prune-local-state`.
 32. `[done]` Устранить нехватку места на AW server через Proxmox resize:
-    - CT `203` (`aw-server`, `10.10.10.13`) rootfs расширен через Proxmox
+    - CT `203` (`aw-server`, `<AW_SERVER_HOST>`) rootfs расширен через Proxmox
       `pct resize 203 rootfs +20G`;
     - перед resize сохранен config backup:
       `/var/lib/detmir-ai/switch-backups/ct203-aw-server.before-rootfs-resize-20260602T054826Z.conf`;
@@ -1076,7 +1076,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       чтобы full deploy не затирал рабочие Influx credentials пустыми
       значениями;
     - полный `ansible-playbook -i inventory.ini deploy_aw_server.yml
-      -e aw_rust_release_dir=/home/igor/.cache/detmir-adk-rust-target/release`
+      -e aw_rust_release_dir=<OPERATOR_HOME>/.cache/detmir-adk-rust-target/release`
       прошел до конца: `failed=0`, `ok=282`;
     - final gates после deploy зеленые: `aw-db-health` OK,
       `aw-health-check` OK, `dlp-health-check` `22/0/0`,
@@ -1308,7 +1308,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `dlp_counts={ok:22,warn:0,fail:0}` and `ok_for_operator=true`.
 46. `[done]` Перенести Proxmox DetMir contour smoke на Rust-first helper:
     - добавлен crate `aw-contour-smoke`;
-    - `scripts/aw-contour-smoke-10.10.10.2.sh` теперь Rust-first wrapper:
+    - `scripts/aw-contour-smoke-<GATEWAY_HOST>.sh` теперь Rust-first wrapper:
       ищет `AW_CONTOUR_SMOKE_RUST`,
       `$CARGO_TARGET_DIR/release/aw-contour-smoke`,
       `adk-rust/target/release/aw-contour-smoke`,
@@ -1545,7 +1545,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `/usr/local/bin/detmir-portal`, `detmir-portal.service`,
       bind `127.0.0.1:8720`;
     - внешний route добавлен в существующий nginx gateway:
-      `https://dm.iri1968.dpdns.org/portal/`;
+      `https://<PUBLIC_GATEWAY_FQDN>/portal/`;
     - UI содержит вкладки `Оператор`, `Руководитель`, `Владелец`,
       `Инциденты ИБ`;
     - API реализованы: `/api/health`, `/api/summary`, `/api/operator`,
@@ -1614,7 +1614,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       AW-server evidence-only service, `/usr/local/bin/detmir-portal-evidence`
       with `detmir-portal-evidence.service`, because the DLP warehouse lives on
       the AW server. Proxmox nginx gateway routes
-      `/portal/api/dlp/evidence*` to `10.10.10.13:8721`. Current production
+      `/portal/api/dlp/evidence*` to `<AW_SERVER_HOST>:8721`. Current production
       verification: AW evidence API `ok=true`, gateway evidence route
       `ok=true`, `db_available=true`, 11 DLP evidence rows returned,
       `screenshot_available=0` because current stored rows do not yet contain

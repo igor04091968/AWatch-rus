@@ -11,7 +11,7 @@ use serde::Serialize;
 const DEFAULT_HEARTBEAT_FILE: &str = "/opt/infra-admin/.state/tsj_guardian_heartbeat";
 const DEFAULT_SERVICE_NAME: &str = "tsj-guardian-bot.service";
 const DEFAULT_GOST_SERVICE_NAME: &str = "gost-tg.service";
-const DEFAULT_GOST_PATTERN: &str = "/usr/local/bin/gost -L http+socks5://127.0.0.1:11090 -F socks5+wss://gw.iri1968.dpdns.org:4443";
+const DEFAULT_GOST_PATTERN: &str = "/usr/local/bin/gost -L http+socks5://127.0.0.1:11090 -F socks5+wss://gw.example.local:4443";
 
 #[derive(Debug, Parser)]
 #[command(about = "TSJ Guardian bot heartbeat watchdog and gost duplicate guard.")]

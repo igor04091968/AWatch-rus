@@ -16,8 +16,8 @@ for rust_bin in "${rust_candidates[@]}"; do
   fi
 done
 
-if [[ -z "${NODE_PATH:-}" && -d /home/igor/.agents/skills/playwright/node_modules ]]; then
-  export NODE_PATH=/home/igor/.agents/skills/playwright/node_modules
+if [[ -z "${NODE_PATH:-}" && -d "$HOME/.agents/skills/playwright/node_modules" ]]; then
+  export NODE_PATH="$HOME/.agents/skills/playwright/node_modules"
 fi
 
 exec node "$ROOT_DIR/scripts/aw-webui-browser-smoke.mjs" "$@"

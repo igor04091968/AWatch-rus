@@ -3,7 +3,7 @@ telegram_allowed_chat_ids: "123456789"
 telegram_default_chat_id: 123456789
 
 # Path on controller (this machine) to source bot script for deployment.
-tsj_bot_source_local_path: "/mnt/usb_hdd2/Projects/ActivityWatch-Russian/proxmox/tsj_guardian_bot.py"
+tsj_bot_source_local_path: "<PROJECT_ROOT>/proxmox/tsj_guardian_bot.py"
 tsj_bot_runtime_root: "/opt/infra-admin"
 
 # Optional bot tuning
@@ -14,11 +14,11 @@ tsj_bot_retry_autorecovery_every_sec: 300
 tsj_bot_telegram_proxy_url: "http://127.0.0.1:11090"
 tsj_bot_https_proxy_url: "http://127.0.0.1:11090"
 tsj_bot_http_proxy_url: "http://127.0.0.1:11090"
-tsj_bot_no_proxy: "localhost,127.0.0.1,10.10.10.0/24"
-tsj_bot_node_13_host: "10.10.10.13"
-tsj_bot_node_16_host: "10.10.10.16"
-tsj_bot_node_13_url: "http://10.10.10.13:5600/api/0/info"
-tsj_bot_node_16_url: "http://10.10.10.16/"
+tsj_bot_no_proxy: "localhost,127.0.0.1,<SERVER_SUBNET_CIDR>"
+tsj_bot_node_13_host: "<AW_SERVER_HOST>"
+tsj_bot_node_16_host: "<AUX_NODE_HOST>"
+tsj_bot_node_13_url: "http://<AW_SERVER_HOST>:5600/api/0/info"
+tsj_bot_node_16_url: "http://<AUX_NODE_HOST>/"
 tsj_bot_node_16_enabled: "false"
 tsj_bot_fs_warn_pct: 85
 tsj_bot_fs_crit_pct: 92
@@ -26,13 +26,13 @@ tsj_bot_fs_targets: "host,200,201,202,203"
 tsj_bot_fs_exclude_types: "tmpfs,devtmpfs,proc,sysfs,cgroup,cgroup2,overlay,squashfs,nsfs,tracefs,debugfs,securityfs,configfs,fusectl,mqueue,hugetlbfs,ramfs"
 tsj_bot_fs_immediate_ai_on_critical: "true"
 tsj_bot_ai_escalation_mode: "codex_exec"
-tsj_bot_ai_chat_workdir: "/home/igor"
+tsj_bot_ai_chat_workdir: "<OPERATOR_HOME>"
 tsj_bot_ai_exec_user: "igor"
 tsj_bot_tmux_user: "igor"
 tsj_bot_pfsense_change_control_enabled: "true"
 tsj_bot_pfsense_change_confirm_ttl_sec: 900
-tsj_bot_pfsense_env_path: "/home/igor/.config/tsj-bot/pfsense.env.readonly"
-tsj_bot_pfsense_inventory_path: "/home/igor/.config/tsj-bot/inventory.md"
+tsj_bot_pfsense_env_path: "<OPERATOR_HOME>/.config/tsj-bot/pfsense.env.readonly"
+tsj_bot_pfsense_inventory_path: "<OPERATOR_HOME>/.config/tsj-bot/inventory.md"
 tsj_bot_openvpn_config_enabled: "true"
 tsj_bot_openvpn_config_confirm_ttl_sec: 900
 tsj_bot_openvpn_expiry_warn_enabled: "false"
@@ -45,15 +45,15 @@ tsj_bot_update_targets: "auto"
 tsj_bot_pfsense_mcp_bearer: "CHANGE_ME"
 
 # AW-Rus + DLP check defaults
-tsj_bot_aw_rus_api_base: "http://10.10.10.13:5600/api/0"
-tsj_bot_aw_rus_worktime_base: "http://10.10.10.13:5610"
-tsj_bot_aw_dlp_policy_api_base: "http://10.10.10.13:5601/api/0"
+tsj_bot_aw_rus_api_base: "http://<AW_SERVER_HOST>:5600/api/0"
+tsj_bot_aw_rus_worktime_base: "http://<AW_SERVER_HOST>:5610"
+tsj_bot_aw_dlp_policy_api_base: "http://<AW_SERVER_HOST>:5601/api/0"
 tsj_bot_aw_dlp_policy_actor: "tsj-guardian-bot"
-tsj_bot_aw_rus_worktime_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S /usr/local/bin/aw-worktime-autoheal-rust && sudo -S systemctl reset-failed aw-worktime-ui-bridge.service && sudo -S systemctl start aw-worktime-ui-bridge.service'"
-tsj_bot_aw_rus_dlp_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'"
-tsj_bot_aw_rus_case_api_base: "http://10.10.10.13:5602"
+tsj_bot_aw_rus_worktime_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@<AW_SERVER_HOST> 'sudo -S /usr/local/bin/aw-worktime-autoheal-rust && sudo -S systemctl reset-failed aw-worktime-ui-bridge.service && sudo -S systemctl start aw-worktime-ui-bridge.service'"
+tsj_bot_aw_rus_dlp_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@<AW_SERVER_HOST> 'sudo -S systemctl restart activitywatch-server.service && sudo -S systemctl start activitywatch-dlp-aggregator.service || true && sudo -S /usr/local/bin/aw-health-check && sudo -S /usr/local/bin/dlp-health-check'"
+tsj_bot_aw_rus_case_api_base: "http://<AW_SERVER_HOST>:5602"
 tsj_bot_aw_rus_hayabusa_enabled: "true"
-tsj_bot_aw_rus_hayabusa_ssh_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13"
+tsj_bot_aw_rus_hayabusa_ssh_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@<AW_SERVER_HOST>"
 tsj_bot_aw_rus_host: "SHARKON2025"
 tsj_bot_aw_rus_primary_user: "USER1"
 tsj_bot_aw_rus_stale_sec: 900
@@ -61,8 +61,8 @@ tsj_bot_aw_rus_slo_enabled: "true"
 tsj_bot_aw_rus_slo_alert_window: "24h"
 tsj_bot_aw_rus_slo_min_samples: 4
 tsj_bot_aw_rus_slo_max_age_sec: 90
-tsj_bot_aw_rus_slo_summary_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@10.10.10.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'"
-tsj_bot_aw_rus_windows_host: "192.168.100.18"
+tsj_bot_aw_rus_slo_summary_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@<AW_SERVER_HOST> 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'"
+tsj_bot_aw_rus_windows_host: "<WINDOWS_HOST>"
 tsj_bot_aw_rus_windows_ssh_user: "Администратор"
 tsj_bot_aw_rus_windows_ssh_password: "CHANGE_ME"
 tsj_bot_aw_rus_windows_config_path: "C:\\ProgramData\\AWatch-rus\\deployment-config.json"

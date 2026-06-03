@@ -4,10 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -f "${ROOT_DIR}/secrets/runtime.env" ]]; then
+if [[ -f "${ROOT_DIR}/private-config/runtime.env" ]]; then
   set -a
   # shellcheck disable=SC1091
-  source "${ROOT_DIR}/secrets/runtime.env"
+  source "${ROOT_DIR}/private-config/runtime.env"
   set +a
 fi
 
@@ -73,11 +73,11 @@ log "Branch: $(git branch --show-current)"
 log "Running local quality gate..."
 ./scripts/quality-gate.sh | tee -a "${LOG_DIR}/quality-gate.log"
 
-if [[ -f "${ROOT_DIR}/secrets/runtime.env" ]]; then
-  log "Loading secrets/runtime.env"
+if [[ -f "${ROOT_DIR}/private-config/runtime.env" ]]; then
+  log "Loading private-config/runtime.env"
   set -a
   # shellcheck disable=SC1091
-  source "${ROOT_DIR}/secrets/runtime.env"
+  source "${ROOT_DIR}/private-config/runtime.env"
   set +a
 fi
 
@@ -94,7 +94,7 @@ fi
 
 if [[ -z "${AW_SSH_PASSWORD:-}" || -z "${AW_WINRM_PASSWORD:-}" ]]; then
   log "ERROR: missing AW_SSH_PASSWORD or AW_WINRM_PASSWORD."
-  log "Provide them via interactive prompt (TTY) or create secrets/runtime.env."
+  log "Provide them via interactive prompt (TTY) or create private-config/runtime.env."
   exit 3
 fi
 

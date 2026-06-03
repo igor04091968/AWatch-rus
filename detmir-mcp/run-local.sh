@@ -7,4 +7,4 @@ export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-$HOME/.local/share/uv-e
 
 mkdir -p "$UV_PROJECT_ENVIRONMENT"
 cd "$SCRIPT_DIR"
-exec /home/igor/.local/bin/uv run main.py
+exec ~/.local/bin/uv run main.py

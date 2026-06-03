@@ -80,14 +80,14 @@ PowerShell toolkit для клиентской стороны:
 - `quality-gate.sh` — базовый preflight,
 - инсталляторы Linux-клиента и console/ssh logger режимов.
 
-### `secrets/`
+### `private-config/`
 Только шаблоны. Реальные секреты в репозиторий не кладутся.
 
 ## 3) Как компоненты связаны в потоке
 
 Типовой pipeline:
 
-1. Подготовка параметров (`docs/preparation.md`, `secrets/*.example`).
+1. Подготовка параметров (`docs/preparation.md`, `private-config/*.example`).
 2. Provisioning контейнера в Proxmox (`proxmox/`).
 3. Установка/настройка AW Server (`aw-server/`).
 4. Включение автозапуска и проверка (`systemd` + `docs/runbook.md`).

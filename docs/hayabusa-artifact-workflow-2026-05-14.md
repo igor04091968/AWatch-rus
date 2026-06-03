@@ -1,6 +1,6 @@
 # Hayabusa Artifact Workflow 2026-05-14
 
-This document records the server-side EVTX intake and archive workflow on `10.10.10.13`.
+This document records the server-side EVTX intake and archive workflow on `<AW_SERVER_HOST>`.
 
 ## Directories
 

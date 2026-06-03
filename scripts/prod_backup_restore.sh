@@ -4,10 +4,10 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -f "${ROOT_DIR}/secrets/runtime.env" ]]; then
+if [[ -f "${ROOT_DIR}/private-config/runtime.env" ]]; then
   set -a
   # shellcheck disable=SC1091
-  source "${ROOT_DIR}/secrets/runtime.env"
+  source "${ROOT_DIR}/private-config/runtime.env"
   set +a
 fi
 

@@ -18,7 +18,7 @@ This adds a safe offline pipeline to preload DLP blacklists from static Sigma in
 - `scripts/extract_ioc_from_sigma.py` (core extractor)
 - `scripts/build_dlp_ioc_from_hayabusa.sh` (wrapper)
 
-## Production (AW server 10.10.10.13)
+## Production (AW server <AW_SERVER_HOST>)
 
 IOC enrichment is deployed by `ansible/deploy_aw_server.yml` when `aw_dlp_ioc_enabled=true`.
 
@@ -27,9 +27,9 @@ IOC enrichment is deployed by `ansible/deploy_aw_server.yml` when `aw_dlp_ioc_en
 - refresh interval: `aw_dlp_ioc_refresh_interval` (default `6h`)
 - output dir: `/opt/activitywatch/dlp-ioc/output`
 - HTTP export via existing AW worktime API (`:5610`):
-  - `http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.json`
-  - `http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.csv`
-  - `http://10.10.10.13:5610/dlp-ioc/ioc_blacklist.sql`
+  - `http://<AW_SERVER_HOST>:5610/dlp-ioc/ioc_blacklist.json`
+  - `http://<AW_SERVER_HOST>:5610/dlp-ioc/ioc_blacklist.csv`
+  - `http://<AW_SERVER_HOST>:5610/dlp-ioc/ioc_blacklist.sql`
 
 Mandatory post-deploy checks in Ansible:
 - `ioc_blacklist.json`
@@ -41,7 +41,7 @@ Each file must exist and be non-empty, otherwise deploy fails.
 ## Run
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+cd <PROJECT_ROOT>
 bash scripts/build_dlp_ioc_from_hayabusa.sh
 ```
 
@@ -50,7 +50,7 @@ Optional custom paths:
 ```bash
 bash scripts/build_dlp_ioc_from_hayabusa.sh \
   /mnt/usb_hdd1/Projects/hayabusa/rules \
-  /mnt/usb_hdd2/Projects/ActivityWatch-Russian/data/dlp-ioc
+  <PROJECT_ROOT>/data/dlp-ioc
 ```
 
 ## Output artifacts

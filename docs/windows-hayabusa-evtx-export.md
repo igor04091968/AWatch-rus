@@ -6,7 +6,7 @@ This document defines the Windows-side export path for Hayabusa DFIR enrichment.
 
 Windows hosts do not analyze EVTX locally for this contour.
 
-They export selected event logs into a bounded forensic staging area, and the server-side Hayabusa workflow on `10.10.10.13` analyzes those artifacts later.
+They export selected event logs into a bounded forensic staging area, and the server-side Hayabusa workflow on `<AW_SERVER_HOST>` analyzes those artifacts later.
 
 ## Export script
 
@@ -87,5 +87,5 @@ This wrapper:
 
 - output stays outside standard AW buckets
 - output stays outside normal DLP screenshot artifacts
-- server-side Hayabusa execution happens later on `10.10.10.13`
+- server-side Hayabusa execution happens later on `<AW_SERVER_HOST>`
 - only bounded Hayabusa metadata returns into the case layer

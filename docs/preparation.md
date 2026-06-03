@@ -59,14 +59,14 @@ pct list
 
 ## Что подготовить до деплоя
 
-- заполненный `secrets/deploy.secrets.env` (единый файл для CT + AW server);
+- заполненный `private-config/deploy.env` (единый файл для CT + AW server);
 - согласованный URL релиза `aw-server-rust`;
 - решение по публикации: VPN или reverse proxy;
 - решение по backup: `vzdump`, snapshot, rsync, NAS или object storage.
 
 ## Единый файл секретов
 
-Файл `secrets/deploy.secrets.env` автоматически подхватывается:
+Файл `private-config/deploy.env` автоматически подхватывается:
 
 - `proxmox/create-ct.sh`
 - `proxmox/push-aw-artifacts.sh`

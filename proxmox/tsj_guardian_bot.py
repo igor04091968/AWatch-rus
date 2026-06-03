@@ -341,8 +341,8 @@ class TSJGuardianBot:
     BTN_AI_CHAT_ALIASES = ("AI чат", "Чат с поддержкой", "Техподдержка", "Тех поддержка")
     BTN_OVPN_CERTS_ALIASES = ("OpenVPN certs", "OpenVPN cert", "OpenVPN серты", "OpenVPN сертификат")
     INFRA_ADMIN_ROOT = "/opt/infra-admin"
-    PFSENSE_ENV_PATH = "/home/igor/.config/tsj-bot/pfsense.env.readonly"
-    PFSENSE_INVENTORY_PATH = "/home/igor/.config/tsj-bot/inventory.md"
+    PFSENSE_ENV_PATH = "~/.config/tsj-bot/pfsense.env.readonly"
+    PFSENSE_INVENTORY_PATH = "~/.config/tsj-bot/inventory.md"
 
     HUMAN_OPERATOR_STYLE = (
         "Ты отвечаешь оператору как реальный инженер техподдержки проекта DetMir. "
@@ -468,7 +468,7 @@ class TSJGuardianBot:
         self.fs_immediate_ai_on_critical = env_bool("FS_IMMEDIATE_AI_ON_CRITICAL", True)
         self.ai_chat_enabled = env_bool("AI_CHAT_ENABLED", True)
         self.ai_chat_timeout_sec = env_int("AI_CHAT_TIMEOUT_SEC", 1800)
-        self.ai_chat_workdir = os.getenv("AI_CHAT_WORKDIR", "/home/igor").strip()
+        self.ai_chat_workdir = os.getenv("AI_CHAT_WORKDIR", "~").strip()
         self.ai_chat_sandbox = os.getenv("AI_CHAT_SANDBOX", "workspace-write").strip() or "workspace-write"
         self.openvpn_cert_check_timeout_sec = max(30, env_int("OPENVPN_CERT_CHECK_TIMEOUT_SEC", 240))
         self.openvpn_expiry_warn_timeout_sec = max(30, env_int("OPENVPN_EXPIRY_WARN_TIMEOUT_SEC", 120))

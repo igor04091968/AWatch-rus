@@ -2,7 +2,7 @@
 
 ## Verified production chain
 
-Verified on `10.10.10.13`:
+Verified on `<AW_SERVER_HOST>`:
 
 - `policy engine`
   - service: `aw-dlp-policy-engine.service`

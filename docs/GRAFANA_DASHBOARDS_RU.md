@@ -29,7 +29,7 @@ Version-controlled dashboard JSON находятся в каталоге `grafan
 1. Подготовьте inventory и vars:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+cd <PROJECT_ROOT>
 cp ansible/inventory.example.ini ansible/inventory.ini
 cp ansible/group_vars/grafana.example.yml ansible/group_vars/grafana.yml
 ```

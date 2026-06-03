@@ -22,7 +22,7 @@
 ```bash
 cd /path/to/AWatch-rus
 sh ./scripts/install_aw_linux_remote_worker.sh \
-  --server-host 10.10.10.13 \
+  --server-host <AW_SERVER_HOST> \
   --server-port 5600
 ```
 
@@ -73,7 +73,7 @@ tail -n 50 ~/.local/state/aw-linux-web-category/logs/collector.log
 На AW server:
 
 ```bash
-curl -fsS http://10.10.10.13:5600/api/0/buckets | jq -r 'keys[]' | \
+curl -fsS http://<AW_SERVER_HOST>:5600/api/0/buckets | jq -r 'keys[]' | \
   grep -E '^aw-watcher-window_|^aw-watcher-afk_|^aw-console-commands_|^aw-ssh-sessions_|^aw-linux-web-context_|^aw-detmir-web-category_'
 ```
 

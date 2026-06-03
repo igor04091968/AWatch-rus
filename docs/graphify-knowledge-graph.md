@@ -221,7 +221,7 @@ WebUI компоненты для:
 Для пересборки графа после изменений кода:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+cd <PROJECT_ROOT>
 graphify .
 ```
 

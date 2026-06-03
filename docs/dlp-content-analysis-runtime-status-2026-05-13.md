@@ -1,6 +1,6 @@
 # DLP Content Analysis Runtime Status 2026-05-13
 
-This document records the production-verified state of advanced content analysis on `10.10.10.13`.
+This document records the production-verified state of advanced content analysis on `<AW_SERVER_HOST>`.
 
 ## What is live
 

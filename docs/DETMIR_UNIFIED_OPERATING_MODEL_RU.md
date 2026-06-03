@@ -48,28 +48,28 @@
 
 | Узел | Роль |
 |---|---|
-| `10.10.10.1` | `pfSense`, firewall, VPN, ACL, OpenVPN export target |
-| `10.10.10.2` | `Proxmox/DetMirAuto`, web gateway, Telegram bot, operator entrypoint |
-| `10.10.10.13` | основной `AW-rus` server, health, worktime/reporting, `Hayabusa` server-side processing |
-| `192.168.100.18` | `SHARKON2025`, Windows/RDP host, collectors, worktime session path, EVTX export |
+| `<FIREWALL_HOST>` | `pfSense`, firewall, VPN, ACL, OpenVPN export target |
+| `<GATEWAY_HOST>` | `Proxmox/DetMirAuto`, web gateway, Telegram bot, operator entrypoint |
+| `<AW_SERVER_HOST>` | основной `AW-rus` server, health, worktime/reporting, `Hayabusa` server-side processing |
+| `<WINDOWS_HOST>` | `SHARKON2025`, Windows/RDP host, collectors, worktime session path, EVTX export |
 
 Практический вывод:
 
-- серверный путь `AW-rus` сейчас должен считаться `10.10.10.13`;
-- операторский и gateway-контур должен считаться `10.10.10.2`;
-- Windows production-host для `DetMir` сейчас `192.168.100.18`, а не старые упоминания `192.168.100.21`.
+- серверный путь `AW-rus` сейчас должен считаться `<AW_SERVER_HOST>`;
+- операторский и gateway-контур должен считаться `<GATEWAY_HOST>`;
+- Windows production-host для `DetMir` сейчас `<WINDOWS_HOST>`, а не старые упоминания `<OLD_WINDOWS_HOST>`.
 
 ### 2.1 Runtime snapshot после полной проверки 2026-05-28
 
 Проверка выполнялась как production-contour test, а не только как HTTP ping.
 Покрыты:
 
-- `AW-rus` API/WebUI на `10.10.10.13:5600`;
-- worktime/management API на `10.10.10.13:5610`;
-- Windows/RDP host `192.168.100.18` через WinRM/SSH/Scheduled Tasks;
-- `1C/file analytics` backend на `10.10.10.2:8710`;
-- Proxmox/nginx gateway на `10.10.10.2`;
-- Grafana на `10.10.10.11:3000`;
+- `AW-rus` API/WebUI на `<AW_SERVER_HOST>:5600`;
+- worktime/management API на `<AW_SERVER_HOST>:5610`;
+- Windows/RDP host `<WINDOWS_HOST>` через WinRM/SSH/Scheduled Tasks;
+- `1C/file analytics` backend на `<GATEWAY_HOST>:8710`;
+- Proxmox/nginx gateway на `<GATEWAY_HOST>`;
+- Grafana на `<GRAFANA_HOST>:3000`;
 - browser smoke через Playwright по operator-facing страницам.
 
 Фактический результат после стабилизации:
@@ -79,7 +79,7 @@
 | `./check-aw-full.sh` | `FRESH=8 STALE=0 DEAD=0` |
 | `aw-rus-healthd.py --json` | `ok=13 warn=0 fail=0` |
 | `dlp-health-check --json` | `ok=20 warn=0 fail=0` |
-| `systemctl --failed` на `10.10.10.13` | `0 loaded units listed` |
+| `systemctl --failed` на `<AW_SERVER_HOST>` | `0 loaded units listed` |
 | Playwright browser smoke | `14/14` страниц открылись |
 | Grafana authenticated API/UI smoke | login OK, `19` dashboards в `/api/search`, все ключевые `1C File`/`DetMir` dashboards открылись |
 | Grafana datasource health | `OK` для `clickhouse-1c`, `InfluxDB-AW`, `loki`, Proxmox/pfSense Influx datasources |
@@ -224,7 +224,7 @@
 | Функция | Где реализована |
 |---|---|
 | EVTX export на Windows | `windows` runtime/export scripts |
-| Intake на сервере | `10.10.10.13`, drop/inbox flow |
+| Intake на сервере | `<AW_SERVER_HOST>`, drop/inbox flow |
 | Processing/reporting | `aw-hayabusa`, `/opt/hayabusa`, server-side services |
 | Bounded integration с AW-rus | `docs/hayabusa-aw-rus-integration-2026-05-14.md` |
 | Operator guidance | `docs/hayabusa-operator-ib-guide-2026-05-14.md`, `docs/runbook.md` |
@@ -254,12 +254,12 @@
 
 Базовые входы:
 
-- `https://10.10.10.2/` — gateway;
-- `https://10.10.10.2/go/proxmox-gui` — Proxmox GUI;
-- `https://10.10.10.2/go/file1c-brief` — management/file-1C brief;
-- `https://10.10.10.2/go/file1c-actions` — actions;
-- `http://10.10.10.13:5600/api/0/info` — AW-rus API health;
-- `http://10.10.10.13:5610/reports/worktime/management` — management reporting API.
+- `https://<GATEWAY_HOST>/` — gateway;
+- `https://<GATEWAY_HOST>/go/proxmox-gui` — Proxmox GUI;
+- `https://<GATEWAY_HOST>/go/file1c-brief` — management/file-1C brief;
+- `https://<GATEWAY_HOST>/go/file1c-actions` — actions;
+- `http://<AW_SERVER_HOST>:5600/api/0/info` — AW-rus API health;
+- `http://<AW_SERVER_HOST>:5610/reports/worktime/management` — management reporting API.
 
 Telegram bot `DetMirAuto` обязан покрывать:
 
@@ -347,8 +347,8 @@ Telegram bot `DetMirAuto` обязан покрывать:
 
 Практическая схема такая:
 
-- использовать agent-описания из `/home/igor/.codex/agents/gsd-*` как действующее ядро исполнителей;
-- вернуть orchestrator-skills из `/home/igor/.codex/skills_disabled/2026-05-21-current-prune/` для верхнеуровневого workflow;
+- использовать agent-описания из `<OPERATOR_CODEX_HOME>/agents/gsd-*` как действующее ядро исполнителей;
+- вернуть orchestrator-skills из `<OPERATOR_CODEX_HOME>/skills_disabled/2026-05-21-current-prune/` для верхнеуровневого workflow;
 - hooks `gsd-phase-boundary.sh`, `gsd-statusline.js`, `gsd-workflow-guard.js` держать как сервисную обвязку, а не как замену основному процессу.
 
 Минимум к восстановлению как orchestrator layer:

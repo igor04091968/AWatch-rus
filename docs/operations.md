@@ -57,11 +57,11 @@
 
 ```sh
 vzdump <CT_ID> --mode snapshot --compress zstd --storage <BACKUP_STORAGE>
-pct exec <CT_ID> -- tar -C / -czf /root/activitywatch-config-backup.tgz \
+pct exec <CT_ID> -- tar -C / -czf <PRIVATE_BACKUP_DIR>/activitywatch-config-backup.tgz \
   etc/activitywatch etc/systemd/system/activitywatch-server.service opt/activitywatch/webui-ru
 
-curl -sS http://127.0.0.1:5600/api/0/buckets/aw-dlp-review_<HOST>/events?limit=500 > /root/aw-dlp-review-<HOST>.json
-curl -sS http://127.0.0.1:5600/api/0/buckets/aw-dlp-rules_<HOST>/events?limit=500 > /root/aw-dlp-rules-<HOST>.json
+curl -sS http://127.0.0.1:5600/api/0/buckets/aw-dlp-review_<HOST>/events?limit=500 > <PRIVATE_BACKUP_DIR>/aw-dlp-review-<HOST>.json
+curl -sS http://127.0.0.1:5600/api/0/buckets/aw-dlp-rules_<HOST>/events?limit=500 > <PRIVATE_BACKUP_DIR>/aw-dlp-rules-<HOST>.json
 ```
 
 ## Rollback

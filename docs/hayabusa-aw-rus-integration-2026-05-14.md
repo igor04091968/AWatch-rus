@@ -24,7 +24,7 @@ Not recommended:
 ## Operator path
 
 1. Export EVTX package on Windows with `export-evtx-for-hayabusa.ps1`.
-2. Transfer the resulting zip package to `10.10.10.13`.
+2. Transfer the resulting zip package to `<AW_SERVER_HOST>`.
 3. Run one of:
 
 ```bash

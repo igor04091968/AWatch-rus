@@ -2,7 +2,7 @@
 
 ## Что это
 
-Канонический путь для интерактивной PowerShell-работы с `DetMir` Windows-хостом `192.168.100.18` из Linux/Codex.
+Канонический путь для интерактивной PowerShell-работы с `DetMir` Windows-хостом `<WINDOWS_HOST>` из Linux/Codex.
 
 Это не замена `WinRM` в Ansible. Разделение теперь такое:
 
@@ -13,7 +13,7 @@
 
 Проверено на `2026-05-26`:
 
-- host: `192.168.100.18`
+- host: `<WINDOWS_HOST>`
 - product: `Windows Server 2025 Datacenter Evaluation`
 - release: `24H2`
 - build: `10.0.26100.32690`
@@ -77,7 +77,7 @@ detmir-win-shell
 Назначение:
 
 - `detmir-win-test` — быстрый smoke-test удалённого PowerShell;
-- `detmir-win-ps` — выполнить PowerShell-скрипт на `192.168.100.18`;
+- `detmir-win-ps` — выполнить PowerShell-скрипт на `<WINDOWS_HOST>`;
 - `detmir-win-shell` — открыть raw SSH shell на Windows-хост;
 - `detmir-win-ssh` — выполнить произвольную SSH-команду одной строкой;
 - `detmir-win-target` — показать текущий target.

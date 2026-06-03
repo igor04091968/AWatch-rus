@@ -6,7 +6,7 @@ map $http_upgrade $connection_upgrade {
 server {
     listen 80 default_server;
     listen [::]:80 default_server;
-    server_name {{ proxmox_web_gateway_public_hostname }} 10.10.10.2 192.168.63.213 _;
+    server_name {{ proxmox_web_gateway_public_hostname }} 10.10.10.2 <WAN_OR_EXTERNAL_IP> _;
 
     access_log /var/log/nginx/proxmox-web-gateway.access.log;
     error_log /var/log/nginx/proxmox-web-gateway.error.log;
@@ -17,7 +17,7 @@ server {
 server {
     listen 443 ssl http2 default_server;
     listen [::]:443 ssl http2 default_server;
-    server_name {{ proxmox_web_gateway_public_hostname }} 10.10.10.2 192.168.63.213 _;
+    server_name {{ proxmox_web_gateway_public_hostname }} 10.10.10.2 <WAN_OR_EXTERNAL_IP> _;
 
     access_log /var/log/nginx/proxmox-web-gateway.access.log;
     error_log /var/log/nginx/proxmox-web-gateway.error.log;

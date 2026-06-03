@@ -21,7 +21,7 @@
     aw_file_1c_manager_brief_model: gpt-5.3-codex
     aw_file_1c_manager_brief_codex_user: igor
     aw_file_1c_manager_brief_codex_bin: codex
-    aw_file_1c_manager_brief_workdir: /home/igor
+    aw_file_1c_manager_brief_workdir: ~
     aw_file_1c_manager_brief_top_limit: 5
     aw_file_1c_manager_brief_freshness_hours: 8
     aw_file_1c_manager_brief_timeout_sec: 300
@@ -295,7 +295,7 @@
 
     - name: Разрешить Windows upload key для igor
       ansible.builtin.lineinfile:
-        path: /home/igor/.ssh/authorized_keys
+        path: ~/.ssh/authorized_keys
         line: "{{ lookup('file', aw_file_1c_windows_upload_pubkey_path) }}"
         create: true
         owner: igor

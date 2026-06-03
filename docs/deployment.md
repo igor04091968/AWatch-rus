@@ -3,7 +3,7 @@
 ## 0. Ansible full-stack вариант (рекомендуется)
 
 ```sh
-cd /home/igor/tmp/AWatch-rus/ansible
+cd <PROJECT_ROOT>/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 ```
 
@@ -12,7 +12,7 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 Массовый вариант по матрице CT:
 
 ```sh
-cd /home/igor/tmp/AWatch-rus/ansible
+cd <PROJECT_ROOT>/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 ```
 
@@ -21,8 +21,8 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 На рабочей машине оператора:
 
 ```sh
-cp proxmox/ct-vars.example.env /root/activitywatch-ct.env
-cp aw-server/aw-server.env.example /root/activitywatch-aw.env
+cp proxmox/ct-vars.example.env <PRIVATE_CONFIG_DIR>/activitywatch-ct.env
+cp aw-server/aw-server.env.example <PRIVATE_CONFIG_DIR>/activitywatch-aw.env
 ```
 
 Заполнить оба файла реальными значениями вне git.
@@ -33,7 +33,7 @@ cp aw-server/aw-server.env.example /root/activitywatch-aw.env
 
 ```sh
 cd /path/to/ActivityWatch-Russian
-./proxmox/create-ct.sh /root/activitywatch-ct.env
+./proxmox/create-ct.sh <PRIVATE_CONFIG_DIR>/activitywatch-ct.env
 ```
 
 Скрипт:
@@ -42,15 +42,15 @@ cd /path/to/ActivityWatch-Russian
 - создаёт Debian 12 CT;
 - запускает контейнер;
 - выполняет минимальный bootstrap пакетов;
-- готовит `/root/bootstrap` для дальнейшей загрузки артефактов.
+- готовит `<CT_BOOTSTRAP_DIR>` для дальнейшей загрузки артефактов.
 
 ## 3. Загрузить артефакты в CT
 
 На узле Proxmox:
 
 ```sh
-./proxmox/push-aw-artifacts.sh /root/activitywatch-ct.env
-pct push <CT_ID> /root/activitywatch-aw.env /etc/activitywatch/aw-server.env
+./proxmox/push-aw-artifacts.sh <PRIVATE_CONFIG_DIR>/activitywatch-ct.env
+pct push <CT_ID> <PRIVATE_CONFIG_DIR>/activitywatch-aw.env /etc/activitywatch/aw-server.env
 ```
 
 В CT будут загружены:
@@ -67,7 +67,7 @@ pct push <CT_ID> /root/activitywatch-aw.env /etc/activitywatch/aw-server.env
 
 ```sh
 pct enter <CT_ID>
-bash /root/bootstrap/install_aw_server.sh
+bash <CT_BOOTSTRAP_DIR>/install_aw_server.sh
 ```
 
 Скрипт установки:
@@ -85,7 +85,7 @@ bash /root/bootstrap/install_aw_server.sh
 Внутри CT:
 
 ```sh
-bash /root/bootstrap/apply_webui_ru_patch.sh
+bash <CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh
 systemctl restart activitywatch-server.service
 ```
 

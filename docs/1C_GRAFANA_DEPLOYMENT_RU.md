@@ -19,14 +19,14 @@
 
 Рабочий каталог:
 
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c`
+- `<PROJECT_ROOT>/grafana-1c`
 
 Подготовка env:
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c
-cp /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/.env.example \
-   /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/.env
+cd <PROJECT_ROOT>/grafana-1c
+cp <PROJECT_ROOT>/grafana-1c/.env.example \
+   <PROJECT_ROOT>/grafana-1c/.env
 ```
 
 Обязательно изменить:
@@ -38,29 +38,29 @@ cp /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/.env.example \
 
 Используйте шаблон под вашу СУБД:
 
-- PostgreSQL: `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/sql/postgres_views_template.sql`
-- MS SQL: `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/sql/mssql_views_template.sql`
+- PostgreSQL: `<PROJECT_ROOT>/grafana-1c/sql/postgres_views_template.sql`
+- MS SQL: `<PROJECT_ROOT>/grafana-1c/sql/mssql_views_template.sql`
 
 После адаптации шаблона под фактические таблицы 1С создайте views в БД.
 
 Быстрое профилирование схемы 1С (PostgreSQL):
 
 ```bash
-sh /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/tools/discover_postgres_1c.sh \
+sh <PROJECT_ROOT>/grafana-1c/tools/discover_postgres_1c.sh \
   "postgres://user:pass@db-host:5432/db?sslmode=disable"
 ```
 
 Проверка KPI views перед запуском:
 
 ```bash
-sh /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/tools/validate_kpi_views.sh \
+sh <PROJECT_ROOT>/grafana-1c/tools/validate_kpi_views.sh \
   "postgres://user:pass@db-host:5432/db?sslmode=disable"
 ```
 
 ## 4. Запуск стека
 
 ```bash
-cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c
+cd <PROJECT_ROOT>/grafana-1c
 docker compose up -d
 ```
 
@@ -87,7 +87,7 @@ curl -fsS http://127.0.0.1:9090/-/healthy
 E2E health-check:
 
 ```bash
-sh /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/tools/check_pipeline.sh
+sh <PROJECT_ROOT>/grafana-1c/tools/check_pipeline.sh
 ```
 
 ## 6. KPI и алерты
@@ -109,7 +109,7 @@ sh /mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/tools/check_pipeline.
 
 Файл правил:
 
-- `/mnt/usb_hdd2/Projects/ActivityWatch-Russian/grafana-1c/prometheus/alerts.yml`
+- `<PROJECT_ROOT>/grafana-1c/prometheus/alerts.yml`
 
 ## 7. Эксплуатационный минимум
 

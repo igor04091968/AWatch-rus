@@ -5,7 +5,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SMOKE_ENV_FILE="${AW_SMOKE_ENV_FILE:-}"
-for env_candidate in "$REPO_ROOT/secrets/runtime.env" "$HOME/.config/aw-contour-smoke.env" "$SMOKE_ENV_FILE"; do
+for env_candidate in "$REPO_ROOT/private-config/runtime.env" "$HOME/.config/aw-contour-smoke.env" "$SMOKE_ENV_FILE"; do
   if [ -n "$env_candidate" ] && [ -f "$env_candidate" ]; then
     # Load local credentials and site-specific overrides without committing them.
     # Later files override earlier defaults.

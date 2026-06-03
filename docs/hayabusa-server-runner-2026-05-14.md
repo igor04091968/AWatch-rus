@@ -1,6 +1,6 @@
 # Hayabusa Server-Side Runner 2026-05-14
 
-This document records the production runner model for Hayabusa on `10.10.10.13`.
+This document records the production runner model for Hayabusa on `<AW_SERVER_HOST>`.
 
 ## Install layout
 

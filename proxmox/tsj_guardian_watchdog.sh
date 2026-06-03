@@ -5,7 +5,7 @@ HEARTBEAT_FILE="${HEARTBEAT_FILE:-/opt/infra-admin/.state/tsj_guardian_heartbeat
 MAX_AGE_SEC="${MAX_AGE_SEC:-180}"
 SERVICE_NAME="${SERVICE_NAME:-tsj-guardian-bot.service}"
 GOST_SERVICE_NAME="${GOST_SERVICE_NAME:-gost-tg.service}"
-GOST_DUP_PATTERN="${GOST_DUP_PATTERN:-/usr/local/bin/gost -L http+socks5://127.0.0.1:11090 -F socks5+wss://gw.iri1968.dpdns.org:4443}"
+GOST_DUP_PATTERN="${GOST_DUP_PATTERN:-/usr/local/bin/gost -L http+socks5://127.0.0.1:11090 -F socks5+wss://gw.example.local:4443}"
 
 dedupe_gost_instances() {
   local main_pid

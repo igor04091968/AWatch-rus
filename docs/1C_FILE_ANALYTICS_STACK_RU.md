@@ -31,27 +31,27 @@
 
 ### 2.1 Узлы
 
-- `192.168.100.18`
+- `<WINDOWS_HOST>`
   - Windows / RDP host с файловой 1С
   - источник `read-only` telemetry/export
-- `10.10.10.2`
+- `<GATEWAY_HOST>`
   - backend узел file-1C analytics
   - `ClickHouse`
   - ETL/ingest
   - detections
   - cases
   - proof-check
-- `10.10.10.11`
+- `<GRAFANA_HOST>`
   - production `Grafana`
   - готовые dashboards
-- `10.10.10.13`
+- `<AW_SERVER_HOST>`
   - основной `AW-rus` сервер
   - в file-1C pipeline не является обязательным runtime-компонентом
 
 ### 2.2 Поток данных
 
 ```text
-Windows file 1C host (192.168.100.18)
+Windows file 1C host (<WINDOWS_HOST>)
   ├─ ibases.v8i inventory
   ├─ 1Cv8.1CD file metadata
   ├─ 1Cv8Log metadata
@@ -60,7 +60,7 @@ Windows file 1C host (192.168.100.18)
           ↓
 export-upload-file-1c-telemetry.ps1
           ↓  scp
-10.10.10.2 /opt/activitywatch/clickhouse-1c/landing/*
+<GATEWAY_HOST> /opt/activitywatch/clickhouse-1c/landing/*
           ↓
 run_ingest_cycle.sh
   ├─ raw tables
@@ -69,7 +69,7 @@ run_ingest_cycle.sh
   ├─ detections
   └─ cases
           ↓
-Grafana 10.10.10.11
+Grafana <GRAFANA_HOST>
 ```
 
 ## 3. Что считается готовым контуром
@@ -77,8 +77,8 @@ Grafana 10.10.10.11
 Контур считается рабочим, если одновременно выполняется всё:
 
 1. Windows scheduled task `ActivityWatch File1C Upload` запускается по расписанию.
-2. На `10.10.10.2` работает `aw-1c-ingest.timer`.
-3. На `10.10.10.2` работает `aw-1c-proofcheck.timer`.
+2. На `<GATEWAY_HOST>` работает `aw-1c-ingest.timer`.
+3. На `<GATEWAY_HOST>` работает `aw-1c-proofcheck.timer`.
 4. `ClickHouse` содержит живые строки в:
    - `documents`
    - `reglog_events`
@@ -87,18 +87,18 @@ Grafana 10.10.10.11
    - `entity_timeline`
    - `detections`
    - `cases`
-5. В `Grafana` на `10.10.10.11` dashboards открываются и смотрят в datasource `clickhouse-1c`.
+5. В `Grafana` на `<GRAFANA_HOST>` dashboards открываются и смотрят в datasource `clickhouse-1c`.
 
 ## 4. Каталоги и артефакты
 
-### 4.1 На Windows `192.168.100.18`
+### 4.1 На Windows `<WINDOWS_HOST>`
 
 - `C:\ProgramData\AWatch-rus\deployment-config.json`
 - `C:\ProgramData\AWatch-rus\export-upload-file-1c-telemetry.ps1`
 - `C:\ProgramData\AWatch-rus\logs\file1c-telemetry.log`
 - `C:\ProgramData\AWatch-rus\ssh\awops_ed25519`
 
-### 4.2 На backend `10.10.10.2`
+### 4.2 На backend `<GATEWAY_HOST>`
 
 - root:
   - `/opt/activitywatch/clickhouse-1c`
@@ -114,7 +114,7 @@ Grafana 10.10.10.11
   - `/opt/activitywatch/clickhouse-1c/etl/config.yml`
   - `/opt/activitywatch/clickhouse-1c/.venv`
 
-### 4.3 systemd units на `10.10.10.2`
+### 4.3 systemd units на `<GATEWAY_HOST>`
 
 - `aw-1c-ingest.service`
 - `aw-1c-ingest.timer`
@@ -123,17 +123,17 @@ Grafana 10.10.10.11
 
 ## 5. Развёртывание с нуля
 
-### 5.1 Backend на `10.10.10.2`
+### 5.1 Backend на `<GATEWAY_HOST>`
 
 Playbook:
 
-- [ansible/deploy_file_1c_analytics.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_analytics.yml)
+- [ansible/deploy_file_1c_analytics.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_analytics.yml)
 
 Команда:
 
 ```bash
-ansible-playbook -i /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/inventory.ini \
-  /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_analytics.yml
+ansible-playbook -i <PROJECT_ROOT>/ansible/inventory.ini \
+  <PROJECT_ROOT>/ansible/deploy_file_1c_analytics.yml
 ```
 
 Что делает:
@@ -145,17 +145,17 @@ ansible-playbook -i /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/invento
 - включает `aw-1c-ingest.timer`;
 - включает `aw-1c-proofcheck.timer`.
 
-### 5.2 Windows uploader на `192.168.100.18`
+### 5.2 Windows uploader на `<WINDOWS_HOST>`
 
 Playbook:
 
-- [ansible/deploy_file_1c_windows_telemetry.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_windows_telemetry.yml)
+- [ansible/deploy_file_1c_windows_telemetry.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_windows_telemetry.yml)
 
 Команда:
 
 ```bash
-ansible-playbook -i /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/inventory.ini \
-  /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_windows_telemetry.yml
+ansible-playbook -i <PROJECT_ROOT>/ansible/inventory.ini \
+  <PROJECT_ROOT>/ansible/deploy_file_1c_windows_telemetry.yml
 ```
 
 Что делает:
@@ -164,7 +164,7 @@ ansible-playbook -i /mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/invento
 - обновляет `deployment-config.json`;
 - создаёт/обновляет scheduled task `ActivityWatch File1C Upload`.
 
-### 5.3 Production Grafana на `10.10.10.11`
+### 5.3 Production Grafana на `<GRAFANA_HOST>`
 
 Grafana уже должна содержать:
 
@@ -180,7 +180,7 @@ Grafana уже должна содержать:
 
 См.:
 
-- [docs/1C_GRAFANA_DEPLOYMENT_RU.md](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/docs/1C_GRAFANA_DEPLOYMENT_RU.md)
+- [docs/1C_GRAFANA_DEPLOYMENT_RU.md](<PROJECT_ROOT>/docs/1C_GRAFANA_DEPLOYMENT_RU.md)
 
 ## 6. Обязательный post-step на Windows
 
@@ -196,7 +196,7 @@ Grafana уже должна содержать:
 
 ### 6.2 Команда переключения principal
 
-На `192.168.100.18`:
+На `<WINDOWS_HOST>`:
 
 ```cmd
 schtasks /Change /TN "\ActivityWatch File1C Upload" /RU "SHARKON2025\Администратор" /RP "<LOCAL_ADMIN_PASSWORD>"
@@ -417,11 +417,11 @@ AW_1C_ROOT=/opt/activitywatch/clickhouse-1c /opt/activitywatch/clickhouse-1c/ops
 
 ## 14. Связанные файлы
 
-- [clickhouse-1c/README.md](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/README.md)
-- [clickhouse-1c/etl/load_1c_exports.py](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/etl/load_1c_exports.py)
-- [clickhouse-1c/ops/run_ingest_cycle.sh](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/ops/run_ingest_cycle.sh)
-- [clickhouse-1c/ops/check_ingest_freshness.sh](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/clickhouse-1c/ops/check_ingest_freshness.sh)
-- [ansible/deploy_file_1c_analytics.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_analytics.yml)
-- [ansible/deploy_file_1c_windows_telemetry.yml](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/ansible/deploy_file_1c_windows_telemetry.yml)
-- [windows/export-upload-file-1c-telemetry.ps1](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/windows/export-upload-file-1c-telemetry.ps1)
-- [docs/wiki/File-1C-Analytics.md](/mnt/usb_hdd2/Projects/ActivityWatch-Russian/docs/wiki/File-1C-Analytics.md)
+- [clickhouse-1c/README.md](<PROJECT_ROOT>/clickhouse-1c/README.md)
+- [clickhouse-1c/etl/load_1c_exports.py](<PROJECT_ROOT>/clickhouse-1c/etl/load_1c_exports.py)
+- [clickhouse-1c/ops/run_ingest_cycle.sh](<PROJECT_ROOT>/clickhouse-1c/ops/run_ingest_cycle.sh)
+- [clickhouse-1c/ops/check_ingest_freshness.sh](<PROJECT_ROOT>/clickhouse-1c/ops/check_ingest_freshness.sh)
+- [ansible/deploy_file_1c_analytics.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_analytics.yml)
+- [ansible/deploy_file_1c_windows_telemetry.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_windows_telemetry.yml)
+- [windows/export-upload-file-1c-telemetry.ps1](<PROJECT_ROOT>/windows/export-upload-file-1c-telemetry.ps1)
+- [docs/wiki/File-1C-Analytics.md](<PROJECT_ROOT>/docs/wiki/File-1C-Analytics.md)

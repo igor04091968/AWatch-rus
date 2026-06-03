@@ -89,12 +89,12 @@
 
 | Зона | Пример | Уровень доверия |
 |---|---|---|
-| Endpoint/RDP | `192.168.100.18` | Доверенный источник сигналов, но допускается риск локального вмешательства. |
-| AW server | `10.10.10.13` | Основной trusted data/control plane для AW/DLP/worktime. |
-| Proxmox/operator | `10.10.10.2` | Операторский gateway, portal, Telegram, automation entrypoint. |
+| Endpoint/RDP | `<WINDOWS_HOST>` | Доверенный источник сигналов, но допускается риск локального вмешательства. |
+| AW server | `<AW_SERVER_HOST>` | Основной trusted data/control plane для AW/DLP/worktime. |
+| Proxmox/operator | `<GATEWAY_HOST>` | Операторский gateway, portal, Telegram, automation entrypoint. |
 | Grafana/data | Grafana/Influx/ClickHouse | Витрина и аналитика, не первичный источник доказательств. |
 | Laptop/operator shell | рабочая станция владельца | Удобный admin-клиент, но не обязательный runtime. |
-| External access | `dm.iri1968.dpdns.org` | Доступ только через gateway/auth/reverse proxy. |
+| External access | `<PUBLIC_GATEWAY_FQDN>` | Доступ только через gateway/auth/reverse proxy. |
 
 Ключевой принцип: production-контур должен работать автономно на серверах.
 Ноутбук не является обязательной частью runtime.

@@ -2,13 +2,13 @@
 
 ## 1.2 Обязательные переменные и preflight
 
-После `cc9e4a0` контур Grafana/Influx считается частью базового production path. Перед запуском `ansible/deploy_aw_server.yml` должны быть доступны не только WinRM/SSH секреты, но и write-token'ы InfluxDB для bucket `aw_metrics`.
+После `cc9e4a0` контур Grafana/Influx считается частью базового production path. Перед запуском `ansible/deploy_aw_server.yml` должны быть доступны не только WinRM/SSH приватные параметры, но и write-token'ы InfluxDB для bucket `aw_metrics`.
 
-Минимальный локальный secrets-файл:
+Минимальный локальный файл приватной конфигурации:
 
 ```bash
 set -a
-source secrets/deploy.secrets.env
+source private-config/deploy.env
 set +a
 ```
 

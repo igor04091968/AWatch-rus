@@ -14,7 +14,7 @@ GUI watcher'ы (`aw-watcher-window`, `aw-watcher-afk`) не требуются.
 ```bash
 cd /path/to/AWatch-rus
 sh ./scripts/install_aw_console_ssh_logger.sh \
-  --server-host 10.10.10.13 \
+  --server-host <AW_SERVER_HOST> \
   --server-port 5600
 ```
 
@@ -50,7 +50,7 @@ tail -n 50 ~/.local/state/aw-console-ssh-logger/logs/collector.log
 На AW сервере:
 
 ```bash
-curl -fsS http://10.10.10.13:5600/api/0/buckets | jq -r 'keys[]' | grep -E '^aw-console-commands_|^aw-ssh-sessions_'
+curl -fsS http://<AW_SERVER_HOST>:5600/api/0/buckets | jq -r 'keys[]' | grep -E '^aw-console-commands_|^aw-ssh-sessions_'
 ```
 
 ## Ограничения

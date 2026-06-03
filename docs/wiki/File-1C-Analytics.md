@@ -9,20 +9,20 @@
 Это отдельный стек для **файловой 1С**, где:
 
 - Windows/RDP host отдаёт только `read-only export/telemetry`;
-- `10.10.10.2` принимает данные, грузит их в `ClickHouse`, строит `detections/cases`;
-- `10.10.10.11` показывает dashboards в `Grafana`.
+- `<GATEWAY_HOST>` принимает данные, грузит их в `ClickHouse`, строит `detections/cases`;
+- `<GRAFANA_HOST>` показывает dashboards в `Grafana`.
 
 ## Production topology
 
-- `192.168.100.18`
+- `<WINDOWS_HOST>`
   - файловая 1С
   - scheduled task `ActivityWatch File1C Upload`
-- `10.10.10.2`
+- `<GATEWAY_HOST>`
   - `ClickHouse`
   - ETL/ingest
   - `aw-1c-ingest.timer`
   - `aw-1c-proofcheck.timer`
-- `10.10.10.11`
+- `<GRAFANA_HOST>`
   - `Grafana`
   - datasource `clickhouse-1c`
   - folder `1C File Analytics`

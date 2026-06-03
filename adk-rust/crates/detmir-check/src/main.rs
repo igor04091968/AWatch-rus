@@ -16,7 +16,7 @@ const DEFAULT_AW_API: &str = "http://10.10.10.13:5600/api/0";
 const DEFAULT_WORKTIME_URL: &str = "http://10.10.10.13:5610";
 const DEFAULT_ONE_C_URL: &str = "http://10.10.10.2:8710";
 const DEFAULT_HOSTNAME: &str = "SHARKON2025";
-const DEFAULT_GATEWAY_HOST: &str = "dm.iri1968.dpdns.org";
+const DEFAULT_GATEWAY_HOST: &str = "detmir.example.local";
 
 #[derive(Debug, Parser)]
 #[command(about = "Autonomous read-only DetMir contour check from Proxmox.")]

@@ -12,11 +12,11 @@
 
 Проверенный на `2026-04-27` рабочий контур:
 
-- `10.10.10.2` (`pve-detmir`, admin host) запускает `AW server`:
+- `<GATEWAY_HOST>` (`pve-detmir`, admin host) запускает `AW server`:
   - `/usr/local/bin/aw-server-rust --host 0.0.0.0 --port 5600 --webpath /opt/aw-webui-ru`
-- тот же `10.10.10.2` запускает внешний `pfSense poller`:
+- тот же `<GATEWAY_HOST>` запускает внешний `pfSense poller`:
   - `/usr/bin/python3 /opt/aw-pfsense/pfsense-aw-poller.py --config /etc/aw-pfsense/poller.json`
-- `10.10.10.1` используется как API-цель для poller'а; на сам `pfSense` агент или сервер `AW` не ставятся.
+- `<FIREWALL_HOST>` используется как API-цель для poller'а; на сам `pfSense` агент или сервер `AW` не ставятся.
 
 ## Bucket'ы
 
@@ -28,11 +28,11 @@
 
 ## Файлы
 
-- [pfsense-aw-poller.py](/home/igor/tmp/AWatch-rus/pfsense/pfsense-aw-poller.py)
-- [pfsense-aw-poller.service](/home/igor/tmp/AWatch-rus/pfsense/pfsense-aw-poller.service)
-- [pfsense-aw-poller.example.json](/home/igor/tmp/AWatch-rus/pfsense/pfsense-aw-poller.example.json)
-- [deploy_aw_pfsense_poller.yml](/home/igor/tmp/AWatch-rus/ansible/deploy_aw_pfsense_poller.yml)
-- [pfsense-poller.example.yml](/home/igor/tmp/AWatch-rus/ansible/group_vars/pfsense-poller.example.yml)
+- [pfsense-aw-poller.py](<PROJECT_ROOT>/pfsense/pfsense-aw-poller.py)
+- [pfsense-aw-poller.service](<PROJECT_ROOT>/pfsense/pfsense-aw-poller.service)
+- [pfsense-aw-poller.example.json](<PROJECT_ROOT>/pfsense/pfsense-aw-poller.example.json)
+- [deploy_aw_pfsense_poller.yml](<PROJECT_ROOT>/ansible/deploy_aw_pfsense_poller.yml)
+- [pfsense-poller.example.yml](<PROJECT_ROOT>/ansible/group_vars/pfsense-poller.example.yml)
 
 ## Ручной запуск
 
@@ -47,7 +47,7 @@ python3 /opt/aw-pfsense/pfsense-aw-poller.py --config /etc/aw-pfsense/poller.jso
 ## Через Ansible
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd <PROJECT_ROOT>/ansible
 cp group_vars/pfsense-poller.example.yml group_vars/pfsense-poller.yml
 ansible-playbook -i inventory.ini deploy_aw_pfsense_poller.yml
 ```
@@ -56,7 +56,7 @@ Inventory:
 
 ```ini
 [aw_pfsense_pollers]
-aw-poller-01 ansible_host=10.10.10.50
+aw-poller-01 ansible_host=<POLLER_HOST>
 ```
 
 ## AW Web

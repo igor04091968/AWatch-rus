@@ -6,22 +6,22 @@
 
 ## 0) Структура проекта (полные пути)
 
-- `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`
-- `/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh`
-- `/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh`
-- `/home/igor/tmp/AWatch-rus/aw-server/install_aw_server.sh`
-- `/home/igor/tmp/AWatch-rus/aw-server/apply_webui_ru_patch.sh`
-- `/home/igor/tmp/AWatch-rus/windows/deploy-single-user.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/deploy-domain-users.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/deploy-ensemble.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/hardening-recovery.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/validate-deployment.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/browser-domains-native-collector.ps1`
-- `/home/igor/tmp/AWatch-rus/windows/dlp-endpoint-signals-collector.ps1`
-- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_server.yml`
-- `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_and_deploy_aw.yml`
-- `/home/igor/tmp/AWatch-rus/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
-- `/home/igor/tmp/AWatch-rus/ansible/deploy_aw_windows.yml`
+- `<PROJECT_ROOT>/private-config/deploy.env`
+- `<PROJECT_ROOT>/proxmox/create-ct.sh`
+- `<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh`
+- `<PROJECT_ROOT>/aw-server/install_aw_server.sh`
+- `<PROJECT_ROOT>/aw-server/apply_webui_ru_patch.sh`
+- `<PROJECT_ROOT>/windows/deploy-single-user.ps1`
+- `<PROJECT_ROOT>/windows/deploy-domain-users.ps1`
+- `<PROJECT_ROOT>/windows/deploy-ensemble.ps1`
+- `<PROJECT_ROOT>/windows/hardening-recovery.ps1`
+- `<PROJECT_ROOT>/windows/validate-deployment.ps1`
+- `<PROJECT_ROOT>/windows/browser-domains-native-collector.ps1`
+- `<PROJECT_ROOT>/windows/dlp-endpoint-signals-collector.ps1`
+- `<PROJECT_ROOT>/ansible/deploy_aw_server.yml`
+- `<PROJECT_ROOT>/ansible/provision_proxmox_ct_and_deploy_aw.yml`
+- `<PROJECT_ROOT>/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
+- `<PROJECT_ROOT>/ansible/deploy_aw_windows.yml`
 
 ---
 
@@ -39,11 +39,11 @@
 Скопируйте шаблон:
 
 ```bash
-cp /home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env.example \
-   /home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env
+cp <PROJECT_ROOT>/private-config/deploy.env.example \
+   <PROJECT_ROOT>/private-config/deploy.env
 ```
 
-Заполните в файле `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`:
+Заполните в файле `<PROJECT_ROOT>/private-config/deploy.env`:
 
 - все `CT_*` параметры контейнера;
 - все `AW_SERVER_*` параметры сервера;
@@ -59,14 +59,14 @@ cp /home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env.example \
 
 Подготовьте:
 
-- `/home/igor/tmp/AWatch-rus/ansible/inventory.ini`
-- `/home/igor/tmp/AWatch-rus/ansible/group_vars/all.yml`
-- `/home/igor/tmp/AWatch-rus/ansible/group_vars/proxmox.yml`
+- `<PROJECT_ROOT>/ansible/inventory.ini`
+- `<PROJECT_ROOT>/ansible/group_vars/all.yml`
+- `<PROJECT_ROOT>/ansible/group_vars/proxmox.yml`
 
 Запуск:
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd <PROJECT_ROOT>/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 ```
 
@@ -81,7 +81,7 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
 Для массового режима (несколько CT):
 
 ```bash
-cd /home/igor/tmp/AWatch-rus/ansible
+cd <PROJECT_ROOT>/ansible
 ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 ```
 
@@ -90,47 +90,47 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 На узле Proxmox:
 
 ```bash
-cd /home/igor/tmp/AWatch-rus
-/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh
+cd <PROJECT_ROOT>
+<PROJECT_ROOT>/proxmox/create-ct.sh
 ```
 
 По умолчанию читается:
 
-- `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`
+- `<PROJECT_ROOT>/private-config/deploy.env`
 
 При необходимости можно передать другой путь:
 
 ```bash
-/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh /absolute/path/to/deploy.secrets.env
+<PROJECT_ROOT>/proxmox/create-ct.sh /absolute/path/to/deploy.env
 ```
 
 ### 2.2 Загрузить bootstrap-артефакты и env внутрь CT
 
 ```bash
-cd /home/igor/tmp/AWatch-rus
-/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh
+cd <PROJECT_ROOT>
+<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh
 ```
 
 Скрипт загружает в CT:
 
-- `/root/bootstrap/install_aw_server.sh`
-- `/root/bootstrap/apply_webui_ru_patch.sh`
-- `/root/bootstrap/activitywatch-server.service`
-- `/root/bootstrap/aw-ru-patch.js`
-- `/root/bootstrap/aw-sw-cleanup.js`
+- `<CT_BOOTSTRAP_DIR>/install_aw_server.sh`
+- `<CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh`
+- `<CT_BOOTSTRAP_DIR>/activitywatch-server.service`
+- `<CT_BOOTSTRAP_DIR>/aw-ru-patch.js`
+- `<CT_BOOTSTRAP_DIR>/aw-sw-cleanup.js`
 - `/etc/activitywatch/aw-server.env` (из `AW_SERVER_*`)
 
 ### 2.3 Установить ActivityWatch Server внутри CT
 
 ```bash
 pct enter <CT_ID>
-bash /root/bootstrap/install_aw_server.sh
+bash <CT_BOOTSTRAP_DIR>/install_aw_server.sh
 ```
 
 ### 2.4 Применить RU patch Web UI
 
 ```bash
-bash /root/bootstrap/apply_webui_ru_patch.sh
+bash <CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh
 systemctl restart activitywatch-server.service
 ```
 
@@ -173,7 +173,7 @@ grep -n 'aw-ru-patch\|aw-sw-cleanup' /opt/activitywatch/webui-ru/index.html
 
 Скопируйте каталог:
 
-- `/home/igor/tmp/AWatch-rus/windows`
+- `<PROJECT_ROOT>/windows`
 
 например в:
 
@@ -361,7 +361,7 @@ vzdump <CT_ID> --mode snapshot --compress zstd --storage <BACKUP_STORAGE>
 Конфиги внутри CT:
 
 ```bash
-pct exec <CT_ID> -- tar -C / -czf /root/activitywatch-config-backup.tgz \
+pct exec <CT_ID> -- tar -C / -czf <PRIVATE_BACKUP_DIR>/activitywatch-config-backup.tgz \
   etc/activitywatch \
   etc/systemd/system/activitywatch-server.service \
   opt/activitywatch/webui-ru \
@@ -371,14 +371,14 @@ pct exec <CT_ID> -- tar -C / -czf /root/activitywatch-config-backup.tgz \
 ### 6.2 Обновление сервера
 
 1. Обновить `AW_SERVER_VERSION` и `AW_SERVER_DOWNLOAD_URL` в  
-   `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`
+   `<PROJECT_ROOT>/private-config/deploy.env`
 2. Выполнить:
 
 ```bash
-/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh
+<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh
 pct enter <CT_ID>
-bash /root/bootstrap/install_aw_server.sh
-bash /root/bootstrap/apply_webui_ru_patch.sh
+bash <CT_BOOTSTRAP_DIR>/install_aw_server.sh
+bash <CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh
 systemctl restart activitywatch-server.service
 ```
 
@@ -403,7 +403,7 @@ systemctl restart activitywatch-server.service
 
 ## 7) Безопасность
 
-- Не хранить реальные секреты вне `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`.
+- Не хранить реальные приватные параметры вне `<PROJECT_ROOT>/private-config/deploy.env`.
 - Не открывать `5600/tcp` в интернет напрямую.
 - Публиковать через VPN или reverse proxy с ограничением доступа.
 - Перед изменениями всегда делать backup.
@@ -412,10 +412,10 @@ systemctl restart activitywatch-server.service
 
 ## 8) Короткий чек-лист ввода в эксплуатацию
 
-1. Заполнен `/home/igor/tmp/AWatch-rus/secrets/deploy.secrets.env`.
-2. Выполнен `/home/igor/tmp/AWatch-rus/proxmox/create-ct.sh`.
-3. Выполнен `/home/igor/tmp/AWatch-rus/proxmox/push-aw-artifacts.sh`.
-4. В CT выполнены `/root/bootstrap/install_aw_server.sh` и `/root/bootstrap/apply_webui_ru_patch.sh`.
+1. Заполнен `<PROJECT_ROOT>/private-config/deploy.env`.
+2. Выполнен `<PROJECT_ROOT>/proxmox/create-ct.sh`.
+3. Выполнен `<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh`.
+4. В CT выполнены `<CT_BOOTSTRAP_DIR>/install_aw_server.sh` и `<CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh`.
 5. Сервер API/порт/UI проверены.
 6. На Windows выполнен `deploy-domain-users.ps1`.
 7. Проверены процессы, задачи и bucket'ы.

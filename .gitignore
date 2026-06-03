@@ -1,6 +1,9 @@
 # Local secrets
-secrets/deploy.secrets.env
-secrets/runtime.env
+/secrets/
+/private-config/*.env
+/private-config/*.local
+/ansible/inventory.ini
+/codex_history.txt
 
 # Runtime / reports
 *.log
@@ -26,3 +29,9 @@ graphify-out/cache/
 .planning/
 .pssa_run.ps1
 data/
+
+# Generated analysis artifacts
+/graphify-out/
+/.graphify_*.json
+/.graphify_*.txt
+/.graphify_python/
