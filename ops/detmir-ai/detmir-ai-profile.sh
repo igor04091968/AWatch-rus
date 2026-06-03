@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # DetMir autonomous AI helpers. Installed on Proxmox host.
 # Run `ai-test`, `detmir-check`, `detmir-dlp`, or `detmir-ai`.
 
