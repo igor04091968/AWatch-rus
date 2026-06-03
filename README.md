@@ -39,6 +39,9 @@ evidence и Hayabusa используются как прикладные мод
 
 - [Позиционирование для реестра российского ПО](docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)
+- [Описание продукта](PRODUCT_DESCRIPTION_RU.md)
+- [Установка для эксперта](INSTALL_FOR_EXPERT_RU.md)
+- [Сторонние компоненты](THIRD_PARTY_COMPONENTS.md)
 - [Архитектура](docs/ARCHITECTURE_RU.md)
 - [Установка](docs/INSTALL_RU.md)
 - [Руководство администратора](docs/ADMIN_GUIDE_RU.md)

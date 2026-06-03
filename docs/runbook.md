@@ -415,17 +415,17 @@ Acceptance для этого сценария:
 - артефакты трассируются от `HOST` до `report_dir`;
 - follow-up не тащит сырые forensic данные в обычные AW buckets.
 
-Known-good live proof `2026-05-21`:
+Example regression proof template:
 
-- `host=SHARKON2025`
-- `case_id=30`
-- `intake_id=20260521T125653Z_SHARKON2025-phase17-rerun3`
-- `sha256=e86b9abbfc1d706ac706c6c8a89509ab17023344c50880641e9175f73f1198d4`
-- `report_dir=/opt/hayabusa/reports/SHARKON2025/20260521T125654Z_incident_20260521T125653Z_SHARKON2025-phase17-rerun3`
+- `host=<WINDOWS_HOSTNAME>`
+- `case_id=<CASE_ID>`
+- `intake_id=<INTAKE_ID>`
+- `sha256=<PACKAGE_SHA256>`
+- `report_dir=/opt/hayabusa/reports/<WINDOWS_HOSTNAME>/<REPORT_RUN_ID>`
 - `latest-intake.json` status: `ok`
 - AW-rus case linkage stored under `forensics.hayabusa`
 
-Что реально нашли в production validation:
+Типовые проблемы, найденные при validation:
 
 - Windows zip с backslash path separators давал `unzip` warning rc=1; wrapper не должен валить intake на таком предупреждении.
 - timeline режимы должны использовать `rules/config`, а не корень rules directory.
@@ -445,16 +445,16 @@ readlink -f /opt/hayabusa/state/latest-run
 
 ```sh
 curl -fsS http://127.0.0.1:5600/api/0/buckets | jq -r 'keys[] | select(test("^aw-dlp-"))'
-curl -fsS http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025 | jq '{end:.metadata.end}'
+curl -fsS http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_<WINDOWS_HOSTNAME> | jq '{end:.metadata.end}'
 ```
 
 Контролируемый тест ingest:
 
 ```sh
 TS=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
-PAYLOAD=$(jq -nc --arg ts "$TS" '{timestamp:$ts,duration:0,data:{ruleId:"selftest-dlp-incident",action:"alert",severity:"low",message:"Self-test DLP incident from runbook",signalType:"self_test",username:"AUTOTEST",sessionId:0,hostname:"SHARKON2025",source:"self-test"}}')
-curl -fsS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/heartbeat?pulsetime=60' -H 'Content-Type: application/json' --data "$PAYLOAD"
-curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_SHARKON2025/events?limit=5' | jq '.[0].data'
+PAYLOAD=$(jq -nc --arg ts "$TS" '{timestamp:$ts,duration:0,data:{ruleId:"selftest-dlp-incident",action:"alert",severity:"low",message:"Self-test DLP incident from runbook",signalType:"self_test",username:"AUTOTEST",sessionId:0,hostname:"<WINDOWS_HOSTNAME>",source:"self-test"}}')
+curl -fsS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_<WINDOWS_HOSTNAME>/heartbeat?pulsetime=60' -H 'Content-Type: application/json' --data "$PAYLOAD"
+curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_<WINDOWS_HOSTNAME>/events?limit=5' | jq '.[0].data'
 ```
 
 Если API видит событие, а bucket-страница в UI показывает старые `First/last event`, нажать `Обновить` на странице bucket и раскрыть `Events`.
@@ -562,13 +562,13 @@ Get-CimInstance Win32_Process |
 1. Поставить `incidentCapture.screenshotEnabled = false` в `deployment-config.json` (для каждого StateRoot).
 2. Запустить `Start-ScheduledTask -TaskName 'ActivityWatch Recovery'`.
 
-### SHARKON2025: `Активное время = 0s`, хотя `window`-события есть
+### Windows host: `Активное время = 0s`, хотя `window`-события есть
 
 Симптом:
 
 - в Activity view за день видно `Worktime = 0s`;
 - `Top Window Titles / Top Categories / Category Tree` пустые;
-- при этом bucket `aw-watcher-window_SHARKON2025` содержит свежие события.
+- при этом bucket `aw-watcher-window_<WINDOWS_HOSTNAME>` содержит свежие события.
 
 Подтвержденная причина:
 
@@ -577,43 +577,43 @@ Get-CimInstance Win32_Process |
 
 Быстрый recovery (с Linux admin host):
 
-1. Проверить учетку входа. Для этого кейса рабочая учетная запись: `SHARKON2025\Администратор` (не `Administrator`).
+1. Проверить учетку входа. Рабочую учетную запись задавать как параметр экземпляра: `<WINDOWS_HOSTNAME>\<WINDOWS_DOMAIN_USER>`.
 2. Поднять remote execution через `wmiexec.py` с auth-file:
 
 ```sh
-cat > /tmp/sharkon_ru.auth << 'EOF'
-username = Администратор
+cat > /tmp/detmir-windows.auth << 'EOF'
+username = <WINDOWS_DOMAIN_USER>
 password = <PASSWORD>
-domain = SHARKON2025
+domain = <WINDOWS_HOSTNAME>
 EOF
-chmod 600 /tmp/sharkon_ru.auth
+chmod 600 /tmp/detmir-windows.auth
 ```
 
 3. Запустить recovery task:
 
 ```sh
-wmiexec.py -nooutput -A /tmp/sharkon_ru.auth <WINDOWS_HOST> \
+wmiexec.py -nooutput -A /tmp/detmir-windows.auth <WINDOWS_HOST> \
   "powershell -NoProfile -Command \"Start-ScheduledTask -TaskName 'ActivityWatch Recovery'\""
 ```
 
 4. Запустить все launch tasks:
 
 ```sh
-wmiexec.py -nooutput -A /tmp/sharkon_ru.auth <WINDOWS_HOST> \
+wmiexec.py -nooutput -A /tmp/detmir-windows.auth <WINDOWS_HOST> \
   "powershell -NoProfile -Command \"Get-ScheduledTask | Where-Object TaskName -like 'ActivityWatch Launch *' | ForEach-Object { Start-ScheduledTask -TaskName \$_.TaskName }\""
 ```
 
 5. Подождать 10-20 секунд и проверить API на AW server (`<AW_SERVER_HOST>:5600`):
 
 ```sh
-curl -fsS 'http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-watcher-afk_SHARKON2025/events?limit=30' \
+curl -fsS 'http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-watcher-afk_<WINDOWS_HOSTNAME>/events?limit=30' \
   | jq '{latest:.[0].timestamp, statuses:(group_by(.data.status)|map({status:.[0].data.status,count:length}))}'
 ```
 
 Ожидаемо после фикса:
 
 - в свежих AFK-событиях появляется `status=not-afk`;
-- `aw-watcher-window_SHARKON2025` продолжает обновляться;
+- `aw-watcher-window_<WINDOWS_HOSTNAME>` продолжает обновляться;
 - после обновления страницы UI дневная сводка перестает быть `0s`.
 
 ### Сервис не стартует
