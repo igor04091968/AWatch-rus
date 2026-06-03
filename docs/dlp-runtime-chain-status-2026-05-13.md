@@ -27,8 +27,8 @@ Verified on `<AW_SERVER_HOST>`:
   - recent journal runs are clean
   - current runtime result is `sent=0` / `delivered=0` because no new incidents were generated since the last seen bucket event
 - `endpoint -> incident ingest`
-  - `aw-dlp-endpoint-signals_SHARKON2025` fresh
-  - `aw-dlp-incidents_SHARKON2025` exists and contains valid historical incidents
+  - `aw-dlp-endpoint-signals_HOST-EXAMPLE` fresh
+  - `aw-dlp-incidents_HOST-EXAMPLE` exists and contains valid historical incidents
 - `health/admin`
   - `/usr/local/bin/dlp-health-check --json` = `ok=true`
   - `/usr/local/bin/dlp-admin-cli.py health check` = policy/cases/aw OK

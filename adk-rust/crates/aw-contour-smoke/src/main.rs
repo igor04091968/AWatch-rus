@@ -116,7 +116,7 @@ fn run_proxmox_remote() -> Result<i32> {
     check_tcp(&mut counts, "nginx http", "127.0.0.1", 80);
     check_tcp(&mut counts, "nginx https", "127.0.0.1", 443);
     check_tcp(&mut counts, "proxmox web", "127.0.0.1", 8006);
-    check_tcp(&mut counts, "1C company API", "10.10.10.2", 8710);
+    check_tcp(&mut counts, "1C company API", "192.0.2.2", 8710);
     check_tcp(&mut counts, "clickhouse native", "127.0.0.1", 9000);
     check_tcp(&mut counts, "clickhouse http", "127.0.0.1", 8123);
     if let Ok(out) = command_output("ss", &["-tulpn"]) {
@@ -141,7 +141,7 @@ fn run_proxmox_remote() -> Result<i32> {
         "go proxmox gui",
         "https://127.0.0.1/go/proxmox-gui",
         &[301, 302, 307, 308],
-        Some("https://10.10.10.2:8006/"),
+        Some("https://192.0.2.2:8006/"),
     );
     check_http_redirect(
         &mut counts,
@@ -149,7 +149,7 @@ fn run_proxmox_remote() -> Result<i32> {
         "go file1c brief",
         "https://127.0.0.1/go/file1c-brief",
         &[301, 302, 307, 308],
-        Some("http://10.10.10.2:8710/manager/brief"),
+        Some("http://192.0.2.2:8710/manager/brief"),
     );
     check_http_redirect(
         &mut counts,
@@ -157,7 +157,7 @@ fn run_proxmox_remote() -> Result<i32> {
         "go file1c actions",
         "https://127.0.0.1/go/file1c-actions",
         &[301, 302, 307, 308],
-        Some("http://10.10.10.2:8710/manager/actions"),
+        Some("http://192.0.2.2:8710/manager/actions"),
     );
 
     section("1C Company API");
@@ -165,24 +165,24 @@ fn run_proxmox_remote() -> Result<i32> {
         &mut counts,
         &no_redirect_http,
         "1C root redirect",
-        "http://10.10.10.2:8710/",
+        "http://192.0.2.2:8710/",
         &[307],
     );
     for (name, url) in [
-        ("1C /health", "http://10.10.10.2:8710/health"),
-        ("1C /api/health", "http://10.10.10.2:8710/api/health"),
-        ("1C manager brief", "http://10.10.10.2:8710/manager/brief"),
+        ("1C /health", "http://192.0.2.2:8710/health"),
+        ("1C /api/health", "http://192.0.2.2:8710/api/health"),
+        ("1C manager brief", "http://192.0.2.2:8710/manager/brief"),
         (
             "1C manager actions",
-            "http://10.10.10.2:8710/manager/actions",
+            "http://192.0.2.2:8710/manager/actions",
         ),
         (
             "1C manager recovery",
-            "http://10.10.10.2:8710/manager/recovery",
+            "http://192.0.2.2:8710/manager/recovery",
         ),
         (
             "1C weekly digest",
-            "http://10.10.10.2:8710/manager/digest/weekly",
+            "http://192.0.2.2:8710/manager/digest/weekly",
         ),
     ] {
         check_http_code(&mut counts, &http, name, url, &[200]);

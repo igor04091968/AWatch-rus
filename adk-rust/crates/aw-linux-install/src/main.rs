@@ -24,7 +24,7 @@ struct Cli {
     #[arg(long)]
     legacy_script: PathBuf,
 
-    #[arg(long, default_value = "10.10.10.13")]
+    #[arg(long, default_value = "192.0.2.13")]
     server_host: String,
 
     #[arg(long, default_value = "5600")]
@@ -249,7 +249,7 @@ mod tests {
         let cli = Cli {
             kind: InstallKind::Client,
             legacy_script: script,
-            server_host: "10.10.10.13".to_string(),
+            server_host: "192.0.2.13".to_string(),
             server_port: "5600".to_string(),
             poll_interval: "5".to_string(),
             version: "0.13.2".to_string(),

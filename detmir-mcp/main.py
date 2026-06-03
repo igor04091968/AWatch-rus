@@ -26,15 +26,15 @@ def _env_int(name: str, default: int) -> int:
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 GRAFANA_DASHBOARDS_DIR = PROJECT_ROOT / "grafana"
-AW_BASE = _env("DETMIR_AW_BASE", "http://10.10.10.13:5600").rstrip("/")
-WORKTIME_BASE = _env("DETMIR_WORKTIME_BASE", "http://10.10.10.13:5610").rstrip("/")
-DLP_POLICY_BASE = _env("DETMIR_DLP_POLICY_BASE", "http://10.10.10.13:5601").rstrip("/")
-DLP_CASE_BASE = _env("DETMIR_DLP_CASE_BASE", "http://10.10.10.13:5602").rstrip("/")
-ONEC_BASE = _env("DETMIR_ONEC_BASE", "http://10.10.10.2:8710").rstrip("/")
-GRAFANA_URL = _env("DETMIR_GRAFANA_URL", "http://10.10.10.11:3000").rstrip("/")
+AW_BASE = _env("DETMIR_AW_BASE", "http://192.0.2.13:5600").rstrip("/")
+WORKTIME_BASE = _env("DETMIR_WORKTIME_BASE", "http://192.0.2.13:5610").rstrip("/")
+DLP_POLICY_BASE = _env("DETMIR_DLP_POLICY_BASE", "http://192.0.2.13:5601").rstrip("/")
+DLP_CASE_BASE = _env("DETMIR_DLP_CASE_BASE", "http://192.0.2.13:5602").rstrip("/")
+ONEC_BASE = _env("DETMIR_ONEC_BASE", "http://192.0.2.2:8710").rstrip("/")
+GRAFANA_URL = _env("DETMIR_GRAFANA_URL", "http://192.0.2.11:3000").rstrip("/")
 GRAFANA_USER = os.environ.get("DETMIR_GRAFANA_USER", "")
 GRAFANA_PASSWORD = os.environ.get("DETMIR_GRAFANA_PASSWORD", "")
-DEFAULT_HOST = _env("DETMIR_DEFAULT_HOST", "SHARKON2025")
+DEFAULT_HOST = _env("DETMIR_DEFAULT_HOST", "HOST-EXAMPLE")
 HTTP_TIMEOUT_SECONDS = _env_int("DETMIR_HTTP_TIMEOUT_SECONDS", 10)
 MCP_TRANSPORT = _env("DETMIR_MCP_TRANSPORT", "stdio")
 MCP_HOST = _env("DETMIR_MCP_HOST", "127.0.0.1")

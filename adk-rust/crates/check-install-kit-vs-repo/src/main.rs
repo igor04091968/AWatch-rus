@@ -270,9 +270,9 @@ mod tests {
         let kit = root.join("install-kit-awindows-20260427-211240");
         fs::create_dir_all(&kit).unwrap();
         fs::write(kit.join("unexpected.txt"), "kit").unwrap();
-        fs::create_dir_all(kit.join("server-configs-192.168.100.18")).unwrap();
+        fs::create_dir_all(kit.join("server-configs-198.51.100.18")).unwrap();
         fs::write(
-            kit.join("server-configs-192.168.100.18/config.deployment-config.json"),
+            kit.join("server-configs-198.51.100.18/config.deployment-config.json"),
             "{}",
         )
         .unwrap();

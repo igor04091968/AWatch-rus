@@ -12,7 +12,7 @@ aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"
 aw_windows_package_version: "v0.13.2"
 aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
 aw_windows_package_zip_path: ""
-aw_windows_domain: "SHARKON2025"
+aw_windows_domain: "HOST-EXAMPLE"
 # Localized name of the built-in local Administrator account (SID ending in -500).
 # On the current Russian Windows host this must stay "Администратор";
 # do not replace it with "Administrator" unless the target OS account is actually named that way.
@@ -32,7 +32,7 @@ aw_windows_extra_users: []
 # Единые Windows/RDP пути: те же, что использует InnoSetup.
 aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
 aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
-aw_windows_hostname_override: ""  # Например: SHARKON2025
+aw_windows_hostname_override: ""  # Например: HOST-EXAMPLE
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
 aw_windows_file_ops_enabled: true

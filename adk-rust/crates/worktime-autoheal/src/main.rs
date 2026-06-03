@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 const DEFAULT_AW_URL: &str = "http://127.0.0.1:5600";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 const AUTOHEAL_SOURCE: &str = "aw-worktime-autoheal";
 
 #[derive(Debug, Parser)]

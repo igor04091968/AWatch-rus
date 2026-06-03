@@ -459,7 +459,7 @@ def build_company_recovery_context(summary_payload: dict[str, Any], infobase: st
 def grafana_company_dashboard_url() -> str:
     return os.getenv(
         "AW_1C_MANAGER_BRIEF_GRAFANA_URL",
-        "http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board",
+        "http://192.0.2.11:3000/d/1c-file-mgmt/1c-file-management-board",
     )
 
 

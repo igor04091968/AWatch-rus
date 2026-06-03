@@ -134,9 +134,9 @@
             $user = Split-Path $profile.LocalPath -Leaf
             $sshDir = Join-Path $profile.LocalPath '.ssh'
             $dst = Join-Path $sshDir 'awops_ed25519'
-            $grantDir = 'SHARKON2025\' + $user + ':(OI)(CI)(F)'
-            $grantRead = 'SHARKON2025\' + $user + ':(R)'
-            $grantModify = 'SHARKON2025\' + $user + ':(M)'
+            $grantDir = 'HOST-EXAMPLE\' + $user + ':(OI)(CI)(F)'
+            $grantRead = 'HOST-EXAMPLE\' + $user + ':(R)'
+            $grantModify = 'HOST-EXAMPLE\' + $user + ':(M)'
 
             New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
             & icacls.exe $sshDir /grant $grantDir | Out-Null

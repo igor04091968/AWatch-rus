@@ -2,7 +2,7 @@
 set -eu
 
 VERSION="0.13.2"
-SERVER_HOST="10.10.10.13"
+SERVER_HOST="192.0.2.13"
 SERVER_PORT="5600"
 INSTALL_BASE="${HOME}/.local/opt/activitywatch"
 BIN_DIR="${HOME}/.local/bin"
@@ -48,7 +48,7 @@ usage() {
 Usage: install_aw_linux_client.sh [options]
 
 Options:
-  --server-host HOST     Remote AW server host (default: 10.10.10.13)
+  --server-host HOST     Remote AW server host (default: 192.0.2.13)
   --server-port PORT     Remote AW server port (default: 5600)
   --version VERSION      ActivityWatch version (default: 0.13.2)
   --install-base PATH    Install root (default: ~/.local/opt/activitywatch)

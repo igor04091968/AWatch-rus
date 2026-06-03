@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Configuration
-AW_SERVER_HOST = os.getenv("AW_SERVER_HOST", "10.10.10.13")
+AW_SERVER_HOST = os.getenv("AW_SERVER_HOST", "192.0.2.13")
 AW_SERVER_PORT = int(os.getenv("AW_SERVER_PORT", "5600"))
 AW_SERVER_SCHEME = os.getenv("AW_SERVER_SCHEME", "http")
 AW_API_BASE = os.getenv(

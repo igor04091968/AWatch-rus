@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$UserId = 'SHARKON2025\user1'
+    [string]$UserId = 'HOST-EXAMPLE\user1'
 )
 
 Set-StrictMode -Version Latest
@@ -13,7 +13,7 @@ Start-Sleep -Seconds 10
 Get-Process notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 '@ | Set-Content -LiteralPath $probeScriptPath -Encoding UTF8
 
-schtasks /Run /TN 'ActivityWatch Launch [SHARKON2025_user1]' | Out-Null
+schtasks /Run /TN 'ActivityWatch Launch [HOST-EXAMPLE_user1]' | Out-Null
 Start-Sleep -Seconds 3
 
 $taskName = 'AW User1 Notepad Probe'

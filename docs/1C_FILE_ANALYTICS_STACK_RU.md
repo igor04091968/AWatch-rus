@@ -192,14 +192,14 @@ Grafana уже должна содержать:
 
 Проверенная рабочая учётка:
 
-- `SHARKON2025\Администратор`
+- `HOST-EXAMPLE\Администратор`
 
 ### 6.2 Команда переключения principal
 
 На `<WINDOWS_HOST>`:
 
 ```cmd
-schtasks /Change /TN "\ActivityWatch File1C Upload" /RU "SHARKON2025\Администратор" /RP "<LOCAL_ADMIN_PASSWORD>"
+schtasks /Change /TN "\ActivityWatch File1C Upload" /RU "HOST-EXAMPLE\Администратор" /RP "<LOCAL_ADMIN_PASSWORD>"
 ```
 
 ### 6.3 Проверка

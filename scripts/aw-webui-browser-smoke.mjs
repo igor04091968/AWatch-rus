@@ -368,7 +368,7 @@ async function main() {
   const playwright = requestedEngine === "chromium-cli" ? null : loadPlaywright();
   const awBase = normalizeBase(env("AW_BROWSER_SMOKE_AW_BASE", env("AW_SMOKE_AW_SERVER", "http://127.0.0.1:5600")));
   const worktimeBase = normalizeBase(env("AW_BROWSER_SMOKE_WORKTIME_BASE", env("AW_SMOKE_WORKTIME_API", "http://127.0.0.1:5610")));
-  const host = env("AW_BROWSER_SMOKE_HOST", env("AW_SMOKE_SOURCE_HOSTNAME", "SHARKON2025"));
+  const host = env("AW_BROWSER_SMOKE_HOST", env("AW_SMOKE_SOURCE_HOSTNAME", "HOST-EXAMPLE"));
   const timeoutMs = Number(env("AW_BROWSER_SMOKE_TIMEOUT_MS", "20000"));
   const settleMs = Number(env("AW_BROWSER_SMOKE_SETTLE_MS", "6000"));
   const renderTimeoutMs = Number(env("AW_BROWSER_SMOKE_RENDER_TIMEOUT_MS", "15000"));

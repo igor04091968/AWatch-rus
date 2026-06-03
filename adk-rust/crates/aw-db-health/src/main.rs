@@ -9,7 +9,7 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 const DEFAULT_DB_PATH: &str = "/var/lib/activitywatch/aw-server-rust/sqlite.db";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 
 #[derive(Debug, Parser)]
 #[command(author, version, about = "Read-only ActivityWatch SQLite growth guard")]

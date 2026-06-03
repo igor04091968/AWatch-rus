@@ -9,7 +9,7 @@
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
     aw_windows_evidence_sync_task_name: "ActivityWatch DLP Evidence Sync"
     aw_windows_evidence_sync_interval_minutes: 5
-    aw_windows_evidence_sync_api_url: "http://10.10.10.13:8721/api/dlp/evidence/upload"
+    aw_windows_evidence_sync_api_url: "http://192.0.2.13:8721/api/dlp/evidence/upload"
     aw_windows_evidence_sync_script: "{{ aw_windows_state_root }}\\sync-dlp-evidence-artifacts.ps1"
     aw_windows_evidence_sync_token_path: "{{ aw_windows_state_root }}\\dlp-evidence-upload-token.txt"
     aw_windows_evidence_sync_state_path: "{{ aw_windows_state_root }}\\dlp-evidence-sync-state.json"

@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-SERVER_HOST="10.10.10.13"
+SERVER_HOST="192.0.2.13"
 SERVER_PORT="5600"
 POLL_INTERVAL="5"
 AW_VERSION="0.13.2"
@@ -44,7 +44,7 @@ usage() {
 Usage: install_aw_linux_remote_worker.sh [options]
 
 Options:
-  --server-host HOST     Remote AW server host (default: 10.10.10.13)
+  --server-host HOST     Remote AW server host (default: 192.0.2.13)
   --server-port PORT     Remote AW server port (default: 5600)
   --poll-interval SEC    Poll interval for Linux loggers (default: 5)
   --version VERSION      ActivityWatch version for GUI watcher bundle (default: 0.13.2)

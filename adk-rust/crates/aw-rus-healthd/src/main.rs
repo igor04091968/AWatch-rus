@@ -25,10 +25,10 @@ struct Cli {
     #[arg(long, default_value = "http://127.0.0.1:5610")]
     worktime_api: String,
 
-    #[arg(long, default_value = "192.168.100.18")]
+    #[arg(long, default_value = "198.51.100.18")]
     rdp_host: String,
 
-    #[arg(long, default_value = "SHARKON2025")]
+    #[arg(long, default_value = "HOST-EXAMPLE")]
     rdp_hostname: String,
 
     #[arg(long, default_value = "/var/lib/activitywatch/health")]

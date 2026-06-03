@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smoke checks for the Proxmox/gateway/1C host 10.10.10.2.
+# Smoke checks for the Proxmox/gateway/1C host 192.0.2.2.
 
 set -uo pipefail
 
@@ -193,25 +193,25 @@ section "Ports"
 check_tcp "nginx http" 127.0.0.1 80
 check_tcp "nginx https" 127.0.0.1 443
 check_tcp "proxmox web" 127.0.0.1 8006
-check_tcp "1C company API" 10.10.10.2 8710
+check_tcp "1C company API" 192.0.2.2 8710
 check_tcp "clickhouse native" 127.0.0.1 9000
 check_tcp "clickhouse http" 127.0.0.1 8123
 ss -tulpn | grep -E ':(80|443|8006|8710|8123|9000)\b' | sed 's/^/       /' || true
 
 section "Gateway HTTP"
 check_http_code "nginx healthz" "https://127.0.0.1/healthz" '^200$'
-check_http_redirect "go proxmox gui" "https://127.0.0.1/go/proxmox-gui" '^30[1278]$' 'https://10.10.10.2:8006/'
-check_http_redirect "go file1c brief" "https://127.0.0.1/go/file1c-brief" '^30[1278]$' 'http://10.10.10.2:8710/manager/brief'
-check_http_redirect "go file1c actions" "https://127.0.0.1/go/file1c-actions" '^30[1278]$' 'http://10.10.10.2:8710/manager/actions'
+check_http_redirect "go proxmox gui" "https://127.0.0.1/go/proxmox-gui" '^30[1278]$' 'https://192.0.2.2:8006/'
+check_http_redirect "go file1c brief" "https://127.0.0.1/go/file1c-brief" '^30[1278]$' 'http://192.0.2.2:8710/manager/brief'
+check_http_redirect "go file1c actions" "https://127.0.0.1/go/file1c-actions" '^30[1278]$' 'http://192.0.2.2:8710/manager/actions'
 
 section "1C Company API"
-check_http_code "1C root redirect" "http://10.10.10.2:8710/" '^307$'
-check_http_code "1C /health" "http://10.10.10.2:8710/health" '^200$'
-check_http_code "1C /api/health" "http://10.10.10.2:8710/api/health" '^200$'
-check_http_code "1C manager brief" "http://10.10.10.2:8710/manager/brief" '^200$'
-check_http_code "1C manager actions" "http://10.10.10.2:8710/manager/actions" '^200$'
-check_http_code "1C manager recovery" "http://10.10.10.2:8710/manager/recovery" '^200$'
-check_http_code "1C weekly digest" "http://10.10.10.2:8710/manager/digest/weekly" '^200$'
+check_http_code "1C root redirect" "http://192.0.2.2:8710/" '^307$'
+check_http_code "1C /health" "http://192.0.2.2:8710/health" '^200$'
+check_http_code "1C /api/health" "http://192.0.2.2:8710/api/health" '^200$'
+check_http_code "1C manager brief" "http://192.0.2.2:8710/manager/brief" '^200$'
+check_http_code "1C manager actions" "http://192.0.2.2:8710/manager/actions" '^200$'
+check_http_code "1C manager recovery" "http://192.0.2.2:8710/manager/recovery" '^200$'
+check_http_code "1C weekly digest" "http://192.0.2.2:8710/manager/digest/weekly" '^200$'
 
 section "ClickHouse"
 check_docker_container "aw-rus-1c-clickhouse"

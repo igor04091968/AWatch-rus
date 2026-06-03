@@ -1,6 +1,6 @@
 # aw-rus Hayabusa Server Ops Bundle
 
-This directory is the server-side operational bundle for Hayabusa on `10.10.10.13`.
+This directory is the server-side operational bundle for Hayabusa on `192.0.2.13`.
 
 ## Goal
 
@@ -44,7 +44,7 @@ Prerequisites:
 
 - `/opt/activitywatch/aw-rus-ops/venv` contains `ansible` and `pywinrm`
 - `/opt/activitywatch/aw-rus-ops/ansible/inventory.ini` contains the live Windows connection details
-- WinRM from `10.10.10.13` to the Windows host is reachable
+- WinRM from `192.0.2.13` to the Windows host is reachable
 
 Run:
 
@@ -55,14 +55,14 @@ aw-hayabusa-from-windows --days-back 1 --mode incident --case-id 30
 This performs:
 
 - Windows EVTX export via WinRM
-- fetch of the newest zip directly onto `10.10.10.13`
+- fetch of the newest zip directly onto `192.0.2.13`
 - `aw-hayabusa accept`
 - `aw-hayabusa process-inbox`
 - bounded case linkage via case API
 
 If WinRM from the server to Windows is blocked by network policy, use the drop-zone workflow below instead.
 
-## Drop-zone automation on 10.10.10.13
+## Drop-zone automation on 192.0.2.13
 
 The server can auto-process packages dropped into:
 
@@ -95,9 +95,9 @@ powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-up
 - run `C:\ProgramData\AWatch-rus\export-evtx-for-hayabusa.ps1`
 - upload matching `.caseid` first when `-CaseId` is specified
 - upload the newest zip to `/opt/activitywatch/aw-rus-ops/drop`
-- let `aw-hayabusa-drop.path` process the package automatically on `10.10.10.13`
+- let `aw-hayabusa-drop.path` process the package automatically on `192.0.2.13`
 
-This path was validated live against case `30` after the `awops` SSH authorization was installed on `10.10.10.13`.
+This path was validated live against case `30` after the `awops` SSH authorization was installed on `192.0.2.13`.
 
 Server-side prerequisite for user `awops`:
 

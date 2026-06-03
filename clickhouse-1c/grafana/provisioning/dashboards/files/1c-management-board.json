@@ -9,19 +9,19 @@
   "links": [
     {
       "title": "Manager Brief",
-      "url": "http://10.10.10.2:8710/manager/brief"
+      "url": "http://192.0.2.2:8710/manager/brief"
     },
     {
       "title": "Manager Actions",
-      "url": "http://10.10.10.2:8710/manager/actions"
+      "url": "http://192.0.2.2:8710/manager/actions"
     },
     {
       "title": "Weekly Digest",
-      "url": "http://10.10.10.2:8710/manager/digest/weekly"
+      "url": "http://192.0.2.2:8710/manager/digest/weekly"
     },
     {
       "title": "Recovery",
-      "url": "http://10.10.10.2:8710/manager/recovery"
+      "url": "http://192.0.2.2:8710/manager/recovery"
     },
     {
       "title": "Company Intelligence",

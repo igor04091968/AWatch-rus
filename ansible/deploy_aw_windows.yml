@@ -13,7 +13,7 @@
     aw_windows_package_version: "v0.13.2"
     aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
     aw_windows_package_zip_path: ""
-    aw_windows_domain: "SHARKON2025"
+    aw_windows_domain: "HOST-EXAMPLE"
     aw_windows_builtin_administrator_name: "Администратор"
     aw_windows_users:
       - Администратор

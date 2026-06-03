@@ -388,7 +388,7 @@ fn suggestions_from_failures(failures: &[String]) -> Vec<String> {
     }
     if text.contains("pfsense_web") {
         suggestions
-            .push("Проверить доступность pfSense 10.10.10.1:8443, перезапустить WebGUI/nginx.");
+            .push("Проверить доступность pfSense 192.0.2.1:8443, перезапустить WebGUI/nginx.");
     }
     if text.contains("pfsense_mcp") {
         suggestions.push("Проверить локальный pfsense-mcp-server.service, bearer token и endpoint 127.0.0.1:3010/mcp.");
@@ -397,18 +397,18 @@ fn suggestions_from_failures(failures: &[String]) -> Vec<String> {
         suggestions.push("Проверить контейнер InfluxDB и restart сервиса influxdb.");
     }
     if text.contains("grafana") {
-        suggestions.push("Проверить grafana-server и NO_PROXY для 10.10.10.0/24.");
+        suggestions.push("Проверить grafana-server и NO_PROXY для 192.0.2.0/24.");
     }
     if text.contains("loki") || text.contains("alloy") {
         suggestions.push("Проверить LXC логов и restart сервисов loki/alloy.");
     }
     if text.contains("aw-rus:watcher-") || text.contains("aw-rus:worktime:") {
-        suggestions.push("Проверить Windows collector recovery: worktime-session-collector, ActivityWatch Recovery и Launch tasks на 192.168.100.18.");
+        suggestions.push("Проверить Windows collector recovery: worktime-session-collector, ActivityWatch Recovery и Launch tasks на 198.51.100.18.");
         suggestions.push("После Windows recovery проверить server-side aw-worktime-autoheal/ui-bridge для пересборки afk/window bucket'ов.");
     }
     if text.contains("aw-rus:dlp-") {
         suggestions.push(
-            "Проверить DLP endpoint/fileops collectors и server-side DLP transport на 10.10.10.13.",
+            "Проверить DLP endpoint/fileops collectors и server-side DLP transport на 192.0.2.13.",
         );
     }
     if text.contains("filesystem_usage") {

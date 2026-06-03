@@ -21,7 +21,7 @@ required_vars=(
   AW_SERVER_GROUP
 )
 
-BOOTSTRAP_DIR="/root/bootstrap"
+BOOTSTRAP_DIR="/opt/detmir/bootstrap"
 VIEWS_JSON="$BOOTSTRAP_DIR/settings/views-default.json"
 CLASSES_JSON="$BOOTSTRAP_DIR/settings/classes-worktime.json"
 WORKTIME_API_RUST_SRC="$BOOTSTRAP_DIR/worktime-api"
@@ -91,7 +91,7 @@ sed \
   -e "s#__AW_SERVER_USER__#$AW_SERVER_USER#g" \
   -e "s#__AW_SERVER_GROUP__#$AW_SERVER_GROUP#g" \
   -e "s#__AW_SERVER_DATA_DIR__#$AW_SERVER_DATA_DIR#g" \
-  /root/bootstrap/activitywatch-server.service > /etc/systemd/system/activitywatch-server.service
+  /opt/detmir/bootstrap/activitywatch-server.service > /etc/systemd/system/activitywatch-server.service
 chmod 0644 /etc/systemd/system/activitywatch-server.service
 
 systemctl daemon-reload

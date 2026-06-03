@@ -49,7 +49,7 @@ case "$1" in
     TASK="Prepare a rebuild and validation checklist for install-kit-awindows, including rebuild_install_kit.sh, check_install_kit_vs_repo.sh, validate_install_kit.sh, and optional InnoSetup exe rebuild."
     ;;
   windows-i18n)
-    TASK="Prepare a validation checklist for Windows localized account names and Cyrillic handling: CP866 query.exe decoding, SHARKON2025_Администратор scheduled task, WinRM output, SSH checks, and ActivityWatch Launch fallback rules."
+    TASK="Prepare a validation checklist for Windows localized account names and Cyrillic handling: CP866 query.exe decoding, HOST-EXAMPLE_Администратор scheduled task, WinRM output, SSH checks, and ActivityWatch Launch fallback rules."
     ;;
   *)
     TASK="$*"
@@ -85,14 +85,14 @@ Hard constraints:
 - Assume Groq/free-tier constraints: keep the response compact.
 
 Known operational facts:
-- AW server: http://10.10.10.13:5600
-- Worktime API: http://10.10.10.13:5610
-- Grafana: http://10.10.10.11:3000
-- RDP host: 192.168.100.18 / SHARKON2025
+- AW server: http://192.0.2.13:5600
+- Worktime API: http://192.0.2.13:5610
+- Grafana: http://192.0.2.11:3000
+- RDP host: 198.51.100.18 / HOST-EXAMPLE
 - Ansible inventory: ansible/inventory.ini
 - Windows deploy root: C:\\Program Files\\AWatch-rus
 - Windows state root: C:\\ProgramData\\AWatch-rus
-- Localized built-in Administrator launch task: ActivityWatch Launch [SHARKON2025_Администратор]
+- Localized built-in Administrator launch task: ActivityWatch Launch [HOST-EXAMPLE_Администратор]
 - For localized Windows console output, prefer query.exe user via CP866 decoding and emit UTF-8.
 
 Task:

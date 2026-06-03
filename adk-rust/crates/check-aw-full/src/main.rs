@@ -7,9 +7,9 @@ use clap::Parser;
 use reqwest::blocking::Client;
 use serde_json::Value;
 
-const DEFAULT_SERVER: &str = "http://10.10.10.13:5600";
-const DEFAULT_HOST: &str = "SHARKON2025";
-const DEFAULT_RDP_HOST: &str = "192.168.100.18";
+const DEFAULT_SERVER: &str = "http://192.0.2.13:5600";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
+const DEFAULT_RDP_HOST: &str = "198.51.100.18";
 const BUCKETS: &[(&str, &str)] = &[
     ("aw-watcher-afk", "AFK watcher"),
     ("aw-watcher-window", "Window watcher"),
@@ -423,7 +423,7 @@ fn check_cors(client: &Client, server: &str) -> u16 {
     let url = format!("{server}/api/0/settings/");
     client
         .get(&url)
-        .header("Origin", "http://10.10.10.13:5600")
+        .header("Origin", "http://192.0.2.13:5600")
         .send()
         .map(|response| response.status().as_u16())
         .unwrap_or(0)

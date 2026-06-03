@@ -8,9 +8,9 @@ use chrono::Local;
 use clap::Parser;
 use serde::Serialize;
 
-const DEFAULT_SERVER_HOST: &str = "10.10.10.13";
+const DEFAULT_SERVER_HOST: &str = "192.0.2.13";
 const DEFAULT_SERVER_USER: &str = "igor";
-const DEFAULT_LEGACY_DB: &str = "/root/.local/share/activitywatch/aw-server-rust/sqlite.db";
+const DEFAULT_LEGACY_DB: &str = "/var/lib/activitywatch/aw-server-rust/sqlite.db";
 const DEFAULT_TARGET_DB: &str =
     "/var/lib/activitywatch/.local/share/activitywatch/aw-server-rust/sqlite.db";
 const DEFAULT_REMOTE_MERGE_BIN: &str = "/tmp/merge-aw-server-dbs";
@@ -454,7 +454,7 @@ mod tests {
             dir.path(),
             &dir.path().join("private-config/runtime.env"),
             &env,
-            "10.10.10.13",
+            "192.0.2.13",
             "igor",
             "20260602-000000",
             "/var/lib/activitywatch/backups/prod-restore-20260602-000000",

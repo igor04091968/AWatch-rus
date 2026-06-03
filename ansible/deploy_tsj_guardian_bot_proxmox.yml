@@ -201,11 +201,11 @@
           TELEGRAM_DEFAULT_CHAT_ID={{ tsj_bot_default_chat_id }}
           HTTPS_PROXY={{ tsj_bot_https_proxy_url | default(tsj_bot_telegram_proxy_url | default('http://127.0.0.1:11090')) }}
           HTTP_PROXY={{ tsj_bot_http_proxy_url | default(tsj_bot_telegram_proxy_url | default('http://127.0.0.1:11090')) }}
-          NO_PROXY={{ tsj_bot_no_proxy | default('localhost,127.0.0.1,10.10.10.0/24') }}
-          NODE_13_HOST={{ tsj_bot_node_13_host | default('10.10.10.13') }}
-          NODE_16_HOST={{ tsj_bot_node_16_host | default('10.10.10.16') }}
-          NODE_13_URL={{ tsj_bot_node_13_url | default('http://10.10.10.13:5600/api/0/info') }}
-          NODE_16_URL={{ tsj_bot_node_16_url | default('http://10.10.10.16/') }}
+          NO_PROXY={{ tsj_bot_no_proxy | default('localhost,127.0.0.1,192.0.2.0/24') }}
+          NODE_13_HOST={{ tsj_bot_node_13_host | default('192.0.2.13') }}
+          NODE_16_HOST={{ tsj_bot_node_16_host | default('192.0.2.16') }}
+          NODE_13_URL={{ tsj_bot_node_13_url | default('http://192.0.2.13:5600/api/0/info') }}
+          NODE_16_URL={{ tsj_bot_node_16_url | default('http://192.0.2.16/') }}
           NODE_16_ENABLED={{ tsj_bot_node_16_enabled | default('false') }}
           INFRA_ADMIN_ROOT={{ tsj_bot_runtime_root }}
           CHECK_SCRIPT={{ tsj_bot_check_script | default(tsj_bot_runtime_root + '/scripts/system_self_support.sh --check') }}
@@ -254,24 +254,24 @@
           UPDATE_TARGETS={{ tsj_bot_update_targets | default('auto') }}
           DETMIR_AI_STATE_FILE={{ tsj_bot_detmir_ai_state_file | default('/var/lib/detmir-ai/latest-state.json') }}
           TSJ_GUARDIAN_STATUS_BIN={{ tsj_bot_guardian_status_bin | default('/usr/local/bin/tsj-guardian-status') }}
-          AW_RUS_API_BASE={{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}
-          AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}
-          AW_DLP_POLICY_API_BASE={{ tsj_bot_aw_dlp_policy_api_base | default('http://10.10.10.13:5601/api/0') }}
+          AW_RUS_API_BASE={{ tsj_bot_aw_rus_api_base | default('http://192.0.2.13:5600/api/0') }}
+          AW_RUS_WORKTIME_BASE={{ tsj_bot_aw_rus_worktime_base | default('http://192.0.2.13:5610') }}
+          AW_DLP_POLICY_API_BASE={{ tsj_bot_aw_dlp_policy_api_base | default('http://192.0.2.13:5601/api/0') }}
           AW_DLP_POLICY_ACTOR={{ tsj_bot_aw_dlp_policy_actor | default('tsj-guardian-bot') }}
-          AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n /usr/local/bin/aw-worktime-autoheal-rust && sudo -n systemctl reset-failed aw-worktime-ui-bridge.service && sudo -n systemctl start aw-worktime-ui-bridge.service'") }}
-          AW_RUS_DLP_HEAL_CMD={{ tsj_bot_aw_rus_dlp_heal_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n systemctl restart activitywatch-server.service && (sudo -n systemctl start activitywatch-dlp-aggregator.service || true) && sudo -n /usr/local/bin/aw-health-check && sudo -n /usr/local/bin/dlp-health-check'") }}
-          AW_RUS_CASE_API_BASE={{ tsj_bot_aw_rus_case_api_base | default('http://10.10.10.13:5602') }}
+          AW_RUS_WORKTIME_HEAL_CMD={{ tsj_bot_aw_rus_worktime_heal_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13 'sudo -n /usr/local/bin/aw-worktime-autoheal-rust && sudo -n systemctl reset-failed aw-worktime-ui-bridge.service && sudo -n systemctl start aw-worktime-ui-bridge.service'") }}
+          AW_RUS_DLP_HEAL_CMD={{ tsj_bot_aw_rus_dlp_heal_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13 'sudo -n systemctl restart activitywatch-server.service && (sudo -n systemctl start activitywatch-dlp-aggregator.service || true) && sudo -n /usr/local/bin/aw-health-check && sudo -n /usr/local/bin/dlp-health-check'") }}
+          AW_RUS_CASE_API_BASE={{ tsj_bot_aw_rus_case_api_base | default('http://192.0.2.13:5602') }}
           AW_RUS_HAYABUSA_ENABLED={{ tsj_bot_aw_rus_hayabusa_enabled | default('true') }}
-          AW_RUS_HAYABUSA_SSH_CMD={{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13") }}
-          AW_RUS_HOST={{ tsj_bot_aw_rus_host | default('SHARKON2025') }}
+          AW_RUS_HAYABUSA_SSH_CMD={{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13") }}
+          AW_RUS_HOST={{ tsj_bot_aw_rus_host | default('HOST-EXAMPLE') }}
           AW_RUS_PRIMARY_USER={{ tsj_bot_aw_rus_primary_user | default('USER1') }}
           AW_RUS_STALE_SEC={{ tsj_bot_aw_rus_stale_sec | default(900) }}
           AW_RUS_SLO_ENABLED={{ tsj_bot_aw_rus_slo_enabled | default('true') }}
           AW_RUS_SLO_ALERT_WINDOW={{ tsj_bot_aw_rus_slo_alert_window | default('24h') }}
           AW_RUS_SLO_MIN_SAMPLES={{ tsj_bot_aw_rus_slo_min_samples | default(4) }}
           AW_RUS_SLO_MAX_AGE_SEC={{ tsj_bot_aw_rus_slo_max_age_sec | default(90) }}
-          AW_RUS_SLO_SUMMARY_CMD={{ tsj_bot_aw_rus_slo_summary_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'") }}
-          AW_RUS_WINDOWS_HOST={{ tsj_bot_aw_rus_windows_host | default(hostvars[(groups['aw_windows'] | first)].ansible_host | default('192.168.100.18')) }}
+          AW_RUS_SLO_SUMMARY_CMD={{ tsj_bot_aw_rus_slo_summary_cmd | default("ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'") }}
+          AW_RUS_WINDOWS_HOST={{ tsj_bot_aw_rus_windows_host | default(hostvars[(groups['aw_windows'] | first)].ansible_host | default('198.51.100.18')) }}
           AW_RUS_WINDOWS_SSH_USER={{ tsj_bot_aw_rus_windows_ssh_user | default(hostvars[(groups['aw_windows'] | first)].ansible_user | default('Администратор')) }}
           AW_RUS_WINDOWS_SSH_PASSWORD={{ tsj_bot_aw_rus_windows_ssh_password | default(hostvars[(groups['aw_windows'] | first)].ansible_password | default('')) }}
           AW_RUS_WINDOWS_CONFIG_PATH={{ tsj_bot_aw_rus_windows_config_path | default('C:\ProgramData\AWatch-rus\deployment-config.json') }}
@@ -301,24 +301,24 @@
         group: "{{ tsj_bot_group }}"
         mode: "0640"
       loop:
-        - { key: "AW_RUS_API_BASE", value: "{{ tsj_bot_aw_rus_api_base | default('http://10.10.10.13:5600/api/0') }}" }
-        - { key: "AW_RUS_WORKTIME_BASE", value: "{{ tsj_bot_aw_rus_worktime_base | default('http://10.10.10.13:5610') }}" }
-        - { key: "AW_DLP_POLICY_API_BASE", value: "{{ tsj_bot_aw_dlp_policy_api_base | default('http://10.10.10.13:5601/api/0') }}" }
+        - { key: "AW_RUS_API_BASE", value: "{{ tsj_bot_aw_rus_api_base | default('http://192.0.2.13:5600/api/0') }}" }
+        - { key: "AW_RUS_WORKTIME_BASE", value: "{{ tsj_bot_aw_rus_worktime_base | default('http://192.0.2.13:5610') }}" }
+        - { key: "AW_DLP_POLICY_API_BASE", value: "{{ tsj_bot_aw_dlp_policy_api_base | default('http://192.0.2.13:5601/api/0') }}" }
         - { key: "AW_DLP_POLICY_ACTOR", value: "{{ tsj_bot_aw_dlp_policy_actor | default('tsj-guardian-bot') }}" }
-        - { key: "AW_RUS_WORKTIME_HEAL_CMD", value: "{{ tsj_bot_aw_rus_worktime_heal_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n /usr/local/bin/aw-worktime-autoheal-rust && sudo -n systemctl reset-failed aw-worktime-ui-bridge.service && sudo -n systemctl start aw-worktime-ui-bridge.service'\") }}" }
-        - { key: "AW_RUS_DLP_HEAL_CMD", value: "{{ tsj_bot_aw_rus_dlp_heal_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'sudo -n systemctl restart activitywatch-server.service && (sudo -n systemctl start activitywatch-dlp-aggregator.service || true) && sudo -n /usr/local/bin/aw-health-check && sudo -n /usr/local/bin/dlp-health-check'\") }}" }
-        - { key: "AW_RUS_CASE_API_BASE", value: "{{ tsj_bot_aw_rus_case_api_base | default('http://10.10.10.13:5602') }}" }
+        - { key: "AW_RUS_WORKTIME_HEAL_CMD", value: "{{ tsj_bot_aw_rus_worktime_heal_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13 'sudo -n /usr/local/bin/aw-worktime-autoheal-rust && sudo -n systemctl reset-failed aw-worktime-ui-bridge.service && sudo -n systemctl start aw-worktime-ui-bridge.service'\") }}" }
+        - { key: "AW_RUS_DLP_HEAL_CMD", value: "{{ tsj_bot_aw_rus_dlp_heal_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13 'sudo -n systemctl restart activitywatch-server.service && (sudo -n systemctl start activitywatch-dlp-aggregator.service || true) && sudo -n /usr/local/bin/aw-health-check && sudo -n /usr/local/bin/dlp-health-check'\") }}" }
+        - { key: "AW_RUS_CASE_API_BASE", value: "{{ tsj_bot_aw_rus_case_api_base | default('http://192.0.2.13:5602') }}" }
         - { key: "AW_RUS_HAYABUSA_ENABLED", value: "{{ tsj_bot_aw_rus_hayabusa_enabled | default('true') }}" }
-        - { key: "AW_RUS_HAYABUSA_SSH_CMD", value: "{{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13\") }}" }
-        - { key: "AW_RUS_HOST", value: "{{ tsj_bot_aw_rus_host | default('SHARKON2025') }}" }
+        - { key: "AW_RUS_HAYABUSA_SSH_CMD", value: "{{ tsj_bot_aw_rus_hayabusa_ssh_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13\") }}" }
+        - { key: "AW_RUS_HOST", value: "{{ tsj_bot_aw_rus_host | default('HOST-EXAMPLE') }}" }
         - { key: "AW_RUS_PRIMARY_USER", value: "{{ tsj_bot_aw_rus_primary_user | default('USER1') }}" }
         - { key: "AW_RUS_STALE_SEC", value: "{{ tsj_bot_aw_rus_stale_sec | default(900) }}" }
         - { key: "AW_RUS_SLO_ENABLED", value: "{{ tsj_bot_aw_rus_slo_enabled | default('true') }}" }
         - { key: "AW_RUS_SLO_ALERT_WINDOW", value: "{{ tsj_bot_aw_rus_slo_alert_window | default('24h') }}" }
         - { key: "AW_RUS_SLO_MIN_SAMPLES", value: "{{ tsj_bot_aw_rus_slo_min_samples | default(4) }}" }
         - { key: "AW_RUS_SLO_MAX_AGE_SEC", value: "{{ tsj_bot_aw_rus_slo_max_age_sec | default(90) }}" }
-        - { key: "AW_RUS_SLO_SUMMARY_CMD", value: "{{ tsj_bot_aw_rus_slo_summary_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@10.10.10.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'\") }}" }
-        - { key: "AW_RUS_WINDOWS_HOST", value: "{{ tsj_bot_aw_rus_windows_host | default(hostvars[(groups['aw_windows'] | first)].ansible_host | default('192.168.100.18')) }}" }
+        - { key: "AW_RUS_SLO_SUMMARY_CMD", value: "{{ tsj_bot_aw_rus_slo_summary_cmd | default(\"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new igor@192.0.2.13 'cat /var/lib/activitywatch/slo/aw-slo-summary.json'\") }}" }
+        - { key: "AW_RUS_WINDOWS_HOST", value: "{{ tsj_bot_aw_rus_windows_host | default(hostvars[(groups['aw_windows'] | first)].ansible_host | default('198.51.100.18')) }}" }
         - { key: "AW_RUS_WINDOWS_SSH_USER", value: "{{ tsj_bot_aw_rus_windows_ssh_user | default(hostvars[(groups['aw_windows'] | first)].ansible_user | default('Администратор')) }}" }
         - { key: "AW_RUS_WINDOWS_SSH_PASSWORD", value: "{{ tsj_bot_aw_rus_windows_ssh_password | default(hostvars[(groups['aw_windows'] | first)].ansible_password | default('')) }}" }
         - { key: "AW_RUS_WINDOWS_CONFIG_PATH", value: "{{ tsj_bot_aw_rus_windows_config_path | default('C:\\ProgramData\\AWatch-rus\\deployment-config.json') }}" }

@@ -127,7 +127,7 @@
         export DEBIAN_FRONTEND=noninteractive
         apt-get update
         apt-get install -y curl ca-certificates bash unzip xz-utils jq rsync openssh-server python3
-        mkdir -p /root/bootstrap/settings /etc/activitywatch
+        mkdir -p /opt/detmir/bootstrap/settings /etc/activitywatch
         systemctl enable ssh || true
         systemctl restart ssh || true
   register: ct_bootstrap_result
@@ -142,7 +142,7 @@
       - push
       - "{{ ct_id }}"
       - "{{ proxmox_bootstrap_dir }}/{{ item }}"
-      - "/root/bootstrap/{{ item }}"
+      - "/opt/detmir/bootstrap/{{ item }}"
   loop: "{{ aw_bootstrap_files }}"
 
 - name: Записать AW server env во временный каталог Proxmox host
@@ -196,9 +196,9 @@
       - -lc
       - |
         set -euo pipefail
-        chmod +x /root/bootstrap/install_aw_server.sh /root/bootstrap/apply_webui_ru_patch.sh
-        bash /root/bootstrap/install_aw_server.sh
-        bash /root/bootstrap/apply_webui_ru_patch.sh
+        chmod +x /opt/detmir/bootstrap/install_aw_server.sh /opt/detmir/bootstrap/apply_webui_ru_patch.sh
+        bash /opt/detmir/bootstrap/install_aw_server.sh
+        bash /opt/detmir/bootstrap/apply_webui_ru_patch.sh
         systemctl restart activitywatch-server.service
 
 - name: Проверить AW API изнутри CT

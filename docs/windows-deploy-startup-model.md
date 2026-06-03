@@ -4,7 +4,7 @@
 
 ### 1. Multi-user RDP host
 
-Use this model on `SHARKON2025`-style hosts with multiple user sessions.
+Use this model on `HOST-EXAMPLE`-style hosts with multiple user sessions.
 
 - `AWatchRusCollectorGuard` service:
   - runs under `LocalSystem`

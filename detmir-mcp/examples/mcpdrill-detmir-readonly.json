@@ -95,7 +95,7 @@
           "tool_name": "worktime_today",
           "weight": 3,
           "arguments": {
-            "host": "SHARKON2025",
+            "host": "HOST-EXAMPLE",
             "day": "today",
             "top_n": 5
           }
@@ -105,7 +105,7 @@
           "tool_name": "worktime_management",
           "weight": 2,
           "arguments": {
-            "host": "SHARKON2025",
+            "host": "HOST-EXAMPLE",
             "day": "today",
             "top_n": 5
           }
@@ -115,7 +115,7 @@
           "tool_name": "dlp_health_summary",
           "weight": 2,
           "arguments": {
-            "host": "SHARKON2025"
+            "host": "HOST-EXAMPLE"
           }
         },
         {

@@ -7,7 +7,7 @@ use reqwest::blocking::Client;
 use serde::Serialize;
 
 const DEFAULT_BASE_URL: &str = "http://127.0.0.1:5610";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 
 #[derive(Debug, Parser)]
 #[command(about = "AW Worktime report cache prewarm")]

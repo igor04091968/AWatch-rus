@@ -22,7 +22,7 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 use url::form_urlencoded;
 
 const DEFAULT_AW_URL: &str = "http://127.0.0.1:5600";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 
 #[derive(Debug, Parser)]
 #[command(about = "AW Worktime Report API")]
@@ -2536,7 +2536,7 @@ mod tests {
             ],
             start,
             end,
-            "SHARKON2025",
+            "HOST-EXAMPLE",
             false,
         );
         assert_eq!(rows[0]["active_seconds"], 60);

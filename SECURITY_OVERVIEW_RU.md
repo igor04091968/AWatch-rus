@@ -21,7 +21,7 @@
 
 - `<AW_SERVER_HOST>` — основной `AW-rus` server, health, worktime/reporting, DLP server-side services, `Hayabusa` processing.
 - `<GATEWAY_HOST>` — operator/gateway host, Telegram bot, web gateway, часть `1C` analytics runtime.
-- `<WINDOWS_HOST>` — `SHARKON2025`, Windows/RDP host с collector toolkit.
+- `<WINDOWS_HOST>` — `HOST-EXAMPLE`, Windows/RDP host с collector toolkit.
 - `<GRAFANA_HOST>` — Grafana.
 - `<FIREWALL_HOST>` — `pfSense`, сетевой perimeter и VPN.
 

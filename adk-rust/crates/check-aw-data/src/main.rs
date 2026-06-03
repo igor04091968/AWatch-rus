@@ -7,8 +7,8 @@ use clap::Parser;
 use reqwest::blocking::Client;
 use serde_json::Value;
 
-const DEFAULT_SERVER: &str = "http://10.10.10.13:5600";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_SERVER: &str = "http://192.0.2.13:5600";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 const BUCKETS: &[&str] = &[
     "aw-dlp-endpoint-signals",
     "aw-dlp-incidents",
@@ -410,7 +410,7 @@ fn get_json(client: &Client, url: &str, _timeout_seconds: u64) -> Result<Value> 
 }
 
 fn check_cors(_client: &Client, server: &str) -> u16 {
-    let origin = "http://10.10.10.13:5600";
+    let origin = "http://192.0.2.13:5600";
     let first = curl_status(&format!("{server}/api/0/settings/"), origin);
     if first == 200 {
         return first;
@@ -532,7 +532,7 @@ mod tests {
     #[test]
     fn metadata_only_bucket_event_skips_missing_deep_event_read() {
         let index = serde_json::json!({
-            "aw-watcher-window_SHARKON2025": {
+            "aw-watcher-window_HOST-EXAMPLE": {
                 "metadata": {
                     "end": "2026-06-02T00:00:00Z"
                 }
@@ -540,7 +540,7 @@ mod tests {
         });
         let event = bucket_event(
             "http://127.0.0.1:1",
-            "aw-watcher-window_SHARKON2025",
+            "aw-watcher-window_HOST-EXAMPLE",
             Some(&index),
             false,
             1,

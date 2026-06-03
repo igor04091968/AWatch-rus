@@ -17,26 +17,26 @@ done
 
 ANSIBLE_DIR="$REPO_ROOT/ansible"
 INVENTORY="${AW_SMOKE_INVENTORY:-$ANSIBLE_DIR/inventory.ini}"
-REMOTE_SCRIPT_SRC="$REPO_ROOT/scripts/aw-contour-smoke-10.10.10.2.sh"
+REMOTE_SCRIPT_SRC="$REPO_ROOT/scripts/aw-contour-smoke-gateway.sh"
 REMOTE_SCRIPT_DST="${AW_SMOKE_REMOTE_SCRIPT:-/usr/local/sbin/aw-contour-smoke.sh}"
 REMOTE_RUST_SRC="${AW_SMOKE_REMOTE_RUST_SRC:-${CARGO_TARGET_DIR:-$REPO_ROOT/adk-rust/target}/release/aw-contour-smoke}"
 REMOTE_RUST_DST="${AW_SMOKE_REMOTE_RUST_BIN:-/usr/local/sbin/aw-contour-smoke}"
-AW_SERVER="${AW_SMOKE_AW_SERVER:-http://10.10.10.13:5600}"
-WORKTIME_API="${AW_SMOKE_WORKTIME_API:-http://10.10.10.13:5610}"
-GRAFANA_URL="${AW_SMOKE_GRAFANA_URL:-http://10.10.10.11:3000}"
+AW_SERVER="${AW_SMOKE_AW_SERVER:-http://192.0.2.13:5600}"
+WORKTIME_API="${AW_SMOKE_WORKTIME_API:-http://192.0.2.13:5610}"
+GRAFANA_URL="${AW_SMOKE_GRAFANA_URL:-http://192.0.2.11:3000}"
 GRAFANA_USER="${GRAFANA_USER:-igor}"
 GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-}"
-PROXMOX_HOST="${AW_SMOKE_PROXMOX_HOST:-10.10.10.2}"
-AW_HOST="${AW_SMOKE_AW_HOST:-10.10.10.13}"
-GRAFANA_HOST="${AW_SMOKE_GRAFANA_HOST:-10.10.10.11}"
-WINDOWS_HOST="${AW_SMOKE_WINDOWS_HOST:-192.168.100.18}"
-AW_SOURCE_HOSTNAME="${AW_SMOKE_SOURCE_HOSTNAME:-SHARKON2025}"
+PROXMOX_HOST="${AW_SMOKE_PROXMOX_HOST:-192.0.2.2}"
+AW_HOST="${AW_SMOKE_AW_HOST:-192.0.2.13}"
+GRAFANA_HOST="${AW_SMOKE_GRAFANA_HOST:-192.0.2.11}"
+WINDOWS_HOST="${AW_SMOKE_WINDOWS_HOST:-198.51.100.18}"
+AW_SOURCE_HOSTNAME="${AW_SMOKE_SOURCE_HOSTNAME:-HOST-EXAMPLE}"
 LOG_DIR="${AW_SMOKE_LOG_DIR:-$REPO_ROOT/output/smoke}"
 RUN_REMOTE="${AW_SMOKE_RUN_REMOTE:-1}"
 RUN_WINRM="${AW_SMOKE_RUN_WINRM:-1}"
 RUN_SERVER_SYSTEMD="${AW_SMOKE_RUN_SERVER_SYSTEMD:-1}"
 
-NO_PROXY_REQUIRED="localhost,127.0.0.1,$PROXMOX_HOST,$AW_HOST,$GRAFANA_HOST,$WINDOWS_HOST,10.10.10.0/24,192.168.100.0/24"
+NO_PROXY_REQUIRED="localhost,127.0.0.1,$PROXMOX_HOST,$AW_HOST,$GRAFANA_HOST,$WINDOWS_HOST,192.0.2.0/24,198.51.100.0/24"
 if [ -n "${no_proxy:-}" ]; then
   export no_proxy="$no_proxy,$NO_PROXY_REQUIRED"
 else
@@ -72,10 +72,10 @@ usage() {
 Usage: $(basename "$0") [--skip-remote] [--skip-winrm] [--skip-server-systemd]
 
 Environment overrides:
-  AW_SMOKE_AW_SERVER=http://10.10.10.13:5600
-  AW_SMOKE_WORKTIME_API=http://10.10.10.13:5610
-  AW_SMOKE_GRAFANA_URL=http://10.10.10.11:3000
-  AW_SMOKE_SOURCE_HOSTNAME=SHARKON2025
+  AW_SMOKE_AW_SERVER=http://192.0.2.13:5600
+  AW_SMOKE_WORKTIME_API=http://192.0.2.13:5610
+  AW_SMOKE_GRAFANA_URL=http://192.0.2.11:3000
+  AW_SMOKE_SOURCE_HOSTNAME=HOST-EXAMPLE
   AW_SMOKE_ENV_FILE=$HOME/.config/aw-contour-smoke.env
   AW_SMOKE_LOG_DIR=$REPO_ROOT/output/smoke
   GRAFANA_USER/GRAFANA_PASSWORD via env or a local env file
@@ -436,7 +436,7 @@ check_bucket_freshness() {
 
 run_remote_proxmox_script() {
   if [ "$RUN_REMOTE" != "1" ]; then
-    skip "remote 10.10.10.2 smoke skipped"
+    skip "remote 192.0.2.2 smoke skipped"
     return
   fi
   if ! have ansible; then
@@ -448,7 +448,7 @@ run_remote_proxmox_script() {
     return
   fi
 
-  section "Deploy Remote Script To 10.10.10.2"
+  section "Deploy Remote Script To 192.0.2.2"
   if [ -x "$REMOTE_RUST_SRC" ]; then
     if ANSIBLE_NOCOLOR=1 ansible proxmox -i "$INVENTORY" -m copy -a "src=$REMOTE_RUST_SRC dest=$REMOTE_RUST_DST owner=root group=root mode=0755" >/tmp/aw-smoke-copy-rust.$$ 2>&1; then
       pass "remote Rust smoke deployed to $REMOTE_RUST_DST"
@@ -471,14 +471,14 @@ run_remote_proxmox_script() {
   fi
   rm -f /tmp/aw-smoke-copy.$$
 
-  section "Remote 10.10.10.2 Smoke"
+  section "Remote 192.0.2.2 Smoke"
   local tmp
   tmp="$(mktemp)"
   if ANSIBLE_NOCOLOR=1 ansible proxmox -i "$INVENTORY" -m shell -a "$REMOTE_SCRIPT_DST" >"$tmp" 2>&1; then
-    pass "remote 10.10.10.2 smoke completed"
+    pass "remote 192.0.2.2 smoke completed"
     sed 's/^/       /' "$tmp"
   else
-    fail "remote 10.10.10.2 smoke failed"
+    fail "remote 192.0.2.2 smoke failed"
     sed 's/^/       /' "$tmp"
   fi
   rm -f "$tmp"
@@ -582,7 +582,7 @@ if [ "$RUN_WINRM" = "1" ] && have ansible; then
   check_ansible_module "Windows win_ping" aw_windows win_ping
   check_ansible_win_shell "Windows sessions" aw_windows '$psi = [System.Diagnostics.ProcessStartInfo]::new(); $psi.FileName = "$env:SystemRoot\System32\query.exe"; $psi.Arguments = "user"; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.StandardOutputEncoding = [System.Text.Encoding]::GetEncoding(866); $psi.StandardErrorEncoding = [System.Text.Encoding]::GetEncoding(866); $p = [System.Diagnostics.Process]::Start($psi); $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit(); [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $out; if ($err) { $err }; if ($out -match "USERNAME|ПОЛЬЗОВАТЕЛЬ|администратор|Администратор") { exit 0 } else { exit $p.ExitCode }'
   check_ansible_win_shell_warn "Windows collector processes" aw_windows '$p = Get-Process aw-watcher-afk,aw-watcher-window -ErrorAction SilentlyContinue; if ($p) { $p | Select-Object Name,Id,SessionId,StartTime | Format-Table -AutoSize } else { "no aw-watcher-afk/window process visible to this WinRM session" }'
-  check_ansible_win_shell "Windows ActivityWatch tasks" aw_windows 'schtasks /Query /TN "ActivityWatch Recovery" /FO LIST /V; schtasks /Query /TN "ActivityWatch Launch [SHARKON2025_Администратор]" /FO LIST /V'
+  check_ansible_win_shell "Windows ActivityWatch tasks" aw_windows 'schtasks /Query /TN "ActivityWatch Recovery" /FO LIST /V; schtasks /Query /TN "ActivityWatch Launch [HOST-EXAMPLE_Администратор]" /FO LIST /V'
 else
   skip "Windows WinRM checks skipped"
 fi

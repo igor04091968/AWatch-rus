@@ -362,8 +362,8 @@
       {
         "current": {
           "selected": false,
-          "text": "SHARKON2025",
-          "value": "SHARKON2025"
+          "text": "HOST-EXAMPLE",
+          "value": "HOST-EXAMPLE"
         },
         "datasource": {
           "type": "influxdb",

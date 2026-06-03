@@ -6,7 +6,7 @@ use clap::Parser;
 use detmir_core::{exit_codes, now_utc_rfc3339};
 use serde::Serialize;
 
-const DEFAULT_SSH_TARGET: &str = "igor@10.10.10.13";
+const DEFAULT_SSH_TARGET: &str = "igor@192.0.2.13";
 const REQUIRED_UNITS: &[&str] = &[
     "activitywatch-server.service",
     "aw-worktime-api.service",

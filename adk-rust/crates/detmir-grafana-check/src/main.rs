@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 const DEFAULT_GRAFANA_URL: &str = "http://127.0.0.1:3000";
 const DEFAULT_DASHBOARD_UID: &str = "detmir-aw-main";
 const DEFAULT_DASHBOARD_FILE: &str = "/etc/grafana/provisioning/dashboards/aw/detmir-aw-main.json";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 const OLD_MEASUREMENTS: &[&str] = &["aw_window_event", "aw_afk_event"];
 const REQUIRED_MEASUREMENTS: &[&str] = &[
     "aw_rdp_worktime_hourly",
@@ -670,9 +670,9 @@ mod tests {
         assert_eq!(
             render_query_vars(
                 "r.host == \"${host}\" or r.host == \"$host\"",
-                "SHARKON2025"
+                "HOST-EXAMPLE"
             ),
-            "r.host == \"SHARKON2025\" or r.host == \"SHARKON2025\""
+            "r.host == \"HOST-EXAMPLE\" or r.host == \"HOST-EXAMPLE\""
         );
     }
 

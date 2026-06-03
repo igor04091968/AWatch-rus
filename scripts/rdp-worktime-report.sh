@@ -4,8 +4,8 @@ set -euo pipefail
 DAY=""
 FROM=""
 TO=""
-AW_BASE_URL="${AW_BASE_URL:-http://10.10.10.13:5600/api/0}"
-AW_WORKTIME_HOST="${AW_WORKTIME_HOST:-SHARKON2025}"
+AW_BASE_URL="${AW_BASE_URL:-http://192.0.2.13:5600/api/0}"
+AW_WORKTIME_HOST="${AW_WORKTIME_HOST:-HOST-EXAMPLE}"
 AW_WORKTIME_DEFAULT_SAMPLE_SECONDS="${AW_WORKTIME_DEFAULT_SAMPLE_SECONDS:-30}"
 AW_WORKTIME_MAX_SAMPLE_SECONDS="${AW_WORKTIME_MAX_SAMPLE_SECONDS:-300}"
 OUT_DIR="${OUT_DIR:-reports}"
@@ -80,7 +80,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 base, host, default_sample, max_sample, from_d, to_d, csv_out, json_out = sys.argv[1:9]
-base = (base or "http://10.10.10.13:5600").rstrip("/")
+base = (base or "http://192.0.2.13:5600").rstrip("/")
 if not base.endswith("/api/0"):
     base = base + "/api/0"
 default_sample = max(1.0, float(default_sample))

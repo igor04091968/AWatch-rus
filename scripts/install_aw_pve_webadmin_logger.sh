@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-SERVER_HOST="10.10.10.13"
+SERVER_HOST="192.0.2.13"
 SERVER_PORT="5600"
 POLL_INTERVAL="5"
 INSTALL_ROOT="/opt/aw-pve-webadmin-logger"
@@ -48,7 +48,7 @@ usage() {
 Usage: install_aw_pve_webadmin_logger.sh [options]
 
 Options:
-  --server-host HOST     AW server host (default: 10.10.10.13)
+  --server-host HOST     AW server host (default: 192.0.2.13)
   --server-port PORT     AW server port (default: 5600)
   --poll-interval SEC    Poll interval in seconds (default: 5)
   -h, --help             Show this help

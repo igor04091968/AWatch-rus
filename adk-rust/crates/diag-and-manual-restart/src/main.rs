@@ -136,20 +136,20 @@ fn seed_server_dlp_events(inventory: &str) -> Result<()> {
     let ts = Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let script = format!(
         r#"cat >/tmp/aw-endpoint-seed.json <<'JSON'
-{{"timestamp":"{ts}","duration":0.0,"data":{{"hostname":"SHARKON2025","signalType":"self_test","source":"diag_and_manual_restart","username":"system","queueDepth":0,"eventsEnqueued":0,"eventsFlushed":0,"sendFailures":0}}}}
+{{"timestamp":"{ts}","duration":0.0,"data":{{"hostname":"HOST-EXAMPLE","signalType":"self_test","source":"diag_and_manual_restart","username":"system","queueDepth":0,"eventsEnqueued":0,"eventsFlushed":0,"sendFailures":0}}}}
 JSON
 cat >/tmp/aw-fileops-seed-host.json <<'JSON'
-{{"timestamp":"{ts}","duration":0.0,"data":{{"hostname":"SHARKON2025","operation":"self_test","source":"diag_and_manual_restart"}}}}
+{{"timestamp":"{ts}","duration":0.0,"data":{{"hostname":"HOST-EXAMPLE","operation":"self_test","source":"diag_and_manual_restart"}}}}
 JSON
 cat >/tmp/aw-fileops-seed-server.json <<'JSON'
-{{"timestamp":"{ts}","duration":0.0,"data":{{"hostname":"10.10.10.13","operation":"self_test","source":"diag_and_manual_restart"}}}}
+{{"timestamp":"{ts}","duration":0.0,"data":{{"hostname":"192.0.2.13","operation":"self_test","source":"diag_and_manual_restart"}}}}
 JSON
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_SHARKON2025' -H 'Content-Type: application/json' -d '{{"client":"aw-dlp-endpoint-signals","type":"aw.dlp.endpoint.signal","hostname":"SHARKON2025"}}' >/dev/null 2>&1 || true
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_SHARKON2025' -H 'Content-Type: application/json' -d '{{"client":"aw-file-operations","type":"aw.file.operation","hostname":"SHARKON2025"}}' >/dev/null 2>&1 || true
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_10.10.10.13' -H 'Content-Type: application/json' -d '{{"client":"aw-file-operations","type":"aw.file.operation","hostname":"10.10.10.13"}}' >/dev/null 2>&1 || true
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_SHARKON2025/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-endpoint-seed.json >/dev/null
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_SHARKON2025/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-host.json >/dev/null
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_10.10.10.13/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-server.json >/dev/null
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE' -H 'Content-Type: application/json' -d '{{"client":"aw-dlp-endpoint-signals","type":"aw.dlp.endpoint.signal","hostname":"HOST-EXAMPLE"}}' >/dev/null 2>&1 || true
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_HOST-EXAMPLE' -H 'Content-Type: application/json' -d '{{"client":"aw-file-operations","type":"aw.file.operation","hostname":"HOST-EXAMPLE"}}' >/dev/null 2>&1 || true
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_192.0.2.13' -H 'Content-Type: application/json' -d '{{"client":"aw-file-operations","type":"aw.file.operation","hostname":"192.0.2.13"}}' >/dev/null 2>&1 || true
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-endpoint-seed.json >/dev/null
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_HOST-EXAMPLE/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-host.json >/dev/null
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_192.0.2.13/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-server.json >/dev/null
 "#
     );
     let _ = ansible_command(
@@ -170,7 +170,7 @@ fn restart_windows_collectors(inventory: &str) {
 
 fn seed_windows_dlp_events(inventory: &str) {
     log("Seeding endpoint/file-ops events from aw_windows...");
-    let script = r#"powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $ts = (Get-Date).ToUniversalTime().ToString('o'); $api='http://10.10.10.13:5600/api/0'; $endpoint=@{timestamp=$ts;duration=0.0;data=@{hostname='SHARKON2025';signalType='self_test';source='diag_and_manual_restart';username=$env:USERNAME;queueDepth=0;eventsEnqueued=0;eventsFlushed=0;sendFailures=0}} | ConvertTo-Json -Depth 8 -Compress; $fileops=@{timestamp=$ts;duration=0.0;data=@{hostname='SHARKON2025';operation='self_test';source='diag_and_manual_restart';username=$env:USERNAME}} | ConvertTo-Json -Depth 8 -Compress; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-dlp-endpoint-signals_SHARKON2025' -ContentType 'application/json' -Body '{\"client\":\"aw-dlp-endpoint-signals\",\"type\":\"aw.dlp.endpoint.signal\",\"hostname\":\"SHARKON2025\"}' -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-file-operations_SHARKON2025' -ContentType 'application/json' -Body '{\"client\":\"aw-file-operations\",\"type\":\"aw.file.operation\",\"hostname\":\"SHARKON2025\"}' -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-dlp-endpoint-signals_SHARKON2025/heartbeat?pulsetime=30' -ContentType 'application/json' -Body $endpoint -TimeoutSec 15 -DisableKeepAlive | Out-Null; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-file-operations_SHARKON2025/heartbeat?pulsetime=30' -ContentType 'application/json' -Body $fileops -TimeoutSec 15 -DisableKeepAlive | Out-Null; Write-Output 'windows-dlp-seeded'""#;
+    let script = r#"powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'Stop'; $ts = (Get-Date).ToUniversalTime().ToString('o'); $api='http://192.0.2.13:5600/api/0'; $endpoint=@{timestamp=$ts;duration=0.0;data=@{hostname='HOST-EXAMPLE';signalType='self_test';source='diag_and_manual_restart';username=$env:USERNAME;queueDepth=0;eventsEnqueued=0;eventsFlushed=0;sendFailures=0}} | ConvertTo-Json -Depth 8 -Compress; $fileops=@{timestamp=$ts;duration=0.0;data=@{hostname='HOST-EXAMPLE';operation='self_test';source='diag_and_manual_restart';username=$env:USERNAME}} | ConvertTo-Json -Depth 8 -Compress; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE' -ContentType 'application/json' -Body '{\"client\":\"aw-dlp-endpoint-signals\",\"type\":\"aw.dlp.endpoint.signal\",\"hostname\":\"HOST-EXAMPLE\"}' -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-file-operations_HOST-EXAMPLE' -ContentType 'application/json' -Body '{\"client\":\"aw-file-operations\",\"type\":\"aw.file.operation\",\"hostname\":\"HOST-EXAMPLE\"}' -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE/heartbeat?pulsetime=30' -ContentType 'application/json' -Body $endpoint -TimeoutSec 15 -DisableKeepAlive | Out-Null; Invoke-RestMethod -Method Post -Uri $api'/buckets/aw-file-operations_HOST-EXAMPLE/heartbeat?pulsetime=30' -ContentType 'application/json' -Body $fileops -TimeoutSec 15 -DisableKeepAlive | Out-Null; Write-Output 'windows-dlp-seeded'""#;
     let _ = ansible_windows_shell(inventory, script);
 }
 

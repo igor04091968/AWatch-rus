@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-aw_host="${DETMIR_AW_SSH_HOST:-igor@10.10.10.13}"
+aw_host="${DETMIR_AW_SSH_HOST:-igor@192.0.2.13}"
 
 ssh -o BatchMode=yes \
   -o ConnectTimeout=10 \

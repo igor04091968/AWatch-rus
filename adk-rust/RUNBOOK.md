@@ -954,7 +954,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
     - read-only SQLite audit показал, что `/var/lib/activitywatch/aw-server-rust/sqlite.db`
       занимает около `6.8G`, `freelist_count=0`; VACUUM сам по себе не
       освободит место, потому что размер занят live events;
-    - основной источник роста: `aw-session-events_SHARKON2025` - около
+    - основной источник роста: `aw-session-events_HOST-EXAMPLE` - около
       `6.9M` строк и `~5GB` payload, с пиками `1.2M-2.4M` process-level
       событий в сутки за 2026-05-29..2026-06-01;
     - production live config на RDP был `pollSeconds=5` и
@@ -967,7 +967,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `C:\ProgramData\AWatch-rus\switch-backups\deployment-config.before-disable-process-events-20260602T061836Z.json`;
     - старый `worktime-session-collector.ps1` PID `8476` остановлен, collector
       поднят заново штатными `ActivityWatch Launch [...]` tasks/guard;
-    - delta-gate: `metadata.end` bucket `aw-session-events_SHARKON2025`
+    - delta-gate: `metadata.end` bucket `aw-session-events_HOST-EXAMPLE`
       остался `2026-06-02T06:27:11.197Z` через 75 секунд, постоянный поток
       остановлен;
     - базовый сбор не сломан: `detmir-check --json` OK,
@@ -982,10 +982,10 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
     - на время операции остановлены AW-related timers/services и
       `activitywatch-server.service`, чтобы не было writer'ов к SQLite;
     - scoped delete удалил только события bucket
-      `aw-session-events_SHARKON2025` с `eventType=process_start` или
+      `aw-session-events_HOST-EXAMPLE` с `eventType=process_start` или
       `eventType=process_stop`;
     - удалено `6,906,190` шумных process-level событий;
-    - сохранены logon events: после trim в `aw-session-events_SHARKON2025`
+    - сохранены logon events: после trim в `aw-session-events_HOST-EXAMPLE`
       осталось `174` события, recent samples имеют `eventType=logon`;
     - `PRAGMA integrity_check` до и после `VACUUM`: `ok`;
     - DB уменьшилась с `6.8G` до `350M`, rootfs AW server вернулся к
@@ -1108,10 +1108,10 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
     - `hardening-recovery.ps1` выполнен по existing
       `C:\ProgramData\AWatch-rus\deployment-config.json`; после recovery
       config остался `processEventsEnabled=false`, `logonEnabled=true`,
-      `pollSeconds=5`, users включают `SHARKON2025\Администратор`;
-    - exact task check: `ActivityWatch Launch [SHARKON2025_Администратор]`
+      `pollSeconds=5`, users включают `HOST-EXAMPLE\Администратор`;
+    - exact task check: `ActivityWatch Launch [HOST-EXAMPLE_Администратор]`
       существует, ошибочный
-      `ActivityWatch Launch [SHARKON2025_Administrator]` отсутствует,
+      `ActivityWatch Launch [HOST-EXAMPLE_Administrator]` отсутствует,
       `ActivityWatch Recovery` существует;
     - `AWatchRusCollectorGuard` running/automatic; Windows
       `validate-deployment.ps1` вернул `overallOk=True`;
@@ -1308,7 +1308,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `dlp_counts={ok:22,warn:0,fail:0}` and `ok_for_operator=true`.
 46. `[done]` Перенести Proxmox DetMir contour smoke на Rust-first helper:
     - добавлен crate `aw-contour-smoke`;
-    - `scripts/aw-contour-smoke-<GATEWAY_HOST>.sh` теперь Rust-first wrapper:
+    - `scripts/aw-contour-smoke-gateway.sh` теперь Rust-first wrapper:
       ищет `AW_CONTOUR_SMOKE_RUST`,
       `$CARGO_TARGET_DIR/release/aw-contour-smoke`,
       `adk-rust/target/release/aw-contour-smoke`,
@@ -1575,7 +1575,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `.playwright-cli/page-2026-06-02T17-34-04-725Z.png`.
     - portal link repair after Grafana/gateway smoke: quick links now open in a
       separate tab, `worktime_report` points to explicit HTML
-      `/reports/worktime/management?format=html&host=SHARKON2025`,
+      `/reports/worktime/management?format=html&host=HOST-EXAMPLE`,
       `1С действия` is shown in the portal, and gateway `/r/aw-worktime` is
       pinned to the same HTML report. Production smoke: AW UI, Worktime, 1C
       brief, and 1C actions returned `200 text/html`; Grafana links correctly

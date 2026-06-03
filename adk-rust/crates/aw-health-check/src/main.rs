@@ -472,14 +472,14 @@ mod tests {
             r#"
             # comment
             AW_EXPECT_START_OF_DAY="00:00"
-            AW_EXPECT_LANDINGPAGE=/#/activity/SHARKON2025/view/
+            AW_EXPECT_LANDINGPAGE=/#/activity/HOST-EXAMPLE/view/
             BAD KEY=value
             "#,
         );
         assert_eq!(parsed.get("AW_EXPECT_START_OF_DAY").unwrap(), "00:00");
         assert_eq!(
             parsed.get("AW_EXPECT_LANDINGPAGE").unwrap(),
-            "/#/activity/SHARKON2025/view/"
+            "/#/activity/HOST-EXAMPLE/view/"
         );
         assert!(!parsed.contains_key("BAD KEY"));
     }

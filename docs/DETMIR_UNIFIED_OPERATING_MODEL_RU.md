@@ -51,7 +51,7 @@
 | `<FIREWALL_HOST>` | `pfSense`, firewall, VPN, ACL, OpenVPN export target |
 | `<GATEWAY_HOST>` | `Proxmox/DetMirAuto`, web gateway, Telegram bot, operator entrypoint |
 | `<AW_SERVER_HOST>` | основной `AW-rus` server, health, worktime/reporting, `Hayabusa` server-side processing |
-| `<WINDOWS_HOST>` | `SHARKON2025`, Windows/RDP host, collectors, worktime session path, EVTX export |
+| `<WINDOWS_HOST>` | `HOST-EXAMPLE`, Windows/RDP host, collectors, worktime session path, EVTX export |
 
 Практический вывод:
 

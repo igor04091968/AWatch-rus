@@ -8,7 +8,7 @@ StartLimitIntervalSec=120
 [Service]
 Type=simple
 Environment=AW_SERVER_URL=http://127.0.0.1:5600
-Environment=AW_WORKTIME_HOST=SHARKON2025
+Environment=AW_WORKTIME_HOST=HOST-EXAMPLE
 ExecStart=/usr/local/bin/aw-worktime-ui-bridge-rust
 Restart=on-failure
 RestartSec=10

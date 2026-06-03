@@ -4,7 +4,7 @@ use std::process::Command;
 use anyhow::{Context, Result};
 use clap::Parser;
 
-const DEFAULT_SSH_TARGET: &str = "igor@10.10.10.13";
+const DEFAULT_SSH_TARGET: &str = "igor@192.0.2.13";
 const DEFAULT_REMOTE_COMMAND: &str = "sudo -n /usr/local/bin/dlp-health-check --json";
 
 #[derive(Debug, Parser)]

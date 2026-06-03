@@ -1513,18 +1513,18 @@ mod tests {
     #[test]
     fn transport_counter_key_separates_sessions() {
         let data = json!({
-            "hostname": "SHARKON2025",
+            "hostname": "HOST-EXAMPLE",
             "sessionId": 4,
             "username": "USER4"
         });
         assert_eq!(
             transport_counter_key(
                 "file-operations",
-                "aw-file-operations_SHARKON2025",
+                "aw-file-operations_HOST-EXAMPLE",
                 &data,
                 "sendFailures"
             ),
-            "file-operations:aw-file-operations_SHARKON2025:SHARKON2025:4:USER4:sendFailures"
+            "file-operations:aw-file-operations_HOST-EXAMPLE:HOST-EXAMPLE:4:USER4:sendFailures"
         );
     }
 

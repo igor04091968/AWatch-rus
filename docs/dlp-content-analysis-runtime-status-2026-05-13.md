@@ -10,7 +10,7 @@ This document records the production-verified state of advanced content analysis
   - `contentAnalysis.regexPack`
   - `contentAnalysis.ocrEnabled`
   - `ioc.*`
-- Historical incidents in `aw-dlp-incidents_SHARKON2025` already contain enriched fields:
+- Historical incidents in `aw-dlp-incidents_HOST-EXAMPLE` already contain enriched fields:
   - `dictionaryMatches`
   - `regexMatches`
   - `ocrRequested`

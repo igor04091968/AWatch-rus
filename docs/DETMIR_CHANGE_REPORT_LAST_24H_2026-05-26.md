@@ -25,7 +25,7 @@
 ### 1. Восстановление ActivityWatch-Russian
 
 Симптом:
-- на `<AW_SERVER_HOST>:5600` UI не обновлялся для `SHARKON2025`;
+- на `<AW_SERVER_HOST>:5600` UI не обновлялся для `HOST-EXAMPLE`;
 - `aw-server` был жив, но stale были `aw-watcher-afk`, `aw-watcher-window`, `aw-worktime-sessions`.
 
 Действия:
@@ -33,7 +33,7 @@
 - через WinRM на `<WINDOWS_HOST>` проверены процессы, tasks и recovery-скрипты;
 - запущены:
   - `ActivityWatch Recovery`
-  - `ActivityWatch Launch [SHARKON2025_user5]`
+  - `ActivityWatch Launch [HOST-EXAMPLE_user5]`
 - отдельно перезапущен зависший `worktime-session-collector`.
 
 Итог:

@@ -1,10 +1,10 @@
 #!/bin/bash
-# check-aw-data.sh - Проверка сбора данных ActivityWatch с RDP-сервера SHARKON2025
-# Сервер: 10.10.10.13:5600
-# Хост-источник: 192.168.100.18 (SHARKON2025)
+# check-aw-data.sh - Проверка сбора данных ActivityWatch с RDP-сервера HOST-EXAMPLE
+# Сервер: 192.0.2.13:5600
+# Хост-источник: 198.51.100.18 (HOST-EXAMPLE)
 
-SERVER="http://10.10.10.13:5600"
-HOSTNAME_FILTER="SHARKON2025"
+SERVER="http://192.0.2.13:5600"
+HOSTNAME_FILTER="HOST-EXAMPLE"
 NOW=$(date -u +%s)
 HOST_INACTIVE=false
 GUARD_HEALTHY=false
@@ -84,7 +84,7 @@ NC='\033[0m'
 echo "=== ActivityWatch Data Check: $HOSTNAME_FILTER ==="
 echo ""
 echo -n "Server connectivity... "
-RESP=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/info" 2>&1)
+RESP=$(no_proxy=192.0.2.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/info" 2>&1)
 if [ $? -eq 0 ] && echo "$RESP" | jq -e '.version' > /dev/null 2>&1; then
     VERSION=$(echo "$RESP" | jq -r '.version')
     echo -e "${GREEN}OK${NC} (aw-server $VERSION)"
@@ -95,7 +95,7 @@ fi
 echo ""
 
 # Context for inactive/event-driven classification.
-WORKTIME_EVENT_DATA=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/aw-worktime-sessions_$HOSTNAME_FILTER/events?limit=1" 2>&1)
+WORKTIME_EVENT_DATA=$(no_proxy=192.0.2.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/aw-worktime-sessions_$HOSTNAME_FILTER/events?limit=1" 2>&1)
 WORKTIME_TS=$(echo "$WORKTIME_EVENT_DATA" | jq -r '.[0].timestamp // ""' 2>/dev/null)
 WORKTIME_ACTIVE=$(echo "$WORKTIME_EVENT_DATA" | jq -r '.[0].data.active // false' 2>/dev/null)
 if [ -n "$WORKTIME_TS" ]; then
@@ -108,7 +108,7 @@ if [ -n "$WORKTIME_TS" ]; then
   fi
 fi
 
-GUARD_EVENT_DATA=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/aw-rus-collector-guard_$HOSTNAME_FILTER/events?limit=1" 2>&1)
+GUARD_EVENT_DATA=$(no_proxy=192.0.2.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/aw-rus-collector-guard_$HOSTNAME_FILTER/events?limit=1" 2>&1)
 GUARD_TS=$(echo "$GUARD_EVENT_DATA" | jq -r '.[0].timestamp // ""' 2>/dev/null)
 GUARD_STATUS=$(echo "$GUARD_EVENT_DATA" | jq -r '.[0].data.status // ""' 2>/dev/null)
 GUARD_PROBLEMS=$(echo "$GUARD_EVENT_DATA" | jq -r '([.[0].data.problems[]?] | length) // 0' 2>/dev/null)
@@ -142,7 +142,7 @@ for bucket in "${BUCKETS[@]}"; do
   bucket_full="${bucket}_${HOSTNAME_FILTER}"
   
   # Получаем последний event
-  EVENT_DATA=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/$bucket_full/events?limit=1" 2>&1)
+  EVENT_DATA=$(no_proxy=192.0.2.13 curl -s --connect-timeout 10 --max-time 15 "$SERVER/api/0/buckets/$bucket_full/events?limit=1" 2>&1)
   LAST_ID=$(echo "$EVENT_DATA" | jq '.[0].id // 0')
   LAST_TS=$(echo "$EVENT_DATA" | jq -r '.[0].timestamp // "no events"')
   
@@ -176,7 +176,7 @@ echo ""
 
 # Проверка CORS
 echo "--- CORS Check ---"
-CORS_RESP=$(no_proxy=10.10.10.13 curl -s --connect-timeout 10 --max-time 15 -o /dev/null -w '%{http_code}' -H "Origin: http://10.10.10.13:5600" "$SERVER/api/0/settings/" 2>&1)
+CORS_RESP=$(no_proxy=192.0.2.13 curl -s --connect-timeout 10 --max-time 15 -o /dev/null -w '%{http_code}' -H "Origin: http://192.0.2.13:5600" "$SERVER/api/0/settings/" 2>&1)
 if [ "$CORS_RESP" = "200" ]; then
     echo -e "${GREEN}CORS: OK${NC} (HTTP 200)"
 else

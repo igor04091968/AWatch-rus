@@ -52,14 +52,14 @@ struct Cli {
 
     #[arg(
         long,
-        default_value = "http://10.10.10.13:5610",
+        default_value = "http://192.0.2.13:5610",
         env = "DETMIR_PORTAL_WORKTIME_URL"
     )]
     worktime_url: String,
 
     #[arg(
         long,
-        default_value = "http://10.10.10.2:8710",
+        default_value = "http://192.0.2.2:8710",
         env = "DETMIR_PORTAL_ONE_C_URL"
     )]
     one_c_url: String,
@@ -1836,7 +1836,7 @@ fn links() -> PortalLinks {
         portal: "/portal/".to_string(),
         grafana_dashboards: "/dashboards".to_string(),
         detmir_activitywatch:
-            "/d/detmir-aw-main/detmir-activitywatch?orgId=1&from=now-48h&to=now&timezone=browser&var-host=SHARKON2025&refresh=5m"
+            "/d/detmir-aw-main/detmir-activitywatch?orgId=1&from=now-48h&to=now&timezone=browser&var-host=HOST-EXAMPLE&refresh=5m"
                 .to_string(),
         dlp_security_dashboard:
             "/d/detmir-dlp-security?orgId=1&from=now-30d&to=now&timezone=browser".to_string(),
@@ -1845,7 +1845,7 @@ fn links() -> PortalLinks {
         dlp_overview_dashboard:
             "/d/awatch-dlp-overview?orgId=1&from=now-30d&to=now&timezone=browser".to_string(),
         aw_ui: "/r/aw/".to_string(),
-        worktime_report: "/reports/worktime/management?format=html&host=SHARKON2025".to_string(),
+        worktime_report: "/reports/worktime/management?format=html&host=HOST-EXAMPLE".to_string(),
         file1c_brief: "/r/file1c/brief".to_string(),
         file1c_actions: "/r/file1c/actions".to_string(),
     }

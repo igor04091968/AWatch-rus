@@ -372,9 +372,9 @@ class TSJGuardianBot:
         self.check_script = os.getenv(
             "CHECK_SCRIPT", f"{self.infra_admin_root}/scripts/system_self_support.sh --check"
         )
-        self.aw_rus_api_base = os.getenv("AW_RUS_API_BASE", "http://10.10.10.13:5600/api/0").strip()
-        self.aw_rus_worktime_base = os.getenv("AW_RUS_WORKTIME_BASE", "http://10.10.10.13:5610").strip()
-        self.aw_dlp_policy_api_base = os.getenv("AW_DLP_POLICY_API_BASE", "http://10.10.10.13:5601/api/0").strip()
+        self.aw_rus_api_base = os.getenv("AW_RUS_API_BASE", "http://192.0.2.13:5600/api/0").strip()
+        self.aw_rus_worktime_base = os.getenv("AW_RUS_WORKTIME_BASE", "http://192.0.2.13:5610").strip()
+        self.aw_dlp_policy_api_base = os.getenv("AW_DLP_POLICY_API_BASE", "http://192.0.2.13:5601/api/0").strip()
         self.aw_dlp_policy_actor = os.getenv("AW_DLP_POLICY_ACTOR", "tsj-guardian-bot").strip() or "tsj-guardian-bot"
         self.aw_rus_worktime_heal_cmd = os.getenv(
             "AW_RUS_WORKTIME_HEAL_CMD",
@@ -384,13 +384,13 @@ class TSJGuardianBot:
             "AW_RUS_DLP_HEAL_CMD",
             "",
         ).strip()
-        self.aw_rus_case_api_base = os.getenv("AW_RUS_CASE_API_BASE", "http://10.10.10.13:5602").strip()
+        self.aw_rus_case_api_base = os.getenv("AW_RUS_CASE_API_BASE", "http://192.0.2.13:5602").strip()
         self.aw_rus_hayabusa_enabled = env_bool("AW_RUS_HAYABUSA_ENABLED", True)
         self.aw_rus_hayabusa_ssh_cmd = os.getenv(
             "AW_RUS_HAYABUSA_SSH_CMD",
             "",
         ).strip()
-        self.aw_rus_host = os.getenv("AW_RUS_HOST", "SHARKON2025").strip()
+        self.aw_rus_host = os.getenv("AW_RUS_HOST", "HOST-EXAMPLE").strip()
         self.aw_rus_primary_user = os.getenv("AW_RUS_PRIMARY_USER", "USER1").strip()
         self.aw_rus_stale_sec = max(60, env_int("AW_RUS_STALE_SEC", 900))
         self.aw_rus_slo_enabled = env_bool("AW_RUS_SLO_ENABLED", True)
@@ -401,7 +401,7 @@ class TSJGuardianBot:
             "AW_RUS_SLO_SUMMARY_CMD",
             "",
         ).strip()
-        self.aw_rus_windows_host = os.getenv("AW_RUS_WINDOWS_HOST", "192.168.100.18").strip() or "192.168.100.18"
+        self.aw_rus_windows_host = os.getenv("AW_RUS_WINDOWS_HOST", "198.51.100.18").strip() or "198.51.100.18"
         self.aw_rus_windows_ssh_user = os.getenv("AW_RUS_WINDOWS_SSH_USER", "Администратор").strip() or "Администратор"
         self.aw_rus_windows_ssh_password = os.getenv("AW_RUS_WINDOWS_SSH_PASSWORD", "").strip()
         self.aw_rus_windows_config_path = os.getenv(
@@ -418,7 +418,7 @@ class TSJGuardianBot:
         ).strip() or r"C:\ProgramData\AWatch-rus\worktime-session-collector.ps1"
         launch_tasks_raw = os.getenv(
             "AW_RUS_WINDOWS_LAUNCH_TASKS",
-            "ActivityWatch Launch [SHARKON2025_Администратор];ActivityWatch Launch [SHARKON2025_user5]",
+            "ActivityWatch Launch [HOST-EXAMPLE_Администратор];ActivityWatch Launch [HOST-EXAMPLE_user5]",
         )
         self.aw_rus_windows_launch_tasks = [item.strip() for item in launch_tasks_raw.split(";") if item.strip()]
         self.aw_rus_windows_policy_path = os.getenv(
@@ -2637,20 +2637,20 @@ class TSJGuardianBot:
         if "proxmox_api" in text:
             suggestions.append("Перезапустить pveproxy/pvedaemon/pve-cluster и проверить порт 8006.")
         if "pfsense_web" in text:
-            suggestions.append("Проверить доступность pfSense 10.10.10.1:8443, перезапустить WebGUI/nginx.")
+            suggestions.append("Проверить доступность pfSense 192.0.2.1:8443, перезапустить WebGUI/nginx.")
         if "pfsense_mcp" in text:
             suggestions.append("Проверить локальный pfsense-mcp-server.service, bearer token и endpoint 127.0.0.1:3010/mcp.")
         if "influxdb" in text:
             suggestions.append("Проверить контейнер InfluxDB и restart сервиса influxdb.")
         if "grafana" in text:
-            suggestions.append("Проверить grafana-server и NO_PROXY для 10.10.10.0/24.")
+            suggestions.append("Проверить grafana-server и NO_PROXY для 192.0.2.0/24.")
         if "loki" in text or "alloy" in text:
             suggestions.append("Проверить LXC логов и restart сервисов loki/alloy.")
         if "aw-rus:watcher-" in text or "aw-rus:worktime:" in text:
-            suggestions.append("Проверить Windows collector recovery: worktime-session-collector, ActivityWatch Recovery и Launch tasks на 192.168.100.18.")
+            suggestions.append("Проверить Windows collector recovery: worktime-session-collector, ActivityWatch Recovery и Launch tasks на 198.51.100.18.")
             suggestions.append("После Windows recovery проверить server-side aw-worktime-autoheal/ui-bridge для пересборки afk/window bucket'ов.")
         if "aw-rus:dlp-" in text:
-            suggestions.append("Проверить DLP endpoint/fileops collectors и server-side DLP transport на 10.10.10.13.")
+            suggestions.append("Проверить DLP endpoint/fileops collectors и server-side DLP transport на 192.0.2.13.")
         if "filesystem_usage" in text:
             suggestions.append("Проверить самые большие каталоги: du -x /var /srv /home, журналы в /var/log и apt cache.")
             suggestions.append("Проверить давление по снапшотам/хранилищу Proxmox и решить: очистка, ротация или расширение диска.")
@@ -3490,7 +3490,7 @@ class TSJGuardianBot:
 
         fileops_checks = [
             (f"aw-file-operations_{host}", "dlp-fileops-host", host),
-            ("aw-file-operations_10.10.10.13", "dlp-fileops-server", "10.10.10.13"),
+            ("aw-file-operations_192.0.2.13", "dlp-fileops-server", "192.0.2.13"),
         ]
         for bucket_id, label, bucket_host in fileops_checks:
             if worktime_activity is None:
@@ -3604,12 +3604,12 @@ class TSJGuardianBot:
         bucket_defs = {
             f"aw-dlp-endpoint-signals_{host}": ("aw.dlp.endpoint.signal", "aw-dlp-endpoint-signals", host),
             f"aw-file-operations_{host}": ("aw.file.operation", "aw-file-operations", host),
-            "aw-file-operations_10.10.10.13": ("aw.file.operation", "aw-file-operations", "10.10.10.13"),
+            "aw-file-operations_192.0.2.13": ("aw.file.operation", "aw-file-operations", "192.0.2.13"),
         }
         map_fail_to_bucket = {
             "dlp-endpoint": f"aw-dlp-endpoint-signals_{host}",
             "dlp-fileops-host": f"aw-file-operations_{host}",
-            "dlp-fileops-server": "aw-file-operations_10.10.10.13",
+            "dlp-fileops-server": "aw-file-operations_192.0.2.13",
         }
 
         selected = []

@@ -64,12 +64,12 @@ function build_csc_index_by_common_name(array $entries): array {
 function default_csc_template(): array {
 	return [
 		'custom_options' => '',
-		'local_network' => '10.0.0.0/8, 172.16.0.0/12, 192.168.100.0/24',
+		'local_network' => '10.0.0.0/8, 172.16.0.0/12, 198.51.100.0/24',
 		'local_networkv6' => '',
 		'remote_network' => '',
 		'remote_networkv6' => '',
-		'dns_server1' => '192.168.100.1',
-		'dns_server2' => '192.168.100.250',
+		'dns_server1' => '198.51.100.1',
+		'dns_server2' => '198.51.100.250',
 		'dns_server3' => '',
 		'dns_server4' => '',
 		'push_blockoutsidedns' => '',

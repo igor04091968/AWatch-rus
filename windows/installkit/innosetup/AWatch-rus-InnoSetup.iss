@@ -5,7 +5,7 @@
 #define AwDefaultServerHost "aw-server"
 #define AwDefaultServerPort "5600"
 #define AwDefaultWorktimeReportBase "http://aw-server:5610"
-#define AwDefaultWorktimeHost "SHARKON2025"
+#define AwDefaultWorktimeHost "HOST-EXAMPLE"
 #define AwDefaultUsers "user1,user2,user3,user4,user5"
 #define AwDefaultInstallRoot "C:\\Program Files\\AWatch-rus\\bin"
 #define AwDefaultStateRoot "C:\\ProgramData\\AWatch-rus"
@@ -13,7 +13,7 @@
 
 ; This installer wraps the standalone-service path.
 ; It is suitable for standalone/headless deployment and must not be treated
-; as the canonical multi-user RDP deployment path used on SHARKON2025.
+; as the canonical multi-user RDP deployment path used on HOST-EXAMPLE.
 
 [Setup]
 AppId={{6D6A1F74-0F4F-4A57-B5E3-1C2C2F56C0E9}

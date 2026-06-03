@@ -17,7 +17,7 @@ ENV_FILE="${1:-$DEFAULT_ENV_FILE}"
 
 : "${CT_ID:?missing CT_ID}"
 
-pct exec "$CT_ID" -- mkdir -p /root/bootstrap
+pct exec "$CT_ID" -- mkdir -p /opt/detmir/bootstrap
 
 for file_name in \
   install_aw_server.sh \
@@ -28,12 +28,12 @@ for file_name in \
   aw-sw-cleanup.js \
   aw-host-groups.json
 do
-  pct push "$CT_ID" "$PROJECT_ROOT/aw-server/$file_name" "/root/bootstrap/$file_name"
+  pct push "$CT_ID" "$PROJECT_ROOT/aw-server/$file_name" "/opt/detmir/bootstrap/$file_name"
 done
 
-pct exec "$CT_ID" -- mkdir -p /root/bootstrap/settings
-pct push "$CT_ID" "$PROJECT_ROOT/aw-server/settings/classes-worktime.json" "/root/bootstrap/settings/classes-worktime.json"
-pct push "$CT_ID" "$PROJECT_ROOT/aw-server/settings/views-default.json" "/root/bootstrap/settings/views-default.json"
+pct exec "$CT_ID" -- mkdir -p /opt/detmir/bootstrap/settings
+pct push "$CT_ID" "$PROJECT_ROOT/aw-server/settings/classes-worktime.json" "/opt/detmir/bootstrap/settings/classes-worktime.json"
+pct push "$CT_ID" "$PROJECT_ROOT/aw-server/settings/views-default.json" "/opt/detmir/bootstrap/settings/views-default.json"
 
 if [ -n "${AW_SERVER_VERSION:-}" ] &&
    [ -n "${AW_SERVER_DOWNLOAD_URL:-}" ] &&
@@ -64,4 +64,4 @@ else
   echo "WARN: AW_SERVER_* variables are incomplete in $ENV_FILE; /etc/activitywatch/aw-server.env was not updated" >&2
 fi
 
-echo "Bootstrap artifacts pushed to CT $CT_ID:/root/bootstrap"
+echo "Bootstrap artifacts pushed to CT $CT_ID:/opt/detmir/bootstrap"

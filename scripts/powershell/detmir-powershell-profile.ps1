@@ -40,7 +40,7 @@ function Get-DetMirWindowsSetting {
     return $Default
 }
 
-$Global:DetMirWindowsHost = Get-DetMirWindowsSetting -EnvName 'DETMIR_WINDOWS_SSH_HOST' -ConfigKey 'Host' -Default '192.168.100.18'
+$Global:DetMirWindowsHost = Get-DetMirWindowsSetting -EnvName 'DETMIR_WINDOWS_SSH_HOST' -ConfigKey 'Host' -Default '198.51.100.18'
 $Global:DetMirWindowsUser = Get-DetMirWindowsSetting -EnvName 'DETMIR_WINDOWS_SSH_USER' -ConfigKey 'User' -Default 'Администратор'
 $Global:DetMirWindowsPassword = Get-DetMirWindowsSetting -EnvName 'DETMIR_WINDOWS_SSH_PASSWORD' -ConfigKey 'Password'
 $Global:DetMirWindowsPort = [int](Get-DetMirWindowsSetting -EnvName 'DETMIR_WINDOWS_SSH_PORT' -ConfigKey 'Port' -Default '22')

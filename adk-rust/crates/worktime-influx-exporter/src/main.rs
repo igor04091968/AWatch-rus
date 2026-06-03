@@ -11,7 +11,7 @@ const DEFAULT_AW_BASE: &str = "http://127.0.0.1:5600";
 const DEFAULT_WORKTIME_REPORT_BASE: &str = "http://127.0.0.1:5610";
 const DEFAULT_INFLUX_ORG: &str = "proxmox";
 const DEFAULT_INFLUX_BUCKET: &str = "aw_metrics";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 const DEFAULT_DAYS: &str = "today,yesterday";
 
 #[derive(Debug, Parser)]
@@ -993,14 +993,14 @@ mod tests {
     fn heartbeat_line_uses_current_exporter_timestamp() {
         let out = line(
             "aw_worktime_exporter_heartbeat",
-            vec![("host", "SHARKON2025".to_string())],
+            vec![("host", "HOST-EXAMPLE".to_string())],
             vec![("run", FieldValue::Int(1))],
             42,
         )
         .unwrap();
         assert_eq!(
             out,
-            "aw_worktime_exporter_heartbeat,host=SHARKON2025 run=1i 42"
+            "aw_worktime_exporter_heartbeat,host=HOST-EXAMPLE run=1i 42"
         );
     }
 
@@ -1023,11 +1023,11 @@ mod tests {
             }
         })];
 
-        let daily = aggregate_daily_rows(&events, start, end_exclusive, "SHARKON2025", &config);
-        let hourly = aggregate_hourly_rows(&events, end_exclusive, "SHARKON2025", &config);
+        let daily = aggregate_daily_rows(&events, start, end_exclusive, "HOST-EXAMPLE", &config);
+        let hourly = aggregate_hourly_rows(&events, end_exclusive, "HOST-EXAMPLE", &config);
 
         assert_eq!(daily.len(), 1);
-        assert_eq!(daily[0].user_id, "SHARKON2025\\user5");
+        assert_eq!(daily[0].user_id, "HOST-EXAMPLE\\user5");
         assert_eq!(daily[0].active_seconds, 300);
         assert_eq!(daily[0].active_samples, 1);
         assert_eq!(hourly.len(), 1);

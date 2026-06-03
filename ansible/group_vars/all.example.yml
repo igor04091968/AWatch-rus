@@ -16,19 +16,19 @@ aw_worktime_influx_enabled: false
 aw_worktime_influx_url: "http://<INFLUXDB_HOST>:8086"
 aw_worktime_influx_org: "proxmox"
 aw_worktime_influx_bucket: "aw_metrics"
-aw_worktime_influx_hosts: "SHARKON2025"
+aw_worktime_influx_hosts: "HOST-EXAMPLE"
 aw_worktime_influx_days: "today,yesterday"
 aw_worktime_influx_token: ""
 aw_dlp_influx_enabled: false
 aw_dlp_influx_url: "http://<INFLUXDB_HOST>:8086"
 aw_dlp_influx_org: "proxmox"
 aw_dlp_influx_bucket: "aw_metrics"
-aw_dlp_influx_hosts: "SHARKON2025"
+aw_dlp_influx_hosts: "HOST-EXAMPLE"
 aw_dlp_influx_lookback_days: 30
 aw_dlp_influx_event_limit: 2000
 aw_dlp_influx_token: ""
 aw_monitored_windows_host: "<WINDOWS_HOST>"
-aw_monitored_windows_hostname: "SHARKON2025"
+aw_monitored_windows_hostname: "HOST-EXAMPLE"
 aw_rus_health_worktime_api_base: "http://127.0.0.1:5610"
 aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
 aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
@@ -67,7 +67,7 @@ aw_worktime_from: "00:00"
 aw_worktime_to: "17:00"
 aw_worktime_start_of_day: "{{ aw_worktime_from }}"
 aw_server_always_active_pattern: "aw-watcher-window"
-aw_server_landingpage: "/#/activity/SHARKON2025/view/"
+aw_server_landingpage: "/#/activity/HOST-EXAMPLE/view/"
 aw_health_strict_fileops: 0
 
 aw_dlp_policy_engine_enabled: true

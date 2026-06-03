@@ -53,7 +53,7 @@ struct Cli {
     #[arg(long, default_value = "http://127.0.0.1:5610")]
     worktime_base: String,
 
-    #[arg(long, default_value = "SHARKON2025")]
+    #[arg(long, default_value = "HOST-EXAMPLE")]
     host: String,
 
     #[arg(long, default_value_t = 99.97)]

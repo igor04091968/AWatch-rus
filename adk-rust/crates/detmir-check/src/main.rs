@@ -12,10 +12,10 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::Serialize;
 use serde_json::Value;
 
-const DEFAULT_AW_API: &str = "http://10.10.10.13:5600/api/0";
-const DEFAULT_WORKTIME_URL: &str = "http://10.10.10.13:5610";
-const DEFAULT_ONE_C_URL: &str = "http://10.10.10.2:8710";
-const DEFAULT_HOSTNAME: &str = "SHARKON2025";
+const DEFAULT_AW_API: &str = "http://192.0.2.13:5600/api/0";
+const DEFAULT_WORKTIME_URL: &str = "http://192.0.2.13:5610";
+const DEFAULT_ONE_C_URL: &str = "http://192.0.2.2:8710";
+const DEFAULT_HOSTNAME: &str = "HOST-EXAMPLE";
 const DEFAULT_GATEWAY_HOST: &str = "detmir.example.local";
 
 #[derive(Debug, Parser)]
@@ -298,13 +298,13 @@ fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
     }
 
     checks.push(tcp_check(
-        "192.168.100.18",
+        "198.51.100.18",
         5985,
         args.tcp_timeout_seconds,
         true,
     ));
     checks.push(tcp_check(
-        "192.168.100.18",
+        "198.51.100.18",
         22,
         args.tcp_timeout_seconds,
         true,

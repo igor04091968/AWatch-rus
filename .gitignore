@@ -39,3 +39,5 @@ data/
 # Release assets kept outside git
 /install-kit-awindows-*.zip
 /install-kit-awindows-*.tar.gz
+/install-kit-awindows-*/
+/scripts/configure_pfsense_gateway_nat.py

@@ -59,7 +59,7 @@ if [ ! -f "$LOCAL_CFG" ]; then
     if [ -n "$host" ] || [ -n "$user" ] || [ -n "$password" ]; then
         cat > "$LOCAL_CFG" <<EOF
 @{
-    Host = '${host:-192.168.100.18}'
+    Host = '${host:-198.51.100.18}'
     User = '${user:-Администратор}'
     Password = '${password:-CHANGE_ME}'
     Port = 22

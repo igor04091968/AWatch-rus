@@ -1,6 +1,6 @@
 {
   "users": {
-    "SHARKON2025\\USER1": {
+    "HOST-EXAMPLE\\USER1": {
       "display_name": "Иван Петров",
       "manager": "Руководитель смены",
       "department": "Бухгалтерия",
@@ -8,14 +8,14 @@
       "notes": "Дневная смена",
       "exclude": false
     },
-    "SHARKON2025\\USER4": {
+    "HOST-EXAMPLE\\USER4": {
       "display_name": "Мария Сидорова",
       "manager": "Руководитель смены",
       "department": "Бухгалтерия",
       "role": "Оператор 1С",
       "exclude": false
     },
-    "SHARKON2025\\ADMINISTRATOR": {
+    "HOST-EXAMPLE\\ADMINISTRATOR": {
       "display_name": "Администратор",
       "manager": "Ops",
       "department": "Инфраструктура",

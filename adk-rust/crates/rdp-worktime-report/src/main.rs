@@ -10,8 +10,8 @@ use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-const DEFAULT_AW_BASE_URL: &str = "http://10.10.10.13:5600/api/0";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_AW_BASE_URL: &str = "http://192.0.2.13:5600/api/0";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 const DEFAULT_SAMPLE_SECONDS: f64 = 30.0;
 const DEFAULT_MAX_SAMPLE_SECONDS: f64 = 300.0;
 const DEFAULT_OUT_DIR: &str = "reports";
@@ -550,7 +550,7 @@ mod tests {
         ];
         let rows = build_rows(
             events,
-            "SHARKON2025",
+            "HOST-EXAMPLE",
             NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
             NaiveDate::from_ymd_opt(2026, 6, 1).unwrap(),
             30.0,
@@ -563,7 +563,7 @@ mod tests {
         assert_eq!(rows[0].sessions_count, 2);
         assert_eq!(rows[0].samples_count, 3);
         assert_eq!(rows[0].active_samples, 2);
-        assert_eq!(rows[0].user_id, "SHARKON2025\\user5");
+        assert_eq!(rows[0].user_id, "HOST-EXAMPLE\\user5");
     }
 
     #[test]

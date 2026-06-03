@@ -1,7 +1,7 @@
 {
   "poll_interval_seconds": 60,
   "aw": {
-    "server_host": "10.10.10.13",
+    "server_host": "192.0.2.13",
     "server_port": 5600,
     "hostname": "PFSENSE-EDGE01",
     "pulse_time_seconds": 120,
@@ -9,7 +9,7 @@
   },
   "pfsense": {
     "name": "pfSense Edge 01",
-    "host": "10.10.10.1",
+    "host": "192.0.2.1",
     "scheme": "https",
     "verify_tls": false,
     "timeout_seconds": 15,

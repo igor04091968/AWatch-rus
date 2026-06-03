@@ -6,7 +6,7 @@ services:
     container_name: awrus-aw-exporter
     restart: unless-stopped
     environment:
-      - AW_SERVER_HOST=${AW_SERVER_HOST:-10.10.10.13}
+      - AW_SERVER_HOST=${AW_SERVER_HOST:-192.0.2.13}
       - AW_SERVER_PORT=${AW_SERVER_PORT:-5600}
       - AW_SERVER_SCHEME=${AW_SERVER_SCHEME:-http}
       - EXPORTER_PORT=9398

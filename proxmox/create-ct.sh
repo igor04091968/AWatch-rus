@@ -60,7 +60,7 @@ pct exec "$CT_ID" -- bash -lc '
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
   apt-get install -y curl ca-certificates bash unzip xz-utils jq
-  mkdir -p /root/bootstrap /etc/activitywatch
+  mkdir -p /opt/detmir/bootstrap /etc/activitywatch
 '
 
 echo "CT $CT_ID created and bootstrapped"

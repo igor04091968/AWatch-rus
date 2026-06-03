@@ -79,8 +79,8 @@ def make_slo_cycle_bot(summary):
 
 class TsjGuardianBotTests(unittest.TestCase):
     def test_new_incident_auto_resolved_before_notification_stays_silent(self):
-        check_out = "2026-05-24 10:01:18 [FAIL] node_13: curl failed: http://10.10.10.13:5600/\n"
-        heal_out = "2026-05-24 10:01:21 [OK] node_13: HTTP 200 OK: http://10.10.10.13:5600/api/0/info\n"
+        check_out = "2026-05-24 10:01:18 [FAIL] node_13: curl failed: http://192.0.2.13:5600/\n"
+        heal_out = "2026-05-24 10:01:21 [OK] node_13: HTTP 200 OK: http://192.0.2.13:5600/api/0/info\n"
         bot = make_bot(check_rc=1, check_out=check_out, heal_rc=0, heal_out=heal_out)
 
         bot._handle_check_cycle()
@@ -90,8 +90,8 @@ class TsjGuardianBotTests(unittest.TestCase):
         self.assertTrue(any("auto-resolved before operator notification" in msg for _, msg in bot._logs))
 
     def test_transient_failure_is_suppressed_until_quorum(self):
-        check_out = "2026-05-24 10:01:18 [FAIL] node_13: curl failed: http://10.10.10.13:5600/\n"
-        heal_out = "2026-05-24 10:01:40 [FAIL] node_13: curl failed: http://10.10.10.13:5600/\n"
+        check_out = "2026-05-24 10:01:18 [FAIL] node_13: curl failed: http://192.0.2.13:5600/\n"
+        heal_out = "2026-05-24 10:01:40 [FAIL] node_13: curl failed: http://192.0.2.13:5600/\n"
         bot = make_bot(check_rc=1, check_out=check_out, heal_rc=1, heal_out=heal_out)
         bot.incident_failure_quorum_checks = 2
 
@@ -121,8 +121,8 @@ class TsjGuardianBotTests(unittest.TestCase):
         self.assertTrue(bot._notifications)
 
     def test_new_incident_notifies_only_after_autoheal_failure(self):
-        check_out = "2026-05-24 10:01:18 [FAIL] node_13: curl failed: http://10.10.10.13:5600/\n"
-        heal_out = "2026-05-24 10:01:40 [FAIL] node_13: curl failed: http://10.10.10.13:5600/\n"
+        check_out = "2026-05-24 10:01:18 [FAIL] node_13: curl failed: http://192.0.2.13:5600/\n"
+        heal_out = "2026-05-24 10:01:40 [FAIL] node_13: curl failed: http://192.0.2.13:5600/\n"
         bot = make_bot(check_rc=1, check_out=check_out, heal_rc=1, heal_out=heal_out)
 
         bot._handle_check_cycle()
@@ -388,7 +388,7 @@ class TelegramApiDocumentTests(unittest.TestCase):
 class OpenVpnHelperTests(unittest.TestCase):
     def test_load_pfsense_readonly_env_uses_instance_override_path(self):
         env_text = """
-PFSENSE_URL=https://10.10.10.1:8443
+PFSENSE_URL=https://192.0.2.1:8443
 PFSENSE_API_KEY=test-key
 VERIFY_SSL=false
 """
@@ -397,7 +397,7 @@ VERIFY_SSL=false
             bot.pfsense_env_path = "/tmp/pfsense.env.readonly"
             base_url, api_key, verify_ssl = MODULE.TSJGuardianBot._load_pfsense_readonly_env(bot)
 
-        self.assertEqual((base_url, api_key, verify_ssl), ("https://10.10.10.1:8443", "test-key", False))
+        self.assertEqual((base_url, api_key, verify_ssl), ("https://192.0.2.1:8443", "test-key", False))
         read_mock.assert_called_once_with(encoding="utf-8")
 
     def test_parse_openvpn_helper_result_returns_config_bytes(self):
@@ -410,7 +410,7 @@ VERIFY_SSL=false
                 "cert_created": True,
                 "csc_created": True,
                 "config_b64": MODULE.base64.b64encode(
-                    b"client\nremote 10.10.10.1 1194 udp\n<ca>\nX\n</ca>\n"
+                    b"client\nremote 192.0.2.1 1194 udp\n<ca>\nX\n</ca>\n"
                 ).decode("ascii"),
             }
         )
@@ -421,7 +421,7 @@ VERIFY_SSL=false
         self.assertIn("planshet", summary)
         self.assertIn("10.0.13.22/24", summary)
         self.assertIn("сертификат создан: да", summary)
-        self.assertEqual(config_bytes, b"client\nremote 10.10.10.1 1194 udp\n<ca>\nX\n</ca>\n")
+        self.assertEqual(config_bytes, b"client\nremote 192.0.2.1 1194 udp\n<ca>\nX\n</ca>\n")
 
     def test_parse_openvpn_helper_result_rejects_invalid_config(self):
         bot = object.__new__(MODULE.TSJGuardianBot)
@@ -439,8 +439,8 @@ VERIFY_SSL=false
         inventory = """
 ### 2. pfSense
 
-- SSH LAN: `10.10.10.1:2022`
-- Web UI: `10.10.10.1:8443`
+- SSH LAN: `192.0.2.1:2022`
+- Web UI: `192.0.2.1:8443`
 - Admin login: `admin`
 - Admin password: `admin-secret`
 - Root login: `root`
@@ -453,13 +453,13 @@ VERIFY_SSL=false
             bot.pfsense_inventory_path = "/tmp/inventory.md"
             host, port, user, password = MODULE.TSJGuardianBot._load_pfsense_inventory_access(bot)
 
-        self.assertEqual((host, port, user, password), ("10.10.10.1", 2022, "root", "secret"))
+        self.assertEqual((host, port, user, password), ("192.0.2.1", 2022, "root", "secret"))
 
     def test_load_pfsense_web_access_parses_web_values(self):
         inventory = """
 ### 2. pfSense
 
-- Web UI: `10.10.10.1:8443`
+- Web UI: `192.0.2.1:8443`
 - Admin login: `admin`
 - Admin password: `admin-secret`
 
@@ -470,7 +470,7 @@ VERIFY_SSL=false
             bot.pfsense_inventory_path = "/tmp/inventory.md"
             base_url, user, password = MODULE.TSJGuardianBot._load_pfsense_web_access(bot)
 
-        self.assertEqual((base_url, user, password), ("https://10.10.10.1:8443", "admin", "admin-secret"))
+        self.assertEqual((base_url, user, password), ("https://192.0.2.1:8443", "admin", "admin-secret"))
 
     def test_extract_pfsense_csrf_token(self):
         token = MODULE.TSJGuardianBot._extract_pfsense_csrf_token('var csrfMagicToken = "abc123";')
@@ -491,8 +491,8 @@ class WorktimeCsvParseTests(unittest.TestCase):
     def test_parse_worktime_today_csv_uses_named_active_seconds_column(self):
         csv_text = (
             "user,user_id,active_seconds,active_hhmm\n"
-            "user1,SHARKON2025\\\\user1,155,00:02\n"
-            "администратор,SHARKON2025\\\\Администратор,9330,02:35\n"
+            "user1,HOST-EXAMPLE\\\\user1,155,00:02\n"
+            "администратор,HOST-EXAMPLE\\\\Администратор,9330,02:35\n"
         )
 
         rows = MODULE.TSJGuardianBot._parse_worktime_today_csv(csv_text)
@@ -515,11 +515,11 @@ class WorktimeCsvParseTests(unittest.TestCase):
         timeout_exc = MODULE.requests.exceptions.ReadTimeout("read timeout")
         response = mock.Mock()
         response.raise_for_status.return_value = None
-        response.text = "user,user_id,active_seconds\nuser1,SHARKON2025\\\\user1,155\n"
+        response.text = "user,user_id,active_seconds\nuser1,HOST-EXAMPLE\\\\user1,155\n"
         get_mock.side_effect = [timeout_exc, response]
 
         bot = object.__new__(MODULE.TSJGuardianBot)
-        bot.aw_rus_worktime_base = "http://10.10.10.13:5610"
+        bot.aw_rus_worktime_base = "http://192.0.2.13:5610"
 
         csv_text = MODULE.TSJGuardianBot._fetch_worktime_today_csv(bot, timeout_sec=3, attempts=2)
 
@@ -546,15 +546,15 @@ class AwRusDlpProbeTests(unittest.TestCase):
             if url.endswith("/buckets"):
                 return response(
                     {
-                        "aw-worktime-sessions_SHARKON2025": {"metadata": {"end": fresh_worktime}},
-                        "aw-watcher-window_SHARKON2025": {"metadata": {"end": fresh_watcher}},
-                        "aw-watcher-afk_SHARKON2025": {"metadata": {"end": fresh_watcher}},
-                        "aw-dlp-endpoint-signals_SHARKON2025": {"metadata": {"end": stale_endpoint}},
-                        "aw-file-operations_SHARKON2025": {"metadata": {"end": fresh_fileops}},
-                        "aw-file-operations_10.10.10.13": {"metadata": {"end": fresh_fileops}},
+                        "aw-worktime-sessions_HOST-EXAMPLE": {"metadata": {"end": fresh_worktime}},
+                        "aw-watcher-window_HOST-EXAMPLE": {"metadata": {"end": fresh_watcher}},
+                        "aw-watcher-afk_HOST-EXAMPLE": {"metadata": {"end": fresh_watcher}},
+                        "aw-dlp-endpoint-signals_HOST-EXAMPLE": {"metadata": {"end": stale_endpoint}},
+                        "aw-file-operations_HOST-EXAMPLE": {"metadata": {"end": fresh_fileops}},
+                        "aw-file-operations_192.0.2.13": {"metadata": {"end": fresh_fileops}},
                     }
                 )
-            if "aw-rus-collector-guard_SHARKON2025/events" in url:
+            if "aw-rus-collector-guard_HOST-EXAMPLE/events" in url:
                 return response(
                     [
                         {
@@ -563,41 +563,41 @@ class AwRusDlpProbeTests(unittest.TestCase):
                         }
                     ]
                 )
-            if "aw-worktime-sessions_SHARKON2025/events" in url:
+            if "aw-worktime-sessions_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_worktime, "data": {"active": True}}])
-            if "aw-watcher-window_SHARKON2025/events" in url:
+            if "aw-watcher-window_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_watcher, "data": {}}])
-            if "aw-watcher-afk_SHARKON2025/events" in url:
+            if "aw-watcher-afk_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_watcher, "data": {}}])
-            if "aw-dlp-endpoint-signals_SHARKON2025/events" in url:
+            if "aw-dlp-endpoint-signals_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": stale_endpoint, "data": {"signalType": "self_test"}}])
-            if "aw-file-operations_SHARKON2025/events" in url:
+            if "aw-file-operations_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_fileops, "data": {}}])
-            if "aw-file-operations_10.10.10.13/events" in url:
+            if "aw-file-operations_192.0.2.13/events" in url:
                 return response([{"timestamp": fresh_fileops, "data": {}}])
-            if url.endswith("/buckets/aw-watcher-window_SHARKON2025"):
+            if url.endswith("/buckets/aw-watcher-window_HOST-EXAMPLE"):
                 return response({"metadata": {"end": fresh_watcher}})
-            if url.endswith("/buckets/aw-watcher-afk_SHARKON2025"):
+            if url.endswith("/buckets/aw-watcher-afk_HOST-EXAMPLE"):
                 return response({"metadata": {"end": fresh_watcher}})
-            if url.endswith("/buckets/aw-dlp-endpoint-signals_SHARKON2025"):
+            if url.endswith("/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE"):
                 return response({"metadata": {"end": stale_endpoint}})
-            if url.endswith("/buckets/aw-file-operations_SHARKON2025"):
+            if url.endswith("/buckets/aw-file-operations_HOST-EXAMPLE"):
                 return response({"metadata": {"end": fresh_fileops}})
-            if url.endswith("/buckets/aw-file-operations_10.10.10.13"):
+            if url.endswith("/buckets/aw-file-operations_192.0.2.13"):
                 return response({"metadata": {"end": fresh_fileops}})
             raise AssertionError(f"unexpected url {url}")
 
         get_mock.side_effect = fake_get
 
         bot = object.__new__(MODULE.TSJGuardianBot)
-        bot.aw_rus_api_base = "http://10.10.10.13:5600/api/0"
-        bot.aw_rus_worktime_base = "http://10.10.10.13:5610"
-        bot.aw_rus_host = "SHARKON2025"
+        bot.aw_rus_api_base = "http://192.0.2.13:5600/api/0"
+        bot.aw_rus_worktime_base = "http://192.0.2.13:5610"
+        bot.aw_rus_host = "HOST-EXAMPLE"
         bot.aw_rus_stale_sec = 900
         bot.aw_rus_primary_user = "user1"
         bot._fetch_worktime_today_csv = lambda timeout_sec=20, attempts=2: (
             "user,user_id,active_seconds\n"
-            "user1,SHARKON2025\\\\user1,120\n"
+            "user1,HOST-EXAMPLE\\\\user1,120\n"
         )
 
         with mock.patch("proxmox.tsj_guardian_bot.datetime") as dt_mock:
@@ -625,8 +625,8 @@ class AwRusDlpProbeTests(unittest.TestCase):
 
         def fake_get(url, timeout=20):
             if url.endswith("/buckets"):
-                return response({"aw-worktime-sessions_SHARKON2025": {"metadata": {"end": fresh_worktime}}})
-            if "aw-rus-collector-guard_SHARKON2025/events" in url:
+                return response({"aw-worktime-sessions_HOST-EXAMPLE": {"metadata": {"end": fresh_worktime}}})
+            if "aw-rus-collector-guard_HOST-EXAMPLE/events" in url:
                 return response(
                     [
                         {
@@ -635,35 +635,35 @@ class AwRusDlpProbeTests(unittest.TestCase):
                         }
                     ]
                 )
-            if "aw-worktime-sessions_SHARKON2025/events" in url:
+            if "aw-worktime-sessions_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_worktime, "data": {"active": False}}])
-            if "aw-watcher-window_SHARKON2025/events" in url:
+            if "aw-watcher-window_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_watcher, "data": {}}])
-            if "aw-watcher-afk_SHARKON2025/events" in url:
+            if "aw-watcher-afk_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_watcher, "data": {}}])
-            if "aw-dlp-endpoint-signals_SHARKON2025/events" in url:
+            if "aw-dlp-endpoint-signals_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": stale_endpoint, "data": {"signalType": "self_test"}}])
-            if "aw-file-operations_SHARKON2025/events" in url:
+            if "aw-file-operations_HOST-EXAMPLE/events" in url:
                 return response([])
-            if "aw-file-operations_10.10.10.13/events" in url:
+            if "aw-file-operations_192.0.2.13/events" in url:
                 return response([])
-            if url.endswith("/buckets/aw-file-operations_SHARKON2025"):
+            if url.endswith("/buckets/aw-file-operations_HOST-EXAMPLE"):
                 return response({"metadata": {"end": stale_endpoint}})
-            if url.endswith("/buckets/aw-file-operations_10.10.10.13"):
+            if url.endswith("/buckets/aw-file-operations_192.0.2.13"):
                 return response({"metadata": {"end": stale_endpoint}})
             raise AssertionError(f"unexpected url {url}")
 
         get_mock.side_effect = fake_get
 
         bot = object.__new__(MODULE.TSJGuardianBot)
-        bot.aw_rus_api_base = "http://10.10.10.13:5600/api/0"
-        bot.aw_rus_worktime_base = "http://10.10.10.13:5610"
-        bot.aw_rus_host = "SHARKON2025"
+        bot.aw_rus_api_base = "http://192.0.2.13:5600/api/0"
+        bot.aw_rus_worktime_base = "http://192.0.2.13:5610"
+        bot.aw_rus_host = "HOST-EXAMPLE"
         bot.aw_rus_stale_sec = 900
         bot.aw_rus_primary_user = "user1"
         bot._fetch_worktime_today_csv = lambda timeout_sec=20, attempts=2: (
             "user,user_id,active_seconds\n"
-            "user1,SHARKON2025\\\\user1,0\n"
+            "user1,HOST-EXAMPLE\\\\user1,0\n"
         )
 
         with mock.patch("proxmox.tsj_guardian_bot.datetime") as dt_mock:
@@ -691,8 +691,8 @@ class AwRusDlpProbeTests(unittest.TestCase):
 
         def fake_get(url, timeout=20):
             if url.endswith("/buckets"):
-                return response({"aw-worktime-sessions_SHARKON2025": {"metadata": {"end": fresh_worktime}}})
-            if "aw-rus-collector-guard_SHARKON2025/events" in url:
+                return response({"aw-worktime-sessions_HOST-EXAMPLE": {"metadata": {"end": fresh_worktime}}})
+            if "aw-rus-collector-guard_HOST-EXAMPLE/events" in url:
                 return response(
                     [
                         {
@@ -701,30 +701,30 @@ class AwRusDlpProbeTests(unittest.TestCase):
                         }
                     ]
                 )
-            if "aw-worktime-sessions_SHARKON2025/events" in url:
+            if "aw-worktime-sessions_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_worktime, "data": {"active": False}}])
-            if "aw-watcher-window_SHARKON2025/events" in url:
+            if "aw-watcher-window_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_watcher, "data": {}}])
-            if "aw-watcher-afk_SHARKON2025/events" in url:
+            if "aw-watcher-afk_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_watcher, "data": {}}])
-            if "aw-dlp-endpoint-signals_SHARKON2025/events" in url:
+            if "aw-dlp-endpoint-signals_HOST-EXAMPLE/events" in url:
                 return response([{"timestamp": fresh_watcher, "data": {"signalType": "self_test"}}])
-            if "aw-file-operations_SHARKON2025/events" in url:
+            if "aw-file-operations_HOST-EXAMPLE/events" in url:
                 return response([])
-            if "aw-file-operations_10.10.10.13/events" in url:
+            if "aw-file-operations_192.0.2.13/events" in url:
                 return response([])
-            if url.endswith("/buckets/aw-file-operations_SHARKON2025"):
+            if url.endswith("/buckets/aw-file-operations_HOST-EXAMPLE"):
                 return response({"metadata": {"end": fresh_watcher}})
-            if url.endswith("/buckets/aw-file-operations_10.10.10.13"):
+            if url.endswith("/buckets/aw-file-operations_192.0.2.13"):
                 return response({"metadata": {"end": fresh_watcher}})
             raise AssertionError(f"unexpected url {url}")
 
         get_mock.side_effect = fake_get
 
         bot = object.__new__(MODULE.TSJGuardianBot)
-        bot.aw_rus_api_base = "http://10.10.10.13:5600/api/0"
-        bot.aw_rus_worktime_base = "http://10.10.10.13:5610"
-        bot.aw_rus_host = "SHARKON2025"
+        bot.aw_rus_api_base = "http://192.0.2.13:5600/api/0"
+        bot.aw_rus_worktime_base = "http://192.0.2.13:5610"
+        bot.aw_rus_host = "HOST-EXAMPLE"
         bot.aw_rus_stale_sec = 900
         bot.aw_rus_primary_user = "user1"
         bot._fetch_worktime_today_csv = mock.Mock(side_effect=MODULE.requests.exceptions.ReadTimeout("read timeout"))

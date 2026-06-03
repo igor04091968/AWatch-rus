@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 const DEFAULT_AW_URL: &str = "http://127.0.0.1:5600";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 const DEFAULT_STATE_PATH: &str = "/var/lib/activitywatch/aw-worktime-ui-bridge-state.json";
 const BRIDGE_SOURCE: &str = "aw-worktime-ui-bridge";
 

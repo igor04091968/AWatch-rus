@@ -20,7 +20,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 C:\Program Files\AWatch-rus\windows\deploy-ensemble.ps1 `
   -ServerHost <AW_SERVER_HOST> `
   -ServerPort 5600 `
-  -Domain SHARKON2025 `
+  -Domain HOST-EXAMPLE `
   -Users user1,user2,user3,user4,user5 `
   -InstallRoot 'C:\Program Files\AWatch-rus\bin' `
   -StateRoot 'C:\ProgramData\AWatch-rus' `

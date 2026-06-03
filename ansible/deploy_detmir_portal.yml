@@ -42,8 +42,8 @@
           DETMIR_PORTAL_STATUS_CMD=detmir-status --json
           DETMIR_PORTAL_CHECK_CMD=detmir-check --json
           DETMIR_PORTAL_FAILED_UNITS_CMD=systemctl --failed --no-pager
-          DETMIR_PORTAL_WORKTIME_URL=http://10.10.10.13:5610
-          DETMIR_PORTAL_ONE_C_URL=http://10.10.10.2:8710
+          DETMIR_PORTAL_WORKTIME_URL=http://192.0.2.13:5610
+          DETMIR_PORTAL_ONE_C_URL=http://192.0.2.2:8710
           DETMIR_PORTAL_TIMEOUT_SECONDS=10
           DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
           DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
@@ -117,7 +117,7 @@
   vars:
     aw_repo_root: "{{ playbook_dir | dirname }}"
     aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
-    detmir_evidence_bind: "{{ detmir_evidence_bind_override | default('10.10.10.13:8721') }}"
+    detmir_evidence_bind: "{{ detmir_evidence_bind_override | default('192.0.2.13:8721') }}"
     detmir_evidence_env_path: "/etc/detmir-portal-evidence.env"
     detmir_evidence_upload_token_path: "/var/lib/activitywatch/dlp-evidence/upload-token"
 

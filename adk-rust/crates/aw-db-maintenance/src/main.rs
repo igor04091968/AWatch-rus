@@ -11,7 +11,7 @@ use serde_json::Value;
 
 const DEFAULT_DB_PATH: &str = "/var/lib/activitywatch/aw-server-rust/sqlite.db";
 const DEFAULT_BACKUP_DIR: &str = "/var/lib/activitywatch/backups/db";
-const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_HOST: &str = "HOST-EXAMPLE";
 const ALLOWED_EVENT_TYPES: &[&str] = &["process_start", "process_stop"];
 
 #[derive(Debug, Parser)]

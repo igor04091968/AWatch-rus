@@ -14,7 +14,7 @@
     grafana_check_dashboard_uid: "{{ detmir_grafana_check_dashboard_uid | default('detmir-aw-main') }}"
     grafana_check_dashboard_file_src: "{{ aw_repo_root }}/grafana/detmir-aw-main-dashboard.json"
     grafana_check_dashboard_file_dest: /etc/grafana/provisioning/dashboards/aw/detmir-aw-main.json
-    grafana_check_host: "{{ detmir_grafana_check_host | default('SHARKON2025') }}"
+    grafana_check_host: "{{ detmir_grafana_check_host | default('HOST-EXAMPLE') }}"
     grafana_check_max_freshness_minutes: "{{ detmir_grafana_check_max_freshness_minutes | default(360) }}"
     grafana_check_on_calendar: "{{ detmir_grafana_check_on_calendar | default('*:0/15') }}"
 

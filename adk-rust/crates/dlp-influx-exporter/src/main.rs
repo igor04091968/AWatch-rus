@@ -11,7 +11,7 @@ const DEFAULT_AW_API_BASE: &str = "http://127.0.0.1:5600/api/0";
 const DEFAULT_CASE_API_BASE: &str = "http://127.0.0.1:5602/api/0/dlp/cases";
 const DEFAULT_INFLUX_ORG: &str = "proxmox";
 const DEFAULT_INFLUX_BUCKET: &str = "aw_metrics";
-const DEFAULT_HOSTS: &str = "SHARKON2025";
+const DEFAULT_HOSTS: &str = "HOST-EXAMPLE";
 
 #[derive(Debug, Parser)]
 #[command(about = "AW DLP InfluxDB exporter")]
@@ -1009,7 +1009,7 @@ mod tests {
                 "id": 10,
                 "timestamp": "2026-05-15T10:00:00Z",
                 "data": {
-                    "hostname": "SHARKON2025",
+                    "hostname": "HOST-EXAMPLE",
                     "username": "Администратор",
                     "signalType": "self_test",
                     "policyMode": "server",
@@ -1025,7 +1025,7 @@ mod tests {
                 "id": 11,
                 "timestamp": "2026-05-15T10:01:00Z",
                 "data": {
-                    "hostname": "SHARKON2025",
+                    "hostname": "HOST-EXAMPLE",
                     "username": "Администратор",
                     "signalType": "print_job",
                     "source": "endpoint-signals-phase2",
@@ -1034,7 +1034,7 @@ mod tests {
                 }
             }),
         ];
-        let lines = build_endpoint_lines("SHARKON2025", &events);
+        let lines = build_endpoint_lines("HOST-EXAMPLE", &events);
         assert!(
             lines
                 .iter()
@@ -1048,13 +1048,13 @@ mod tests {
         let item = json!({
             "timestamp": "2026-05-15T10:02:00Z",
             "data": {
-                "host": "SHARKON2025",
+                "host": "HOST-EXAMPLE",
                 "incident": {"status": "open", "verdict": "incident"},
-                "sourceBucket": "aw-dlp-endpoint-signals_SHARKON2025",
+                "sourceBucket": "aw-dlp-endpoint-signals_HOST-EXAMPLE",
                 "sourceEvent": {
                     "data": {
                         "signalType": "print_job",
-                        "hostname": "SHARKON2025",
+                        "hostname": "HOST-EXAMPLE",
                         "username": "Администратор",
                         "documentName": "Письмо",
                         "printerName": "HP",
@@ -1063,7 +1063,7 @@ mod tests {
                 }
             }
         });
-        let normalized = normalize_incident(&item, "SHARKON2025");
+        let normalized = normalize_incident(&item, "HOST-EXAMPLE");
         assert_eq!(normalized.signal_type, "print_job");
         assert_eq!(normalized.username, "Администратор");
         assert_eq!(normalized.action, "incident");
@@ -1074,7 +1074,7 @@ mod tests {
     fn case_lines_emit_case_state() {
         let cases = vec![json!({
             "id": 28,
-            "host": "SHARKON2025",
+            "host": "HOST-EXAMPLE",
             "status": "open",
             "severity": "medium",
             "assignee": null,
@@ -1084,7 +1084,7 @@ mod tests {
             "forensics": null,
             "updated_at": "2026-05-15T10:03:00+00:00"
         })];
-        let lines = build_case_lines("SHARKON2025", &cases);
+        let lines = build_case_lines("HOST-EXAMPLE", &cases);
         assert_eq!(lines.len(), 1);
         assert!(lines[0].starts_with("aw_dlp_case,"));
     }

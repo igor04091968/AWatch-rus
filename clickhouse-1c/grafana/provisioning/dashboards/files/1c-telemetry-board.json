@@ -21,7 +21,7 @@
     },
     {
       "title": "Manager Brief",
-      "url": "http://10.10.10.2:8710/manager/brief"
+      "url": "http://192.0.2.2:8710/manager/brief"
     }
   ],
   "panels": [

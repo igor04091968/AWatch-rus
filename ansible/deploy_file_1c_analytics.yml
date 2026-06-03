@@ -16,7 +16,7 @@
     aw_file_1c_clickhouse_native_port: 9000
     aw_file_1c_company_api_host: "{{ ansible_host | default('127.0.0.1') }}"
     aw_file_1c_company_api_port: 8710
-    aw_file_1c_manager_brief_grafana_url: "http://10.10.10.11:3000/d/1c-file-mgmt/1c-file-management-board?orgId=1"
+    aw_file_1c_manager_brief_grafana_url: "http://192.0.2.11:3000/d/1c-file-mgmt/1c-file-management-board?orgId=1"
     aw_file_1c_manager_brief_state_dir: /opt/activitywatch/clickhouse-1c/state/manager-brief
     aw_file_1c_manager_brief_model: gpt-5.3-codex
     aw_file_1c_manager_brief_codex_user: igor

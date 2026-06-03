@@ -156,7 +156,7 @@ python ai/generate_manager_brief.py --host localhost --port 8123 --user default 
 Этот слой делает не raw LLM-чат, а промышленный pipeline:
 
 - строит компактный context из `v_company_portfolio_overview`;
-- вызывает локальный `codex exec` на `10.10.10.2`;
+- вызывает локальный `codex exec` на `192.0.2.2`;
 - валидирует structured output по JSON schema;
 - при сбое `codex` отдаёт deterministic fallback, чтобы контур не пустел;
 - пишет `latest.json` и `latest.md` в `state/manager-brief/`.

@@ -54,7 +54,7 @@ tsj_bot_aw_rus_dlp_heal_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication
 tsj_bot_aw_rus_case_api_base: "http://<AW_SERVER_HOST>:5602"
 tsj_bot_aw_rus_hayabusa_enabled: "true"
 tsj_bot_aw_rus_hayabusa_ssh_cmd: "sshpass -p 'CHANGE_ME' ssh -o PubkeyAuthentication=no -o StrictHostKeyChecking=no igor@<AW_SERVER_HOST>"
-tsj_bot_aw_rus_host: "SHARKON2025"
+tsj_bot_aw_rus_host: "HOST-EXAMPLE"
 tsj_bot_aw_rus_primary_user: "USER1"
 tsj_bot_aw_rus_stale_sec: 900
 tsj_bot_aw_rus_slo_enabled: "true"
