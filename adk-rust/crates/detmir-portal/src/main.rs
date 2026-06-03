@@ -369,6 +369,7 @@ struct ReportMetrics {
     evidence_screenshots: usize,
     open_incidents: usize,
     acknowledged_incidents: usize,
+    workforce_index: Option<u8>,
 }
 
 fn main() {
@@ -860,6 +861,7 @@ fn build_reports(
             .count(),
         open_incidents: incidents.iter().filter(|item| !item.acknowledged).count(),
         acknowledged_incidents: incidents.iter().filter(|item| item.acknowledged).count(),
+        workforce_index: workforce_index(users_count, active_seconds),
     };
     let grafana = grafana_block(snapshot);
     let collection = collection_block(snapshot.detmir_check.payload.as_ref());
@@ -904,6 +906,7 @@ fn build_reports(
         "headline": headline,
         "executive_points": executive_points,
         "kpis": [
+            report_kpi("Индекс активности", workforce_index_text(metrics.workforce_index), workforce_index_status(metrics.workforce_index), "proxy: active time / 8h на сотрудника"),
             report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
             report_kpi("Активное время", human_duration(metrics.active_seconds), worktime.status.clone(), "сумма active_seconds"),
             report_kpi("Приложения", metrics.apps_count.to_string(), worktime.status.clone(), "true active applications"),
@@ -924,6 +927,7 @@ fn build_reports(
             {
                 "title": "Работа и управляемость",
                 "items": [
+                    report_item("Индекс активности", workforce_index_status(metrics.workforce_index), workforce_index_text(metrics.workforce_index)),
                     report_item("Worktime", worktime.status.clone(), worktime.text.clone()),
                     report_item("Активное время", worktime.status.clone(), human_duration(metrics.active_seconds)),
                     report_item("Приложения", worktime.status.clone(), metrics.apps_count.to_string()),
@@ -986,6 +990,10 @@ fn render_report_markdown(
         } else {
             "нет"
         }
+    ));
+    text.push_str(&format!(
+        "- Индекс полезной активности: {}\n",
+        workforce_index_text(metrics.workforce_index)
     ));
     text.push_str(&format!(
         "- Сотрудники за сегодня: {}\n",
@@ -1072,6 +1080,30 @@ fn human_duration(seconds: i64) -> String {
     let hours = seconds / 3600;
     let minutes = (seconds % 3600) / 60;
     format!("{hours:02}:{minutes:02}")
+}
+
+fn workforce_index(users_count: usize, active_seconds: i64) -> Option<u8> {
+    if users_count == 0 || active_seconds <= 0 {
+        return None;
+    }
+    let planned_seconds = users_count as f64 * 8.0 * 3600.0;
+    let value = ((active_seconds as f64 / planned_seconds) * 100.0).round();
+    Some(value.clamp(0.0, 100.0) as u8)
+}
+
+fn workforce_index_text(value: Option<u8>) -> String {
+    value
+        .map(|value| format!("{value}%"))
+        .unwrap_or_else(|| "нет данных".to_string())
+}
+
+fn workforce_index_status(value: Option<u8>) -> String {
+    match value {
+        Some(value) if value >= 80 => "OK".to_string(),
+        Some(value) if value >= 60 => "WARN".to_string(),
+        Some(_) => "FAIL".to_string(),
+        None => "UNKNOWN".to_string(),
+    }
 }
 
 fn build_incidents(snapshot: &Snapshot, state: &IncidentStateFile) -> Vec<IncidentItem> {
@@ -2589,6 +2621,18 @@ mod tests {
         assert_eq!(human_duration(0), "00:00");
         assert_eq!(human_duration(3660), "01:01");
         assert_eq!(human_duration(-10), "00:00");
+    }
+
+    #[test]
+    fn workforce_index_uses_eight_hour_proxy() {
+        assert_eq!(workforce_index(1, 8 * 3600), Some(100));
+        assert_eq!(workforce_index(2, 8 * 3600), Some(50));
+        assert_eq!(workforce_index(0, 8 * 3600), None);
+        assert_eq!(workforce_index(1, 0), None);
+        assert_eq!(workforce_index_text(Some(84)), "84%");
+        assert_eq!(workforce_index_status(Some(84)), "OK");
+        assert_eq!(workforce_index_status(Some(70)), "WARN");
+        assert_eq!(workforce_index_status(Some(30)), "FAIL");
     }
 
     #[test]

@@ -118,11 +118,14 @@ function renderOperator(data) {
 }
 
 function renderManager(data) {
+  const workforceIndex = workforceIndexText(data.users_count, data.total_active_seconds);
   return `
     <h2 class="section-title">Руководитель</h2>
     <div class="grid-2">
       <section class="card">
         <h3>Работа сегодня</h3>
+        <p class="kpi-value">${escapeHtml(workforceIndex)}</p>
+        <p class="muted">Индекс полезной активности: active time / 8 ч на сотрудника</p>
         <p class="muted">Сотрудников: ${data.users_count}; активных часов: ${Number(data.total_active_hours || 0).toFixed(1)}</p>
         <p class="muted">${escapeHtml(data.status?.text || "")}</p>
       </section>
@@ -146,6 +149,14 @@ function renderManager(data) {
       </div>
     `).join("")}</div>
   `;
+}
+
+function workforceIndexText(usersCount, activeSeconds) {
+  const users = Number(usersCount || 0);
+  const seconds = Number(activeSeconds || 0);
+  if (users <= 0 || seconds <= 0) return "Нет данных";
+  const pct = Math.max(0, Math.min(100, Math.round(seconds / (users * 8 * 3600) * 100)));
+  return `${pct}%`;
 }
 
 function renderOwner(data) {

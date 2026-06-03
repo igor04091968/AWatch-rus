@@ -30,6 +30,8 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - UI tab: `Отчеты`;
 - отчет содержит KPI для владельца/руководителя: worktime users, active time,
   active applications, DLP WARN/FAIL, evidence screenshots/items, open issues;
+- отчет и вкладка `Руководитель` показывают `Индекс полезной активности` как
+  proxy `active time / 8h на сотрудника`;
 - отчет содержит Markdown export для передачи руководителю или заказчику;
 - формулировка DLP/case показателей зафиксирована как
   `derived detections/cases`, не как вручную подтвержденные инциденты;
