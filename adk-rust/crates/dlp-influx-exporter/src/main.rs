@@ -120,6 +120,33 @@ fn load_config() -> Config {
     }
 }
 
+fn is_runtime_placeholder(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_uppercase();
+    normalized.is_empty()
+        || normalized.contains("HOST-EXAMPLE")
+        || normalized.contains("WINDOWS_USER_EXAMPLE")
+        || normalized.contains("192.0.2.")
+        || normalized.contains("198.51.100.")
+        || normalized.contains("203.0.113.")
+}
+
+fn validate_runtime_config(config: &Config) -> Result<()> {
+    if !config.influx_enabled {
+        return Ok(());
+    }
+    if is_runtime_placeholder(&config.influx_url) {
+        bail!(
+            "AW_DLP_INFLUX_URL contains an empty/example/TEST-NET value while AW_DLP_INFLUX_ENABLED=true"
+        );
+    }
+    if config.hosts.is_empty() || config.hosts.iter().any(|host| is_runtime_placeholder(host)) {
+        bail!(
+            "AW_DLP_INFLUX_HOSTS contains an empty/example value while AW_DLP_INFLUX_ENABLED=true"
+        );
+    }
+    Ok(())
+}
+
 fn utc_now() -> DateTime<Utc> {
     Utc::now()
 }
@@ -930,6 +957,7 @@ fn run(cli: &Cli) -> Result<RunSummary> {
             error: None,
         });
     }
+    validate_runtime_config(&config)?;
     let client = Client::builder()
         .timeout(Duration::from_secs(cli.timeout_seconds))
         .no_proxy()
@@ -1001,6 +1029,37 @@ fn main() -> Result<()> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn test_config() -> Config {
+        Config {
+            aw_api_base: DEFAULT_AW_API_BASE.to_string(),
+            case_api_base: DEFAULT_CASE_API_BASE.to_string(),
+            influx_url: String::new(),
+            influx_org: DEFAULT_INFLUX_ORG.to_string(),
+            influx_bucket: DEFAULT_INFLUX_BUCKET.to_string(),
+            influx_token: String::new(),
+            influx_enabled: false,
+            hosts: vec![DEFAULT_HOSTS.to_string()],
+            lookback_days: 30,
+            event_limit: 2000,
+            case_limit: 500,
+        }
+    }
+
+    #[test]
+    fn runtime_validation_rejects_placeholder_influx_destination() {
+        let mut config = test_config();
+        config.influx_enabled = true;
+        config.influx_url = "http://192.0.2.10:8086".to_string();
+        config.hosts = vec!["HOST-EXAMPLE".to_string()];
+
+        let err = validate_runtime_config(&config).unwrap_err().to_string();
+        assert!(err.contains("AW_DLP_INFLUX_URL"));
+
+        config.influx_url = "http://influxdb.example.internal:8086".to_string();
+        let err = validate_runtime_config(&config).unwrap_err().to_string();
+        assert!(err.contains("AW_DLP_INFLUX_HOSTS"));
+    }
 
     #[test]
     fn endpoint_lines_emit_self_test_and_signal() {

@@ -204,6 +204,33 @@ fn load_config() -> Config {
     }
 }
 
+fn is_runtime_placeholder(value: &str) -> bool {
+    let normalized = value.trim().to_ascii_uppercase();
+    normalized.is_empty()
+        || normalized.contains("HOST-EXAMPLE")
+        || normalized.contains("WINDOWS_USER_EXAMPLE")
+        || normalized.contains("192.0.2.")
+        || normalized.contains("198.51.100.")
+        || normalized.contains("203.0.113.")
+}
+
+fn validate_runtime_config(config: &Config) -> Result<()> {
+    if !config.influx_enabled {
+        return Ok(());
+    }
+    if is_runtime_placeholder(&config.influx_url) {
+        bail!(
+            "AW_WORKTIME_INFLUX_URL contains an empty/example/TEST-NET value while AW_WORKTIME_INFLUX_ENABLED=true"
+        );
+    }
+    if config.hosts.is_empty() || config.hosts.iter().any(|host| is_runtime_placeholder(host)) {
+        bail!(
+            "AW_WORKTIME_INFLUX_HOSTS contains an empty/example value while AW_WORKTIME_INFLUX_ENABLED=true"
+        );
+    }
+    Ok(())
+}
+
 fn utc_now() -> DateTime<Utc> {
     Utc::now()
 }
@@ -879,6 +906,7 @@ fn run(cli: &Cli) -> Result<RunSummary> {
             error: None,
         });
     }
+    validate_runtime_config(&config)?;
     let client = Client::builder()
         .timeout(Duration::from_secs(cli.timeout_seconds))
         .no_proxy()
@@ -1002,6 +1030,21 @@ mod tests {
             out,
             "aw_worktime_exporter_heartbeat,host=HOST-EXAMPLE run=1i 42"
         );
+    }
+
+    #[test]
+    fn runtime_validation_rejects_placeholder_influx_destination() {
+        let mut config = test_config();
+        config.influx_enabled = true;
+        config.influx_url = "http://192.0.2.10:8086".to_string();
+        config.hosts = vec!["HOST-EXAMPLE".to_string()];
+
+        let err = validate_runtime_config(&config).unwrap_err().to_string();
+        assert!(err.contains("AW_WORKTIME_INFLUX_URL"));
+
+        config.influx_url = "http://influxdb.example.internal:8086".to_string();
+        let err = validate_runtime_config(&config).unwrap_err().to_string();
+        assert!(err.contains("AW_WORKTIME_INFLUX_HOSTS"));
     }
 
     #[test]

@@ -622,6 +622,32 @@
             fail_msg: "aw_dlp_influx_enabled=true, но token пуст и в локальном env, и в текущем /etc/activitywatch/aw-server.env. Exporter будет падать и Grafana не получит DLP-ряды."
           when: aw_dlp_influx_enabled | default(false) | bool
 
+        - name: Проверить destination для AW worktime Influx exporter
+          ansible.builtin.assert:
+            that:
+              - (aw_worktime_influx_url | default('') | string | length) > 0
+              - "'192.0.2.' not in (aw_worktime_influx_url | default('') | string)"
+              - "'198.51.100.' not in (aw_worktime_influx_url | default('') | string)"
+              - "'203.0.113.' not in (aw_worktime_influx_url | default('') | string)"
+              - (aw_worktime_influx_hosts | default('') | string | length) > 0
+              - "'HOST-EXAMPLE' not in (aw_worktime_influx_hosts | default('') | string)"
+              - "'WINDOWS_USER_EXAMPLE' not in (aw_worktime_influx_hosts | default('') | string)"
+            fail_msg: "aw_worktime_influx_enabled=true, но URL/hosts похожи на public example/TEST-NET значения. Задайте live значения в private inventory/env, не в public repo."
+          when: aw_worktime_influx_enabled | default(false) | bool
+
+        - name: Проверить destination для AW DLP Influx exporter
+          ansible.builtin.assert:
+            that:
+              - (aw_dlp_influx_url | default('') | string | length) > 0
+              - "'192.0.2.' not in (aw_dlp_influx_url | default('') | string)"
+              - "'198.51.100.' not in (aw_dlp_influx_url | default('') | string)"
+              - "'203.0.113.' not in (aw_dlp_influx_url | default('') | string)"
+              - (aw_dlp_influx_hosts | default('') | string | length) > 0
+              - "'HOST-EXAMPLE' not in (aw_dlp_influx_hosts | default('') | string)"
+              - "'WINDOWS_USER_EXAMPLE' not in (aw_dlp_influx_hosts | default('') | string)"
+            fail_msg: "aw_dlp_influx_enabled=true, но URL/hosts похожи на public example/TEST-NET значения. Задайте live значения в private inventory/env, не в public repo."
+          when: aw_dlp_influx_enabled | default(false) | bool
+
         - name: Записать /etc/activitywatch/aw-server.env перед хотфиксами
           ansible.builtin.copy:
             dest: /etc/activitywatch/aw-server.env
