@@ -1,5 +1,22 @@
 # Журнал изменений
 
+## release-readiness-v0.3 - 2026-06-03
+
+Назначение этапа: audit package для реестра российского ПО и коммерческого
+пилота.
+
+### Добавлено
+
+- `docs/THIRD_PARTY_LICENSES_RU.md` - audit-facing таблица компонент,
+  версий, лицензий, назначения и рисков.
+- `docs/SECURITY_MODEL_RU.md` - роли, trust boundaries, собираемые данные,
+  хранение и доступ.
+- `docs/REGISTRY_RUSSIAN_SO_POSITIONING_RU.md` - безопасное позиционирование
+  по классам: не SIEM/DLP/EDR как основной класс, а операционный контроль,
+  техаудит, мониторинг активности и аналитика событий.
+- `docs/PILOT_DEPLOYMENT_CHECKLIST_RU.md` - чек-лист внедрения у заказчика.
+- `docs/RELEASE_READINESS_V0.3_RU.md` - состав audit package v0.3.
+
 ## release-readiness-v0.2 - 2026-06-03
 
 Назначение этапа: усилить пакет для коммерческого релиза и реестра российского

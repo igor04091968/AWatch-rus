@@ -26,6 +26,16 @@ Release type: public expert-review/source package.
 - документ network perimeter/pfSense как optional integration layer;
 - требование подписанного Git tag и detached signature для release assets.
 
+## Release-readiness v0.3 addendum
+
+Добавлен audit package:
+
+- сторонние компоненты: компонент / версия / лицензия / назначение / риск;
+- модель безопасности: роли, trust boundaries, данные, хранение, доступ;
+- позиционирование для реестра: операционный контроль и аналитика событий,
+  без заявления SIEM/DLP/EDR как основного класса;
+- чек-лист пилотного внедрения у заказчика.
+
 ## Что входит
 
 - Обезличенный public source package DetMir/AWatch-rus.

@@ -52,6 +52,16 @@ Generated GitHub Release assets:
 - `SHA256SUMS-v0.2.txt`
 - `SHA256SUMS-v0.2.txt.sig`
 
+## Release-readiness v0.3 audit package
+
+Audit-facing documents:
+
+- `docs/THIRD_PARTY_LICENSES_RU.md`
+- `docs/SECURITY_MODEL_RU.md`
+- `docs/REGISTRY_RUSSIAN_SO_POSITIONING_RU.md`
+- `docs/PILOT_DEPLOYMENT_CHECKLIST_RU.md`
+- `docs/RELEASE_READINESS_V0.3_RU.md`
+
 ## Artifacts
 
 ```text
