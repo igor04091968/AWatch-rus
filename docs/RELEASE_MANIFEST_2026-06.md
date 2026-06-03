@@ -30,6 +30,28 @@ Additional readiness artifacts:
 - `docs/screenshots/release-v0.1/portal-reports-risk.png`
 - `docs/screenshots/release-v0.1/portal-owner-summary.png`
 
+## Release-readiness v0.2 overlay
+
+Additional release/commercial-readiness artifacts:
+
+- `scripts/generate_release_sbom_v0_2.sh`
+- `scripts/verify_release_assets.sh`
+- `.github/workflows/release-assets.yml`
+- `docs/RELEASE_READINESS_V0.2_RU.md`
+- `docs/CUSTOMER_PILOT_ACCEPTANCE_RU.md`
+- `docs/NETWORK_PERIMETER_PFSENSE_RU.md`
+
+Generated GitHub Release assets:
+
+- `sbom/cyclonedx-rust-v0.2.json`
+- `sbom/spdx-rust-v0.2.json`
+- `sbom/cargo-metadata-v0.2.json`
+- `sbom/cargo-tree-v0.2.txt`
+- `sbom/python-inputs-v0.2.txt`
+- `RELEASE_ASSETS_MANIFEST-v0.2.json`
+- `SHA256SUMS-v0.2.txt`
+- `SHA256SUMS-v0.2.txt.sig`
+
 ## Artifacts
 
 ```text

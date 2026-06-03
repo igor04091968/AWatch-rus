@@ -1,5 +1,24 @@
 # Журнал изменений
 
+## release-readiness-v0.2 - 2026-06-03
+
+Назначение этапа: усилить пакет для коммерческого релиза и реестра российского
+ПО за счет машинного SBOM, проверки release assets, пилотного акта приемки и
+корректного позиционирования pfSense.
+
+### Добавлено
+
+- `scripts/generate_release_sbom_v0_2.sh` - генерация CycloneDX/SPDX SBOM
+  artifacts в `dist/release-v0.2/`.
+- `scripts/verify_release_assets.sh` - проверка `SHA256SUMS*.txt` и detached
+  signature release assets.
+- `.github/workflows/release-assets.yml` - CI self-test checksum/signature
+  verifier и генерации SBOM.
+- `docs/RELEASE_READINESS_V0.2_RU.md` - контрольная карта v0.2.
+- `docs/CUSTOMER_PILOT_ACCEPTANCE_RU.md` - шаблон акта приемки пилота.
+- `docs/NETWORK_PERIMETER_PFSENSE_RU.md` - pfSense как опциональный
+  интеграционный слой, не обязательная часть продукта.
+
 ## release-readiness-v0.1 - 2026-06-03
 
 Назначение этапа: довести DetMir/AWatch-rus до проверяемого release-readiness

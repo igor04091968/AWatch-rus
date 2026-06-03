@@ -1,0 +1,29 @@
+name: release-assets
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  sbom-and-release-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate machine SBOM artifacts
+        run: bash scripts/generate_release_sbom_v0_2.sh dist/release-v0.2
+
+      - name: Validate generated JSON artifacts
+        run: |
+          python3 -m json.tool dist/release-v0.2/sbom/cyclonedx-rust-v0.2.json >/dev/null
+          python3 -m json.tool dist/release-v0.2/sbom/spdx-rust-v0.2.json >/dev/null
+          python3 -m json.tool dist/release-v0.2/RELEASE_ASSETS_MANIFEST-v0.2.json >/dev/null
+
+      - name: Verify release asset checksum/signature script
+        run: bash scripts/verify_release_assets.sh --self-test

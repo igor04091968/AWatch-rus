@@ -147,6 +147,22 @@ git ls-files '*.py'
 
 Сформировать машинные перечни зависимостей.
 
+Для release-readiness v0.2 используется единый генератор:
+
+```bash
+bash scripts/generate_release_sbom_v0_2.sh dist/release-v0.2
+```
+
+Он формирует:
+
+- `cyclonedx-rust-v0.2.json`;
+- `spdx-rust-v0.2.json`;
+- `cargo-metadata-v0.2.json`;
+- `cargo-tree-v0.2.txt`;
+- `python-inputs-v0.2.txt`;
+- `RELEASE_ASSETS_MANIFEST-v0.2.json`;
+- `SHA256SUMS-v0.2.txt`.
+
 Rust:
 
 ```bash
@@ -200,6 +216,19 @@ scripts/validate_install_kit.sh
 ```bash
 sha256sum dist/* install-kit-awindows-*.zip install-kit-awindows-*.tar.gz \
   > SHA256SUMS
+```
+
+Проверка release assets v0.2:
+
+```bash
+RELEASE_VERIFY_PUBLIC_KEY=<RELEASE_PUBLIC_KEY.pem> \
+  bash scripts/verify_release_assets.sh dist/release-v0.2
+```
+
+CI self-test:
+
+```bash
+bash scripts/verify_release_assets.sh --self-test
 ```
 
 ## 9. Документы для реестра российского ПО

@@ -16,6 +16,16 @@ Release type: public expert-review/source package.
 - architecture схема `docs/diagrams/release-readiness-v0.1.md`;
 - обезличенные screenshots портала в `docs/screenshots/release-v0.1/`.
 
+## Release-readiness v0.2 addendum
+
+Добавлен слой коммерческого/release hardening:
+
+- machine SBOM generation для CycloneDX и SPDX;
+- CI self-test checksum/signature verifier;
+- шаблон customer pilot acceptance act;
+- документ network perimeter/pfSense как optional integration layer;
+- требование подписанного Git tag и detached signature для release assets.
+
 ## Что входит
 
 - Обезличенный public source package DetMir/AWatch-rus.
