@@ -639,6 +639,7 @@
               AW_SERVER_GROUP={{ aw_server_group }}
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
               AW_WORKTIME_TZ={{ aw_worktime_timezone }}
+              AW_WORKTIME_HOST={{ aw_worktime_host | default(aw_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
               AW_DLP_IOC_DIR={{ aw_dlp_ioc_workdir }}/output
               AW_DLP_POLICY_ENGINE_BIND_HOST={{ aw_dlp_policy_engine_bind_host }}
               AW_DLP_POLICY_ENGINE_PORT={{ aw_dlp_policy_engine_port }}
@@ -658,6 +659,9 @@
               AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default('HOST-EXAMPLE') }}
               AW_WORKTIME_INFLUX_DAYS={{ aw_worktime_influx_days | default('today,yesterday') }}
               AW_WORKTIME_INFLUX_TOKEN={{ aw_effective_worktime_influx_token | default('') }}
+              AW_WORKTIME_MANAGEMENT_HISTORY_DIR={{ aw_worktime_management_history_dir | default(aw_server_data_dir ~ '/worktime-management-history') }}
+              AW_WORKTIME_MANAGEMENT_HISTORY_DAYS={{ aw_worktime_management_history_days | default(31) }}
+              AW_WORKTIME_MANAGEMENT_HISTORY_RETENTION_DAYS={{ aw_worktime_management_history_retention_days | default(120) }}
               AW_DLP_INFLUX_ENABLED={{ 'true' if (aw_dlp_influx_enabled | default(false) | bool) else 'false' }}
               AW_DLP_INFLUX_URL={{ aw_dlp_influx_url | default('') }}
               AW_DLP_INFLUX_ORG={{ aw_dlp_influx_org | default('proxmox') }}
@@ -1081,6 +1085,14 @@
             group: root
             mode: "0755"
           when: aw_dlp_admin_cli_rust_binary.stat.exists
+
+        - name: Создать каталог daily history для AW worktime management
+          ansible.builtin.file:
+            path: "{{ aw_worktime_management_history_dir | default(aw_server_data_dir ~ '/worktime-management-history') }}"
+            state: directory
+            owner: "{{ aw_server_user }}"
+            group: "{{ aw_server_group }}"
+            mode: "0750"
 
         - name: Проверить локальный Rust AW worktime API
           ansible.builtin.stat:

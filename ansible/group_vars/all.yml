@@ -19,6 +19,9 @@ aw_worktime_influx_bucket: "aw_metrics"
 aw_worktime_influx_hosts: "HOST-EXAMPLE"
 aw_worktime_influx_days: "today,yesterday"
 aw_worktime_influx_token: "{{ lookup('env', 'AW_WORKTIME_INFLUX_TOKEN') }}"
+aw_worktime_management_history_dir: "{{ aw_server_data_dir }}/worktime-management-history"
+aw_worktime_management_history_days: 31
+aw_worktime_management_history_retention_days: 120
 aw_dlp_influx_enabled: true
 aw_dlp_influx_url: "http://192.0.2.10:8086"
 aw_dlp_influx_org: "proxmox"
@@ -29,6 +32,7 @@ aw_dlp_influx_event_limit: 2000
 aw_dlp_influx_token: "{{ lookup('env', 'AW_DLP_INFLUX_TOKEN') }}"
 aw_monitored_windows_host: "198.51.100.18"
 aw_monitored_windows_hostname: "HOST-EXAMPLE"
+aw_worktime_host: "{{ aw_monitored_windows_hostname }}"
 aw_rus_health_worktime_api_base: "http://127.0.0.1:5610"
 aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
 aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"

@@ -39,6 +39,8 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
   подразделений/ответственных за текущий день;
 - JSON отчета содержит `workforce.department_comparison`,
   `workforce.owner_comparison`, `workforce.trend` и `workforce.trend_status`;
+- daily history для `workforce.trend` накапливается в `worktime-api` как
+  агрегированные trend-points; портал только отображает готовый массив;
 - `trend_status=daily_only` означает, что месячный тренд еще нельзя
   интерпретировать как полноценный отчет; для `monthly_ready` нужна накопленная
   daily history;

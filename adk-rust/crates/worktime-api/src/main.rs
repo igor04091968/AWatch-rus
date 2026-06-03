@@ -2,7 +2,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     io::Cursor,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -60,6 +60,9 @@ struct Config {
     report_stale_ttl_seconds: i64,
     report_disk_cache_dir: PathBuf,
     report_disk_stale_ttl_seconds: i64,
+    management_history_dir: PathBuf,
+    management_history_days: usize,
+    management_history_retention_days: i64,
     true_active_evidence_window_seconds: i64,
     true_active_max_event_seconds: i64,
     offset: FixedOffset,
@@ -231,6 +234,16 @@ fn load_config() -> Config {
         )),
         report_disk_stale_ttl_seconds: env_i64("AW_WORKTIME_REPORT_DISK_STALE_TTL_SECONDS", 86400)
             .max(report_stale_ttl_seconds),
+        management_history_dir: PathBuf::from(env(
+            "AW_WORKTIME_MANAGEMENT_HISTORY_DIR",
+            "/var/lib/activitywatch/worktime-management-history",
+        )),
+        management_history_days: env_usize("AW_WORKTIME_MANAGEMENT_HISTORY_DAYS", 31).clamp(1, 366),
+        management_history_retention_days: env_i64(
+            "AW_WORKTIME_MANAGEMENT_HISTORY_RETENTION_DAYS",
+            120,
+        )
+        .clamp(1, 3660),
         true_active_evidence_window_seconds: env_i64(
             "AW_WORKTIME_TRUE_ACTIVE_EVIDENCE_WINDOW_SECONDS",
             180,
@@ -390,7 +403,7 @@ impl App {
         accept: &str,
     ) -> (Vec<u8>, String, Vec<(String, String)>) {
         let fmt = resolve_report_format(params, accept);
-        let host = resolve_host(&self.config, params.first("host").as_deref());
+        let host = self.resolve_report_host(params.first("host").as_deref());
         let report_date = resolve_report_date(
             &self.config,
             params.first("day").as_deref(),
@@ -621,6 +634,20 @@ impl App {
         Ok((bounds, events))
     }
 
+    fn resolve_report_host(&self, host: Option<&str>) -> String {
+        let configured = resolve_host(&self.config, host);
+        if !configured.is_empty() && configured != DEFAULT_HOST {
+            return configured;
+        }
+        self.detect_worktime_host()
+            .unwrap_or_else(|| configured_if_nonempty(&configured))
+    }
+
+    fn detect_worktime_host(&self) -> Option<String> {
+        let payload = self.aw_get_json_once("/buckets").ok()?;
+        host_from_buckets_payload(&payload)
+    }
+
     fn management_report_for_date(
         &self,
         host: &str,
@@ -745,6 +772,47 @@ fn resolve_host(config: &Config, host: Option<&str>) -> String {
         config.default_host.clone()
     } else {
         h.to_string()
+    }
+}
+
+fn configured_if_nonempty(value: &str) -> String {
+    if value.trim().is_empty() {
+        DEFAULT_HOST.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn host_from_buckets_payload(payload: &Value) -> Option<String> {
+    let mut hosts = BTreeSet::new();
+    if let Some(map) = payload.as_object() {
+        for key in map.keys() {
+            collect_worktime_host_from_bucket_id(key, &mut hosts);
+        }
+    }
+    if let Some(items) = payload.as_array() {
+        for item in items {
+            if let Some(id) = item.as_str() {
+                collect_worktime_host_from_bucket_id(id, &mut hosts);
+            }
+            if let Some(id) = item.get("id").and_then(Value::as_str) {
+                collect_worktime_host_from_bucket_id(id, &mut hosts);
+            }
+            if let Some(id) = item.get("name").and_then(Value::as_str) {
+                collect_worktime_host_from_bucket_id(id, &mut hosts);
+            }
+        }
+    }
+    hosts.into_iter().find(|host| host != DEFAULT_HOST)
+}
+
+fn collect_worktime_host_from_bucket_id(bucket_id: &str, hosts: &mut BTreeSet<String>) {
+    let Some(host) = bucket_id.strip_prefix("aw-worktime-sessions_") else {
+        return;
+    };
+    let host = host.trim();
+    if !host.is_empty() {
+        hosts.insert(host.to_string());
     }
 }
 
@@ -1398,7 +1466,7 @@ impl App {
         let department_rollups = build_rollups(&roster, &actions, "department");
         let owner_roster = owner_rollups.clone();
         let executive = build_executive_summary(&summary, &actions, &sources);
-        let trend = vec![json!({
+        let current_trend_point = json!({
             "report_date": report_date.to_string(),
             "users_count": summary["users_count"],
             "active_users": summary["active_users"],
@@ -1408,7 +1476,23 @@ impl App {
             "portfolio_coverage_pct": summary["portfolio_coverage_pct"],
             "actions_count": summary["actions_count"],
             "critical_actions_count": summary["critical_actions_count"],
-        })];
+        });
+        let history_saved = self.save_management_history_point(
+            host,
+            &owner_filter,
+            &department_filter,
+            report_date,
+            &current_trend_point,
+        );
+        self.prune_management_history(host, &owner_filter, &department_filter, report_date);
+        let trend = self.load_management_trend(
+            host,
+            &owner_filter,
+            &department_filter,
+            report_date,
+            &current_trend_point,
+        );
+        let trend_points = trend.len();
         json!({
             "generated_at_utc": to_iso_utc(Utc::now()),
             "host": host,
@@ -1429,6 +1513,14 @@ impl App {
             "sources": sources,
             "trend": trend,
             "trend_scope": "portfolio",
+            "history": {
+                "enabled": true,
+                "saved_current_point": history_saved,
+                "points_count": trend_points,
+                "days_configured": self.config.management_history_days,
+                "retention_days": self.config.management_history_retention_days,
+                "storage": "daily_aggregate_points"
+            },
             "executive": executive,
             "owner_rollups": owner_rollups,
             "department_rollups": department_rollups,
@@ -1436,6 +1528,115 @@ impl App {
             "bucket_id": sessions_bucket(host),
             "report_bounds": {"start_utc": to_iso_utc(day_start), "end_utc": to_iso_utc(day_end)},
         })
+    }
+
+    fn management_history_filter_dir(&self, host: &str, owner: &str, department: &str) -> PathBuf {
+        let host = history_component(host);
+        let filter = stable_hash_hex(&format!(
+            "owner={}|department={}",
+            normalize_filter(owner),
+            normalize_filter(department)
+        ));
+        self.config.management_history_dir.join(host).join(filter)
+    }
+
+    fn management_history_path(
+        &self,
+        host: &str,
+        owner: &str,
+        department: &str,
+        report_date: NaiveDate,
+    ) -> PathBuf {
+        self.management_history_filter_dir(host, owner, department)
+            .join(format!("{report_date}.json"))
+    }
+
+    fn save_management_history_point(
+        &self,
+        host: &str,
+        owner: &str,
+        department: &str,
+        report_date: NaiveDate,
+        point: &Value,
+    ) -> bool {
+        let path = self.management_history_path(host, owner, department, report_date);
+        let Some(dir) = path.parent() else {
+            return false;
+        };
+        if fs::create_dir_all(dir).is_err() {
+            return false;
+        }
+        let payload = json!({
+            "stored_at_utc": to_iso_utc(Utc::now()),
+            "report_date": report_date.to_string(),
+            "host": host,
+            "filters": {
+                "owner": normalize_filter(owner),
+                "department": normalize_filter(department)
+            },
+            "point": point
+        });
+        let tmp = path.with_extension("json.tmp");
+        if fs::write(
+            &tmp,
+            serde_json::to_vec_pretty(&payload).unwrap_or_default(),
+        )
+        .is_err()
+        {
+            return false;
+        }
+        fs::rename(tmp, path).is_ok()
+    }
+
+    fn load_management_trend(
+        &self,
+        host: &str,
+        owner: &str,
+        department: &str,
+        report_date: NaiveDate,
+        current_point: &Value,
+    ) -> Vec<Value> {
+        let days = self.config.management_history_days as i64;
+        let start_date = report_date - TimeDelta::days(days.saturating_sub(1));
+        let mut points = BTreeMap::new();
+        for offset in 0..days {
+            let date = start_date + TimeDelta::days(offset);
+            let path = self.management_history_path(host, owner, department, date);
+            let Some(point) = load_management_history_point(&path) else {
+                continue;
+            };
+            points.insert(date, point);
+        }
+        points
+            .entry(report_date)
+            .or_insert_with(|| current_point.clone());
+        points.into_values().collect()
+    }
+
+    fn prune_management_history(
+        &self,
+        host: &str,
+        owner: &str,
+        department: &str,
+        report_date: NaiveDate,
+    ) {
+        let dir = self.management_history_filter_dir(host, owner, department);
+        let cutoff = report_date - TimeDelta::days(self.config.management_history_retention_days);
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(stem) = path.file_stem().and_then(|value| value.to_str()) else {
+                continue;
+            };
+            let Ok(date) = NaiveDate::parse_from_str(stem, "%Y-%m-%d") else {
+                continue;
+            };
+            if date < cutoff {
+                let _ = fs::remove_file(path);
+            }
+        }
     }
 
     fn build_source_freshness(
@@ -2146,6 +2347,36 @@ fn make_report_cache_key(
     format!("{path}|{fmt}|{host}|{report_date}|{day}|{owner}|{department}")
 }
 
+fn stable_hash_hex(value: &str) -> String {
+    let mut h: u64 = 1469598103934665603;
+    for b in value.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(1099511628211);
+    }
+    format!("{h:016x}")
+}
+
+fn history_component(value: &str) -> String {
+    let mut out = String::new();
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+            out.push(ch);
+        } else {
+            out.push('_');
+        }
+    }
+    if out.is_empty() {
+        "default".to_string()
+    } else {
+        out.chars().take(80).collect()
+    }
+}
+
+fn load_management_history_point(path: &Path) -> Option<Value> {
+    let payload: Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
+    payload.get("point").cloned()
+}
+
 fn today_csv(rows: &[Value]) -> String {
     let mut out = "user,user_id,active_seconds,active_hhmm,first_activity,last_activity,idle_seconds,sessions_count,samples_count,active_samples\n".to_string();
     for row in rows {
@@ -2556,6 +2787,19 @@ mod tests {
     }
 
     #[test]
+    fn host_detection_uses_worktime_session_bucket() {
+        let payload = json!({
+            "aw-watcher-window_HOST-EXAMPLE": {},
+            "aw-worktime-sessions_HOST-EXAMPLE": {},
+            "aw-worktime-sessions_WORKSTATION-01": {}
+        });
+        assert_eq!(
+            host_from_buckets_payload(&payload),
+            Some("WORKSTATION-01".to_string())
+        );
+    }
+
+    #[test]
     fn true_active_apps_require_evidence() {
         let cfg = test_config();
         let start = parse_iso_utc("2026-05-14T06:00:00Z").unwrap();
@@ -2581,5 +2825,39 @@ mod tests {
             build_true_active_apps_from_events(&cfg, &windows, &afk, &HashMap::new(), start, end);
         assert_eq!(rows[0]["application"], "1С");
         assert_eq!(rows[0]["proved_work_seconds"], 300);
+    }
+
+    #[test]
+    fn management_history_accumulates_daily_trend_points() {
+        let mut cfg = test_config();
+        let dir = std::env::temp_dir().join(format!(
+            "aw-worktime-history-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        cfg.management_history_dir = dir.clone();
+        cfg.management_history_days = 31;
+        cfg.management_history_retention_days = 120;
+        let app = App::new(cfg).unwrap();
+        for day in ["2026-05-12", "2026-05-13", "2026-05-14"] {
+            let date = NaiveDate::parse_from_str(day, "%Y-%m-%d").unwrap();
+            let payload = app.build_management_payload(Vec::new(), "HOST-EXAMPLE", date, "", "");
+            assert_eq!(payload["history"]["saved_current_point"], true);
+        }
+        let payload = app.build_management_payload(
+            Vec::new(),
+            "HOST-EXAMPLE",
+            NaiveDate::from_ymd_opt(2026, 5, 14).unwrap(),
+            "",
+            "",
+        );
+        let trend = payload["trend"].as_array().unwrap();
+        assert_eq!(trend.len(), 3);
+        assert_eq!(payload["history"]["points_count"], 3);
+        assert_eq!(trend[0]["report_date"], "2026-05-12");
+        assert_eq!(trend[2]["report_date"], "2026-05-14");
+        let _ = fs::remove_dir_all(dir);
     }
 }

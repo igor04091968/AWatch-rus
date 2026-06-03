@@ -79,6 +79,13 @@ role/application policy.
   суммарное активное время;
 - статус тренда по числу накопленных daily points.
 
+Worktime API сохраняет daily history как агрегированные trend-points, без
+полных строк сотрудников и без evidence. Runtime-настройки:
+
+- `AW_WORKTIME_MANAGEMENT_HISTORY_DIR`;
+- `AW_WORKTIME_MANAGEMENT_HISTORY_DAYS`;
+- `AW_WORKTIME_MANAGEMENT_HISTORY_RETENTION_DAYS`.
+
 Правило честной интерпретации:
 
 - `daily_only` - есть только оперативный дневной срез, месячные выводы делать
