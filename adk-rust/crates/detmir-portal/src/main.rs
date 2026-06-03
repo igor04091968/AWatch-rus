@@ -361,6 +361,7 @@ struct Snapshot {
     detmir_check: SourceStatus,
     failed_units: SourceStatus,
     worktime: SourceStatus,
+    worktime_management: SourceStatus,
     one_c: SourceStatus,
 }
 
@@ -408,6 +409,13 @@ struct WeightedActivity {
     app_seconds: i64,
     weighted_seconds: i64,
     matched_applications: usize,
+}
+
+#[derive(Debug)]
+struct ReportWorkforceSummary {
+    departments_count: usize,
+    owners_count: usize,
+    trend_status: String,
 }
 
 fn main() {
@@ -583,6 +591,14 @@ fn build_snapshot(args: &Cli) -> Snapshot {
             "worktime_api",
             &format!(
                 "{}/reports/worktime/today",
+                args.worktime_url.trim_end_matches('/')
+            ),
+            timeout,
+        ),
+        worktime_management: http_json_source(
+            "worktime_management",
+            &format!(
+                "{}/reports/worktime/management?format=json&allow_stale=1",
                 args.worktime_url.trim_end_matches('/')
             ),
             timeout,
@@ -763,6 +779,10 @@ fn build_health(snapshot: &Snapshot) -> HealthResponse {
     sources.insert("detmir_check".to_string(), snapshot.detmir_check.ok);
     sources.insert("grafana_check".to_string(), grafana_data_ok(snapshot));
     sources.insert("worktime_api".to_string(), snapshot.worktime.ok);
+    sources.insert(
+        "worktime_management".to_string(),
+        snapshot.worktime_management.ok,
+    );
     sources.insert("dlp_health".to_string(), dlp_ok(snapshot));
     sources.insert("one_c".to_string(), snapshot.one_c.ok);
     HealthResponse {
@@ -823,6 +843,7 @@ fn build_operator(snapshot: &Snapshot, incident_state: &IncidentStateFile) -> Va
         "detmir_check": snapshot.detmir_check,
         "failed_units": snapshot.failed_units,
         "grafana_data": grafana_service(snapshot),
+        "worktime_management": snapshot.worktime_management,
         "links": links(),
         "incidents": build_incidents(snapshot, incident_state),
     })
@@ -912,6 +933,9 @@ fn build_reports(
     let worktime = worktime_block(snapshot);
     let one_c = one_c_block(snapshot);
     let dlp_block_value = dlp_block(snapshot);
+    let department_items = workforce_rollup_items(snapshot, "department_rollups");
+    let owner_items = workforce_rollup_items(snapshot, "owner_rollups");
+    let trend = workforce_trend_json(snapshot);
     let weighted = load_workforce_policy(workforce_policy_path)
         .ok()
         .flatten()
@@ -945,7 +969,19 @@ fn build_reports(
         ),
     ];
     let recommendations = owner_recommendations(snapshot, &summary);
-    let markdown = render_report_markdown(snapshot, headline, &summary, &metrics, &recommendations);
+    let workforce_summary = ReportWorkforceSummary {
+        departments_count: department_items.len(),
+        owners_count: owner_items.len(),
+        trend_status: trend_status(&trend),
+    };
+    let markdown = render_report_markdown(
+        snapshot,
+        headline,
+        &summary,
+        &metrics,
+        &recommendations,
+        &workforce_summary,
+    );
     json!({
         "generated_at_utc": snapshot.generated_at_utc,
         "period": "оперативный срез за сегодня и текущий runtime",
@@ -959,6 +995,7 @@ fn build_reports(
             report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
             report_kpi("Активное время", human_duration(metrics.active_seconds), worktime.status.clone(), "сумма active_seconds"),
             report_kpi("Приложения", metrics.apps_count.to_string(), worktime.status.clone(), "true active applications"),
+            report_kpi("Подразделения", department_items.len().to_string(), snapshot.worktime_management.status.clone(), "сравнение групп за текущий день"),
             report_kpi("DLP WARN/FAIL", format!("{}/{}", metrics.dlp_warn, metrics.dlp_fail), dlp_block_value.status.clone(), "технические сигналы DLP"),
             report_kpi("Evidence", format!("{}/{}", metrics.evidence_screenshots, metrics.evidence_total), evidence_status(evidence), "скриншоты / все evidence items"),
             report_kpi("Открытые вопросы", metrics.open_incidents.to_string(), incident_status(metrics.open_incidents), "не взятые в работу items")
@@ -979,10 +1016,19 @@ fn build_reports(
                     report_item("Индекс активности", workforce_index_status(metrics.workforce_index), workforce_index_text(metrics.workforce_index)),
                     weighted_activity_item(weighted.as_ref(), workforce_policy_path),
                     report_item("Worktime", worktime.status.clone(), worktime.text.clone()),
+                    report_item("Management report", snapshot.worktime_management.status.clone(), snapshot.worktime_management.summary.clone()),
                     report_item("Активное время", worktime.status.clone(), human_duration(metrics.active_seconds)),
                     report_item("Приложения", worktime.status.clone(), metrics.apps_count.to_string()),
                     report_item("Отчет", "OK", "готов к передаче руководителю")
                 ]
+            },
+            {
+                "title": "Подразделения сегодня",
+                "items": department_items.clone()
+            },
+            {
+                "title": "Ответственные сегодня",
+                "items": owner_items.clone()
             },
             {
                 "title": "ИБ и evidence",
@@ -999,9 +1045,87 @@ fn build_reports(
             }
         ],
         "workforce_policy": workforce_policy_json(weighted.as_ref(), workforce_policy_path),
+        "workforce": {
+            "department_comparison": department_items,
+            "owner_comparison": owner_items,
+            "trend": trend,
+            "trend_status": trend_status(&trend),
+            "history_note": "Месячный тренд требует накопленной daily history; текущий слой показывает validated daily management snapshot."
+        },
         "markdown": markdown,
         "links": links()
     })
+}
+
+fn workforce_rollup_items(snapshot: &Snapshot, key: &str) -> Vec<Value> {
+    snapshot
+        .worktime_management
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get(key))
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter(|item| item.get("users_count").and_then(Value::as_i64).unwrap_or(0) > 0)
+                .map(|item| {
+                    let name = item
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Без группы");
+                    let coverage = item
+                        .get("portfolio_coverage_pct")
+                        .and_then(Value::as_f64)
+                        .unwrap_or(0.0);
+                    let users = item.get("users_count").and_then(Value::as_i64).unwrap_or(0);
+                    let active = item
+                        .get("active_users")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0);
+                    let hhmm = item
+                        .get("workday_total_active_hhmm")
+                        .and_then(Value::as_str)
+                        .unwrap_or("00:00");
+                    report_item(
+                        name,
+                        coverage_status(coverage),
+                        format!("{coverage:.0}% · active {active}/{users} · {hhmm}"),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn workforce_trend_json(snapshot: &Snapshot) -> Value {
+    snapshot
+        .worktime_management
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("trend"))
+        .cloned()
+        .unwrap_or_else(|| json!([]))
+}
+
+fn trend_status(trend: &Value) -> String {
+    let points = trend.as_array().map(Vec::len).unwrap_or(0);
+    if points >= 20 {
+        "monthly_ready".to_string()
+    } else if points >= 7 {
+        "weekly_ready".to_string()
+    } else {
+        "daily_only".to_string()
+    }
+}
+
+fn coverage_status(coverage: f64) -> &'static str {
+    if coverage >= 75.0 {
+        "OK"
+    } else if coverage >= 35.0 {
+        "WARN"
+    } else {
+        "FAIL"
+    }
 }
 
 fn load_workforce_policy(path: &Path) -> Result<Option<WorkforcePolicy>> {
@@ -1180,6 +1304,7 @@ fn render_report_markdown(
     summary: &SummaryResponse,
     metrics: &ReportMetrics,
     recommendations: &[String],
+    workforce: &ReportWorkforceSummary,
 ) -> String {
     let mut text = String::new();
     text.push_str("# DetMir оперативный отчет\n\n");
@@ -1208,6 +1333,11 @@ fn render_report_markdown(
         human_duration(metrics.active_seconds)
     ));
     text.push_str(&format!("- Активные приложения: {}\n", metrics.apps_count));
+    text.push_str(&format!(
+        "- Подразделения/ответственные: {}/{}\n",
+        workforce.departments_count, workforce.owners_count
+    ));
+    text.push_str(&format!("- Статус тренда: {}\n", workforce.trend_status));
     text.push_str(&format!(
         "- DLP технические сигналы: ok={}, warn={}, fail={}\n",
         metrics.dlp_ok, metrics.dlp_warn, metrics.dlp_fail
@@ -2594,6 +2724,23 @@ fn source_summary(name: &str, payload: &Value) -> String {
                 .map(Vec::len)
                 .unwrap_or(0)
         ),
+        "worktime_management" => format!(
+            "coverage={:.0}%, departments={}, owners={}",
+            payload
+                .pointer("/summary/portfolio_coverage_pct")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0),
+            payload
+                .get("department_rollups")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0),
+            payload
+                .get("owner_rollups")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+                .unwrap_or(0)
+        ),
         "one_c" => format!(
             "status={}, companies={}",
             payload
@@ -2896,6 +3043,41 @@ mod tests {
                     ]
                 })),
             },
+            worktime_management: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "coverage=50%, departments=1, owners=1".to_string(),
+                error: None,
+                payload: Some(json!({
+                    "summary": {
+                        "portfolio_coverage_pct": 50.0
+                    },
+                    "department_rollups": [
+                        {
+                            "name": "Бухгалтерия",
+                            "users_count": 2,
+                            "active_users": 1,
+                            "portfolio_coverage_pct": 50.0,
+                            "workday_total_active_hhmm": "04:00"
+                        }
+                    ],
+                    "owner_rollups": [
+                        {
+                            "name": "Ответственный",
+                            "users_count": 1,
+                            "active_users": 1,
+                            "portfolio_coverage_pct": 80.0,
+                            "workday_total_active_hhmm": "06:24"
+                        }
+                    ],
+                    "trend": [
+                        {
+                            "report_date": "2026-06-03",
+                            "portfolio_coverage_pct": 50.0
+                        }
+                    ]
+                })),
+            },
             one_c: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),
@@ -2954,6 +3136,14 @@ mod tests {
         );
         assert!(report["kpis"].as_array().unwrap().len() >= 6);
         assert_eq!(report["workforce_policy"]["configured"], false);
+        assert_eq!(report["workforce"]["trend_status"], "daily_only");
+        assert_eq!(
+            report["workforce"]["department_comparison"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -2992,6 +3182,13 @@ mod tests {
                         {"application": "YouTube", "proved_work_seconds": 3600}
                     ]
                 })),
+            },
+            worktime_management: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: Some(json!({})),
             },
             one_c: SourceStatus {
                 ok: true,

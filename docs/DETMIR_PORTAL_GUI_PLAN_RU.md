@@ -35,6 +35,13 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - отчет поддерживает `Взвешенную активность` при наличии
   `/etc/detmir-portal-workforce-policy.json`; публичный пример лежит в
   `configs/detmir-workforce-policy.example.json`;
+- отчет использует Worktime management snapshot и показывает сравнение
+  подразделений/ответственных за текущий день;
+- JSON отчета содержит `workforce.department_comparison`,
+  `workforce.owner_comparison`, `workforce.trend` и `workforce.trend_status`;
+- `trend_status=daily_only` означает, что месячный тренд еще нельзя
+  интерпретировать как полноценный отчет; для `monthly_ready` нужна накопленная
+  daily history;
 - Ansible устанавливает initial workforce policy только если runtime-файл
   отсутствует, чтобы не перетирать клиентские веса ролей;
 - отчет содержит Markdown export для передачи руководителю или заказчику;
