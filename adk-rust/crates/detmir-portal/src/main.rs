@@ -515,6 +515,13 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
             let snapshot = build_snapshot(args);
             respond_json(request, &build_manager(&snapshot))
         }
+        "/api/workforce/policy/explain" => {
+            let snapshot = build_snapshot(args);
+            respond_json(
+                request,
+                &build_workforce_policy_explain(&snapshot, &args.workforce_policy_path),
+            )
+        }
         "/api/owner" => {
             let snapshot = build_snapshot(args);
             respond_json(request, &build_owner(&snapshot))
@@ -951,10 +958,7 @@ fn build_reports(
     let owner_items = workforce_rollup_items(snapshot, "owner_rollups");
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
-    let workforce_policy = load_workforce_policy(workforce_policy_path).ok().flatten();
-    let weighted = workforce_policy
-        .as_ref()
-        .and_then(|policy| weighted_activity(snapshot, policy, metrics.users_count));
+    let workforce_policy_explain = build_workforce_policy_explain(snapshot, workforce_policy_path);
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
         "Контур DetMir работает штатно, критичных действий не требуется"
@@ -1007,7 +1011,7 @@ fn build_reports(
         "executive_points": executive_points,
         "kpis": [
             report_kpi("Индекс активности", workforce_index_text(metrics.workforce_index), workforce_index_status(metrics.workforce_index), "proxy: активное время / плановое рабочее время"),
-            weighted_activity_kpi(weighted.as_ref()),
+            weighted_activity_kpi_from_policy(&workforce_policy_explain),
             report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
             report_kpi("Активное время", human_duration(metrics.active_seconds), worktime.status.clone(), "сумма active_seconds"),
             report_kpi("Приложения", metrics.apps_count.to_string(), worktime.status.clone(), "true active applications"),
@@ -1030,7 +1034,7 @@ fn build_reports(
                 "title": "Работа и управляемость",
                 "items": [
                     report_item("Индекс активности", workforce_index_status(metrics.workforce_index), workforce_index_text(metrics.workforce_index)),
-                    weighted_activity_item(weighted.as_ref(), workforce_policy_path),
+                    weighted_activity_item_from_policy(&workforce_policy_explain, workforce_policy_path),
                     report_item("Worktime", worktime.status.clone(), worktime.text.clone()),
                     report_item("Management report", snapshot.worktime_management.status.clone(), snapshot.worktime_management.summary.clone()),
                     report_item("Активное время", worktime.status.clone(), human_duration(metrics.active_seconds)),
@@ -1064,7 +1068,7 @@ fn build_reports(
                 "items": recommendations.iter().map(|item| report_item("Рекомендация", "INFO", item)).collect::<Vec<_>>()
             }
         ],
-        "workforce_policy": workforce_policy_json(workforce_policy.as_ref(), weighted.as_ref(), workforce_policy_path),
+        "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
             "owner_comparison": owner_items,
@@ -1204,6 +1208,19 @@ fn load_workforce_policy(path: &Path) -> Result<Option<WorkforcePolicy>> {
     Ok(Some(policy))
 }
 
+fn build_workforce_policy_explain(snapshot: &Snapshot, workforce_policy_path: &Path) -> Value {
+    let (users_count, _, _) = worktime_totals(snapshot);
+    let workforce_policy = load_workforce_policy(workforce_policy_path).ok().flatten();
+    let weighted = workforce_policy
+        .as_ref()
+        .and_then(|policy| weighted_activity(snapshot, policy, users_count));
+    workforce_policy_json(
+        workforce_policy.as_ref(),
+        weighted.as_ref(),
+        workforce_policy_path,
+    )
+}
+
 fn weighted_activity(
     snapshot: &Snapshot,
     policy: &WorkforcePolicy,
@@ -1304,41 +1321,80 @@ fn application_weight_match(
         .unwrap_or((default_weight, "default_weight".to_string()))
 }
 
-fn weighted_activity_kpi(weighted: Option<&WeightedActivity>) -> Value {
-    match weighted {
-        Some(weighted) => report_kpi(
+fn weighted_activity_kpi_from_policy(policy: &Value) -> Value {
+    if policy.get("configured").and_then(Value::as_bool) == Some(true) {
+        report_kpi(
             "Взвешенная активность",
-            workforce_index_text(weighted.index),
-            workforce_index_status(weighted.index),
-            &format!("role={} по весам приложений", weighted.role_label),
-        ),
-        None => report_kpi(
+            workforce_index_text(
+                policy
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .map(|value| value as u8),
+            ),
+            workforce_index_status(
+                policy
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .map(|value| value as u8),
+            ),
+            &format!(
+                "role={} по весам приложений",
+                policy
+                    .get("role_label")
+                    .and_then(Value::as_str)
+                    .unwrap_or("неизвестная роль")
+            ),
+        )
+    } else {
+        report_kpi(
             "Взвешенная активность",
             "не настроена".to_string(),
             "UNKNOWN".to_string(),
             "нужен workforce policy с весами приложений",
-        ),
+        )
     }
 }
 
-fn weighted_activity_item(weighted: Option<&WeightedActivity>, policy_path: &Path) -> Value {
-    match weighted {
-        Some(weighted) => report_item(
+fn weighted_activity_item_from_policy(policy: &Value, policy_path: &Path) -> Value {
+    if policy.get("configured").and_then(Value::as_bool) == Some(true) {
+        report_item(
             "Взвешенная активность",
-            workforce_index_status(weighted.index),
+            workforce_index_status(
+                policy
+                    .get("index")
+                    .and_then(Value::as_u64)
+                    .map(|value| value as u8),
+            ),
             format!(
                 "{}; роль {}; weighted {}; apps {}",
-                workforce_index_text(weighted.index),
-                weighted.role_label,
-                human_duration(weighted.weighted_seconds),
-                weighted.matched_applications
+                workforce_index_text(
+                    policy
+                        .get("index")
+                        .and_then(Value::as_u64)
+                        .map(|value| value as u8)
+                ),
+                policy
+                    .get("role_label")
+                    .and_then(Value::as_str)
+                    .unwrap_or("неизвестная роль"),
+                human_duration(
+                    policy
+                        .get("weighted_seconds")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                ),
+                policy
+                    .get("matched_applications")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0)
             ),
-        ),
-        None => report_item(
+        )
+    } else {
+        report_item(
             "Взвешенная активность",
             "UNKNOWN",
             format!("policy не настроена: {}", policy_path.display()),
-        ),
+        )
     }
 }
 
@@ -3364,5 +3420,87 @@ mod tests {
         assert_eq!(weighted.weighted_seconds, 3600);
         assert_eq!(weighted.app_seconds, 7200);
         assert_eq!(weighted.index, Some(13));
+    }
+
+    #[test]
+    fn workforce_policy_explain_is_lightweight_payload() {
+        let dir = tempfile::tempdir().unwrap();
+        let policy_path = dir.path().join("workforce-policy.json");
+        fs::write(
+            &policy_path,
+            r#"{
+              "default_role": "accountant",
+              "roles": {
+                "accountant": {
+                  "label": "Бухгалтер",
+                  "description": "Бухгалтерский профиль",
+                  "planned_hours_per_day": 8,
+                  "default_weight": 0.2,
+                  "application_weights": {"1с": 1.0}
+                }
+              }
+            }"#,
+        )
+        .unwrap();
+        let snapshot = Snapshot {
+            generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            detmir_status: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            detmir_check: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            failed_units: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            worktime: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: Some(json!({
+                    "rows": [
+                        {"user": "USER-1", "active_seconds": 3600}
+                    ],
+                    "true_active_apps": [
+                        {"application": "1С", "proved_work_seconds": 3600}
+                    ]
+                })),
+            },
+            worktime_management: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            one_c: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+        };
+        let explain = build_workforce_policy_explain(&snapshot, &policy_path);
+        assert_eq!(explain["configured"], true);
+        assert_eq!(explain["role"], "accountant");
+        assert_eq!(explain["roles_count"], 1);
+        assert_eq!(explain["app_details"].as_array().unwrap().len(), 1);
+        assert!(explain.get("workforce").is_none());
+        assert!(explain.get("sections").is_none());
+        assert!(explain.get("markdown").is_none());
     }
 }

@@ -42,6 +42,8 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - вкладки `Руководитель` и `Отчеты` показывают экран `Почему такой индекс?`
   с ролью, формулой, плановым временем, app time, weighted time и top
   приложениями с весом/правилом/вкладом;
+- вкладка `Руководитель` получает этот блок через легкий endpoint
+  `/api/workforce/policy/explain`, без загрузки полного `/api/reports`;
 - отчет использует Worktime management snapshot и показывает сравнение
   подразделений/ответственных за текущий день;
 - JSON отчета содержит `workforce.department_comparison`,

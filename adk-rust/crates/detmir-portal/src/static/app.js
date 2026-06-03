@@ -117,7 +117,7 @@ function renderOperator(data) {
   `;
 }
 
-function renderManager(data, reports) {
+function renderManager(data, policyExplain) {
   const workforceIndex = workforceIndexText(data.users_count, data.total_active_seconds);
   return `
     <h2 class="section-title">Руководитель</h2>
@@ -140,7 +140,7 @@ function renderManager(data, reports) {
         `).join("")}</div>
       </section>
     </div>
-    ${renderWorkforceIndexExplanation(reports?.workforce_policy)}
+    ${renderWorkforceIndexExplanation(policyExplain)}
     <h3 class="section-title">Сотрудники</h3>
     <div class="list">${(data.users || []).map(user => `
       <div class="row">
@@ -393,8 +393,8 @@ async function refresh() {
   const data = await loadJson(`/${state.tab}`);
   if (state.tab === "operator") content.innerHTML = renderOperator(data);
   if (state.tab === "manager") {
-    const reports = await loadJson("/reports").catch(() => null);
-    content.innerHTML = renderManager(data, reports);
+    const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
+    content.innerHTML = renderManager(data, policyExplain);
   }
   if (state.tab === "owner") content.innerHTML = renderOwner(data);
   if (state.tab === "incidents") {
