@@ -417,11 +417,11 @@ Acceptance для этого сценария:
 
 Example regression proof template:
 
-- `host=<WINDOWS_HOSTNAME>`
-- `case_id=<CASE_ID>`
-- `intake_id=<INTAKE_ID>`
-- `sha256=<PACKAGE_SHA256>`
-- `report_dir=/opt/hayabusa/reports/<WINDOWS_HOSTNAME>/<REPORT_RUN_ID>`
+- `host=HOST-EXAMPLE`
+- `case_id=CASE_ID_EXAMPLE`
+- `intake_id=INTAKE_ID_EXAMPLE`
+- `sha256=SHA256_EXAMPLE`
+- `report_dir=/opt/hayabusa/reports/HOST-EXAMPLE/REPORT_RUN_ID_EXAMPLE`
 - `latest-intake.json` status: `ok`
 - AW-rus case linkage stored under `forensics.hayabusa`
 
@@ -445,16 +445,16 @@ readlink -f /opt/hayabusa/state/latest-run
 
 ```sh
 curl -fsS http://127.0.0.1:5600/api/0/buckets | jq -r 'keys[] | select(test("^aw-dlp-"))'
-curl -fsS http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_<WINDOWS_HOSTNAME> | jq '{end:.metadata.end}'
+curl -fsS http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_HOST-EXAMPLE | jq '{end:.metadata.end}'
 ```
 
 Контролируемый тест ingest:
 
 ```sh
 TS=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
-PAYLOAD=$(jq -nc --arg ts "$TS" '{timestamp:$ts,duration:0,data:{ruleId:"selftest-dlp-incident",action:"alert",severity:"low",message:"Self-test DLP incident from runbook",signalType:"self_test",username:"AUTOTEST",sessionId:0,hostname:"<WINDOWS_HOSTNAME>",source:"self-test"}}')
-curl -fsS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_<WINDOWS_HOSTNAME>/heartbeat?pulsetime=60' -H 'Content-Type: application/json' --data "$PAYLOAD"
-curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_<WINDOWS_HOSTNAME>/events?limit=5' | jq '.[0].data'
+PAYLOAD=$(jq -nc --arg ts "$TS" '{timestamp:$ts,duration:0,data:{ruleId:"selftest-dlp-incident",action:"alert",severity:"low",message:"Self-test DLP incident from runbook",signalType:"self_test",username:"AUTOTEST",sessionId:0,hostname:"HOST-EXAMPLE",source:"self-test"}}')
+curl -fsS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_HOST-EXAMPLE/heartbeat?pulsetime=60' -H 'Content-Type: application/json' --data "$PAYLOAD"
+curl -fsS 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-incidents_HOST-EXAMPLE/events?limit=5' | jq '.[0].data'
 ```
 
 Если API видит событие, а bucket-страница в UI показывает старые `First/last event`, нажать `Обновить` на странице bucket и раскрыть `Events`.
@@ -568,7 +568,7 @@ Get-CimInstance Win32_Process |
 
 - в Activity view за день видно `Worktime = 0s`;
 - `Top Window Titles / Top Categories / Category Tree` пустые;
-- при этом bucket `aw-watcher-window_<WINDOWS_HOSTNAME>` содержит свежие события.
+- при этом bucket `aw-watcher-window_HOST-EXAMPLE` содержит свежие события.
 
 Подтвержденная причина:
 
@@ -577,14 +577,14 @@ Get-CimInstance Win32_Process |
 
 Быстрый recovery (с Linux admin host):
 
-1. Проверить учетку входа. Рабочую учетную запись задавать как параметр экземпляра: `<WINDOWS_HOSTNAME>\<WINDOWS_DOMAIN_USER>`.
+1. Проверить учетку входа. Рабочую учетную запись задавать как параметр экземпляра: `HOST-EXAMPLE\WINDOWS_USER_EXAMPLE`.
 2. Поднять remote execution через `wmiexec.py` с auth-file:
 
 ```sh
 cat > /tmp/detmir-windows.auth << 'EOF'
-username = <WINDOWS_DOMAIN_USER>
+username = WINDOWS_USER_EXAMPLE
 password = <PASSWORD>
-domain = <WINDOWS_HOSTNAME>
+domain = HOST-EXAMPLE
 EOF
 chmod 600 /tmp/detmir-windows.auth
 ```
@@ -606,14 +606,14 @@ wmiexec.py -nooutput -A /tmp/detmir-windows.auth <WINDOWS_HOST> \
 5. Подождать 10-20 секунд и проверить API на AW server (`<AW_SERVER_HOST>:5600`):
 
 ```sh
-curl -fsS 'http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-watcher-afk_<WINDOWS_HOSTNAME>/events?limit=30' \
+curl -fsS 'http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-watcher-afk_HOST-EXAMPLE/events?limit=30' \
   | jq '{latest:.[0].timestamp, statuses:(group_by(.data.status)|map({status:.[0].data.status,count:length}))}'
 ```
 
 Ожидаемо после фикса:
 
 - в свежих AFK-событиях появляется `status=not-afk`;
-- `aw-watcher-window_<WINDOWS_HOSTNAME>` продолжает обновляться;
+- `aw-watcher-window_HOST-EXAMPLE` продолжает обновляться;
 - после обновления страницы UI дневная сводка перестает быть `0s`.
 
 ### Сервис не стартует
