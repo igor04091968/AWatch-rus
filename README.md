@@ -53,6 +53,7 @@ runtime, OCR/content-analysis, 1C/AI/ETL integration и MCP/dev helpers. Эти
 - [Установка для эксперта](INSTALL_FOR_EXPERT_RU.md)
 - [Сценарий экспертной проверки](docs/EXPERT_TEST_SCENARIO_RU.md)
 - [Release manifest 2026-06](docs/RELEASE_MANIFEST_2026-06.md)
+- [Эксплуатационный профиль](docs/OPERATIONAL_PROOF_PROFILE_RU.md)
 - [Сторонние компоненты](THIRD_PARTY_COMPONENTS.md)
 - [Сторонние лицензии](THIRD_PARTY_LICENSES_RU.md)
 - [Архитектура](docs/ARCHITECTURE_RU.md)
