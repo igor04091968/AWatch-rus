@@ -666,6 +666,7 @@
               AW_WORKTIME_MANAGER_TREND_MIN_POINTS={{ aw_worktime_manager_trend_min_points | default(3) }}
               AW_WORKTIME_MANAGER_TREND_DELTA_PCT={{ aw_worktime_manager_trend_delta_pct | default(10) }}
               AW_WORKTIME_MANAGER_OFF_HOURS_THRESHOLD_SECONDS={{ aw_worktime_manager_off_hours_threshold_seconds | default(1800) }}
+              AW_WORKTIME_MANAGER_INTERPRETATION_POLICY={{ aw_worktime_interpretation_policy_path | default('/etc/activitywatch/worktime-interpretation-policy.json') }}
               AW_DLP_INFLUX_ENABLED={{ 'true' if (aw_dlp_influx_enabled | default(false) | bool) else 'false' }}
               AW_DLP_INFLUX_URL={{ aw_dlp_influx_url | default('') }}
               AW_DLP_INFLUX_ORG={{ aw_dlp_influx_org | default('proxmox') }}
@@ -1097,6 +1098,15 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0750"
+
+        - name: Установить initial policy интерпретации Workforce если отсутствует
+          ansible.builtin.copy:
+            dest: "{{ aw_worktime_interpretation_policy_path | default('/etc/activitywatch/worktime-interpretation-policy.json') }}"
+            owner: root
+            group: root
+            mode: "0644"
+            force: false
+            content: "{{ lookup('file', aw_repo_root + '/configs/worktime-interpretation-policy.example.json') }}"
 
         - name: Проверить локальный Rust AW worktime API
           ansible.builtin.stat:

@@ -85,6 +85,30 @@ Worktime API сохраняет daily history как агрегированны�
 - `AW_WORKTIME_MANAGEMENT_HISTORY_DIR`;
 - `AW_WORKTIME_MANAGEMENT_HISTORY_DAYS`;
 - `AW_WORKTIME_MANAGEMENT_HISTORY_RETENTION_DAYS`.
+
+Интерпретация трендов настраивается через customer policy:
+
+- пример: `configs/worktime-interpretation-policy.example.json`;
+- runtime-файл: `/etc/activitywatch/worktime-interpretation-policy.json`;
+- env-путь: `AW_WORKTIME_MANAGER_INTERPRETATION_POLICY`.
+
+Пример policy:
+
+```json
+{
+  "overload_threshold": 0.92,
+  "underload_threshold": 0.45,
+  "drop_threshold_pct": 20,
+  "night_work_after": "20:00",
+  "weekend_work": true
+}
+```
+
+`overload_threshold` и `underload_threshold` можно задавать дробью
+`0.92`/`0.45` или процентом `92`/`45`; внутри они нормализуются к процентам.
+Если policy-файл отсутствует или отдельное поле не задано, используются
+env/default значения:
+
 - `AW_WORKTIME_MANAGER_OVERLOAD_COVERAGE_PCT`;
 - `AW_WORKTIME_MANAGER_TREND_MIN_POINTS`;
 - `AW_WORKTIME_MANAGER_TREND_DELTA_PCT`;

@@ -45,6 +45,9 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
   `Выводы Workforce`;
 - insights включают текущую недогрузку/перегрузку, рост/падение тренда,
   просадку относительно нормы, работу вне рабочего окна и выходные;
+- пороги интерпретации задаются customer policy
+  `/etc/activitywatch/worktime-interpretation-policy.json`, публичный пример:
+  `configs/worktime-interpretation-policy.example.json`;
 - `trend_status=daily_only` означает, что месячный тренд еще нельзя
   интерпретировать как полноценный отчет; для `monthly_ready` нужна накопленная
   daily history;

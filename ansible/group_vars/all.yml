@@ -26,6 +26,7 @@ aw_worktime_manager_overload_coverage_pct: 115
 aw_worktime_manager_trend_min_points: 3
 aw_worktime_manager_trend_delta_pct: 10
 aw_worktime_manager_off_hours_threshold_seconds: 1800
+aw_worktime_interpretation_policy_path: "/etc/activitywatch/worktime-interpretation-policy.json"
 aw_dlp_influx_enabled: true
 aw_dlp_influx_url: "http://192.0.2.10:8086"
 aw_dlp_influx_org: "proxmox"

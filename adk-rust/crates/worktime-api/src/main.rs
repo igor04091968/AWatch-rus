@@ -9,7 +9,8 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use chrono::{
-    DateTime, Datelike, FixedOffset, Local, NaiveDate, SecondsFormat, TimeDelta, TimeZone, Utc,
+    DateTime, Datelike, FixedOffset, Local, NaiveDate, NaiveTime, SecondsFormat, TimeDelta,
+    TimeZone, Utc,
 };
 use clap::Parser;
 use reqwest::{
@@ -48,6 +49,9 @@ struct Config {
     manager_trend_min_points: usize,
     manager_trend_delta_pct: f64,
     manager_off_hours_threshold_seconds: i64,
+    manager_night_work_after: Option<NaiveTime>,
+    manager_weekend_work_enabled: bool,
+    manager_interpretation_policy_configured: bool,
     manager_late_start_grace_minutes: i64,
     manager_early_finish_grace_minutes: i64,
     manager_critical_source_max_age_seconds: i64,
@@ -102,6 +106,24 @@ struct AliasProfile {
     exclude: bool,
 }
 
+#[derive(Debug, Clone, Default, Deserialize)]
+struct InterpretationPolicy {
+    #[serde(default)]
+    overload_threshold: Option<f64>,
+    #[serde(default)]
+    underload_threshold: Option<f64>,
+    #[serde(default)]
+    drop_threshold_pct: Option<f64>,
+    #[serde(default)]
+    night_work_after: Option<String>,
+    #[serde(default)]
+    weekend_work: Option<bool>,
+    #[serde(default)]
+    min_trend_points: Option<usize>,
+    #[serde(default)]
+    off_hours_threshold_seconds: Option<i64>,
+}
+
 #[derive(Debug, Clone)]
 struct CachedResponse {
     stored: Instant,
@@ -154,6 +176,18 @@ fn env_usize(name: &str, fallback: usize) -> usize {
         .unwrap_or(fallback)
 }
 
+fn env_bool(name: &str, fallback: bool) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .and_then(|value| match value.as_str() {
+            "1" | "true" | "yes" | "on" => Some(true),
+            "0" | "false" | "no" | "off" => Some(false),
+            _ => None,
+        })
+        .unwrap_or(fallback)
+}
+
 fn build_aw_api_base(raw_url: &str) -> String {
     let url = raw_url.trim().trim_end_matches('/');
     if url.ends_with("/api/0") {
@@ -163,16 +197,74 @@ fn build_aw_api_base(raw_url: &str) -> String {
     }
 }
 
+fn load_interpretation_policy(path: &Path) -> Option<InterpretationPolicy> {
+    if !path.exists() {
+        return None;
+    }
+    serde_json::from_str::<InterpretationPolicy>(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn threshold_to_pct(value: f64) -> f64 {
+    if (0.0..=1.0).contains(&value) {
+        value * 100.0
+    } else {
+        value
+    }
+}
+
+fn parse_hhmm(value: &str) -> Option<NaiveTime> {
+    NaiveTime::parse_from_str(value.trim(), "%H:%M").ok()
+}
+
 fn load_config() -> Config {
     let default_sample_seconds = env_f64("AW_WORKTIME_DEFAULT_SAMPLE_SECONDS", 30.0).max(1.0);
     let max_sample_seconds =
         env_f64("AW_WORKTIME_MAX_SAMPLE_SECONDS", 300.0).max(default_sample_seconds);
+    let manager_interpretation_policy_path = PathBuf::from(env(
+        "AW_WORKTIME_MANAGER_INTERPRETATION_POLICY",
+        "/etc/activitywatch/worktime-interpretation-policy.json",
+    ));
+    let interpretation_policy = load_interpretation_policy(&manager_interpretation_policy_path);
     let manager_target_coverage_pct =
         env_i64("AW_WORKTIME_MANAGER_TARGET_COVERAGE_PCT", 75).clamp(1, 100);
-    let manager_low_coverage_pct =
+    let mut manager_low_coverage_pct =
         env_i64("AW_WORKTIME_MANAGER_LOW_COVERAGE_PCT", 35).clamp(1, 100);
-    let manager_overload_coverage_pct =
+    let mut manager_overload_coverage_pct =
         env_i64("AW_WORKTIME_MANAGER_OVERLOAD_COVERAGE_PCT", 115).clamp(100, 300);
+    let mut manager_trend_min_points =
+        env_usize("AW_WORKTIME_MANAGER_TREND_MIN_POINTS", 3).clamp(2, 31);
+    let mut manager_trend_delta_pct =
+        env_f64("AW_WORKTIME_MANAGER_TREND_DELTA_PCT", 10.0).clamp(1.0, 100.0);
+    let mut manager_off_hours_threshold_seconds =
+        env_i64("AW_WORKTIME_MANAGER_OFF_HOURS_THRESHOLD_SECONDS", 1800).max(60);
+    let mut manager_night_work_after =
+        parse_hhmm(&env("AW_WORKTIME_MANAGER_NIGHT_WORK_AFTER", "20:00"));
+    let mut manager_weekend_work_enabled =
+        env_bool("AW_WORKTIME_MANAGER_WEEKEND_WORK_ENABLED", true);
+    if let Some(policy) = interpretation_policy.as_ref() {
+        if let Some(value) = policy.underload_threshold {
+            manager_low_coverage_pct = threshold_to_pct(value).round().clamp(1.0, 100.0) as i64;
+        }
+        if let Some(value) = policy.overload_threshold {
+            manager_overload_coverage_pct =
+                threshold_to_pct(value).round().clamp(1.0, 300.0) as i64;
+        }
+        if let Some(value) = policy.drop_threshold_pct {
+            manager_trend_delta_pct = threshold_to_pct(value).clamp(1.0, 100.0);
+        }
+        if let Some(value) = policy.min_trend_points {
+            manager_trend_min_points = value.clamp(2, 31);
+        }
+        if let Some(value) = policy.off_hours_threshold_seconds {
+            manager_off_hours_threshold_seconds = value.max(60);
+        }
+        if let Some(value) = policy.night_work_after.as_deref().and_then(parse_hhmm) {
+            manager_night_work_after = Some(value);
+        }
+        if let Some(value) = policy.weekend_work {
+            manager_weekend_work_enabled = value;
+        }
+    }
     let report_cache_ttl_seconds = env_i64("AW_WORKTIME_REPORT_CACHE_TTL_SECONDS", 60).max(0);
     let report_stale_ttl_seconds =
         env_i64("AW_WORKTIME_REPORT_STALE_TTL_SECONDS", 900).max(report_cache_ttl_seconds);
@@ -189,14 +281,12 @@ fn load_config() -> Config {
         manager_target_coverage_pct,
         manager_low_coverage_pct,
         manager_overload_coverage_pct,
-        manager_trend_min_points: env_usize("AW_WORKTIME_MANAGER_TREND_MIN_POINTS", 3).clamp(2, 31),
-        manager_trend_delta_pct: env_f64("AW_WORKTIME_MANAGER_TREND_DELTA_PCT", 10.0)
-            .clamp(1.0, 100.0),
-        manager_off_hours_threshold_seconds: env_i64(
-            "AW_WORKTIME_MANAGER_OFF_HOURS_THRESHOLD_SECONDS",
-            1800,
-        )
-        .max(60),
+        manager_trend_min_points,
+        manager_trend_delta_pct,
+        manager_off_hours_threshold_seconds,
+        manager_night_work_after,
+        manager_weekend_work_enabled,
+        manager_interpretation_policy_configured: interpretation_policy.is_some(),
         manager_late_start_grace_minutes: env_i64(
             "AW_WORKTIME_MANAGER_LATE_START_GRACE_MINUTES",
             60,
@@ -1540,6 +1630,16 @@ impl App {
             "trend": trend,
             "trend_scope": "portfolio",
             "trend_insights": insights,
+            "interpretation_policy": {
+                "configured": self.config.manager_interpretation_policy_configured,
+                "overload_threshold": self.config.manager_overload_coverage_pct as f64 / 100.0,
+                "underload_threshold": self.config.manager_low_coverage_pct as f64 / 100.0,
+                "drop_threshold_pct": self.config.manager_trend_delta_pct,
+                "night_work_after": self.config.manager_night_work_after.map(|time| time.format("%H:%M").to_string()),
+                "weekend_work": self.config.manager_weekend_work_enabled,
+                "min_trend_points": self.config.manager_trend_min_points,
+                "off_hours_threshold_seconds": self.config.manager_off_hours_threshold_seconds
+            },
             "history": {
                 "enabled": true,
                 "saved_current_point": history_saved,
@@ -2373,6 +2473,9 @@ fn add_off_hours_insights(
         report_date.weekday(),
         chrono::Weekday::Sat | chrono::Weekday::Sun
     );
+    if is_weekend && !config.manager_weekend_work_enabled {
+        return;
+    }
     if is_weekend && calendar_total >= config.manager_off_hours_threshold_seconds {
         insights.push(insight(
             "weekend_work",
@@ -2386,7 +2489,33 @@ fn add_off_hours_insights(
             ),
             "Проверить, была ли работа согласована и не маскирует ли она аврал или сбой графика.",
         ));
-    } else if off_hours >= config.manager_off_hours_threshold_seconds {
+        return;
+    }
+    if let Some(night_after) = config.manager_night_work_after {
+        let night_users = rows
+            .iter()
+            .filter(|row| {
+                row_local_time(row, "last_activity_local").is_some_and(|time| time >= night_after)
+            })
+            .count();
+        if night_users > 0 && off_hours >= config.manager_off_hours_threshold_seconds {
+            insights.push(insight(
+                "night_work",
+                "WARN",
+                "portfolio",
+                "Workforce",
+                "Есть ночная работа",
+                &format!(
+                    "После {} зафиксирована активность; сотрудников: {}; вне рабочего окна: {}.",
+                    night_after.format("%H:%M"),
+                    night_users,
+                    hhmm(off_hours)
+                ),
+                "Проверить согласование ночной работы, авралы и корректность графика.",
+            ));
+        }
+    }
+    if off_hours >= config.manager_off_hours_threshold_seconds {
         let users = rows
             .iter()
             .filter(|row| {
@@ -2415,6 +2544,13 @@ fn add_off_hours_insights(
             "Проверить ночную/раннюю работу, регламент смен и корректность рабочего окна.",
         ));
     }
+}
+
+fn row_local_time(row: &Value, key: &str) -> Option<NaiveTime> {
+    row.get(key)
+        .and_then(Value::as_str)
+        .and_then(|value| DateTime::parse_from_rfc3339(value).ok())
+        .map(|dt| dt.time())
 }
 
 fn insight(
@@ -3223,6 +3359,45 @@ mod tests {
                 .iter()
                 .any(|item| item["code"] == "portfolio_activity_falling")
         );
+    }
+
+    #[test]
+    fn interpretation_policy_accepts_fraction_thresholds() {
+        let policy: InterpretationPolicy = serde_json::from_value(json!({
+            "overload_threshold": 0.92,
+            "underload_threshold": 0.45,
+            "drop_threshold_pct": 20,
+            "night_work_after": "20:00",
+            "weekend_work": true
+        }))
+        .unwrap();
+        assert_eq!(threshold_to_pct(policy.overload_threshold.unwrap()), 92.0);
+        assert_eq!(threshold_to_pct(policy.underload_threshold.unwrap()), 45.0);
+        assert_eq!(threshold_to_pct(policy.drop_threshold_pct.unwrap()), 20.0);
+        assert_eq!(
+            parse_hhmm(policy.night_work_after.as_deref().unwrap()).unwrap(),
+            NaiveTime::from_hms_opt(20, 0, 0).unwrap()
+        );
+        assert_eq!(policy.weekend_work, Some(true));
+    }
+
+    #[test]
+    fn weekend_policy_can_disable_weekend_work_insight() {
+        let mut cfg = test_config();
+        cfg.manager_weekend_work_enabled = false;
+        let insights = build_management_insights(
+            &cfg,
+            &json!({
+                "calendar_total_active_seconds": 7200,
+                "workday_total_active_seconds": 0
+            }),
+            &[],
+            &[],
+            &[],
+            &[],
+            NaiveDate::from_ymd_opt(2026, 5, 16).unwrap(),
+        );
+        assert!(!insights.iter().any(|item| item["code"] == "weekend_work"));
     }
 
     #[test]

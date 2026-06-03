@@ -1,0 +1,9 @@
+{
+  "overload_threshold": 0.92,
+  "underload_threshold": 0.45,
+  "drop_threshold_pct": 20,
+  "night_work_after": "20:00",
+  "weekend_work": true,
+  "min_trend_points": 3,
+  "off_hours_threshold_seconds": 1800
+}
