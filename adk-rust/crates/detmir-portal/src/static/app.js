@@ -246,7 +246,7 @@ function renderEmployeeIndexDetails(items) {
   return `
     <div class="employee-drilldown">
       <h4>Drill-down по сотрудникам</h4>
-      <p class="muted small">Per-user индекс сейчас считается по активному времени; app-weight breakdown доступен на уровне портфеля.</p>
+      <p class="muted small">Это не персональный weighted KPI: per-user индекс сейчас считается по активному времени; app-weight breakdown доступен только на уровне портфеля.</p>
       <div class="list compact-list">${items.map(item => `
         <div class="row employee-index-row">
           <strong>${escapeHtml(item.user || "-")}</strong>
@@ -404,6 +404,7 @@ function renderReports(data) {
     <div class="grid-2">
       <section class="card report-hero">
         <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
+        ${data.anonymized ? `<span class="badge status-warn">обезличено</span>` : ""}
         <h3>${escapeHtml(data.headline)}</h3>
         <p class="muted">${escapeHtml(data.period || "")} · обновлено ${escapeHtml(data.generated_at_utc || "")}</p>
       </section>
@@ -415,6 +416,7 @@ function renderReports(data) {
       </section>
     </div>
     <div class="report-actions">
+      <button class="small-button" data-anonymize-report="true">Демо без имен</button>
       <button class="small-button" data-print-report="true">Печать / PDF</button>
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
@@ -476,6 +478,18 @@ document.addEventListener("click", event => {
   if (!button) return;
   window.print();
 });
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-anonymize-report]");
+  if (!button) return;
+  anonymizeReport(button).catch(showError);
+});
+
+async function anonymizeReport(button) {
+  button.disabled = true;
+  const data = await loadJson("/reports?anonymize=1");
+  document.getElementById("content").innerHTML = renderReports(data);
+}
 
 async function incidentAction(button) {
   const id = button.dataset.incidentId;

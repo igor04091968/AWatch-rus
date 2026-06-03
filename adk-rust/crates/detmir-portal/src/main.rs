@@ -454,7 +454,7 @@ fn run() -> Result<i32> {
         let smoke = json!({
             "health": build_health(&snapshot),
             "summary": build_summary(&snapshot),
-            "reports": build_reports(&snapshot, &incident_state, &build_dlp_evidence_response(&args), &args.workforce_policy_path),
+            "reports": build_reports(&snapshot, &incident_state, &build_dlp_evidence_response(&args), &args.workforce_policy_path, false),
             "incidents": build_incidents(&snapshot, &incident_state),
             "dlp_evidence": build_dlp_evidence_response(&args),
         });
@@ -479,7 +479,9 @@ fn run() -> Result<i32> {
 
 fn handle_request(request: Request, args: &Cli) -> Result<()> {
     let method = request.method().clone();
-    let path = normalize_path(request.url());
+    let url = request.url().to_string();
+    let path = normalize_path(&url);
+    let anonymize = query_flag(&url, "anonymize");
     if method == Method::Post && path == "/api/incidents/action" {
         return handle_incident_action(request, args);
     }
@@ -522,7 +524,7 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
             let snapshot = build_snapshot(args);
             respond_json(
                 request,
-                &build_workforce_policy_explain(&snapshot, &args.workforce_policy_path),
+                &build_workforce_policy_explain(&snapshot, &args.workforce_policy_path, anonymize),
             )
         }
         "/api/owner" => {
@@ -540,6 +542,7 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
                     &incident_state,
                     &evidence,
                     &args.workforce_policy_path,
+                    anonymize,
                 ),
             )
         }
@@ -602,6 +605,16 @@ fn normalize_path(url: &str) -> String {
     } else {
         path.to_string()
     }
+}
+
+fn query_flag(url: &str, key: &str) -> bool {
+    let Some(query) = url.split_once('?').map(|(_, query)| query) else {
+        return false;
+    };
+    query.split('&').any(|pair| {
+        let (name, value) = pair.split_once('=').unwrap_or((pair, "1"));
+        name == key && matches!(value, "1" | "true" | "yes" | "on")
+    })
 }
 
 fn build_snapshot(args: &Cli) -> Snapshot {
@@ -930,6 +943,7 @@ fn build_reports(
     incident_state: &IncidentStateFile,
     evidence: &DlpEvidenceResponse,
     workforce_policy_path: &Path,
+    anonymize: bool,
 ) -> Value {
     let summary = build_summary(snapshot);
     let incidents = build_incidents(snapshot, incident_state);
@@ -961,7 +975,8 @@ fn build_reports(
     let owner_items = workforce_rollup_items(snapshot, "owner_rollups");
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
-    let workforce_policy_explain = build_workforce_policy_explain(snapshot, workforce_policy_path);
+    let workforce_policy_explain =
+        build_workforce_policy_explain(snapshot, workforce_policy_path, anonymize);
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
         "Контур DetMir работает штатно, критичных действий не требуется"
@@ -1009,6 +1024,7 @@ fn build_reports(
     json!({
         "generated_at_utc": snapshot.generated_at_utc,
         "period": "оперативный срез за сегодня и текущий runtime",
+        "anonymized": anonymize,
         "severity": summary.severity,
         "operator_ok": summary.operator_ok,
         "headline": headline,
@@ -1212,16 +1228,21 @@ fn load_workforce_policy(path: &Path) -> Result<Option<WorkforcePolicy>> {
     Ok(Some(policy))
 }
 
-fn build_workforce_policy_explain(snapshot: &Snapshot, workforce_policy_path: &Path) -> Value {
+fn build_workforce_policy_explain(
+    snapshot: &Snapshot,
+    workforce_policy_path: &Path,
+    anonymize: bool,
+) -> Value {
     let (users_count, _, _) = worktime_totals(snapshot);
     let workforce_policy = load_workforce_policy(workforce_policy_path).ok().flatten();
     let weighted = workforce_policy
         .as_ref()
-        .and_then(|policy| weighted_activity(snapshot, policy, users_count));
+        .and_then(|policy| weighted_activity(snapshot, policy, users_count, anonymize));
     workforce_policy_json(
         workforce_policy.as_ref(),
         weighted.as_ref(),
         workforce_policy_path,
+        anonymize,
     )
 }
 
@@ -1229,6 +1250,7 @@ fn weighted_activity(
     snapshot: &Snapshot,
     policy: &WorkforcePolicy,
     users_count: usize,
+    anonymize: bool,
 ) -> Option<WeightedActivity> {
     if users_count == 0 {
         return None;
@@ -1308,7 +1330,12 @@ fn weighted_activity(
         explanation,
         app_details,
         policy_audit,
-        employee_details: employee_index_details(snapshot, &role_policy.label, planned_hours),
+        employee_details: employee_index_details(
+            snapshot,
+            &role_policy.label,
+            planned_hours,
+            anonymize,
+        ),
     })
 }
 
@@ -1358,6 +1385,7 @@ fn employee_index_details(
     snapshot: &Snapshot,
     role_label: &Option<String>,
     planned_hours_per_day: f64,
+    anonymize: bool,
 ) -> Vec<Value> {
     let planned_seconds = (planned_hours_per_day * 3600.0).round() as i64;
     let Some(rows) = snapshot
@@ -1371,7 +1399,8 @@ fn employee_index_details(
     };
     let role = role_label.as_deref().unwrap_or("default");
     rows.iter()
-        .map(|row| {
+        .enumerate()
+        .map(|(idx, row)| {
             let active_seconds = row
                 .get("active_seconds")
                 .and_then(Value::as_i64)
@@ -1384,9 +1413,25 @@ fn employee_index_details(
             } else {
                 0
             };
+            let user = if anonymize {
+                format!("Сотрудник {}", idx + 1)
+            } else {
+                row.get("user")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            };
+            let user_id = if anonymize {
+                format!("EMPLOYEE-{}", idx + 1)
+            } else {
+                row.get("user_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            };
             json!({
-                "user": row.get("user").and_then(Value::as_str).unwrap_or(""),
-                "user_id": row.get("user_id").and_then(Value::as_str).unwrap_or(""),
+                "user": user,
+                "user_id": user_id,
                 "role_label": role,
                 "formula": "employee_index = active_seconds / planned_seconds × 100",
                 "reason": format!(
@@ -1402,7 +1447,8 @@ fn employee_index_details(
                 "planned_seconds": planned_seconds,
                 "planned_hhmm": human_duration(planned_seconds),
                 "last_activity": row.get("last_activity").and_then(Value::as_str).unwrap_or(""),
-                "scope_note": "per-user app-weight attribution is not available in current worktime payload; app weights are portfolio-level"
+                "scope_note": "Это не персональный weighted KPI: per-user app-weight attribution пока отсутствует в worktime payload; веса приложений доступны на уровне портфеля.",
+                "anonymized": anonymize
             })
         })
         .collect()
@@ -1506,10 +1552,12 @@ fn workforce_policy_json(
     policy: Option<&WorkforcePolicy>,
     weighted: Option<&WeightedActivity>,
     policy_path: &Path,
+    anonymize: bool,
 ) -> Value {
     match (policy, weighted) {
         (Some(policy), Some(weighted)) => json!({
             "configured": true,
+            "anonymized": anonymize,
             "path": policy_path.display().to_string(),
             "default_role": policy.default_role,
             "roles_count": policy.roles.len(),
@@ -1535,6 +1583,7 @@ fn workforce_policy_json(
         }),
         (Some(policy), None) => json!({
             "configured": true,
+            "anonymized": anonymize,
             "path": policy_path.display().to_string(),
             "default_role": policy.default_role,
             "roles_count": policy.roles.len(),
@@ -1543,6 +1592,7 @@ fn workforce_policy_json(
         }),
         (None, _) => json!({
             "configured": false,
+            "anonymized": anonymize,
             "path": policy_path.display().to_string(),
             "note": "weighted activity requires role/application policy",
         }),
@@ -1660,6 +1710,9 @@ fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
         return;
     }
     text.push_str("\n## Почему такой индекс\n\n");
+    if policy.get("anonymized").and_then(Value::as_bool) == Some(true) {
+        text.push_str("- Режим данных: обезличенный demo/export.\n");
+    }
     text.push_str(&format!(
         "- Роль: {}\n",
         policy
@@ -1758,6 +1811,9 @@ fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
         .unwrap_or_default();
     if !employee_items.is_empty() {
         text.push_str("\n### Drill-down по сотрудникам\n\n");
+        text.push_str(
+            "Важно: это не персональный weighted KPI; персональный app-weight breakdown пока недоступен в worktime payload.\n\n",
+        );
         for item in employee_items.iter().take(12) {
             text.push_str(&format!(
                 "- {}: {}%, active {}, plan {}, formula `{}`\n",
@@ -3560,6 +3616,7 @@ mod tests {
             &IncidentStateFile::default(),
             &evidence,
             missing_policy,
+            false,
         );
         assert_eq!(report["operator_ok"], true);
         assert_eq!(report["severity"], "OK");
@@ -3653,7 +3710,7 @@ mod tests {
                 },
             )]),
         };
-        let weighted = weighted_activity(&snapshot, &policy, 1).unwrap();
+        let weighted = weighted_activity(&snapshot, &policy, 1, false).unwrap();
         assert_eq!(weighted.role, "accountant");
         assert_eq!(weighted.weighted_seconds, 3600);
         assert_eq!(weighted.app_seconds, 7200);
@@ -3732,7 +3789,7 @@ mod tests {
                 payload: None,
             },
         };
-        let explain = build_workforce_policy_explain(&snapshot, &policy_path);
+        let explain = build_workforce_policy_explain(&snapshot, &policy_path, false);
         assert_eq!(explain["configured"], true);
         assert_eq!(explain["role"], "accountant");
         assert_eq!(explain["roles_count"], 1);
@@ -3750,10 +3807,22 @@ mod tests {
             "employee_index = active_seconds / planned_seconds × 100"
         );
         assert!(explain["employee_details"][0].get("reason").is_some());
+        assert!(
+            explain["employee_details"][0]["scope_note"]
+                .as_str()
+                .unwrap()
+                .contains("не персональный weighted KPI")
+        );
         assert!(explain["app_details"][0].get("matched_rule").is_some());
         assert!(explain["app_details"][0].get("weight").is_some());
         assert!(explain.get("workforce").is_none());
         assert!(explain.get("sections").is_none());
         assert!(explain.get("markdown").is_none());
+
+        let anonymized = build_workforce_policy_explain(&snapshot, &policy_path, true);
+        assert_eq!(anonymized["anonymized"], true);
+        assert_eq!(anonymized["employee_details"][0]["user"], "Сотрудник 1");
+        assert_eq!(anonymized["employee_details"][0]["user_id"], "EMPLOYEE-1");
+        assert_ne!(anonymized["employee_details"][0]["user"], "USER-1");
     }
 }

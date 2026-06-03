@@ -55,6 +55,10 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
   `active / plan => index`; per-user app-weight breakdown пока невозможен,
   потому что текущий worktime payload отдает приложения только на уровне
   портфеля;
+- employee drill-down явно помечен как `не персональный weighted KPI`;
+- для демо/экспертных PDF и Markdown добавлен режим обезличивания:
+  `?anonymize=1` на `/api/reports` и `/api/workforce/policy/explain`, плюс
+  кнопка `Демо без имен` во вкладке `Отчеты`;
 - вкладка `Руководитель` получает этот блок через легкий endpoint
   `/api/workforce/policy/explain`, без загрузки полного `/api/reports`;
 - contract легкого endpoint защищен unit-тестом
