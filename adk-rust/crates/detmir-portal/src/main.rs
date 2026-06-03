@@ -357,6 +357,20 @@ struct Snapshot {
     one_c: SourceStatus,
 }
 
+#[derive(Debug)]
+struct ReportMetrics {
+    users_count: usize,
+    active_seconds: i64,
+    apps_count: usize,
+    dlp_ok: u64,
+    dlp_warn: u64,
+    dlp_fail: u64,
+    evidence_total: usize,
+    evidence_screenshots: usize,
+    open_incidents: usize,
+    acknowledged_incidents: usize,
+}
+
 fn main() {
     let code = match run() {
         Ok(code) => code,
@@ -376,6 +390,7 @@ fn run() -> Result<i32> {
         let smoke = json!({
             "health": build_health(&snapshot),
             "summary": build_summary(&snapshot),
+            "reports": build_reports(&snapshot, &incident_state, &build_dlp_evidence_response(&args)),
             "incidents": build_incidents(&snapshot, &incident_state),
             "dlp_evidence": build_dlp_evidence_response(&args),
         });
@@ -414,7 +429,7 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
         return handle_evidence_screenshot(request, args, &evidence_id, download);
     }
     match path.as_str() {
-        "/" | "/operator" | "/manager" | "/owner" | "/incidents" => respond_text(
+        "/" | "/operator" | "/manager" | "/owner" | "/incidents" | "/reports" => respond_text(
             request,
             StatusCode(200),
             INDEX_HTML,
@@ -442,6 +457,15 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
         "/api/owner" => {
             let snapshot = build_snapshot(args);
             respond_json(request, &build_owner(&snapshot))
+        }
+        "/api/reports" => {
+            let snapshot = build_snapshot(args);
+            let incident_state = load_incident_state_best_effort(args);
+            let evidence = build_dlp_evidence_response(args);
+            respond_json(
+                request,
+                &build_reports(&snapshot, &incident_state, &evidence),
+            )
         }
         "/api/incidents" => {
             let snapshot = build_snapshot(args);
@@ -810,6 +834,244 @@ fn build_owner(snapshot: &Snapshot) -> Value {
         "recommendations": recommendations,
         "links": links(),
     })
+}
+
+fn build_reports(
+    snapshot: &Snapshot,
+    incident_state: &IncidentStateFile,
+    evidence: &DlpEvidenceResponse,
+) -> Value {
+    let summary = build_summary(snapshot);
+    let incidents = build_incidents(snapshot, incident_state);
+    let (users_count, active_seconds, apps_count) = worktime_totals(snapshot);
+    let dlp = dlp_counts(snapshot);
+    let metrics = ReportMetrics {
+        users_count,
+        active_seconds,
+        apps_count,
+        dlp_ok: dlp.0,
+        dlp_warn: dlp.1,
+        dlp_fail: dlp.2,
+        evidence_total: evidence.items.len(),
+        evidence_screenshots: evidence
+            .items
+            .iter()
+            .filter(|item| item.screenshot_available)
+            .count(),
+        open_incidents: incidents.iter().filter(|item| !item.acknowledged).count(),
+        acknowledged_incidents: incidents.iter().filter(|item| item.acknowledged).count(),
+    };
+    let grafana = grafana_block(snapshot);
+    let collection = collection_block(snapshot.detmir_check.payload.as_ref());
+    let worktime = worktime_block(snapshot);
+    let one_c = one_c_block(snapshot);
+    let dlp_block_value = dlp_block(snapshot);
+    let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
+    {
+        "Контур DetMir работает штатно, критичных действий не требуется"
+    } else if metrics.open_incidents > 0 {
+        "Контур DetMir работает, есть открытые вопросы для оператора"
+    } else {
+        "Контур DetMir требует технической проверки"
+    };
+    let executive_points = vec![
+        format!("Сбор данных: {}. {}", collection.status, collection.text),
+        format!(
+            "Работа сегодня: сотрудников={}, активное время={}",
+            metrics.users_count,
+            human_duration(metrics.active_seconds)
+        ),
+        format!(
+            "DLP/ИБ: ok={}, warn={}, fail={}, evidence={}, screenshots={}",
+            metrics.dlp_ok,
+            metrics.dlp_warn,
+            metrics.dlp_fail,
+            metrics.evidence_total,
+            metrics.evidence_screenshots
+        ),
+        format!(
+            "Открытые вопросы: {}, в работе: {}",
+            metrics.open_incidents, metrics.acknowledged_incidents
+        ),
+    ];
+    let recommendations = owner_recommendations(snapshot, &summary);
+    let markdown = render_report_markdown(snapshot, headline, &summary, &metrics, &recommendations);
+    json!({
+        "generated_at_utc": snapshot.generated_at_utc,
+        "period": "оперативный срез за сегодня и текущий runtime",
+        "severity": summary.severity,
+        "operator_ok": summary.operator_ok,
+        "headline": headline,
+        "executive_points": executive_points,
+        "kpis": [
+            report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
+            report_kpi("Активное время", human_duration(metrics.active_seconds), worktime.status.clone(), "сумма active_seconds"),
+            report_kpi("Приложения", metrics.apps_count.to_string(), worktime.status.clone(), "true active applications"),
+            report_kpi("DLP WARN/FAIL", format!("{}/{}", metrics.dlp_warn, metrics.dlp_fail), dlp_block_value.status.clone(), "технические сигналы DLP"),
+            report_kpi("Evidence", format!("{}/{}", metrics.evidence_screenshots, metrics.evidence_total), evidence_status(evidence), "скриншоты / все evidence items"),
+            report_kpi("Открытые вопросы", metrics.open_incidents.to_string(), incident_status(metrics.open_incidents), "не взятые в работу items")
+        ],
+        "sections": [
+            {
+                "title": "Надежность контура",
+                "items": [
+                    report_item("DetMir status", snapshot.detmir_status.status.clone(), snapshot.detmir_status.summary.clone()),
+                    report_item("Сбор данных", collection.status.clone(), collection.text.clone()),
+                    report_item("Grafana", grafana.status.clone(), grafana.text.clone()),
+                    report_item("1C analytics", one_c.status.clone(), one_c.text.clone())
+                ]
+            },
+            {
+                "title": "Работа и управляемость",
+                "items": [
+                    report_item("Worktime", worktime.status.clone(), worktime.text.clone()),
+                    report_item("Активное время", worktime.status.clone(), human_duration(metrics.active_seconds)),
+                    report_item("Приложения", worktime.status.clone(), metrics.apps_count.to_string()),
+                    report_item("Отчет", "OK", "готов к передаче руководителю")
+                ]
+            },
+            {
+                "title": "ИБ и evidence",
+                "items": [
+                    report_item("DLP", dlp_block_value.status.clone(), dlp_block_value.text.clone()),
+                    report_item("Evidence metadata", evidence_status(evidence), format!("items={}", metrics.evidence_total)),
+                    report_item("Скриншоты", evidence_status(evidence), format!("available={}", metrics.evidence_screenshots)),
+                    report_item("Формулировка", "OK", "derived detections/cases, не сертифицированная СЗИ")
+                ]
+            },
+            {
+                "title": "Действия",
+                "items": recommendations.iter().map(|item| report_item("Рекомендация", "INFO", item)).collect::<Vec<_>>()
+            }
+        ],
+        "markdown": markdown,
+        "links": links()
+    })
+}
+
+fn report_kpi(label: &str, value: String, status: String, context: &str) -> Value {
+    json!({
+        "label": label,
+        "value": value,
+        "status": status,
+        "context": context,
+    })
+}
+
+fn report_item(label: &str, status: impl Into<String>, value: impl Into<String>) -> Value {
+    json!({
+        "label": label,
+        "status": status.into(),
+        "value": value.into(),
+    })
+}
+
+fn render_report_markdown(
+    snapshot: &Snapshot,
+    headline: &str,
+    summary: &SummaryResponse,
+    metrics: &ReportMetrics,
+    recommendations: &[String],
+) -> String {
+    let mut text = String::new();
+    text.push_str("# DetMir оперативный отчет\n\n");
+    text.push_str(&format!("Дата снимка: {}\n\n", snapshot.generated_at_utc));
+    text.push_str(&format!("Итог: {headline}\n\n"));
+    text.push_str("## KPI\n\n");
+    text.push_str(&format!("- Общий статус: {}\n", summary.severity));
+    text.push_str(&format!(
+        "- Готовность для оператора: {}\n",
+        if summary.operator_ok {
+            "да"
+        } else {
+            "нет"
+        }
+    ));
+    text.push_str(&format!(
+        "- Сотрудники за сегодня: {}\n",
+        metrics.users_count
+    ));
+    text.push_str(&format!(
+        "- Активное время: {}\n",
+        human_duration(metrics.active_seconds)
+    ));
+    text.push_str(&format!("- Активные приложения: {}\n", metrics.apps_count));
+    text.push_str(&format!(
+        "- DLP технические сигналы: ok={}, warn={}, fail={}\n",
+        metrics.dlp_ok, metrics.dlp_warn, metrics.dlp_fail
+    ));
+    text.push_str(&format!(
+        "- Evidence: items={}, screenshots={}\n",
+        metrics.evidence_total, metrics.evidence_screenshots
+    ));
+    text.push_str(&format!(
+        "- Открытые вопросы: {}, в работе: {}\n\n",
+        metrics.open_incidents, metrics.acknowledged_incidents
+    ));
+    text.push_str("## Рекомендации\n\n");
+    for item in recommendations {
+        text.push_str(&format!("- {item}\n"));
+    }
+    text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
+    text
+}
+
+fn worktime_totals(snapshot: &Snapshot) -> (usize, i64, usize) {
+    let Some(payload) = snapshot.worktime.payload.as_ref() else {
+        return (0, 0, 0);
+    };
+    let rows = payload
+        .get("rows")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let apps = payload
+        .get("true_active_apps")
+        .and_then(Value::as_array)
+        .map(Vec::len)
+        .unwrap_or(0);
+    let active_seconds = rows
+        .iter()
+        .filter_map(|row| row.get("active_seconds").and_then(Value::as_i64))
+        .sum();
+    (rows.len(), active_seconds, apps)
+}
+
+fn dlp_counts(snapshot: &Snapshot) -> (u64, u64, u64) {
+    let counts = snapshot
+        .detmir_status
+        .payload
+        .as_ref()
+        .and_then(|status| status.get("dlp_counts"))
+        .unwrap_or(&Value::Null);
+    (
+        counts.get("ok").and_then(Value::as_u64).unwrap_or(0),
+        counts.get("warn").and_then(Value::as_u64).unwrap_or(0),
+        counts.get("fail").and_then(Value::as_u64).unwrap_or(0),
+    )
+}
+
+fn evidence_status(evidence: &DlpEvidenceResponse) -> String {
+    if evidence.ok {
+        "OK".to_string()
+    } else {
+        "WARN".to_string()
+    }
+}
+
+fn incident_status(open_incidents: usize) -> String {
+    if open_incidents == 0 {
+        "OK".to_string()
+    } else {
+        "WARN".to_string()
+    }
+}
+
+fn human_duration(seconds: i64) -> String {
+    let seconds = seconds.max(0);
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    format!("{hours:02}:{minutes:02}")
 }
 
 fn build_incidents(snapshot: &Snapshot, state: &IncidentStateFile) -> Vec<IncidentItem> {
@@ -2320,5 +2582,120 @@ mod tests {
         assert!(constant_time_eq(b"secret", b"secret"));
         assert!(!constant_time_eq(b"secret", b"other"));
         assert!(!constant_time_eq(b"secret", b"secret2"));
+    }
+
+    #[test]
+    fn human_duration_formats_hhmm() {
+        assert_eq!(human_duration(0), "00:00");
+        assert_eq!(human_duration(3660), "01:01");
+        assert_eq!(human_duration(-10), "00:00");
+    }
+
+    #[test]
+    fn reports_include_commercial_kpis_and_disclaimer() {
+        let snapshot = Snapshot {
+            generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            detmir_status: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "severity=OK, operator_ok=true".to_string(),
+                error: None,
+                payload: Some(json!({
+                    "severity": "OK",
+                    "ok_for_operator": true,
+                    "dlp_ok": true,
+                    "dlp_counts": {"ok": 22, "warn": 0, "fail": 0}
+                })),
+            },
+            detmir_check: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "bucket_ok=8, stale=0, dead=0, service_fail=0".to_string(),
+                error: None,
+                payload: Some(json!({
+                    "summary": {
+                        "bucket_ok": 8,
+                        "bucket_stale": 0,
+                        "bucket_dead": 0,
+                        "service_failures": 0
+                    },
+                    "services": [
+                        {"name": "grafana-data", "ok": true, "payload": {"age_seconds": 60, "fail_count": 0}}
+                    ]
+                })),
+            },
+            failed_units: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "failed units not reported".to_string(),
+                error: None,
+                payload: Some(json!({"stdout": "0 loaded units listed"})),
+            },
+            worktime: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "rows=2, apps=1".to_string(),
+                error: None,
+                payload: Some(json!({
+                    "rows": [
+                        {"user": "USER-1", "active_seconds": 3600},
+                        {"user": "USER-2", "active_seconds": 1800}
+                    ],
+                    "true_active_apps": [
+                        {"application": "ERP", "proved_work_human": "00:30"}
+                    ]
+                })),
+            },
+            one_c: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "status=ok, companies=47".to_string(),
+                error: None,
+                payload: Some(json!({"status": "ok", "companies_total": 47})),
+            },
+        };
+        let evidence = DlpEvidenceResponse {
+            ok: true,
+            generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            db_available: true,
+            screenshot_root_available: true,
+            limit: 10,
+            items: vec![DlpEvidenceItem {
+                id: "ev-1-0000000000000000".to_string(),
+                event_ts: "2026-06-03T10:00:00Z".to_string(),
+                bucket_id: "aw-dlp-incidents_HOST-EXAMPLE".to_string(),
+                event_id: "event-1".to_string(),
+                stream_type: "dlp_incident".to_string(),
+                hostname: "HOST-EXAMPLE".to_string(),
+                username: None,
+                severity: Some("medium".to_string()),
+                signal_type: Some("clipboard".to_string()),
+                rule_id: None,
+                action: None,
+                source: None,
+                message: None,
+                file_path: None,
+                has_screenshot_metadata: true,
+                screenshot_available: true,
+                source_file: Some("shot.png".to_string()),
+                screenshot_sha256: Some("0".repeat(64)),
+                screenshot_width: None,
+                screenshot_height: None,
+                preview_url: None,
+                download_url: None,
+                blocked_reason: None,
+            }],
+            error: None,
+        };
+        let report = build_reports(&snapshot, &IncidentStateFile::default(), &evidence);
+        assert_eq!(report["operator_ok"], true);
+        assert_eq!(report["severity"], "OK");
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("derived detections/cases")
+        );
+        assert!(report["kpis"].as_array().unwrap().len() >= 6);
     }
 }

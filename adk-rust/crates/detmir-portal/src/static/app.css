@@ -160,6 +160,42 @@ h1 {
   margin-top: 12px;
 }
 
+.report-hero {
+  min-height: 140px;
+}
+
+.kpi-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.kpi-card {
+  min-height: 132px;
+}
+
+.kpi-value {
+  margin: 10px 0 6px;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.report-section {
+  min-height: 180px;
+}
+
+.compact-list {
+  gap: 6px;
+}
+
+.compact-row {
+  grid-template-columns: minmax(110px, 1fr) minmax(170px, 2fr) auto;
+  padding: 8px;
+}
+
+.markdown-card {
+  margin-top: 12px;
+}
+
 .evidence-row {
   grid-template-columns: minmax(180px, 1fr) minmax(260px, 2fr) auto auto;
 }

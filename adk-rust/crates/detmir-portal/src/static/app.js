@@ -249,6 +249,59 @@ function renderIncidents(data) {
   `;
 }
 
+function renderKpiCards(items) {
+  return `<div class="summary-grid kpi-grid">${(items || []).map(item => `
+    <article class="card kpi-card">
+      <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status || "INFO")}</span>
+      <h3>${escapeHtml(item.label)}</h3>
+      <p class="kpi-value">${escapeHtml(item.value)}</p>
+      <p class="muted">${escapeHtml(item.context || "")}</p>
+    </article>
+  `).join("")}</div>`;
+}
+
+function renderReportSections(sections) {
+  return `<div class="grid-2">${(sections || []).map(section => `
+    <section class="card report-section">
+      <h3>${escapeHtml(section.title)}</h3>
+      <div class="list compact-list">${(section.items || []).map(item => `
+        <div class="row compact-row">
+          <strong>${escapeHtml(item.label)}</strong>
+          <span class="muted">${escapeHtml(item.value)}</span>
+          <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status || "INFO")}</span>
+        </div>
+      `).join("")}</div>
+    </section>
+  `).join("")}</div>`;
+}
+
+function renderReports(data) {
+  return `
+    <h2 class="section-title">Отчеты</h2>
+    <div class="grid-2">
+      <section class="card report-hero">
+        <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
+        <h3>${escapeHtml(data.headline)}</h3>
+        <p class="muted">${escapeHtml(data.period || "")} · обновлено ${escapeHtml(data.generated_at_utc || "")}</p>
+      </section>
+      <section class="card">
+        <h3>Для руководителя</h3>
+        <div class="list compact-list">${(data.executive_points || []).map(point => `
+          <div class="row compact-row"><strong>Итог</strong><span class="muted">${escapeHtml(point)}</span><span></span></div>
+        `).join("")}</div>
+      </section>
+    </div>
+    <h3 class="section-title">Ключевые показатели</h3>
+    ${renderKpiCards(data.kpis)}
+    <h3 class="section-title">Срезы отчета</h3>
+    ${renderReportSections(data.sections)}
+    <section class="card markdown-card">
+      <h3>Markdown для отчета</h3>
+      <pre>${escapeHtml(data.markdown || "")}</pre>
+    </section>
+  `;
+}
+
 async function refresh() {
   if (!state.links) state.links = await loadJson("/links");
   const summary = await loadJson("/summary");
@@ -262,6 +315,7 @@ async function refresh() {
     const evidence = await loadJson("/dlp/evidence").catch(error => ({ ok: false, error: error.message, items: [] }));
     content.innerHTML = renderIncidents({ incidents: data, evidence });
   }
+  if (state.tab === "reports") content.innerHTML = renderReports(data);
 }
 
 function setTab(tab) {

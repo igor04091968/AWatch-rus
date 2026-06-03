@@ -9,6 +9,9 @@
     aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
     detmir_portal_bind: "{{ detmir_portal_bind_override | default('127.0.0.1:8720') }}"
     detmir_portal_env_path: "/etc/detmir-portal.env"
+    detmir_portal_worktime_url: "{{ detmir_portal_worktime_url_override | default(aw_worktime_report_base | default('http://192.0.2.13:5610', true), true) }}"
+    detmir_portal_one_c_host: "{{ hostvars[(groups['proxmox'] | default([]) | first) | default('192.0.2.2', true)].ansible_host | default((groups['proxmox'] | default([]) | first) | default('192.0.2.2', true), true) }}"
+    detmir_portal_one_c_url: "{{ detmir_portal_one_c_url_override | default('http://' + detmir_portal_one_c_host + ':8710', true) }}"
 
   tasks:
     - name: Check local detmir-portal binary
@@ -42,8 +45,8 @@
           DETMIR_PORTAL_STATUS_CMD=detmir-status --json
           DETMIR_PORTAL_CHECK_CMD=detmir-check --json
           DETMIR_PORTAL_FAILED_UNITS_CMD=systemctl --failed --no-pager
-          DETMIR_PORTAL_WORKTIME_URL=http://192.0.2.13:5610
-          DETMIR_PORTAL_ONE_C_URL=http://192.0.2.2:8710
+          DETMIR_PORTAL_WORKTIME_URL={{ detmir_portal_worktime_url }}
+          DETMIR_PORTAL_ONE_C_URL={{ detmir_portal_one_c_url }}
           DETMIR_PORTAL_TIMEOUT_SECONDS=10
           DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
           DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
@@ -104,9 +107,20 @@
         status_code: 200
         return_content: true
       register: detmir_portal_health
-      failed_when:
-        - detmir_portal_health.status != 200
-        - "'sources' not in detmir_portal_health.content"
+      failed_when: detmir_portal_health.status != 200 or detmir_portal_health.json.sources is not defined
+      changed_when: false
+
+    - name: Verify detmir-portal reports API
+      ansible.builtin.uri:
+        url: "http://{{ detmir_portal_bind }}/api/reports"
+        method: GET
+        status_code: 200
+        return_content: true
+      register: detmir_portal_reports
+      failed_when: >
+        detmir_portal_reports.status != 200
+        or detmir_portal_reports.json.kpis is not defined
+        or 'derived detections/cases' not in (detmir_portal_reports.json.markdown | default(''))
       changed_when: false
 
 - name: Deploy DetMir DLP evidence API on AW server
@@ -117,7 +131,8 @@
   vars:
     aw_repo_root: "{{ playbook_dir | dirname }}"
     aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
-    detmir_evidence_bind: "{{ detmir_evidence_bind_override | default('192.0.2.13:8721') }}"
+    detmir_evidence_bind_host: "{{ ansible_host | default(inventory_hostname, true) }}"
+    detmir_evidence_bind: "{{ detmir_evidence_bind_override | default(detmir_evidence_bind_host + ':8721', true) }}"
     detmir_evidence_env_path: "/etc/detmir-portal-evidence.env"
     detmir_evidence_upload_token_path: "/var/lib/activitywatch/dlp-evidence/upload-token"
 
@@ -244,7 +259,5 @@
         status_code: 200
         return_content: true
       register: detmir_evidence_health
-      failed_when:
-        - detmir_evidence_health.status != 200
-        - "'evidence-only' not in detmir_evidence_health.content"
+      failed_when: detmir_evidence_health.status != 200 or detmir_evidence_health.json.mode | default('') != 'evidence-only'
       changed_when: false

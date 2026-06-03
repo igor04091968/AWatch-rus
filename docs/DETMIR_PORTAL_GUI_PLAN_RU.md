@@ -21,6 +21,23 @@ Read-only MVP выполнен и развернут:
 Следующий агент не должен начинать MVP заново. Работать дальше от deployed
 baseline и раздела `Phase 8: Post-MVP Enhancements`.
 
+## Статус На 2026-06-03
+
+Коммерческий post-MVP слой отчетов выполнен и развернут:
+
+- API: `GET /api/reports`;
+- HTML route: `/reports` и `/portal/reports`;
+- UI tab: `Отчеты`;
+- отчет содержит KPI для владельца/руководителя: worktime users, active time,
+  active applications, DLP WARN/FAIL, evidence screenshots/items, open issues;
+- отчет содержит Markdown export для передачи руководителю или заказчику;
+- формулировка DLP/case показателей зафиксирована как
+  `derived detections/cases`, не как вручную подтвержденные инциденты;
+- Ansible deploy gate теперь проверяет `/api/reports`, наличие `kpis` и
+  обязательный disclaimer;
+- playbook больше не пишет TEST-NET defaults в live env, если в ignored
+  inventory доступны реальные hosts.
+
 ## Цель
 
 Сделать единый web GUI для работы с контуром DetMir:
@@ -776,11 +793,12 @@ Never rollback by deleting unrelated gateway routes.
 Only after read-only portal is stable:
 
 1. role-aware views based on gateway username;
-2. incident comments;
-3. acknowledge/assign incident;
+2. incident comments - done for incident action metadata;
+3. acknowledge/assign incident - done with audit log;
 4. safe "run check now";
 5. safe "open Telegram status";
-6. PDF/HTML daily owner report;
+6. PDF/HTML daily owner report - partially done as `/api/reports` plus
+   portal Markdown export; PDF/HTML file generation remains future work;
 7. historical trends;
 8. AI summary with strict source citations;
 9. action buttons with explicit allowlist and audit log.
