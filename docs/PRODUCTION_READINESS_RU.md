@@ -30,7 +30,8 @@ detmir-readiness --json
 Коды возврата:
 
 - `0` - готово к промышленной эксплуатации;
-- `2` - readiness check нашел `WARN` или `FAIL`;
+- `2` - readiness check нашел `WARN`;
+- `3` - readiness check нашел `FAIL`;
 - `1` - сама команда не смогла выполниться.
 
 ## Private production inventory
@@ -55,6 +56,22 @@ tracked defaults и `.example` файлы могут содержать `HOST-EX
 - systemd unit из обязательного списка не active;
 - Influx write-probe не смог записать heartbeat;
 - Grafana datasource health не `OK`.
+
+## Акт готовности стенда
+
+`detmir-readiness` может сохранить акт готовности в JSON, Markdown, HTML и PDF:
+
+```bash
+detmir-readiness --json \
+  --output-json /var/lib/activitywatch/health/detmir-readiness-latest.json \
+  --output-markdown /var/lib/activitywatch/health/detmir-readiness-act.md \
+  --output-pdf /var/lib/activitywatch/health/detmir-readiness-act.pdf
+```
+
+PDF-вывод требует один из render tools на хосте: `weasyprint`, `chromium`,
+`chromium-browser` или `google-chrome`. Если PDF renderer не установлен,
+используйте `--output-markdown` и `--output-html` как обязательный минимальный
+артефакт внедрения.
 
 ## Полезные параметры
 
