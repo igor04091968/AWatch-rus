@@ -296,8 +296,10 @@ stale/dead buckets для обязательных источников.
 ## 11. Документы пакета
 
 - `PRODUCT_DESCRIPTION_RU.md` - краткое описание продукта.
+- `CHANGELOG_RU.md` - журнал изменений и статус публичных release-пакетов.
 - `INSTALL_FOR_EXPERT_RU.md` - короткая инструкция установки экземпляра.
 - `docs/EXPERT_TEST_SCENARIO_RU.md` - ручной сценарий экспертной проверки после установки.
+- `docs/RELEASE_MANIFEST_2026-06.md` - manifest release artifacts, checksums и gates.
 - `THIRD_PARTY_COMPONENTS.md` - обзор сторонних компонентов.
 - `THIRD_PARTY_LICENSES_RU.md` - лицензии и license-audit checklist.
 - `docs/ARCHITECTURE_RU.md` - архитектура.

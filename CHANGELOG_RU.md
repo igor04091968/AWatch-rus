@@ -1,0 +1,62 @@
+# Журнал изменений
+
+## v1.0.1-public-review - 2026-06-03
+
+Назначение релиза: публичный пакет для экспертной оценки DetMir/AWatch-rus и
+подготовки к реестровой проверке. Релиз не меняет работающий коммерческий
+runtime DetMir; изменения относятся к source/release package, документации,
+обезличиванию и проверяемости поставки.
+
+### Добавлено
+
+- `docs/INSTALL_FOR_EXPERT_RU.md` - воспроизводимая установка: чистая VM,
+  сборка, установка, проверка, ожидаемый результат.
+- `docs/EXPERT_TEST_SCENARIO_RU.md` - ручной сценарий экспертной проверки:
+  вход в web UI, status, clipboard/USB/print, DLP incident, case/evidence,
+  export report.
+- `docs/SBOM_RELEASE_CHECKLIST_RU.md` - checklist подготовки SBOM/release.
+- `docs/RELEASE_AUDIT_2026-06.md` - audit приватных маркеров и секретов.
+- `docs/RELEASE_MANIFEST_2026-06.md` - manifest release artifacts, checksums,
+  SBOM inputs и выполненных gates.
+- `docs/RELEASE_NOTES_2026-06.md` - release notes для GitHub release.
+
+### Изменено
+
+- Публичные docs, examples, defaults и test fixtures обезличены: live hostnames,
+  private IPs, operator domains, local operator home paths, private root paths,
+  live case IDs и forensic paths заменены на placeholders/TEST-NET значения.
+- README и register docs теперь ведут эксперта по полному маршруту:
+  описание продукта -> установка -> ручной сценарий -> audit -> SBOM/release
+  checklist.
+- Install-kit пересобирается из sanitized source files и валидируется через
+  Rust tooling.
+
+### Удалено из tracked source
+
+- `.planning` generated artifacts.
+- Распакованный `install-kit-awindows-20260427-211240/` как tracked source.
+  Install-kit archives публикуются как GitHub Release assets.
+
+### Проверено
+
+- `cargo build --release --workspace` в отдельном target-dir.
+- `scripts/check_detmir_rust_release_artifacts.sh`: все Rust release binaries
+  найдены.
+- `scripts/rebuild_install_kit.sh` и `scripts/validate_install_kit.sh`:
+  install-kit пересобран и валиден.
+- `scripts/quality-gate.sh`: `OK`.
+- Public hygiene grep по tracked release surface: старые приватные маркеры
+  отсутствуют; оставшиеся root-word совпадения классифицированы как
+  ложноположительные technical path terms.
+
+### Известные ограничения
+
+- `v1.0.1-public-review` является source/review release. Коммерческий runtime
+  DetMir продолжает использовать private runtime config вне Git.
+- Python остается для Telegram runtime, OCR/content-analysis, 1C/AI/ETL и MCP
+  helpers. Это отражено в registry docs как допустимое исключение.
+- pfSense/infrastructure runtime не менялся в рамках этого релиза.
+
+## v1.0.0 - 2026-04-25
+
+Базовый professional baseline с install-kit artifacts.
