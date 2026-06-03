@@ -39,6 +39,9 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
   `admin`, `manager`, `sales`;
 - JSON портала возвращает объяснение расчета weighted KPI: активную роль,
   каталог ролей, planned/app/weighted seconds и matched rule по приложениям;
+- вкладки `Руководитель` и `Отчеты` показывают экран `Почему такой индекс?`
+  с ролью, формулой, плановым временем, app time, weighted time и top
+  приложениями с весом/правилом/вкладом;
 - отчет использует Worktime management snapshot и показывает сравнение
   подразделений/ответственных за текущий день;
 - JSON отчета содержит `workforce.department_comparison`,

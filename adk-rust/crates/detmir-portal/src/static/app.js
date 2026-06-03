@@ -117,7 +117,7 @@ function renderOperator(data) {
   `;
 }
 
-function renderManager(data) {
+function renderManager(data, reports) {
   const workforceIndex = workforceIndexText(data.users_count, data.total_active_seconds);
   return `
     <h2 class="section-title">Руководитель</h2>
@@ -140,6 +140,7 @@ function renderManager(data) {
         `).join("")}</div>
       </section>
     </div>
+    ${renderWorkforceIndexExplanation(reports?.workforce_policy)}
     <h3 class="section-title">Сотрудники</h3>
     <div class="list">${(data.users || []).map(user => `
       <div class="row">
@@ -157,6 +158,76 @@ function workforceIndexText(usersCount, activeSeconds) {
   if (users <= 0 || seconds <= 0) return "Нет данных";
   const pct = Math.max(0, Math.min(100, Math.round(seconds / (users * 8 * 3600) * 100)));
   return `${pct}%`;
+}
+
+function humanSeconds(seconds) {
+  const value = Math.max(0, Number(seconds || 0));
+  const totalMinutes = Math.round(value / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours}:${String(minutes).padStart(2, "0")}`;
+}
+
+function pctText(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "0%";
+  return `${Math.round(n * 100)}%`;
+}
+
+function renderWorkforceIndexExplanation(policy) {
+  if (!policy || !policy.configured) {
+    return `
+      <section class="card index-explain-card">
+        <h3>Почему такой индекс?</h3>
+        <p class="muted">Role/application policy не настроена. Доступен только нейтральный индекс активности.</p>
+      </section>
+    `;
+  }
+  const details = Array.isArray(policy.app_details) ? policy.app_details.slice(0, 12) : [];
+  const weightedTotal = Math.max(1, Number(policy.weighted_seconds || 0));
+  const appRows = details.length === 0
+    ? `<div class="row compact-row"><strong>Нет приложений</strong><span class="muted">Нет top breakdown для weighted KPI</span><span></span></div>`
+    : details.map(item => {
+        const contribution = Math.round(Number(item.weighted_seconds || 0) / weightedTotal * 100);
+        return `
+          <div class="row app-weight-row">
+            <strong>${escapeHtml(item.application || "-")}</strong>
+            <span class="muted">${escapeHtml(humanSeconds(item.seconds))} · вес ${escapeHtml(pctText(item.weight))} · правило ${escapeHtml(item.matched_rule || "default_weight")}</span>
+            <span class="badge ${Number(item.weight || 0) > 0 ? "status-ok" : "status-unknown"}">${escapeHtml(humanSeconds(item.weighted_seconds))} · ${contribution}%</span>
+          </div>
+        `;
+      }).join("");
+  return `
+    <section class="card index-explain-card">
+      <div class="section-head">
+        <div>
+          <h3>Почему такой индекс?</h3>
+          <p class="muted">${escapeHtml(policy.explanation || "Индекс = взвешенное время приложений / плановое время роли.")}</p>
+        </div>
+        <span class="badge ${statusClass(workforceIndexStatus(policy.index))}">${escapeHtml(workforceIndexTextFromValue(policy.index))}</span>
+      </div>
+      <div class="index-metrics">
+        <div><span class="muted">Роль</span><strong>${escapeHtml(policy.role_label || policy.role || "-")}</strong></div>
+        <div><span class="muted">План</span><strong>${escapeHtml(humanSeconds(policy.planned_seconds))}</strong></div>
+        <div><span class="muted">App time</span><strong>${escapeHtml(humanSeconds(policy.app_seconds))}</strong></div>
+        <div><span class="muted">Weighted</span><strong>${escapeHtml(humanSeconds(policy.weighted_seconds))}</strong></div>
+      </div>
+      <div class="list compact-list app-weight-list">${appRows}</div>
+    </section>
+  `;
+}
+
+function workforceIndexTextFromValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${Math.round(n)}%` : "Нет данных";
+}
+
+function workforceIndexStatus(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "UNKNOWN";
+  if (n >= 80) return "OK";
+  if (n >= 45) return "WARN";
+  return "FAIL";
 }
 
 function renderOwner(data) {
@@ -304,6 +375,7 @@ function renderReports(data) {
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
+    ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>
     ${renderReportSections(data.sections)}
     <section class="card markdown-card">
@@ -320,7 +392,10 @@ async function refresh() {
   const content = document.getElementById("content");
   const data = await loadJson(`/${state.tab}`);
   if (state.tab === "operator") content.innerHTML = renderOperator(data);
-  if (state.tab === "manager") content.innerHTML = renderManager(data);
+  if (state.tab === "manager") {
+    const reports = await loadJson("/reports").catch(() => null);
+    content.innerHTML = renderManager(data, reports);
+  }
   if (state.tab === "owner") content.innerHTML = renderOwner(data);
   if (state.tab === "incidents") {
     const evidence = await loadJson("/dlp/evidence").catch(error => ({ ok: false, error: error.message, items: [] }));

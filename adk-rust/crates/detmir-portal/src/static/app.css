@@ -183,6 +183,46 @@ h1 {
   min-height: 180px;
 }
 
+.index-explain-card {
+  margin: 12px 0;
+}
+
+.section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.section-head h3 {
+  margin-bottom: 4px;
+}
+
+.index-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.index-metrics > div {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.app-weight-list {
+  margin-top: 8px;
+}
+
+.app-weight-row {
+  grid-template-columns: minmax(140px, 1fr) minmax(260px, 2fr) auto;
+}
+
 .compact-list {
   gap: 6px;
 }
@@ -190,6 +230,17 @@ h1 {
 .compact-row {
   grid-template-columns: minmax(110px, 1fr) minmax(170px, 2fr) auto;
   padding: 8px;
+}
+
+.report-section .compact-row {
+  grid-template-columns: 1fr;
+  align-items: flex-start;
+}
+
+.row strong,
+.row .muted {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .markdown-card {
@@ -266,5 +317,7 @@ pre {
   .row { grid-template-columns: 1fr; }
   .incident-row { grid-template-columns: 1fr; }
   .evidence-row { grid-template-columns: 1fr; }
+  .app-weight-row { grid-template-columns: 1fr; }
+  .section-head { flex-direction: column; }
   .actions { justify-content: flex-start; }
 }
