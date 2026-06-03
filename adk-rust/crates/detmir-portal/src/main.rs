@@ -393,6 +393,8 @@ struct WorkforceRolePolicy {
     #[serde(default)]
     label: Option<String>,
     #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
     planned_hours_per_day: Option<f64>,
     #[serde(default)]
     default_weight: Option<f64>,
@@ -409,6 +411,17 @@ struct WeightedActivity {
     app_seconds: i64,
     weighted_seconds: i64,
     matched_applications: usize,
+    explanation: String,
+    app_details: Vec<AppWeightDetail>,
+}
+
+#[derive(Debug)]
+struct AppWeightDetail {
+    application: String,
+    seconds: i64,
+    weight: f64,
+    weighted_seconds: i64,
+    matched_rule: String,
 }
 
 #[derive(Debug)]
@@ -938,10 +951,10 @@ fn build_reports(
     let owner_items = workforce_rollup_items(snapshot, "owner_rollups");
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
-    let weighted = load_workforce_policy(workforce_policy_path)
-        .ok()
-        .flatten()
-        .and_then(|policy| weighted_activity(snapshot, &policy, metrics.users_count));
+    let workforce_policy = load_workforce_policy(workforce_policy_path).ok().flatten();
+    let weighted = workforce_policy
+        .as_ref()
+        .and_then(|policy| weighted_activity(snapshot, policy, metrics.users_count));
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
         "Контур DetMir работает штатно, критичных действий не требуется"
@@ -1051,7 +1064,7 @@ fn build_reports(
                 "items": recommendations.iter().map(|item| report_item("Рекомендация", "INFO", item)).collect::<Vec<_>>()
             }
         ],
-        "workforce_policy": workforce_policy_json(weighted.as_ref(), workforce_policy_path),
+        "workforce_policy": workforce_policy_json(workforce_policy.as_ref(), weighted.as_ref(), workforce_policy_path),
         "workforce": {
             "department_comparison": department_items,
             "owner_comparison": owner_items,
@@ -1219,6 +1232,7 @@ fn weighted_activity(
     let mut app_seconds = 0_i64;
     let mut weighted_seconds = 0_f64;
     let mut matched_applications = 0_usize;
+    let mut app_details = Vec::new();
     for app in apps {
         let name = app.get("application").and_then(Value::as_str).unwrap_or("");
         let seconds = app
@@ -1230,19 +1244,35 @@ fn weighted_activity(
             continue;
         }
         app_seconds += seconds;
-        let weight = application_weight(role_policy, name, default_weight);
+        let (weight, matched_rule) = application_weight_match(role_policy, name, default_weight);
         if weight > 0.0 {
             matched_applications += 1;
         }
         weighted_seconds += seconds as f64 * weight;
+        app_details.push(AppWeightDetail {
+            application: name.to_string(),
+            seconds,
+            weight,
+            weighted_seconds: (seconds as f64 * weight).round() as i64,
+            matched_rule,
+        });
     }
+    app_details.sort_by_key(|item| -item.weighted_seconds);
+    app_details.truncate(12);
     let weighted_seconds_i64 = weighted_seconds.round() as i64;
+    let role_label = role_policy
+        .label
+        .clone()
+        .unwrap_or_else(|| role.to_string());
+    let explanation = role_policy.description.clone().unwrap_or_else(|| {
+        format!(
+            "Роль {}: индекс = взвешенное время приложений / плановое время роли.",
+            role_label
+        )
+    });
     Some(WeightedActivity {
         role: role.to_string(),
-        role_label: role_policy
-            .label
-            .clone()
-            .unwrap_or_else(|| role.to_string()),
+        role_label,
         index: Some(
             ((weighted_seconds / planned_seconds as f64) * 100.0)
                 .round()
@@ -1252,23 +1282,26 @@ fn weighted_activity(
         app_seconds,
         weighted_seconds: weighted_seconds_i64,
         matched_applications,
+        explanation,
+        app_details,
     })
 }
 
-fn application_weight(
+fn application_weight_match(
     role_policy: &WorkforceRolePolicy,
     application: &str,
     default_weight: f64,
-) -> f64 {
+) -> (f64, String) {
     let app = application.to_lowercase();
     role_policy
         .application_weights
         .iter()
         .find_map(|(pattern, weight)| {
             let pattern = pattern.to_lowercase();
-            (!pattern.is_empty() && app.contains(&pattern)).then_some(weight.clamp(0.0, 1.0))
+            (!pattern.is_empty() && app.contains(&pattern))
+                .then_some((weight.clamp(0.0, 1.0), pattern))
         })
-        .unwrap_or(default_weight)
+        .unwrap_or((default_weight, "default_weight".to_string()))
 }
 
 fn weighted_activity_kpi(weighted: Option<&WeightedActivity>) -> Value {
@@ -1309,25 +1342,65 @@ fn weighted_activity_item(weighted: Option<&WeightedActivity>, policy_path: &Pat
     }
 }
 
-fn workforce_policy_json(weighted: Option<&WeightedActivity>, policy_path: &Path) -> Value {
-    match weighted {
-        Some(weighted) => json!({
+fn workforce_policy_json(
+    policy: Option<&WorkforcePolicy>,
+    weighted: Option<&WeightedActivity>,
+    policy_path: &Path,
+) -> Value {
+    match (policy, weighted) {
+        (Some(policy), Some(weighted)) => json!({
             "configured": true,
             "path": policy_path.display().to_string(),
+            "default_role": policy.default_role,
+            "roles_count": policy.roles.len(),
+            "available_roles": workforce_role_catalog(policy),
             "role": weighted.role,
             "role_label": weighted.role_label,
+            "explanation": weighted.explanation,
             "index": weighted.index,
             "planned_seconds": weighted.planned_seconds,
             "app_seconds": weighted.app_seconds,
             "weighted_seconds": weighted.weighted_seconds,
             "matched_applications": weighted.matched_applications,
+            "app_details": weighted.app_details.iter().map(|item| json!({
+                "application": item.application,
+                "seconds": item.seconds,
+                "weight": item.weight,
+                "weighted_seconds": item.weighted_seconds,
+                "matched_rule": item.matched_rule,
+            })).collect::<Vec<_>>(),
         }),
-        None => json!({
+        (Some(policy), None) => json!({
+            "configured": true,
+            "path": policy_path.display().to_string(),
+            "default_role": policy.default_role,
+            "roles_count": policy.roles.len(),
+            "available_roles": workforce_role_catalog(policy),
+            "note": "role/application policy exists, but weighted activity could not be calculated",
+        }),
+        (None, _) => json!({
             "configured": false,
             "path": policy_path.display().to_string(),
             "note": "weighted activity requires role/application policy",
         }),
     }
+}
+
+fn workforce_role_catalog(policy: &WorkforcePolicy) -> Vec<Value> {
+    policy
+        .roles
+        .iter()
+        .map(|(role, item)| {
+            json!({
+                "role": role,
+                "label": item.label.clone().unwrap_or_else(|| role.to_string()),
+                "description": item.description.clone().unwrap_or_default(),
+                "planned_hours_per_day": item.planned_hours_per_day.unwrap_or(8.0),
+                "default_weight": item.default_weight.unwrap_or(0.0),
+                "application_rules": item.application_weights.len(),
+            })
+        })
+        .collect()
 }
 
 fn default_workforce_role() -> String {
@@ -3273,6 +3346,10 @@ mod tests {
                 "accountant".to_string(),
                 WorkforceRolePolicy {
                     label: Some("Бухгалтер".to_string()),
+                    description: Some(
+                        "Бухгалтер: высокий вес 1С и офисных документов; развлекательные сайты не учитываются."
+                            .to_string(),
+                    ),
                     planned_hours_per_day: Some(8.0),
                     default_weight: Some(0.2),
                     application_weights: BTreeMap::from([

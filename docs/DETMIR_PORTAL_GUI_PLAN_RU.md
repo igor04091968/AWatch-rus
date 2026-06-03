@@ -35,6 +35,10 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - отчет поддерживает `Взвешенную активность` при наличии
   `/etc/detmir-portal-workforce-policy.json`; публичный пример лежит в
   `configs/detmir-workforce-policy.example.json`;
+- пример policy содержит типовые роли `accountant`, `operator`, `developer`,
+  `admin`, `manager`, `sales`;
+- JSON портала возвращает объяснение расчета weighted KPI: активную роль,
+  каталог ролей, planned/app/weighted seconds и matched rule по приложениям;
 - отчет использует Worktime management snapshot и показывает сравнение
   подразделений/ответственных за текущий день;
 - JSON отчета содержит `workforce.department_comparison`,

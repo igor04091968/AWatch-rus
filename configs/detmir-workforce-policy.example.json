@@ -3,41 +3,122 @@
   "roles": {
     "accountant": {
       "label": "Бухгалтер",
+      "description": "Бухгалтер: высокий вес 1С, Excel и документов; браузер учитывается умеренно, развлекательная активность не влияет на индекс.",
       "planned_hours_per_day": 8,
       "default_weight": 0.2,
       "application_weights": {
         "1с": 1.0,
+        "1c": 1.0,
+        "1cv8": 1.0,
         "excel": 0.9,
         "word": 0.7,
+        "outlook": 0.7,
+        "mail": 0.7,
         "rdp": 0.8,
         "browser": 0.4,
+        "chrome": 0.4,
+        "edge": 0.4,
         "youtube": 0.0
       }
     },
-    "sales": {
-      "label": "Продажи",
+    "operator": {
+      "label": "Оператор",
+      "description": "Оператор: основной вес у 1С/CRM/RDP и операционных форм; офис и почта учитываются как вспомогательная активность.",
       "planned_hours_per_day": 8,
-      "default_weight": 0.3,
+      "default_weight": 0.25,
       "application_weights": {
+        "1с": 1.0,
+        "1c": 1.0,
         "crm": 1.0,
-        "1с": 0.8,
-        "browser": 0.8,
-        "mail": 0.8,
-        "telegram": 0.4,
+        "rdp": 0.9,
+        "browser": 0.6,
+        "chrome": 0.6,
+        "edge": 0.6,
+        "excel": 0.6,
+        "outlook": 0.5,
+        "mail": 0.5,
+        "telegram": 0.3,
         "youtube": 0.0
       }
     },
     "developer": {
       "label": "Разработчик",
+      "description": "Разработчик: высокий вес IDE, терминала, git и технического браузера; коммуникации учитываются ниже.",
       "planned_hours_per_day": 8,
       "default_weight": 0.3,
       "application_weights": {
         "ide": 1.0,
         "code": 1.0,
+        "vscode": 1.0,
+        "visual studio": 1.0,
         "terminal": 0.9,
-        "browser": 0.7,
+        "powershell": 0.9,
+        "cmd": 0.8,
         "git": 0.9,
+        "browser": 0.7,
+        "chrome": 0.7,
+        "edge": 0.7,
+        "telegram": 0.3,
         "youtube": 0.2
+      }
+    },
+    "admin": {
+      "label": "Администратор",
+      "description": "Администратор: высокий вес RDP, терминала, консоли управления, мониторинга и технических браузерных интерфейсов.",
+      "planned_hours_per_day": 8,
+      "default_weight": 0.3,
+      "application_weights": {
+        "rdp": 1.0,
+        "terminal": 1.0,
+        "powershell": 1.0,
+        "cmd": 0.9,
+        "ssh": 1.0,
+        "proxmox": 1.0,
+        "grafana": 0.9,
+        "prometheus": 0.9,
+        "browser": 0.7,
+        "chrome": 0.7,
+        "edge": 0.7,
+        "telegram": 0.4,
+        "youtube": 0.1
+      }
+    },
+    "manager": {
+      "label": "Менеджер",
+      "description": "Менеджер: высокий вес CRM, почты, документов, коммуникаций и бизнес-браузера; 1С учитывается как рабочий контекст.",
+      "planned_hours_per_day": 8,
+      "default_weight": 0.35,
+      "application_weights": {
+        "crm": 1.0,
+        "browser": 0.8,
+        "chrome": 0.8,
+        "edge": 0.8,
+        "mail": 0.8,
+        "outlook": 0.8,
+        "excel": 0.8,
+        "word": 0.7,
+        "telegram": 0.6,
+        "1с": 0.7,
+        "1c": 0.7,
+        "youtube": 0.1
+      }
+    },
+    "sales": {
+      "label": "Продажи",
+      "description": "Продажи: высокий вес CRM, браузера, почты и 1С; коммуникации учитываются как часть рабочего процесса.",
+      "planned_hours_per_day": 8,
+      "default_weight": 0.3,
+      "application_weights": {
+        "crm": 1.0,
+        "1с": 0.8,
+        "1c": 0.8,
+        "browser": 0.8,
+        "chrome": 0.8,
+        "edge": 0.8,
+        "mail": 0.8,
+        "outlook": 0.8,
+        "telegram": 0.4,
+        "youtube": 0.0
       }
     }
   }
