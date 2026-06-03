@@ -12,6 +12,7 @@
     detmir_portal_worktime_url: "{{ detmir_portal_worktime_url_override | default(aw_worktime_report_base | default('http://192.0.2.13:5610', true), true) }}"
     detmir_portal_one_c_host: "{{ hostvars[(groups['proxmox'] | default([]) | first) | default('192.0.2.2', true)].ansible_host | default((groups['proxmox'] | default([]) | first) | default('192.0.2.2', true), true) }}"
     detmir_portal_one_c_url: "{{ detmir_portal_one_c_url_override | default('http://' + detmir_portal_one_c_host + ':8710', true) }}"
+    detmir_portal_workforce_policy_path: "/etc/detmir-portal-workforce-policy.json"
 
   tasks:
     - name: Check local detmir-portal binary
@@ -47,12 +48,22 @@
           DETMIR_PORTAL_FAILED_UNITS_CMD=systemctl --failed --no-pager
           DETMIR_PORTAL_WORKTIME_URL={{ detmir_portal_worktime_url }}
           DETMIR_PORTAL_ONE_C_URL={{ detmir_portal_one_c_url }}
+          DETMIR_PORTAL_WORKFORCE_POLICY_PATH={{ detmir_portal_workforce_policy_path }}
           DETMIR_PORTAL_TIMEOUT_SECONDS=10
           DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
           DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
           DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/detmir-portal/evidence
           DETMIR_PORTAL_EVIDENCE_LIMIT=30
           DETMIR_PORTAL_EVIDENCE_MAX_BYTES=8388608
+
+    - name: Install initial workforce policy when absent
+      ansible.builtin.copy:
+        dest: "{{ detmir_portal_workforce_policy_path }}"
+        owner: root
+        group: root
+        mode: "0644"
+        force: false
+        content: "{{ lookup('file', aw_repo_root + '/configs/detmir-workforce-policy.example.json') }}"
 
     - name: Ensure detmir-portal state and evidence directories
       ansible.builtin.file:

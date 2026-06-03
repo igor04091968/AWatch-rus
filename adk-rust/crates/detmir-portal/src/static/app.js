@@ -125,7 +125,7 @@ function renderManager(data) {
       <section class="card">
         <h3>Работа сегодня</h3>
         <p class="kpi-value">${escapeHtml(workforceIndex)}</p>
-        <p class="muted">Индекс полезной активности: active time / 8 ч на сотрудника</p>
+        <p class="muted">proxy: активное время / плановое рабочее время</p>
         <p class="muted">Сотрудников: ${data.users_count}; активных часов: ${Number(data.total_active_hours || 0).toFixed(1)}</p>
         <p class="muted">${escapeHtml(data.status?.text || "")}</p>
       </section>

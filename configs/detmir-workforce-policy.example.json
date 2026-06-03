@@ -1,0 +1,44 @@
+{
+  "default_role": "accountant",
+  "roles": {
+    "accountant": {
+      "label": "Бухгалтер",
+      "planned_hours_per_day": 8,
+      "default_weight": 0.2,
+      "application_weights": {
+        "1с": 1.0,
+        "excel": 0.9,
+        "word": 0.7,
+        "rdp": 0.8,
+        "browser": 0.4,
+        "youtube": 0.0
+      }
+    },
+    "sales": {
+      "label": "Продажи",
+      "planned_hours_per_day": 8,
+      "default_weight": 0.3,
+      "application_weights": {
+        "crm": 1.0,
+        "1с": 0.8,
+        "browser": 0.8,
+        "mail": 0.8,
+        "telegram": 0.4,
+        "youtube": 0.0
+      }
+    },
+    "developer": {
+      "label": "Разработчик",
+      "planned_hours_per_day": 8,
+      "default_weight": 0.3,
+      "application_weights": {
+        "ide": 1.0,
+        "code": 1.0,
+        "terminal": 0.9,
+        "browser": 0.7,
+        "git": 0.9,
+        "youtube": 0.2
+      }
+    }
+  }
+}
