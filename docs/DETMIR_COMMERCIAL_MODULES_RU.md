@@ -21,6 +21,8 @@ Forensics усиливают продукт, но не должны перетя
 
 Основные KPI:
 
+- UEBA риск: read-only `risk_score/risk_level/reasons` для приоритизации
+  проверки;
 - индекс активности: proxy `активное время / плановое рабочее время`;
 - взвешенная активность: только при настроенной role/application policy;
 - сравнение подразделений за текущий день;
@@ -103,6 +105,19 @@ PDF-экспорт выполняется штатной печатью брау
 В этом режиме `employee_details[].user` и `employee_details[].user_id`
 заменяются на `Сотрудник N` и `EMPLOYEE-N`. Live-режим без query-флага
 сохраняет реальные имена для внутреннего коммерческого контура DetMir.
+
+### UEBA risk scoring
+
+DetMir Workforce/Security формирует read-only UEBA score для руководителя и ИБ:
+
+- `risk_score`: сумма reason points, capped at 100;
+- `risk_level`: `normal`, `low`, `medium`, `high`;
+- `reasons`: DLP WARN/FAIL, open review queue, evidence, off-hours/weekend
+  insights, просадки/аномалии Workforce, приложения без явного
+  `application_weights` правила.
+
+Важно: текущий UEBA слой только ранжирует риск и объясняет причины. Он не
+выполняет pfSense/NAC/SOAR actions и не меняет сетевые политики.
 
 Для быстрой загрузки вкладки руководителя explainability-блок доступен отдельным
 легким endpoint:

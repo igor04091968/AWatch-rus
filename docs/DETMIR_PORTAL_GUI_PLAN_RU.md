@@ -30,6 +30,8 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - UI tab: `Отчеты`;
 - отчет содержит KPI для владельца/руководителя: worktime users, active time,
   active applications, DLP WARN/FAIL, evidence screenshots/items, open issues;
+- отчет содержит read-only UEBA risk score: `score`, `level`, `reasons`,
+  формула `sum(reason_points) capped at 100`;
 - отчет и вкладка `Руководитель` показывают `Индекс активности` как
   proxy `активное время / плановое рабочее время`;
 - отчет поддерживает `Взвешенную активность` при наличии
@@ -59,6 +61,8 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - для демо/экспертных PDF и Markdown добавлен режим обезличивания:
   `?anonymize=1` на `/api/reports` и `/api/workforce/policy/explain`, плюс
   кнопка `Демо без имен` во вкладке `Отчеты`;
+- UEBA score виден в KPI, отдельной секции отчета, Markdown и PDF; слой не
+  выполняет pfSense/NAC/SOAR actions;
 - вкладка `Руководитель` получает этот блок через легкий endpoint
   `/api/workforce/policy/explain`, без загрузки полного `/api/reports`;
 - contract легкого endpoint защищен unit-тестом

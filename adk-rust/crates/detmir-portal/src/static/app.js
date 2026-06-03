@@ -398,6 +398,30 @@ function renderReportSections(sections) {
   `).join("")}</div>`;
 }
 
+function renderUebaRisk(risk) {
+  if (!risk) return "";
+  const reasons = Array.isArray(risk.reasons) ? risk.reasons.slice(0, 12) : [];
+  return `
+    <section class="card ueba-risk-card">
+      <div class="section-head">
+        <div>
+          <h3>UEBA риск</h3>
+          <p class="muted">${escapeHtml(risk.note || "Read-only risk score без автоматического воздействия.")}</p>
+          <p class="muted small">Формула: ${escapeHtml(risk.formula || "sum(reason_points) capped at 100")}.</p>
+        </div>
+        <span class="badge ${statusClass(risk.status)}">${escapeHtml(risk.level || "unknown")} · ${escapeHtml(risk.score ?? 0)}/100</span>
+      </div>
+      <div class="list compact-list">${reasons.length ? reasons.map(item => `
+        <div class="row compact-row">
+          <strong>${escapeHtml(item.label || item.code || "-")}</strong>
+          <span class="muted">${escapeHtml(item.value || "")} · ${escapeHtml(item.recommendation || "")}</span>
+          <span class="badge ${statusClass(item.status || item.severity)}">+${escapeHtml(item.points || 0)}</span>
+        </div>
+      `).join("") : `<div class="row compact-row"><strong>Сигналы</strong><span class="muted">Существенных UEBA-сигналов в текущем срезе нет.</span><span class="badge status-ok">OK</span></div>`}</div>
+    </section>
+  `;
+}
+
 function renderReports(data) {
   return `
     <h2 class="section-title">Отчеты</h2>
@@ -421,6 +445,7 @@ function renderReports(data) {
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
+    ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>
     ${renderReportSections(data.sections)}

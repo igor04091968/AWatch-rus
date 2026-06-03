@@ -977,6 +977,12 @@ fn build_reports(
     let insight_items = workforce_insight_items(snapshot);
     let workforce_policy_explain =
         build_workforce_policy_explain(snapshot, workforce_policy_path, anonymize);
+    let ueba_risk = build_ueba_risk(
+        snapshot,
+        &metrics,
+        &workforce_policy_explain,
+        &insight_items,
+    );
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
         "Контур DetMir работает штатно, критичных действий не требуется"
@@ -1019,7 +1025,7 @@ fn build_reports(
         &metrics,
         &recommendations,
         &workforce_summary,
-        &workforce_policy_explain,
+        (&workforce_policy_explain, &ueba_risk),
     );
     json!({
         "generated_at_utc": snapshot.generated_at_utc,
@@ -1030,6 +1036,7 @@ fn build_reports(
         "headline": headline,
         "executive_points": executive_points,
         "kpis": [
+            report_kpi("UEBA риск", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("risk score")),
             report_kpi("Индекс активности", workforce_index_text(metrics.workforce_index), workforce_index_status(metrics.workforce_index), "proxy: активное время / плановое рабочее время"),
             weighted_activity_kpi_from_policy(&workforce_policy_explain),
             report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
@@ -1067,6 +1074,10 @@ fn build_reports(
                 "items": insight_items.clone()
             },
             {
+                "title": "UEBA риск",
+                "items": ueba_risk.get("reasons").and_then(Value::as_array).cloned().unwrap_or_default()
+            },
+            {
                 "title": "Подразделения сегодня",
                 "items": department_items.clone()
             },
@@ -1088,6 +1099,7 @@ fn build_reports(
                 "items": recommendations.iter().map(|item| report_item("Рекомендация", "INFO", item)).collect::<Vec<_>>()
             }
         ],
+        "ueba_risk": ueba_risk,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -1205,6 +1217,197 @@ fn trend_status(trend: &Value) -> String {
         "weekly_ready".to_string()
     } else {
         "daily_only".to_string()
+    }
+}
+
+fn build_ueba_risk(
+    snapshot: &Snapshot,
+    metrics: &ReportMetrics,
+    workforce_policy: &Value,
+    insight_items: &[Value],
+) -> Value {
+    let mut reasons = Vec::new();
+    let mut score = 0_u64;
+
+    if metrics.dlp_fail > 0 {
+        push_risk_reason(
+            &mut reasons,
+            &mut score,
+            ("dlp_fail", "DLP FAIL"),
+            "FAIL",
+            35,
+            format!("fail={}", metrics.dlp_fail),
+            "Проверить DLP/case queue и evidence.",
+        );
+    }
+    if metrics.dlp_warn > 0 {
+        push_risk_reason(
+            &mut reasons,
+            &mut score,
+            ("dlp_warn", "DLP WARN"),
+            "WARN",
+            20,
+            format!("warn={}", metrics.dlp_warn),
+            "Разобрать предупреждения DLP и подтвердить/отклонить события.",
+        );
+    }
+    if metrics.open_incidents > 0 {
+        push_risk_reason(
+            &mut reasons,
+            &mut score,
+            ("open_incidents", "Открытые вопросы"),
+            "WARN",
+            15,
+            format!("open={}", metrics.open_incidents),
+            "Назначить ответственного и закрыть очередь review.",
+        );
+    }
+    if metrics.evidence_total > 0 {
+        push_risk_reason(
+            &mut reasons,
+            &mut score,
+            ("evidence_present", "Есть evidence"),
+            "INFO",
+            10,
+            format!(
+                "items={}, screenshots={}",
+                metrics.evidence_total, metrics.evidence_screenshots
+            ),
+            "Проверить evidence metadata и audit просмотра.",
+        );
+    }
+
+    for item in insight_items {
+        let status = item.get("status").and_then(Value::as_str).unwrap_or("INFO");
+        if status == "OK" || status == "INFO" {
+            continue;
+        }
+        let label = item
+            .get("label")
+            .and_then(Value::as_str)
+            .unwrap_or("Workforce");
+        let value = item.get("value").and_then(Value::as_str).unwrap_or("");
+        let text = format!("{label} {value}").to_lowercase();
+        let (code, title, points) = if text.contains("ноч")
+            || text.contains("night")
+            || text.contains("вне рабочего")
+            || text.contains("off-hours")
+        {
+            ("night_activity", "Активность вне рабочего окна", 20)
+        } else if text.contains("выход")
+            || text.contains("weekend")
+            || text.contains("суббот")
+            || text.contains("воскрес")
+        {
+            ("weekend_activity", "Работа в выходной", 20)
+        } else if text.contains("просад")
+            || text.contains("паден")
+            || text.contains("drop")
+            || text.contains("недогруз")
+        {
+            ("workforce_drop", "Отклонение активности", 15)
+        } else {
+            ("workforce_anomaly", "Workforce anomaly", 10)
+        };
+        push_risk_reason(
+            &mut reasons,
+            &mut score,
+            (code, title),
+            status,
+            points,
+            value,
+            "Проверить первичные события ActivityWatch и контекст подразделения.",
+        );
+    }
+
+    let default_weight_apps = workforce_policy
+        .get("policy_audit")
+        .and_then(|audit| audit.get("default_weight_applications"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let default_weight_seconds = workforce_policy
+        .get("policy_audit")
+        .and_then(|audit| audit.get("default_weight_seconds"))
+        .and_then(Value::as_i64)
+        .unwrap_or(0);
+    if default_weight_apps > 0 {
+        push_risk_reason(
+            &mut reasons,
+            &mut score,
+            (
+                "application_classification_gap",
+                "Приложения без явного правила",
+            ),
+            "WARN",
+            if default_weight_seconds >= 3600 {
+                15
+            } else {
+                10
+            },
+            format!(
+                "default_weight_apps={}, default_weight_time={}",
+                default_weight_apps,
+                human_duration(default_weight_seconds)
+            ),
+            "Уточнить role/application policy, чтобы снизить ошибки классификации.",
+        );
+    }
+
+    if !snapshot.worktime.ok {
+        push_risk_reason(
+            &mut reasons,
+            &mut score,
+            ("worktime_unavailable", "Нет надежного Worktime"),
+            "FAIL",
+            25,
+            snapshot.worktime.summary.clone(),
+            "Восстановить Worktime API/collectors перед выводами по сотрудникам.",
+        );
+    }
+
+    let score = score.min(100);
+    let (level, status) = ueba_risk_level(score);
+    json!({
+        "score": score,
+        "level": level,
+        "status": status,
+        "summary": format!("{} risk, {} reason(s)", level, reasons.len()),
+        "formula": "sum(reason_points) capped at 100",
+        "reasons": reasons,
+        "note": "Read-only UEBA score: мониторинг и приоритизация проверки, без автоматического воздействия на сеть."
+    })
+}
+
+fn push_risk_reason(
+    reasons: &mut Vec<Value>,
+    score: &mut u64,
+    code_title: (&str, &str),
+    severity: &str,
+    points: u64,
+    evidence: impl Into<String>,
+    recommendation: &str,
+) {
+    *score = score.saturating_add(points);
+    reasons.push(json!({
+        "label": code_title.1,
+        "status": severity,
+        "value": evidence.into(),
+        "code": code_title.0,
+        "severity": severity,
+        "points": points,
+        "recommendation": recommendation,
+    }));
+}
+
+fn ueba_risk_level(score: u64) -> (&'static str, &'static str) {
+    if score >= 70 {
+        ("high", "FAIL")
+    } else if score >= 40 {
+        ("medium", "WARN")
+    } else if score >= 15 {
+        ("low", "WARN")
+    } else {
+        ("normal", "OK")
     }
 }
 
@@ -1644,8 +1847,9 @@ fn render_report_markdown(
     metrics: &ReportMetrics,
     recommendations: &[String],
     workforce: &ReportWorkforceSummary,
-    workforce_policy: &Value,
+    explainability: (&Value, &Value),
 ) -> String {
+    let (workforce_policy, ueba_risk) = explainability;
     let mut text = String::new();
     text.push_str("# DetMir оперативный отчет\n\n");
     text.push_str(&format!("Дата снимка: {}\n\n", snapshot.generated_at_utc));
@@ -1698,9 +1902,57 @@ fn render_report_markdown(
     for item in recommendations {
         text.push_str(&format!("- {item}\n"));
     }
+    append_ueba_risk_markdown(&mut text, ueba_risk);
     append_workforce_policy_markdown(&mut text, workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
     text
+}
+
+fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
+    text.push_str("\n## UEBA риск\n\n");
+    text.push_str(&format!(
+        "- Score: {}/100\n",
+        risk.get("score").and_then(Value::as_u64).unwrap_or(0)
+    ));
+    text.push_str(&format!(
+        "- Level: {}\n",
+        risk.get("level")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+    ));
+    text.push_str(&format!(
+        "- Formula: {}\n",
+        risk.get("formula")
+            .and_then(Value::as_str)
+            .unwrap_or("sum(reason_points) capped at 100")
+    ));
+    if let Some(note) = risk.get("note").and_then(Value::as_str) {
+        text.push_str(&format!("- Note: {note}\n"));
+    }
+    text.push_str("\n### Причины риска\n\n");
+    let reasons = risk
+        .get("reasons")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if reasons.is_empty() {
+        text.push_str("- Существенных UEBA-сигналов в текущем срезе нет.\n");
+        return;
+    }
+    for item in reasons.iter().take(12) {
+        text.push_str(&format!(
+            "- {}: +{} points, {}, evidence: {}\n",
+            item.get("label").and_then(Value::as_str).unwrap_or("-"),
+            item.get("points").and_then(Value::as_u64).unwrap_or(0),
+            item.get("severity")
+                .and_then(Value::as_str)
+                .unwrap_or("INFO"),
+            item.get("value").and_then(Value::as_str).unwrap_or("-")
+        ));
+        if let Some(recommendation) = item.get("recommendation").and_then(Value::as_str) {
+            text.push_str(&format!("  - recommendation: {recommendation}\n"));
+        }
+    }
 }
 
 fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
@@ -3297,6 +3549,9 @@ mod tests {
         assert_eq!(normalize_path("/portal/api/health?x=1"), "/api/health");
         assert_eq!(normalize_path("/portal/"), "/");
         assert_eq!(normalize_path("/api/health"), "/api/health");
+        assert!(query_flag("/api/reports?anonymize=1", "anonymize"));
+        assert!(query_flag("/api/reports?anonymize=true", "anonymize"));
+        assert!(!query_flag("/api/reports?anonymize=0", "anonymize"));
     }
 
     #[test]
@@ -3627,6 +3882,19 @@ mod tests {
                 .contains("derived detections/cases")
         );
         assert!(report["kpis"].as_array().unwrap().len() >= 6);
+        assert!(report["ueba_risk"]["score"].as_u64().unwrap() > 0);
+        assert!(
+            !report["ueba_risk"]["reasons"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## UEBA риск")
+        );
         assert_eq!(report["workforce_policy"]["configured"], false);
         assert_eq!(report["workforce"]["trend_status"], "daily_only");
         assert_eq!(report["workforce"]["insights"].as_array().unwrap().len(), 1);
