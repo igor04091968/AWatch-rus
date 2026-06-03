@@ -407,12 +407,15 @@ struct WeightedActivity {
     role: String,
     role_label: String,
     index: Option<u8>,
+    formula: String,
     planned_seconds: i64,
     app_seconds: i64,
     weighted_seconds: i64,
     matched_applications: usize,
     explanation: String,
     app_details: Vec<AppWeightDetail>,
+    policy_audit: Value,
+    employee_details: Vec<Value>,
 }
 
 #[derive(Debug)]
@@ -1001,6 +1004,7 @@ fn build_reports(
         &metrics,
         &recommendations,
         &workforce_summary,
+        &workforce_policy_explain,
     );
     json!({
         "generated_at_utc": snapshot.generated_at_utc,
@@ -1275,6 +1279,7 @@ fn weighted_activity(
         });
     }
     app_details.sort_by_key(|item| -item.weighted_seconds);
+    let policy_audit = build_policy_audit(&app_details, default_weight);
     app_details.truncate(12);
     let weighted_seconds_i64 = weighted_seconds.round() as i64;
     let role_label = role_policy
@@ -1295,13 +1300,112 @@ fn weighted_activity(
                 .round()
                 .clamp(0.0, 100.0) as u8,
         ),
+        formula: "index = weighted_seconds / planned_seconds × 100".to_string(),
         planned_seconds,
         app_seconds,
         weighted_seconds: weighted_seconds_i64,
         matched_applications,
         explanation,
         app_details,
+        policy_audit,
+        employee_details: employee_index_details(snapshot, &role_policy.label, planned_hours),
     })
+}
+
+fn build_policy_audit(app_details: &[AppWeightDetail], default_weight: f64) -> Value {
+    let default_items = app_details
+        .iter()
+        .filter(|item| item.matched_rule == "default_weight")
+        .map(|item| {
+            json!({
+                "application": item.application,
+                "seconds": item.seconds,
+                "weight": item.weight,
+                "weighted_seconds": item.weighted_seconds,
+                "reason": "matched no explicit application rule"
+            })
+        })
+        .collect::<Vec<_>>();
+    let zero_weight_items = app_details
+        .iter()
+        .filter(|item| item.weight <= 0.0)
+        .map(|item| {
+            json!({
+                "application": item.application,
+                "seconds": item.seconds,
+                "matched_rule": item.matched_rule
+            })
+        })
+        .collect::<Vec<_>>();
+    let default_seconds = app_details
+        .iter()
+        .filter(|item| item.matched_rule == "default_weight")
+        .map(|item| item.seconds)
+        .sum::<i64>();
+    json!({
+        "default_weight": default_weight,
+        "total_applications": app_details.len(),
+        "explicit_rule_applications": app_details.iter().filter(|item| item.matched_rule != "default_weight").count(),
+        "default_weight_applications": default_items.len(),
+        "default_weight_seconds": default_seconds,
+        "zero_weight_applications": zero_weight_items.len(),
+        "needs_review": default_items.into_iter().take(12).collect::<Vec<_>>(),
+        "zero_weight_details": zero_weight_items.into_iter().take(12).collect::<Vec<_>>(),
+    })
+}
+
+fn employee_index_details(
+    snapshot: &Snapshot,
+    role_label: &Option<String>,
+    planned_hours_per_day: f64,
+) -> Vec<Value> {
+    let planned_seconds = (planned_hours_per_day * 3600.0).round() as i64;
+    let Some(rows) = snapshot
+        .worktime
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("rows"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+    let role = role_label.as_deref().unwrap_or("default");
+    rows.iter()
+        .map(|row| {
+            let active_seconds = row
+                .get("active_seconds")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+                .max(0);
+            let index = if planned_seconds > 0 {
+                ((active_seconds as f64 / planned_seconds as f64) * 100.0)
+                    .round()
+                    .clamp(0.0, 100.0) as i64
+            } else {
+                0
+            };
+            json!({
+                "user": row.get("user").and_then(Value::as_str).unwrap_or(""),
+                "user_id": row.get("user_id").and_then(Value::as_str).unwrap_or(""),
+                "role_label": role,
+                "formula": "employee_index = active_seconds / planned_seconds × 100",
+                "reason": format!(
+                    "active {} / plan {} => {}%",
+                    human_duration(active_seconds),
+                    human_duration(planned_seconds),
+                    index
+                ),
+                "index": index,
+                "status": workforce_index_status(Some(index as u8)),
+                "active_seconds": active_seconds,
+                "active_hhmm": row.get("active_hhmm").and_then(Value::as_str).unwrap_or(""),
+                "planned_seconds": planned_seconds,
+                "planned_hhmm": human_duration(planned_seconds),
+                "last_activity": row.get("last_activity").and_then(Value::as_str).unwrap_or(""),
+                "scope_note": "per-user app-weight attribution is not available in current worktime payload; app weights are portfolio-level"
+            })
+        })
+        .collect()
 }
 
 fn application_weight_match(
@@ -1413,11 +1517,14 @@ fn workforce_policy_json(
             "role": weighted.role,
             "role_label": weighted.role_label,
             "explanation": weighted.explanation,
+            "formula": weighted.formula,
             "index": weighted.index,
             "planned_seconds": weighted.planned_seconds,
             "app_seconds": weighted.app_seconds,
             "weighted_seconds": weighted.weighted_seconds,
             "matched_applications": weighted.matched_applications,
+            "policy_audit": weighted.policy_audit,
+            "employee_details": weighted.employee_details,
             "app_details": weighted.app_details.iter().map(|item| json!({
                 "application": item.application,
                 "seconds": item.seconds,
@@ -1487,6 +1594,7 @@ fn render_report_markdown(
     metrics: &ReportMetrics,
     recommendations: &[String],
     workforce: &ReportWorkforceSummary,
+    workforce_policy: &Value,
 ) -> String {
     let mut text = String::new();
     text.push_str("# DetMir оперативный отчет\n\n");
@@ -1540,8 +1648,138 @@ fn render_report_markdown(
     for item in recommendations {
         text.push_str(&format!("- {item}\n"));
     }
+    append_workforce_policy_markdown(&mut text, workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
     text
+}
+
+fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
+    if policy.get("configured").and_then(Value::as_bool) != Some(true) {
+        text.push_str("\n## Почему такой индекс\n\n");
+        text.push_str("- Role/application policy не настроена.\n");
+        return;
+    }
+    text.push_str("\n## Почему такой индекс\n\n");
+    text.push_str(&format!(
+        "- Роль: {}\n",
+        policy
+            .get("role_label")
+            .and_then(Value::as_str)
+            .unwrap_or("-")
+    ));
+    text.push_str(&format!(
+        "- Формула: {}\n",
+        policy
+            .get("formula")
+            .and_then(Value::as_str)
+            .unwrap_or("index = weighted_seconds / planned_seconds × 100")
+    ));
+    text.push_str(&format!(
+        "- Индекс: {}\n",
+        workforce_index_text(
+            policy
+                .get("index")
+                .and_then(Value::as_u64)
+                .map(|value| value as u8)
+        )
+    ));
+    text.push_str(&format!(
+        "- План/App/Weighted: {}/{}/{}\n",
+        human_duration(
+            policy
+                .get("planned_seconds")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+        ),
+        human_duration(
+            policy
+                .get("app_seconds")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+        ),
+        human_duration(
+            policy
+                .get("weighted_seconds")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+        )
+    ));
+    if let Some(explanation) = policy.get("explanation").and_then(Value::as_str) {
+        text.push_str(&format!("- Объяснение: {explanation}\n"));
+    }
+    text.push_str("\n### Top приложений\n\n");
+    for item in policy
+        .get("app_details")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(12)
+    {
+        text.push_str(&format!(
+            "- {}: raw {}, weight {:.0}%, weighted {}, rule `{}`\n",
+            item.get("application")
+                .and_then(Value::as_str)
+                .unwrap_or("-"),
+            human_duration(item.get("seconds").and_then(Value::as_i64).unwrap_or(0)),
+            item.get("weight").and_then(Value::as_f64).unwrap_or(0.0) * 100.0,
+            human_duration(
+                item.get("weighted_seconds")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+            ),
+            item.get("matched_rule")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+        ));
+    }
+    let default_items = policy
+        .get("policy_audit")
+        .and_then(|audit| audit.get("needs_review"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if !default_items.is_empty() {
+        text.push_str("\n### Аудит policy: default_weight\n\n");
+        for item in default_items.iter().take(12) {
+            text.push_str(&format!(
+                "- {}: raw {}, default weight {:.0}%\n",
+                item.get("application")
+                    .and_then(Value::as_str)
+                    .unwrap_or("-"),
+                human_duration(item.get("seconds").and_then(Value::as_i64).unwrap_or(0)),
+                item.get("weight").and_then(Value::as_f64).unwrap_or(0.0) * 100.0
+            ));
+        }
+    }
+    let employee_items = policy
+        .get("employee_details")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    if !employee_items.is_empty() {
+        text.push_str("\n### Drill-down по сотрудникам\n\n");
+        for item in employee_items.iter().take(12) {
+            text.push_str(&format!(
+                "- {}: {}%, active {}, plan {}, formula `{}`\n",
+                item.get("user").and_then(Value::as_str).unwrap_or("-"),
+                item.get("index").and_then(Value::as_i64).unwrap_or(0),
+                human_duration(
+                    item.get("active_seconds")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                ),
+                human_duration(
+                    item.get("planned_seconds")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0)
+                ),
+                item.get("formula").and_then(Value::as_str).unwrap_or("-")
+            ));
+            if let Some(reason) = item.get("reason").and_then(Value::as_str) {
+                text.push_str(&format!("  - reason: {reason}\n"));
+            }
+        }
+    }
 }
 
 fn worktime_totals(snapshot: &Snapshot) -> (usize, i64, usize) {
@@ -3499,6 +3737,21 @@ mod tests {
         assert_eq!(explain["role"], "accountant");
         assert_eq!(explain["roles_count"], 1);
         assert_eq!(explain["app_details"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            explain["formula"],
+            "index = weighted_seconds / planned_seconds × 100"
+        );
+        assert!(explain["planned_seconds"].as_i64().unwrap() > 0);
+        assert!(explain["weighted_seconds"].as_i64().unwrap() > 0);
+        assert!(explain["policy_audit"].is_object());
+        assert!(explain["employee_details"].as_array().unwrap().len() == 1);
+        assert_eq!(
+            explain["employee_details"][0]["formula"],
+            "employee_index = active_seconds / planned_seconds × 100"
+        );
+        assert!(explain["employee_details"][0].get("reason").is_some());
+        assert!(explain["app_details"][0].get("matched_rule").is_some());
+        assert!(explain["app_details"][0].get("weight").is_some());
         assert!(explain.get("workforce").is_none());
         assert!(explain.get("sections").is_none());
         assert!(explain.get("markdown").is_none());

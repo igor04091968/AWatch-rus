@@ -184,6 +184,7 @@ function renderWorkforceIndexExplanation(policy) {
     `;
   }
   const details = Array.isArray(policy.app_details) ? policy.app_details.slice(0, 12) : [];
+  const employees = Array.isArray(policy.employee_details) ? policy.employee_details.slice(0, 12) : [];
   const weightedTotal = Math.max(1, Number(policy.weighted_seconds || 0));
   const appRows = details.length === 0
     ? `<div class="row compact-row"><strong>Нет приложений</strong><span class="muted">Нет top breakdown для weighted KPI</span><span></span></div>`
@@ -203,6 +204,7 @@ function renderWorkforceIndexExplanation(policy) {
         <div>
           <h3>Почему такой индекс?</h3>
           <p class="muted">${escapeHtml(policy.explanation || "Индекс = взвешенное время приложений / плановое время роли.")}</p>
+          <p class="muted small">Формула: ${escapeHtml(policy.formula || "index = weighted_seconds / planned_seconds × 100")}.</p>
         </div>
         <span class="badge ${statusClass(workforceIndexStatus(policy.index))}">${escapeHtml(workforceIndexTextFromValue(policy.index))}</span>
       </div>
@@ -213,7 +215,46 @@ function renderWorkforceIndexExplanation(policy) {
         <div><span class="muted">Weighted</span><strong>${escapeHtml(humanSeconds(policy.weighted_seconds))}</strong></div>
       </div>
       <div class="list compact-list app-weight-list">${appRows}</div>
+      ${renderPolicyAudit(policy.policy_audit)}
+      ${renderEmployeeIndexDetails(employees)}
     </section>
+  `;
+}
+
+function renderPolicyAudit(audit) {
+  const items = Array.isArray(audit?.needs_review) ? audit.needs_review.slice(0, 12) : [];
+  if (items.length === 0) {
+    return `<div class="audit-note"><strong>Аудит policy</strong><span class="muted">Все top приложения попали под явные правила или данных для аудита нет.</span></div>`;
+  }
+  return `
+    <div class="audit-block">
+      <h4>Аудит policy: default_weight</h4>
+      <p class="muted small">Эти приложения не нашли явного правила и требуют проверки классификации.</p>
+      <div class="list compact-list">${items.map(item => `
+        <div class="row compact-row">
+          <strong>${escapeHtml(item.application || "-")}</strong>
+          <span class="muted">${escapeHtml(humanSeconds(item.seconds))} · default ${escapeHtml(pctText(item.weight))}</span>
+          <span class="badge status-warn">review</span>
+        </div>
+      `).join("")}</div>
+    </div>
+  `;
+}
+
+function renderEmployeeIndexDetails(items) {
+  if (!items.length) return "";
+  return `
+    <div class="employee-drilldown">
+      <h4>Drill-down по сотрудникам</h4>
+      <p class="muted small">Per-user индекс сейчас считается по активному времени; app-weight breakdown доступен на уровне портфеля.</p>
+      <div class="list compact-list">${items.map(item => `
+        <div class="row employee-index-row">
+          <strong>${escapeHtml(item.user || "-")}</strong>
+          <span class="muted">${escapeHtml(item.reason || `${item.formula || "employee_index = active_seconds / planned_seconds × 100"} · active ${humanSeconds(item.active_seconds)} / plan ${humanSeconds(item.planned_seconds)}`)}</span>
+          <span class="badge ${statusClass(item.status)}">${escapeHtml(workforceIndexTextFromValue(item.index))}</span>
+        </div>
+      `).join("")}</div>
+    </div>
   `;
 }
 
@@ -373,6 +414,9 @@ function renderReports(data) {
         `).join("")}</div>
       </section>
     </div>
+    <div class="report-actions">
+      <button class="small-button" data-print-report="true">Печать / PDF</button>
+    </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
@@ -425,6 +469,12 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-incident-action]");
   if (!button) return;
   incidentAction(button).catch(showError);
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-print-report]");
+  if (!button) return;
+  window.print();
 });
 
 async function incidentAction(button) {

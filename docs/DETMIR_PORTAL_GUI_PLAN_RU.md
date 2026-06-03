@@ -42,8 +42,23 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 - вкладки `Руководитель` и `Отчеты` показывают экран `Почему такой индекс?`
   с ролью, формулой, плановым временем, app time, weighted time и top
   приложениями с весом/правилом/вкладом;
+- Markdown export отчета включает тот же explainability-блок:
+  `Почему такой индекс?`, top приложений, audit `default_weight` и drill-down
+  по сотрудникам;
+- вкладка `Отчеты` имеет действие `Печать / PDF`; печатный CSS оставляет
+  отчетные секции и скрывает навигацию;
+- formula hint закреплен прямо в UI:
+  `index = weighted_seconds / planned_seconds × 100`;
+- policy audit показывает приложения, попавшие под `default_weight`, потому что
+  это основной источник ошибок классификации ролей;
+- employee drill-down показывает персональную причину индекса:
+  `active / plan => index`; per-user app-weight breakdown пока невозможен,
+  потому что текущий worktime payload отдает приложения только на уровне
+  портфеля;
 - вкладка `Руководитель` получает этот блок через легкий endpoint
   `/api/workforce/policy/explain`, без загрузки полного `/api/reports`;
+- contract легкого endpoint защищен unit-тестом
+  `workforce_policy_explain_is_lightweight_payload`;
 - отчет использует Worktime management snapshot и показывает сравнение
   подразделений/ответственных за текущий день;
 - JSON отчета содержит `workforce.department_comparison`,
