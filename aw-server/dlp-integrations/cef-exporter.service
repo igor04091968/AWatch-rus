@@ -6,8 +6,8 @@ After=network-online.target
 Type=oneshot
 User=activitywatch
 Group=activitywatch
-WorkingDirectory=/opt/activitywatch/dlp-integrations
-ExecStart=/opt/activitywatch/dlp-integrations/.venv/bin/python /opt/activitywatch/dlp-integrations/cef_exporter.py
+WorkingDirectory=/var/lib/activitywatch
+ExecStart=/usr/local/bin/dlp-cef-exporter-rust
 
 [Install]
 WantedBy=multi-user.target

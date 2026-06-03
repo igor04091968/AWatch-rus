@@ -6,10 +6,9 @@ Wants=network-online.target activitywatch-server.service aw-worktime-api.service
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/activitywatch/aw-server.env
-ExecStart=/usr/local/bin/aw-worktime-prewarm.sh
+ExecStart=/usr/local/bin/aw-worktime-prewarm-rust
 User=activitywatch
 Group=activitywatch
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=aw-worktime-prewarm
-

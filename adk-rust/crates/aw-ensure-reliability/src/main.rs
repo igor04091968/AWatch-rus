@@ -56,9 +56,6 @@ struct Cli {
     #[arg(long, default_value = "/etc/systemd/system/aw-health-check.service")]
     health_service_target: PathBuf,
 
-    #[arg(long, default_value = "/opt/activitywatch/aw-rus-ops/health-check.sh")]
-    health_script_source: PathBuf,
-
     #[arg(long, default_value_t = false)]
     apply: bool,
 
@@ -72,7 +69,6 @@ enum StepKind {
     Check,
     Chown,
     Chmod,
-    Copy,
     Write,
     Systemd,
     Sleep,
@@ -138,11 +134,10 @@ fn build_report(cli: &Cli) -> Report {
     if !cli.env_file.is_file() {
         missing_required.push(format!("env file missing: {}", cli.env_file.display()));
     }
-    if !cli.health_script_target.is_file() && !cli.health_script_source.is_file() {
+    if !cli.health_script_target.is_file() {
         missing_required.push(format!(
-            "health script target and source missing: {}, {}",
-            cli.health_script_target.display(),
-            cli.health_script_source.display()
+            "health script target missing: {}",
+            cli.health_script_target.display()
         ));
     }
 
@@ -193,17 +188,13 @@ fn build_report(cli: &Cli) -> Report {
     );
     push_step(
         &mut steps,
-        "install-health-script",
-        StepKind::Copy,
-        format!(
-            "copy {} {}",
-            shell_quote(&cli.health_script_source),
-            shell_quote(&cli.health_script_target)
-        ),
-        true,
+        "check-health-script",
+        StepKind::Check,
+        format!("test -x {}", shell_quote(&cli.health_script_target)),
+        false,
         !cli.health_script_target.is_file(),
         if cli.health_script_target.is_file() {
-            "health script already installed".to_string()
+            "health script already installed by Ansible".to_string()
         } else {
             "health script target missing".to_string()
         },
@@ -331,8 +322,16 @@ fn apply_steps(report: &mut Report) -> Result<()> {
                     1
                 }),
             },
+            "check-health-script" => {
+                let target = Path::new("/usr/local/bin/aw-health-check");
+                ExecResult {
+                    order: step.order,
+                    name: step.name.clone(),
+                    ok: target.is_file(),
+                    exit_code: Some(if target.is_file() { 0 } else { 1 }),
+                }
+            }
             "install-logrotate" => write_file_result(step, report, LOGROTATE_CONTENT, 0o644)?,
-            "install-health-script" => copy_health_script(step, report)?,
             "install-health-timer" => write_file_result(step, report, HEALTH_TIMER_CONTENT, 0o644)?,
             "install-health-service" => {
                 write_file_result(step, report, HEALTH_SERVICE_CONTENT, 0o644)?
@@ -371,24 +370,6 @@ fn write_file_result(step: &Step, report: &Report, content: &str, mode: u32) -> 
     })
 }
 
-fn copy_health_script(step: &Step, report: &Report) -> Result<ExecResult> {
-    let source = source_from_copy_command(&step.command)?;
-    let target = copy_target_from_command(&step.command)?;
-    let _ = report;
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
-    }
-    fs::copy(&source, &target)
-        .with_context(|| format!("copy {} -> {}", source.display(), target.display()))?;
-    set_mode(&target, 0o755).with_context(|| format!("chmod 0755 {}", target.display()))?;
-    Ok(ExecResult {
-        order: step.order,
-        name: step.name.clone(),
-        ok: true,
-        exit_code: Some(0),
-    })
-}
-
 fn run_shell_step(step: &Step) -> Result<ExecResult> {
     let status = Command::new("sh")
         .arg("-c")
@@ -409,22 +390,6 @@ fn target_from_command(command: &str) -> Result<PathBuf> {
         .nth(1)
         .or_else(|| command.split_whitespace().nth(2))
         .context("parse target from command")?;
-    Ok(PathBuf::from(raw.trim_matches('\'')))
-}
-
-fn source_from_copy_command(command: &str) -> Result<PathBuf> {
-    let raw = command
-        .split_whitespace()
-        .nth(1)
-        .context("parse source from copy command")?;
-    Ok(PathBuf::from(raw.trim_matches('\'')))
-}
-
-fn copy_target_from_command(command: &str) -> Result<PathBuf> {
-    let raw = command
-        .split_whitespace()
-        .nth(2)
-        .context("parse target from copy command")?;
     Ok(PathBuf::from(raw.trim_matches('\'')))
 }
 
@@ -494,19 +459,19 @@ mod tests {
     fn dry_run_marks_legacy_mutations() {
         let dir = tempfile::tempdir().unwrap();
         let env_file = dir.path().join("aw-server.env");
-        let health = dir.path().join("health-check.sh");
+        let health_target = dir.path().join("bin/aw-health-check");
         fs::write(&env_file, "AW_BASE_URL=http://127.0.0.1:5600\n").unwrap();
-        fs::write(&health, "#!/bin/sh\nexit 0\n").unwrap();
+        fs::create_dir_all(health_target.parent().unwrap()).unwrap();
+        fs::write(&health_target, "#!/bin/sh\nexit 0\n").unwrap();
         let cli = Cli {
             env_file,
             data_dir: dir.path().join("data"),
             log_dir: dir.path().join("log"),
             opt_dir: dir.path().join("opt"),
             logrotate_target: dir.path().join("logrotate/activitywatch"),
-            health_script_target: dir.path().join("bin/aw-health-check"),
+            health_script_target: health_target,
             health_timer_target: dir.path().join("systemd/aw-health-check.timer"),
             health_service_target: dir.path().join("systemd/aw-health-check.service"),
-            health_script_source: health,
             apply: false,
             json: true,
         };
@@ -525,18 +490,18 @@ mod tests {
     #[test]
     fn missing_env_blocks_apply() {
         let dir = tempfile::tempdir().unwrap();
-        let health = dir.path().join("health-check.sh");
-        fs::write(&health, "#!/bin/sh\nexit 0\n").unwrap();
+        let health_target = dir.path().join("bin/aw-health-check");
+        fs::create_dir_all(health_target.parent().unwrap()).unwrap();
+        fs::write(&health_target, "#!/bin/sh\nexit 0\n").unwrap();
         let cli = Cli {
             env_file: dir.path().join("missing.env"),
             data_dir: dir.path().join("data"),
             log_dir: dir.path().join("log"),
             opt_dir: dir.path().join("opt"),
             logrotate_target: dir.path().join("logrotate/activitywatch"),
-            health_script_target: dir.path().join("bin/aw-health-check"),
+            health_script_target: health_target,
             health_timer_target: dir.path().join("systemd/aw-health-check.timer"),
             health_service_target: dir.path().join("systemd/aw-health-check.service"),
-            health_script_source: health,
             apply: true,
             json: true,
         };

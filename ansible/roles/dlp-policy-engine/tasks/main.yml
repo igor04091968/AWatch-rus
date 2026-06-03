@@ -1,46 +1,7 @@
 ---
-- name: Ensure policy engine directory exists
-  become: true
-  ansible.builtin.file:
-    path: /opt/activitywatch/dlp-policy-engine
-    state: directory
-    owner: activitywatch
-    group: activitywatch
-    mode: "0755"
-
-- name: Deploy policy engine files
-  become: true
-  ansible.builtin.copy:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
-    owner: activitywatch
-    group: activitywatch
-    mode: "{{ item.mode | default('0644') }}"
-  loop:
-    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_service.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_service.py" }
-    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_schema.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_schema.py" }
-    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_storage.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_storage.py" }
-    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/policy_distributor.py", dest: "/opt/activitywatch/dlp-policy-engine/policy_distributor.py" }
-    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/requirements.txt", dest: "/opt/activitywatch/dlp-policy-engine/requirements.txt" }
-    - { src: "{{ playbook_dir }}/../aw-server/dlp-policy-engine/dlp-policy-engine.service", dest: "/etc/systemd/system/aw-dlp-policy-engine.service" }
-
-- name: Ensure policy engine venv exists
-  become: true
-  ansible.builtin.command:
-    cmd: python3 -m venv /opt/activitywatch/dlp-policy-engine/.venv
-  args:
-    creates: /opt/activitywatch/dlp-policy-engine/.venv/bin/python
-
-- name: Install python deps for policy engine venv
-  become: true
-  ansible.builtin.pip:
-    requirements: /opt/activitywatch/dlp-policy-engine/requirements.txt
-    virtualenv: /opt/activitywatch/dlp-policy-engine/.venv
-
-- name: Enable and restart policy engine
-  become: true
-  ansible.builtin.systemd:
-    daemon_reload: true
-    name: aw-dlp-policy-engine.service
-    enabled: true
-    state: restarted
+- name: Deprecated role guard - DLP policy engine is Rust-only
+  ansible.builtin.fail:
+    msg: >-
+      ansible/roles/dlp-policy-engine is deprecated because it deployed the old
+      Python runtime. Use ansible/deploy_aw_server.yml, which installs
+      /usr/local/bin/aw-dlp-policy-engine-rust from adk-rust.

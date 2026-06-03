@@ -6,7 +6,7 @@ Wants=network-online.target aw-dlp-case-management.service
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/activitywatch/aw-server.env
-ExecStart=/usr/bin/python3 /usr/local/bin/aw-dlp-influx-exporter.py
+ExecStart=/usr/local/bin/aw-dlp-influx-exporter-rust
 User=activitywatch
 Group=activitywatch
 StandardOutput=journal

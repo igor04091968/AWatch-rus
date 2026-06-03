@@ -6,8 +6,8 @@ After=network-online.target
 Type=oneshot
 User=activitywatch
 Group=activitywatch
-WorkingDirectory=/opt/activitywatch/dlp-integrations
-ExecStart=/opt/activitywatch/dlp-integrations/.venv/bin/python /opt/activitywatch/dlp-integrations/webhook_sender.py
+WorkingDirectory=/var/lib/activitywatch
+ExecStart=/usr/local/bin/dlp-webhook-sender-rust
 
 [Install]
 WantedBy=multi-user.target

@@ -18,7 +18,7 @@ else
         "$ROOT_DIR/adk-rust/target/release/aw-ensure-reliability" \
         "/usr/local/bin/aw-ensure-reliability"; do
         if [[ -n "$candidate" && -x "$candidate" ]]; then
-            exec "$candidate" --health-script-source "$SCRIPT_DIR/health-check.sh" "$@"
+            exec "$candidate" "$@"
         fi
     done
     cat >&2 <<'EOF'
@@ -115,10 +115,12 @@ setup_health_check() {
     local health_service="/etc/systemd/system/aw-health-check.service"
     
     if [[ ! -f "$health_script" ]]; then
-        log "Setting up health check..."
-        cp "$SCRIPT_DIR/health-check.sh" "$health_script"
-        chmod +x "$health_script"
-        
+        log "ERROR: Rust-first health check wrapper not found: $health_script"
+        return 1
+    fi
+
+    if [[ ! -f "$health_timer" || ! -f "$health_service" ]]; then
+        log "Setting up health check timer..."
         # Create systemd timer for health checks
         cat > "$health_timer" << 'EOF'
 [Unit]

@@ -8,8 +8,8 @@ StartLimitIntervalSec=60
 [Service]
 Type=simple
 EnvironmentFile=/etc/activitywatch/aw-server.env
-WorkingDirectory=/opt/activitywatch/dlp-policy-engine
-ExecStart=/opt/activitywatch/dlp-policy-engine/.venv/bin/uvicorn policy_service:app --host ${AW_DLP_POLICY_ENGINE_BIND_HOST} --port ${AW_DLP_POLICY_ENGINE_PORT}
+WorkingDirectory=/var/lib/activitywatch
+ExecStart=/usr/local/bin/aw-dlp-policy-engine-rust
 Restart=on-failure
 RestartSec=5
 User=activitywatch

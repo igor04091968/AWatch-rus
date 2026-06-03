@@ -96,19 +96,8 @@ EOF
 json_field() {
   local json_path="$1"
   local field_name="$2"
-  python3 - "$json_path" "$field_name" <<'PY'
-import json, sys
-path, field = sys.argv[1], sys.argv[2]
-try:
-    with open(path, 'r', encoding='utf-8') as fh:
-        obj = json.load(fh)
-except Exception:
-    sys.exit(0)
-value = obj.get(field)
-if value is None:
-    sys.exit(0)
-print(str(value))
-PY
+  command -v jq >/dev/null 2>&1 || fail "jq is required to read ${json_path}"
+  jq -er --arg field "${field_name}" '.[$field] // empty | tostring' "${json_path}" 2>/dev/null || true
 }
 
 detect_host_from_manifest() {
@@ -124,34 +113,19 @@ detect_host_from_manifest() {
 extract_zip_normalized() {
   local package_path="$1"
   local dest_dir="$2"
-  python3 - "${package_path}" "${dest_dir}" <<'PY'
-import pathlib
-import shutil
-import sys
-import zipfile
-
-zip_path = pathlib.Path(sys.argv[1])
-dest_dir = pathlib.Path(sys.argv[2])
-dest_dir.mkdir(parents=True, exist_ok=True)
-
-with zipfile.ZipFile(zip_path) as zf:
-    for info in zf.infolist():
-        raw_name = info.filename.replace('\\', '/')
-        normalized = pathlib.PurePosixPath(raw_name)
-        parts = [part for part in normalized.parts if part not in ('', '.')]
-        if any(part == '..' for part in parts):
-            raise SystemExit(f'unsafe zip entry: {info.filename}')
-        if not parts:
-            continue
-        target = dest_dir.joinpath(*parts)
-        is_dir = info.is_dir() or raw_name.endswith('/')
-        if is_dir:
-            target.mkdir(parents=True, exist_ok=True)
-            continue
-        target.parent.mkdir(parents=True, exist_ok=True)
-        with zf.open(info) as src, target.open('wb') as dst:
-            shutil.copyfileobj(src, dst)
-PY
+  command -v zipinfo >/dev/null 2>&1 || fail "zipinfo is required to inspect ${package_path}"
+  command -v unzip >/dev/null 2>&1 || fail "unzip is required to extract ${package_path}"
+  mkdir -p "${dest_dir}"
+  local entry normalized
+  while IFS= read -r entry; do
+    normalized="${entry//\\//}"
+    case "${normalized}" in
+      ""|.|/*|*"/../"*|../*|*".."|*"/..")
+        fail "unsafe zip entry: ${entry}"
+        ;;
+    esac
+  done < <(zipinfo -1 "${package_path}")
+  unzip -q "${package_path}" -d "${dest_dir}"
 }
 
 write_package_manifest() {

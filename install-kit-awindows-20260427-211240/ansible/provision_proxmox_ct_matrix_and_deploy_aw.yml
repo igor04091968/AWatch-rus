@@ -1,56 +1,14 @@
 ---
-- name: Создать матрицу Proxmox CT и развернуть AWatch-rus с RU patch
+- name: Deprecated Proxmox CT matrix bootstrap path
   hosts: proxmox
   gather_facts: false
 
-  vars:
-    proxmox_bootstrap_dir: "/tmp/aw-rus-bootstrap"
-    aw_bootstrap_files:
-      - install_aw_server.sh
-      - apply_webui_ru_patch.sh
-      - activitywatch-server.service
-      - aw-worktime-api.py
-      - aw-worktime-api.service
-      - aw-worktime-ui-bridge.py
-      - aw-worktime-ui-bridge.service
-      - aw-worktime-ui-bridge.timer
-      - aw-worktime-panel.js
-      - aw-server.env.example
-      - aw-ru-patch.js
-      - aw-sw-cleanup.js
-      - aw-host-groups.json
-      - settings/classes-worktime.json
-      - settings/views-default.json
-
   tasks:
-    - name: Проверить, что матрица CT задана
-      ansible.builtin.assert:
-        that:
-          - proxmox_ct_matrix is defined
-          - proxmox_ct_matrix | length > 0
-        fail_msg: "Задайте proxmox_ct_matrix в group_vars/proxmox-matrix.yml"
-
-    - name: Выполнить workflow создания для каждого CT
-      ansible.builtin.include_tasks: tasks/provision_ct_and_deploy_aw.yml
-      vars:
-        ct_id: "{{ item.id }}"
-        ct_hostname: "{{ item.hostname }}"
-        ct_storage: "{{ item.storage }}"
-        ct_template: "{{ item.template }}"
-        ct_rootfs_size: "{{ item.rootfs_size }}"
-        ct_cores: "{{ item.cores }}"
-        ct_memory: "{{ item.memory }}"
-        ct_swap: "{{ item.swap }}"
-        ct_bridge: "{{ item.bridge }}"
-        ct_ip: "{{ item.ip }}"
-        ct_gw: "{{ item.gw }}"
-        ct_vlan: "{{ item.vlan | default('') }}"
-        ct_nameserver: "{{ item.nameserver | default('') }}"
-        ct_searchdomain: "{{ item.searchdomain | default('') }}"
-        ct_password: "{{ item.password }}"
-        ct_unprivileged: "{{ item.unprivileged }}"
-        ct_onboot: "{{ item.onboot }}"
-        ct_features: "{{ item.features }}"
-      loop: "{{ proxmox_ct_matrix }}"
-      loop_control:
-        label: "ct={{ item.id }} host={{ item.hostname }} ip={{ item.ip }}"
+    - name: Stop deprecated Python-era CT matrix bootstrap
+      ansible.builtin.fail:
+        msg: >-
+          ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml is deprecated
+          because its bootstrap path copied removed Python service entrypoints.
+          Use the existing DetMir AW server and ansible/deploy_aw_server.yml for
+          the Rust application deploy. Rebuild this CT bootstrap path separately
+          before using it for new infrastructure.

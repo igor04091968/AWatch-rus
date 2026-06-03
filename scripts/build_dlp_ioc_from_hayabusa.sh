@@ -43,8 +43,5 @@ for candidate in "${rust_candidates[@]}"; do
   fi
 done
 
-python3 "$REPO_ROOT/scripts/extract_ioc_from_sigma.py" \
-  --rules-root "$RULES_ROOT" \
-  --out-dir "$OUT_DIR"
-
-echo "IOC artifacts generated in: $OUT_DIR"
+echo "ERROR: Rust extractor not found. Build it with: cd '$REPO_ROOT/adk-rust' && cargo build --release -p extract-ioc-from-sigma" >&2
+exit 127

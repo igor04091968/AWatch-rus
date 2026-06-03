@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 
 const ENV_FILE: &str = "/etc/activitywatch/aw-server.env";
 const DEFAULT_STATE_DIR: &str = "/var/lib/activitywatch/slo";
-const DEFAULT_HEALTHD_CMD: &str = "/usr/local/bin/aw-rus-healthd.py --json";
+const DEFAULT_HEALTHD_CMD: &str = "/usr/local/bin/aw-rus-healthd-rust --json";
 const DEFAULT_HEALTHD_STATE_FILE: &str = "/var/lib/activitywatch/health/aw-rus-health.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]

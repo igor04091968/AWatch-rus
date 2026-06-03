@@ -6,7 +6,7 @@ Wants=network-online.target activitywatch-server.service aw-worktime-api.service
 [Service]
 Type=oneshot
 EnvironmentFile=/etc/activitywatch/aw-server.env
-ExecStart=/usr/bin/python3 /usr/local/bin/aw-slo-monitor.py
+ExecStart=/usr/local/bin/aw-slo-monitor-rust
 SuccessExitStatus=1
 User=activitywatch
 Group=activitywatch

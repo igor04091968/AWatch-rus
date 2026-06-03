@@ -3,7 +3,7 @@ AGENTS for OpenCode
 Keep this file minimal and high-signal: only include facts an agent would otherwise miss.
 
 1) Repo purpose (one line)
-- This repository bundles an ActivityWatch Server deployment, RU WebUI patch, Windows collectors (PowerShell), and small Python utilities for aggregation and monitoring.
+- This repository bundles an ActivityWatch Server deployment, RU WebUI patch, Windows collectors (PowerShell), and Rust operational utilities for aggregation, monitoring, health checks, SLO, DLP helpers, and DetMir automation. Python is retained only for explicit exceptions: Telegram bot runtime, pfSense tooling, OCR/content-analysis, 1C AI/ETL, and detmir-mcp.
 
 2) Highest-value entrypoints & commands
 - Read README.md and docs/preparation.md first (they are the authoritative onboarding flow).
@@ -12,7 +12,7 @@ Keep this file minimal and high-signal: only include facts an agent would otherw
 - Install AW server on the CT (runs inside CT): `aw-server/install_aw_server.sh` (requires `/etc/activitywatch/aw-server.env`).
 - Apply RU WebUI patch (must run on the CT and after webui is present): `aw-server/apply_webui_ru_patch.sh`.
 - Run the Windows ensemble deploy from a Windows admin host: `windows/deploy-ensemble.ps1` (see its parameters; it calls `deploy-domain-users.ps1`).
-- Quick DLP aggregation (local): `python3 scripts/aggregate_dlp_events.py`.
+- Quick DLP aggregation (local): `adk-rust/target/release/dlp-aggregator`.
 
 3) Exact env/secrets behavior agents often miss
 - Secrets live in `secrets/deploy.secrets.env` (actual file is intentionally local-only). Many scripts default to that path if no arg provided. Never add real secrets to commits. Use `.example` files as templates.

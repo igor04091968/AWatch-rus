@@ -5,8 +5,8 @@ After=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=-/etc/activitywatch/aw-server.env
-WorkingDirectory=/opt/activitywatch/dlp-case-management
-ExecStart=/opt/activitywatch/dlp-case-management/.venv/bin/uvicorn case_service:APP --host ${AW_DLP_CASE_BIND_HOST} --port ${AW_DLP_CASE_PORT}
+WorkingDirectory=/var/lib/activitywatch
+ExecStart=/usr/local/bin/aw-dlp-case-management-rust
 Restart=on-failure
 RestartSec=3
 User=activitywatch

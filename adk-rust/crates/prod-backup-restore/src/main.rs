@@ -13,7 +13,7 @@ const DEFAULT_SERVER_USER: &str = "igor";
 const DEFAULT_LEGACY_DB: &str = "/root/.local/share/activitywatch/aw-server-rust/sqlite.db";
 const DEFAULT_TARGET_DB: &str =
     "/var/lib/activitywatch/.local/share/activitywatch/aw-server-rust/sqlite.db";
-const DEFAULT_REMOTE_MERGE_SCRIPT: &str = "/tmp/merge_aw_server_dbs.py";
+const DEFAULT_REMOTE_MERGE_BIN: &str = "/tmp/merge-aw-server-dbs";
 
 #[derive(Debug, Parser)]
 #[command(about = "Safe planner/checker for the destructive prod backup restore flow")]
@@ -45,8 +45,8 @@ struct Cli {
     #[arg(long, default_value = DEFAULT_TARGET_DB)]
     target_db: String,
 
-    #[arg(long, default_value = DEFAULT_REMOTE_MERGE_SCRIPT)]
-    remote_merge_script: String,
+    #[arg(long, default_value = DEFAULT_REMOTE_MERGE_BIN)]
+    remote_merge_bin: String,
 
     #[arg(long)]
     apply: bool,
@@ -63,7 +63,7 @@ struct Plan {
     remote_backup_dir: String,
     legacy_db: String,
     target_db: String,
-    remote_merge_script: String,
+    remote_merge_bin: String,
     required_env: Vec<Requirement>,
     required_commands: Vec<Requirement>,
     required_files: Vec<Requirement>,
@@ -101,7 +101,7 @@ fn run() -> Result<i32> {
     let cli = Cli::parse();
     if cli.apply {
         bail!(
-            "Rust apply is intentionally disabled for this stage; use scripts/prod_backup_restore.sh --apply-legacy only for explicit legacy restore"
+            "Rust apply is intentionally disabled for this stage; run without --apply to review the safe restore plan"
         );
     }
     let root = cli
@@ -128,7 +128,7 @@ fn run() -> Result<i32> {
     } else {
         root.join(&cli.inventory)
     };
-    let merge_script = root.join("scripts/merge_aw_server_dbs.py");
+    let merge_bin = root.join("adk-rust/target/release/merge-aw-server-dbs");
     let plan = build_plan(
         &root,
         &env_file,
@@ -139,9 +139,9 @@ fn run() -> Result<i32> {
         &remote_backup_dir,
         &cli.legacy_db,
         &cli.target_db,
-        &cli.remote_merge_script,
+        &cli.remote_merge_bin,
         &inventory,
-        &merge_script,
+        &merge_bin,
     );
 
     if cli.json {
@@ -168,9 +168,9 @@ fn build_plan(
     remote_backup_dir: &str,
     legacy_db: &str,
     target_db: &str,
-    remote_merge_script: &str,
+    remote_merge_bin: &str,
     inventory: &Path,
-    merge_script: &Path,
+    merge_bin: &Path,
 ) -> Plan {
     let required_env = ["AW_SSH_PASSWORD", "AW_WINRM_PASSWORD"]
         .into_iter()
@@ -199,24 +199,21 @@ fn build_plan(
             },
         })
         .collect::<Vec<_>>();
-    let required_files = [
-        ("inventory", inventory),
-        ("merge_aw_server_dbs.py", merge_script),
-    ]
-    .into_iter()
-    .map(|(name, path)| Requirement {
-        name: name.to_string(),
-        ok: path.is_file(),
-        detail: path.display().to_string(),
-    })
-    .collect::<Vec<_>>();
+    let required_files = [("inventory", inventory), ("merge-aw-server-dbs", merge_bin)]
+        .into_iter()
+        .map(|(name, path)| Requirement {
+            name: name.to_string(),
+            ok: path.is_file(),
+            detail: path.display().to_string(),
+        })
+        .collect::<Vec<_>>();
 
     let mut steps = Vec::new();
     push_step(
         &mut steps,
         "scp",
         format!(
-            "sshpass scp scripts/merge_aw_server_dbs.py {server_user}@{server_host}:{remote_merge_script}"
+            "sshpass scp adk-rust/target/release/merge-aw-server-dbs {server_user}@{server_host}:{remote_merge_bin}"
         ),
         false,
     );
@@ -258,7 +255,7 @@ fn build_plan(
         &mut steps,
         "ssh",
         format!(
-            "sudo python3 '{remote_merge_script}' --base '{legacy_db}' --overlay '{target_db}' --output '{remote_backup_dir}/sqlite.merged.db'"
+            "sudo chmod 0755 '{remote_merge_bin}' && sudo '{remote_merge_bin}' --base '{legacy_db}' --overlay '{target_db}' --output '{remote_backup_dir}/sqlite.merged.db'"
         ),
         true,
     );
@@ -307,7 +304,7 @@ fn build_plan(
         remote_backup_dir: remote_backup_dir.to_string(),
         legacy_db: legacy_db.to_string(),
         target_db: target_db.to_string(),
-        remote_merge_script: remote_merge_script.to_string(),
+        remote_merge_bin: remote_merge_bin.to_string(),
         required_env,
         required_commands,
         required_files,
@@ -443,7 +440,9 @@ mod tests {
     fn plan_marks_destructive_steps() {
         let dir = tempfile::tempdir().unwrap();
         let inventory = dir.path().join("ansible/inventory.ini");
-        let merge = dir.path().join("scripts/merge_aw_server_dbs.py");
+        let merge = dir
+            .path()
+            .join("adk-rust/target/release/merge-aw-server-dbs");
         fs::create_dir_all(inventory.parent().unwrap()).unwrap();
         fs::create_dir_all(merge.parent().unwrap()).unwrap();
         fs::write(&inventory, "").unwrap();
@@ -461,7 +460,7 @@ mod tests {
             "/var/lib/activitywatch/backups/prod-restore-20260602-000000",
             DEFAULT_LEGACY_DB,
             DEFAULT_TARGET_DB,
-            DEFAULT_REMOTE_MERGE_SCRIPT,
+            DEFAULT_REMOTE_MERGE_BIN,
             &inventory,
             &merge,
         );

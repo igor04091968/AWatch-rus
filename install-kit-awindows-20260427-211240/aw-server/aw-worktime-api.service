@@ -8,7 +8,7 @@ StartLimitIntervalSec=60
 [Service]
 Type=simple
 EnvironmentFile=/etc/activitywatch/aw-server.env
-ExecStart=/usr/bin/python3 /usr/local/bin/aw-worktime-api.py
+ExecStart=/usr/local/bin/aw-worktime-api-rust
 Restart=on-failure
 RestartSec=5
 User=activitywatch

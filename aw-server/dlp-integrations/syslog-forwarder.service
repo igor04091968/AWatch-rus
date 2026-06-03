@@ -4,7 +4,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/opt/activitywatch/dlp-integrations
-ExecStart=/opt/activitywatch/dlp-integrations/.venv/bin/python /opt/activitywatch/dlp-integrations/syslog_forwarder.py
+WorkingDirectory=/var/lib/activitywatch
+ExecStart=/usr/local/bin/dlp-syslog-forwarder-rust
 User=activitywatch
 Group=activitywatch

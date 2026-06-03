@@ -52,8 +52,8 @@ Ansible, PowerShell или Playwright, он остается там до поя�
 | `detmir-heal-safe` | Rust binary deployed + legacy script retained | switched for Rust auto |
 | `tsj_guardian_watchdog.sh` | Rust service via systemd drop-in + legacy shell retained | switched |
 | Telegram `/status`/decision backend | Rust helper + permanent Python bot runtime | backend only |
-| `aw-rus-healthd.py` | Rust production via systemd drop-in + legacy Python retained | switched |
-| `scripts/dlp-health-check.py` | Rust production binary + legacy Python backup retained | switched |
+| `aw-rus-healthd` | Rust production unit, Python entrypoint removed from repo | done |
+| `dlp-health-check` | Rust production binary, Python entrypoint removed from repo | done |
 | DLP aggregator | Rust production via systemd drop-in + legacy Python retained | switched |
 | AW DLP Influx exporter | Rust production via systemd drop-in + legacy Python retained | switched |
 | AW worktime Influx exporter | Rust production via systemd drop-in + legacy Python retained | switched |
@@ -763,7 +763,8 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `cases list/create`, `health check`;
     - HTTP client использует no-proxy для локальных AW/DLP сервисов;
     - `/usr/local/bin/dlp-admin-cli` установлен как Rust production CLI,
-      legacy `/usr/local/bin/dlp-admin-cli.py` оставлен для rollback/reference;
+      legacy `/usr/local/bin/dlp-admin-cli.py` больше не является repo/runtime
+      path; рабочий CLI: `/usr/local/bin/dlp-admin-cli`;
     - parity на AW server совпал с Python для `health`, `policies active`,
       `incidents list --since-hours 24 --limit 5`, `cases list --limit 5`;
     - production verification зеленый: AW failed units 0,
@@ -885,9 +886,9 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       freshness через `dlp-health-check --json`, и drift checks для
       `startOfDay`, `always_active_pattern`, `landingpage`;
     - env contract читается из процесса и `/etc/activitywatch/aw-server.env`;
-    - production `/usr/local/bin/aw-health-check` теперь wrapper, который
-      предпочитает `/usr/local/bin/aw-health-check-rust` и fallback на
-      `/opt/activitywatch/aw-rus-ops/health-check.sh`;
+    - production `/usr/local/bin/aw-health-check` теперь Rust-required wrapper:
+      вызывает `/usr/local/bin/aw-health-check-rust` и падает с ошибкой, если
+      Rust binary отсутствует;
     - shadow parity на AW server совпал с shell по exit code и ключевым
       health-строкам;
     - production verification зеленый: `aw-health-check` OK,
@@ -1380,32 +1381,24 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       warnings`, release build OK, `bash -n` OK, artifact check OK,
       `quality-gate.sh` OK, DetMir read-only OK with
       `dlp_counts={ok:22,warn:0,fail:0}` and `ok_for_operator=true`.
-50. `[done]` Перенести `scripts/merge_aw_server_dbs.py` merge engine на Rust:
+50. `[done]` Перенести merge engine на Rust:
     - добавлен crate `merge-aw-server-dbs`;
-    - `scripts/merge_aw_server_dbs.py` остается совместимым с текущим
-      `python3 merge_aw_server_dbs.py` вызовом, но в начале exec'ает Rust
-      binary при наличии `MERGE_AW_SERVER_DBS_RUST`,
-      `$CARGO_TARGET_DIR/release/merge-aw-server-dbs`,
-      `adk-rust/target/release/merge-aw-server-dbs` или
+    - рабочий runtime path: `adk-rust/target/release/merge-aw-server-dbs` и
       `/usr/local/bin/merge-aw-server-dbs`;
-    - `MERGE_AW_SERVER_DBS_FORCE_LEGACY=1` форсирует Python fallback;
-    - `ansible/deploy_aw_server.yml` теперь optional устанавливает
-      `/usr/local/bin/merge-aw-server-dbs`, если release artifact существует,
-      сохраняя прежний `python3 /usr/local/bin/merge_aw_server_dbs.py` command;
+    - legacy `scripts/merge_aw_server_dbs.py` удален из repo/runtime path;
+    - `ansible/deploy_aw_server.yml` устанавливает
+      `/usr/local/bin/merge-aw-server-dbs` и использует его без Python;
     - Rust сохраняет контракт `--base`, `--overlay`, `--output`, SQLite
       backup-copy base DB, bucket matching by id/key/name, duplicate event
       suppression by `(starttime,endtime,data)`, JSON summary;
-    - fallback bugfix: Python legacy больше не падает на `UNIQUE(name)`
-      name-conflict/update path и считает только реально вставленные buckets;
-    - offline parity fixture: Rust и Python fallback дали одинаковый JSON
+    - offline parity fixture: Rust replacement дал ожидаемый JSON
       `inserted_buckets=1`, `inserted_events=3` и одинаковые SQLite table rows
       (`buckets=3`, `events=5`) на кейсе duplicate event + name-conflict
       bucket;
     - gates: `cargo fmt --all -- --check`, `cargo test -p
       merge-aw-server-dbs` (`2 passed`), `cargo clippy -p
       merge-aw-server-dbs --all-targets -- -D warnings`, release build OK,
-      `python3 -m py_compile scripts/merge_aw_server_dbs.py`, artifact check
-      OK, `quality-gate.sh` OK, DetMir read-only OK after DLP baseline retry
+      artifact check OK, `quality-gate.sh` OK, DetMir read-only OK after DLP baseline retry
       with `dlp_counts={ok:22,warn:0,fail:0}` and `ok_for_operator=true`.
 51. `[done]` Перенести `scripts/prod_backup_restore.sh` в safe-by-default
     Rust planner/checker:
@@ -1419,13 +1412,13 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       он печатает plan-only flow и помечает destructive steps;
     - если Rust artifact отсутствует, wrapper отказывается запускать
       destructive legacy случайно и просит собрать Rust planner;
-    - старый destructive flow доступен только явно:
-      `scripts/prod_backup_restore.sh --apply-legacy`;
+    - старый Python destructive flow удален; `--apply-legacy` больше не
+      поддерживается;
     - Rust `--apply` намеренно запрещен на этом этапе;
     - `--check-inputs --json` валидирует env/files/commands без вывода
       секретов, проверяет `AW_SSH_PASSWORD`, `AW_WINRM_PASSWORD`, `sshpass`,
-      `ansible-playbook`, inventory и `merge_aw_server_dbs.py`;
-    - план сохраняет порядок legacy flow: scp merge script, remote backup dir,
+      `ansible-playbook`, inventory и `merge-aw-server-dbs`;
+    - план сохраняет порядок restore flow: scp Rust merge binary, remote backup dir,
       DB existence checks, DB backups, stop `activitywatch-server`, merge DB,
       install merged DB, 3 ansible playbooks, final AW validation;
     - safe smoke: plan text OK, JSON valid (`steps=12`, `missing_count=0`),

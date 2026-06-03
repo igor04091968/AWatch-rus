@@ -1,46 +1,14 @@
 ---
-- name: Создать один Proxmox CT и развернуть AWatch-rus
+- name: Deprecated Proxmox CT bootstrap path
   hosts: proxmox
   gather_facts: false
 
-  vars:
-    proxmox_bootstrap_dir: "/tmp/aw-rus-bootstrap"
-    aw_bootstrap_files:
-      - install_aw_server.sh
-      - apply_webui_ru_patch.sh
-      - activitywatch-server.service
-      - aw-worktime-api.py
-      - aw-worktime-api.service
-      - aw-worktime-ui-bridge.py
-      - aw-worktime-ui-bridge.service
-      - aw-worktime-ui-bridge.timer
-      - aw-worktime-panel.js
-      - aw-server.env.example
-      - aw-ru-patch.js
-      - aw-sw-cleanup.js
-      - aw-host-groups.json
-      - settings/classes-worktime.json
-      - settings/views-default.json
-
   tasks:
-    - name: Выполнить workflow создания одного CT
-      ansible.builtin.include_tasks: tasks/provision_ct_and_deploy_aw.yml
-      vars:
-        ct_id: "{{ proxmox_ct_id }}"
-        ct_hostname: "{{ proxmox_ct_hostname }}"
-        ct_storage: "{{ proxmox_ct_storage }}"
-        ct_template: "{{ proxmox_ct_template }}"
-        ct_rootfs_size: "{{ proxmox_ct_rootfs_size }}"
-        ct_cores: "{{ proxmox_ct_cores }}"
-        ct_memory: "{{ proxmox_ct_memory }}"
-        ct_swap: "{{ proxmox_ct_swap }}"
-        ct_bridge: "{{ proxmox_ct_bridge }}"
-        ct_ip: "{{ proxmox_ct_ip }}"
-        ct_gw: "{{ proxmox_ct_gw }}"
-        ct_vlan: "{{ proxmox_ct_vlan | default('') }}"
-        ct_nameserver: "{{ proxmox_ct_nameserver | default('') }}"
-        ct_searchdomain: "{{ proxmox_ct_searchdomain | default('') }}"
-        ct_password: "{{ proxmox_ct_password }}"
-        ct_unprivileged: "{{ proxmox_ct_unprivileged }}"
-        ct_onboot: "{{ proxmox_ct_onboot }}"
-        ct_features: "{{ proxmox_ct_features }}"
+    - name: Stop deprecated Python-era CT bootstrap
+      ansible.builtin.fail:
+        msg: >-
+          ansible/provision_proxmox_ct_and_deploy_aw.yml is deprecated because
+          its bootstrap path copied removed Python service entrypoints. Use the
+          existing DetMir AW server and ansible/deploy_aw_server.yml for the
+          Rust application deploy. Rebuild this CT bootstrap path separately
+          before using it for new infrastructure.

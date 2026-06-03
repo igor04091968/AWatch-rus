@@ -7,10 +7,9 @@ Wants=network-online.target
 Type=oneshot
 Environment=AW_URL=http://127.0.0.1:5600
 Environment=AW_WORKTIME_HOST=SHARKON2025
-ExecStart=/usr/local/bin/aw-worktime-autoheal.sh
+ExecStart=/usr/local/bin/aw-worktime-autoheal-rust
 User=root
 Group=root
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=aw-worktime-autoheal
-
