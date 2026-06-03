@@ -4,6 +4,18 @@ Release tag: `v1.0.1-public-review`
 
 Release type: public expert-review/source package.
 
+## Release-readiness v0.1 addendum
+
+Добавлен отдельный слой готовности поставки:
+
+- portal UI блок `Готовность системы`;
+- signed readiness bundle с `sha256sums.txt.sig`;
+- Prometheus/Grafana alerts по readiness и signature verification;
+- SBOM profile `docs/SBOM_V0.1_RU.md`;
+- release readiness акт `docs/RELEASE_READINESS_V0.1_RU.md`;
+- architecture схема `docs/diagrams/release-readiness-v0.1.md`;
+- обезличенные screenshots портала в `docs/screenshots/release-v0.1/`.
+
 ## Что входит
 
 - Обезличенный public source package DetMir/AWatch-rus.

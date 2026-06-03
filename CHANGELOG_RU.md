@@ -1,5 +1,37 @@
 # Журнал изменений
 
+## release-readiness-v0.1 - 2026-06-03
+
+Назначение этапа: довести DetMir/AWatch-rus до проверяемого release-readiness
+пакета для пилота, экспертной оценки и последующей публикации релиза без
+раскрытия приватного коммерческого контура.
+
+### Добавлено
+
+- UI-блок портала `Готовность системы`: статус `OK/WARN/FAIL`, дата bundle,
+  статус checksum, статус detached signature, fingerprint публичного ключа и
+  ручная кнопка проверки bundle.
+- Prometheus/Grafana alert rules:
+  `detmir_readiness_ok == 0` и
+  `detmir_readiness_signature_verified == 0`.
+- Подпись readiness bundle через detached signature `sha256sums.txt.sig`.
+- Retention для readiness archives и unit-тесты на подпись/retention.
+- `docs/RELEASE_READINESS_V0.1_RU.md` - сводный акт готовности релиза v0.1.
+- `docs/SBOM_V0.1_RU.md` - human-readable SBOM profile и команды генерации
+  машинных SBOM artifacts.
+- `docs/PORTAL_SCREENSHOTS_RU.md` - перечень обезличенных screenshots портала.
+- `docs/diagrams/release-readiness-v0.1.md` - схема release-readiness path.
+
+### Проверено
+
+- `cargo fmt --manifest-path adk-rust/Cargo.toml --all -- --check`.
+- `cargo test --manifest-path adk-rust/Cargo.toml -p detmir-readiness -p detmir-portal`.
+- `cargo clippy --manifest-path adk-rust/Cargo.toml -p detmir-readiness -p detmir-portal --all-targets -- -D warnings`.
+- `node --check adk-rust/crates/detmir-portal/src/static/app.js`.
+- Ansible syntax-check для AW server и DetMir portal deploy playbooks.
+- Runtime deployment на проектные сервисы DetMir без изменения pfSense или
+  Proxmox platform layer.
+
 ## v1.0.1-public-review - 2026-06-03
 
 Назначение релиза: публичный пакет для экспертной оценки DetMir/AWatch-rus и

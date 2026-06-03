@@ -152,4 +152,5 @@ DetMir не заявляется как сертифицированная СЗ�
 - `docs/ADMIN_GUIDE_RU.md`
 - `docs/OPERATOR_GUIDE_RU.md`
 - `docs/GRAFANA_DASHBOARDS_RU.md`
+- `docs/diagrams/release-readiness-v0.1.md`
 - `adk-rust/RUNBOOK.md`

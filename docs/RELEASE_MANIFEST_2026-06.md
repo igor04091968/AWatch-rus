@@ -16,6 +16,20 @@ contains sanitized source, documentation, install-kit archives, SBOM inputs and
 checksums. It does not contain private runtime configuration, live customer
 inventory, tokens, passwords, screenshots, runtime databases or evidence.
 
+## Release-readiness v0.1 overlay
+
+Additional readiness artifacts:
+
+- `docs/RELEASE_READINESS_V0.1_RU.md`
+- `docs/SBOM_V0.1_RU.md`
+- `docs/PORTAL_SCREENSHOTS_RU.md`
+- `docs/diagrams/release-readiness-v0.1.md`
+- `docs/screenshots/release-v0.1/portal-operator-readiness.png`
+- `docs/screenshots/release-v0.1/portal-manager-workforce.png`
+- `docs/screenshots/release-v0.1/portal-incidents-evidence.png`
+- `docs/screenshots/release-v0.1/portal-reports-risk.png`
+- `docs/screenshots/release-v0.1/portal-owner-summary.png`
+
 ## Artifacts
 
 ```text
