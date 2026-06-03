@@ -3,6 +3,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -23,8 +24,17 @@ const INDEX_HTML: &str = include_str!("static/index.html");
 const APP_CSS: &str = include_str!("static/app.css");
 const APP_JS: &str = include_str!("static/app.js");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
+const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(5);
 
-#[derive(Debug, Parser)]
+type SnapshotCache = Arc<Mutex<Option<CachedSnapshot>>>;
+
+#[derive(Clone, Debug)]
+struct CachedSnapshot {
+    created: Instant,
+    snapshot: Snapshot,
+}
+
+#[derive(Clone, Debug, Parser)]
 #[command(about = "Read-only DetMir operator/manager/owner web portal")]
 struct Cli {
     #[arg(long, default_value = "127.0.0.1:8720", env = "DETMIR_PORTAL_BIND")]
@@ -130,7 +140,7 @@ struct Cli {
     evidence_upload_token: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Serialize)]
 struct SourceStatus {
     ok: bool,
     status: String,
@@ -369,7 +379,7 @@ struct PortalLinks {
     file1c_actions: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct Snapshot {
     generated_at_utc: String,
     detmir_status: SourceStatus,
@@ -570,21 +580,26 @@ fn run() -> Result<i32> {
     }
 
     let server = Server::http(&args.bind).map_err(|err| anyhow!("bind {}: {err}", args.bind))?;
+    let snapshot_cache: SnapshotCache = Arc::new(Mutex::new(None));
     eprintln!("detmir-portal listening on http://{}", args.bind);
     for request in server.incoming_requests() {
-        let result = if args.evidence_only {
-            handle_evidence_only_request(request, &args)
-        } else {
-            handle_request(request, &args)
-        };
-        if let Err(err) = result {
-            eprintln!("detmir-portal request failed: {err:#}");
-        }
+        let args = args.clone();
+        let snapshot_cache = Arc::clone(&snapshot_cache);
+        thread::spawn(move || {
+            let result = if args.evidence_only {
+                handle_evidence_only_request(request, &args)
+            } else {
+                handle_request(request, &args, &snapshot_cache)
+            };
+            if let Err(err) = result {
+                eprintln!("detmir-portal request failed: {err:#}");
+            }
+        });
     }
     Ok(0)
 }
 
-fn handle_request(request: Request, args: &Cli) -> Result<()> {
+fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) -> Result<()> {
     let method = request.method().clone();
     let url = request.url().to_string();
     let path = normalize_path(&url);
@@ -616,33 +631,39 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
             "application/javascript; charset=utf-8",
         ),
         "/favicon.ico" => respond_text(request, StatusCode(204), "", "image/x-icon"),
-        "/api/health" => respond_json(request, &build_health(&build_snapshot(args))),
+        "/api/health" => respond_json(
+            request,
+            &build_health(&cached_snapshot(args, snapshot_cache)),
+        ),
         "/api/readiness/latest" => respond_json(request, &readiness_latest(args)),
         "/api/readiness/bundle" => respond_json(request, &readiness_bundle(args)),
         "/api/readiness/verify" => respond_json(request, &readiness_verify(args)),
-        "/api/summary" => respond_json(request, &build_summary(&build_snapshot(args))),
+        "/api/summary" => respond_json(
+            request,
+            &build_summary(&cached_snapshot(args, snapshot_cache)),
+        ),
         "/api/operator" => {
-            let snapshot = build_snapshot(args);
+            let snapshot = cached_snapshot(args, snapshot_cache);
             let incident_state = load_incident_state_best_effort(args);
             respond_json(request, &build_operator(&snapshot, &incident_state))
         }
         "/api/manager" => {
-            let snapshot = build_snapshot(args);
+            let snapshot = cached_snapshot(args, snapshot_cache);
             respond_json(request, &build_manager(&snapshot))
         }
         "/api/workforce/policy/explain" => {
-            let snapshot = build_snapshot(args);
+            let snapshot = cached_snapshot(args, snapshot_cache);
             respond_json(
                 request,
                 &build_workforce_policy_explain(&snapshot, &args.workforce_policy_path, anonymize),
             )
         }
         "/api/owner" => {
-            let snapshot = build_snapshot(args);
+            let snapshot = cached_snapshot(args, snapshot_cache);
             respond_json(request, &build_owner(&snapshot))
         }
         "/api/reports" => {
-            let snapshot = build_snapshot(args);
+            let snapshot = cached_snapshot(args, snapshot_cache);
             let incident_state = load_incident_state_best_effort(args);
             let evidence = build_dlp_evidence_response(args);
             let ueba_baseline_path = ueba_baseline_state_path(args);
@@ -660,7 +681,7 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
             )
         }
         "/api/incidents" => {
-            let snapshot = build_snapshot(args);
+            let snapshot = cached_snapshot(args, snapshot_cache);
             let incident_state = load_incident_state_best_effort(args);
             respond_json(request, &build_incidents(&snapshot, &incident_state))
         }
@@ -852,6 +873,21 @@ fn query_flag(url: &str, key: &str) -> bool {
         let (name, value) = pair.split_once('=').unwrap_or((pair, "1"));
         name == key && matches!(value, "1" | "true" | "yes" | "on")
     })
+}
+
+fn cached_snapshot(args: &Cli, cache: &SnapshotCache) -> Snapshot {
+    let mut guard = cache.lock().expect("snapshot cache mutex poisoned");
+    if let Some(cached) = guard.as_ref() {
+        if cached.created.elapsed() <= SNAPSHOT_CACHE_TTL {
+            return cached.snapshot.clone();
+        }
+    }
+    let snapshot = build_snapshot(args);
+    *guard = Some(CachedSnapshot {
+        created: Instant::now(),
+        snapshot: snapshot.clone(),
+    });
+    snapshot
 }
 
 fn build_snapshot(args: &Cli) -> Snapshot {

@@ -15,6 +15,7 @@ use serde_json::Value;
 const DEFAULT_AW_API: &str = "http://192.0.2.13:5600/api/0";
 const DEFAULT_WORKTIME_URL: &str = "http://192.0.2.13:5610";
 const DEFAULT_ONE_C_URL: &str = "http://192.0.2.2:8710";
+const DEFAULT_RDP_HOST: &str = "198.51.100.18";
 const DEFAULT_HOSTNAME: &str = "HOST-EXAMPLE";
 const DEFAULT_GATEWAY_HOST: &str = "detmir.example.local";
 
@@ -32,6 +33,9 @@ struct Cli {
 
     #[arg(long, default_value = DEFAULT_ONE_C_URL)]
     one_c_url: String,
+
+    #[arg(long, default_value = DEFAULT_RDP_HOST)]
+    rdp_host: String,
 
     #[arg(long, default_value = DEFAULT_HOSTNAME)]
     hostname: String,
@@ -61,6 +65,7 @@ struct Cli {
 #[derive(Debug, Clone, Copy)]
 enum BucketMode {
     Fresh,
+    InteractiveFresh,
     InactiveOk,
     EventDriven,
 }
@@ -69,6 +74,7 @@ impl BucketMode {
     fn as_str(self) -> &'static str {
         match self {
             Self::Fresh => "fresh",
+            Self::InteractiveFresh => "interactive_fresh",
             Self::InactiveOk => "inactive_ok",
             Self::EventDriven => "event_driven",
         }
@@ -145,7 +151,7 @@ fn bucket_specs(hostname: &str) -> Vec<BucketSpec> {
             label: "AFK watcher",
             bucket: format!("aw-watcher-afk_{hostname}"),
             max_age_seconds: Some(15 * 60),
-            mode: BucketMode::Fresh,
+            mode: BucketMode::InteractiveFresh,
         },
         BucketSpec {
             label: "Window watcher",
@@ -169,7 +175,7 @@ fn bucket_specs(hostname: &str) -> Vec<BucketSpec> {
             label: "DLP signals",
             bucket: format!("aw-dlp-endpoint-signals_{hostname}"),
             max_age_seconds: Some(10 * 60),
-            mode: BucketMode::Fresh,
+            mode: BucketMode::InteractiveFresh,
         },
         BucketSpec {
             label: "DLP incidents",
@@ -298,13 +304,13 @@ fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
     }
 
     checks.push(tcp_check(
-        "198.51.100.18",
+        &args.rdp_host,
         5985,
         args.tcp_timeout_seconds,
         true,
     ));
     checks.push(tcp_check(
-        "198.51.100.18",
+        &args.rdp_host,
         22,
         args.tcp_timeout_seconds,
         true,
@@ -463,6 +469,7 @@ fn bucket_health(args: &Cli) -> Result<Vec<BucketCheck>> {
         Duration::from_secs(args.bucket_timeout_seconds),
     )?;
     let now = Utc::now();
+    let interactive_required = interactive_required(&client, &args.hostname, now);
     let mut out = Vec::new();
 
     for spec in bucket_specs(&args.hostname) {
@@ -485,28 +492,8 @@ fn bucket_health(args: &Cli) -> Result<Vec<BucketCheck>> {
             Ok(Some(event)) => {
                 let ts = event.timestamp_utc()?;
                 let age = (now - ts).num_seconds();
-                let status = match spec.mode {
-                    BucketMode::InactiveOk => {
-                        if spec.max_age_seconds.is_some_and(|max_age| age <= max_age) {
-                            "FRESH"
-                        } else {
-                            "INACTIVE"
-                        }
-                    }
-                    BucketMode::Fresh => {
-                        if spec.max_age_seconds.is_some_and(|max_age| age <= max_age) {
-                            "FRESH"
-                        } else {
-                            "STALE"
-                        }
-                    }
-                    BucketMode::EventDriven => "EVENT-DRIVEN",
-                };
-                let ok = match spec.mode {
-                    BucketMode::InactiveOk => true,
-                    BucketMode::Fresh => status == "FRESH",
-                    BucketMode::EventDriven => true,
-                };
+                let (status, ok) =
+                    classify_bucket(spec.mode, spec.max_age_seconds, age, interactive_required);
                 out.push(BucketCheck {
                     label: spec.label.to_string(),
                     bucket: spec.bucket,
@@ -519,17 +506,20 @@ fn bucket_health(args: &Cli) -> Result<Vec<BucketCheck>> {
                     error: None,
                 });
             }
-            Ok(None) => out.push(BucketCheck {
-                label: spec.label.to_string(),
-                bucket: spec.bucket,
-                mode: spec.mode.as_str().to_string(),
-                status: "DEAD".to_string(),
-                ok: false,
-                event_count_sample: Some(0),
-                latest: None,
-                age_seconds: None,
-                error: None,
-            }),
+            Ok(None) => {
+                let (status, ok) = classify_missing_bucket(spec.mode, interactive_required);
+                out.push(BucketCheck {
+                    label: spec.label.to_string(),
+                    bucket: spec.bucket,
+                    mode: spec.mode.as_str().to_string(),
+                    status: status.to_string(),
+                    ok,
+                    event_count_sample: Some(0),
+                    latest: None,
+                    age_seconds: None,
+                    error: None,
+                });
+            }
             Err(err) => out.push(BucketCheck {
                 label: spec.label.to_string(),
                 bucket: spec.bucket,
@@ -544,6 +534,58 @@ fn bucket_health(args: &Cli) -> Result<Vec<BucketCheck>> {
         }
     }
     Ok(out)
+}
+
+fn interactive_required(client: &ActivityWatchClient, hostname: &str, now: DateTime<Utc>) -> bool {
+    let bucket = format!("aw-worktime-sessions_{hostname}");
+    let Ok(Some(event)) = client.latest_event(&bucket) else {
+        return false;
+    };
+    let Ok(ts) = event.timestamp_utc() else {
+        return false;
+    };
+    let age = (now - ts).num_seconds();
+    let fresh = (0..=5 * 60).contains(&age);
+    let active = event
+        .data
+        .get("active")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    fresh && active
+}
+
+fn classify_bucket(
+    mode: BucketMode,
+    max_age_seconds: Option<i64>,
+    age_seconds: i64,
+    interactive_required: bool,
+) -> (&'static str, bool) {
+    match mode {
+        BucketMode::InactiveOk => {
+            if max_age_seconds.is_some_and(|max_age| age_seconds <= max_age) {
+                ("FRESH", true)
+            } else {
+                ("INACTIVE", true)
+            }
+        }
+        BucketMode::InteractiveFresh if !interactive_required => ("INACTIVE", true),
+        BucketMode::InteractiveFresh | BucketMode::Fresh => {
+            if max_age_seconds.is_some_and(|max_age| age_seconds <= max_age) {
+                ("FRESH", true)
+            } else {
+                ("STALE", false)
+            }
+        }
+        BucketMode::EventDriven => ("EVENT-DRIVEN", true),
+    }
+}
+
+fn classify_missing_bucket(mode: BucketMode, interactive_required: bool) -> (&'static str, bool) {
+    match mode {
+        BucketMode::InteractiveFresh if !interactive_required => ("INACTIVE", true),
+        BucketMode::EventDriven => ("EVENT-DRIVEN", true),
+        _ => ("DEAD", false),
+    }
 }
 
 fn build_report(args: &Cli) -> Result<CheckReport> {
@@ -630,6 +672,7 @@ fn main() -> Result<()> {
     args.aw_api = env_or_default("DETMIR_AW_API", &args.aw_api);
     args.worktime_url = env_or_default("DETMIR_WORKTIME_URL", &args.worktime_url);
     args.one_c_url = env_or_default("DETMIR_ONE_C_URL", &args.one_c_url);
+    args.rdp_host = env_or_default("DETMIR_RDP_HOST", &args.rdp_host);
     args.hostname = env_or_default("DETMIR_HOSTNAME", &args.hostname);
     args.grafana_check_json = env_or_default("DETMIR_GRAFANA_CHECK_JSON", &args.grafana_check_json);
 
@@ -644,4 +687,40 @@ fn main() -> Result<()> {
     } else {
         exit_codes::CHECK_FAILED
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interactive_bucket_is_inactive_when_no_interactive_session() {
+        let (status, ok) = classify_bucket(
+            BucketMode::InteractiveFresh,
+            Some(15 * 60),
+            3 * 60 * 60,
+            false,
+        );
+        assert_eq!(status, "INACTIVE");
+        assert!(ok);
+    }
+
+    #[test]
+    fn interactive_bucket_is_stale_when_session_is_active() {
+        let (status, ok) = classify_bucket(
+            BucketMode::InteractiveFresh,
+            Some(15 * 60),
+            3 * 60 * 60,
+            true,
+        );
+        assert_eq!(status, "STALE");
+        assert!(!ok);
+    }
+
+    #[test]
+    fn missing_interactive_bucket_is_inactive_when_no_interactive_session() {
+        let (status, ok) = classify_missing_bucket(BucketMode::InteractiveFresh, false);
+        assert_eq!(status, "INACTIVE");
+        assert!(ok);
+    }
 }

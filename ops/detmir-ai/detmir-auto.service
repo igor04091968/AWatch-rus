@@ -10,6 +10,7 @@ Group=igor
 Environment=DETMIR_AUTO_HEAL=1
 Environment=DETMIR_AI_STATE_DIR=/var/lib/detmir-ai
 Environment=DETMIR_AI_RUN_DIR=/var/lib/detmir-ai/locks
+EnvironmentFile=-/etc/detmir/detmir-check.env
 ExecStart=/usr/local/bin/detmir-auto
 TimeoutStartSec=300
 Nice=5

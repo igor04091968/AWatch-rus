@@ -593,11 +593,13 @@
           failed_when: false
           no_log: true
 
-        - name: Подготовить effective Influx tokens без вывода секретов
+        - name: Подготовить effective runtime values без вывода секретов
           ansible.builtin.set_fact:
             aw_existing_server_env_text: "{{ aw_existing_server_env_raw.content | default('') | b64decode }}"
             aw_existing_worktime_influx_token: "{{ (aw_existing_server_env_raw.content | default('') | b64decode | regex_search('(?m)^AW_WORKTIME_INFLUX_TOKEN=.*$') | default('', true) | regex_replace('^AW_WORKTIME_INFLUX_TOKEN=', '')) }}"
             aw_existing_dlp_influx_token: "{{ (aw_existing_server_env_raw.content | default('') | b64decode | regex_search('(?m)^AW_DLP_INFLUX_TOKEN=.*$') | default('', true) | regex_replace('^AW_DLP_INFLUX_TOKEN=', '')) }}"
+            aw_existing_monitored_windows_host: "{{ (aw_existing_server_env_raw.content | default('') | b64decode | regex_search('(?m)^AW_MONITORED_WINDOWS_HOST=.*$') | default('', true) | regex_replace('^AW_MONITORED_WINDOWS_HOST=', '')) }}"
+            aw_existing_monitored_windows_hostname: "{{ (aw_existing_server_env_raw.content | default('') | b64decode | regex_search('(?m)^AW_MONITORED_WINDOWS_HOSTNAME=.*$') | default('', true) | regex_replace('^AW_MONITORED_WINDOWS_HOSTNAME=', '')) }}"
           no_log: true
 
         - name: Выбрать effective Influx tokens
@@ -605,6 +607,53 @@
             aw_effective_worktime_influx_token: "{{ (aw_worktime_influx_token | default('') | string) if ((aw_worktime_influx_token | default('') | string | length) > 0) else aw_existing_worktime_influx_token }}"
             aw_effective_dlp_influx_token: "{{ (aw_dlp_influx_token | default('') | string) if ((aw_dlp_influx_token | default('') | string | length) > 0) else aw_existing_dlp_influx_token }}"
           no_log: true
+
+        - name: Выбрать effective monitored Windows target
+          ansible.builtin.set_fact:
+            aw_effective_monitored_windows_host: >-
+              {{
+                (aw_monitored_windows_host | default('') | string)
+                if (
+                  (aw_monitored_windows_host | default('') | string | length) > 0
+                  and (aw_monitored_windows_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+                )
+                else aw_existing_monitored_windows_host
+              }}
+            aw_effective_monitored_windows_hostname: >-
+              {{
+                (aw_monitored_windows_hostname | default('') | string)
+                if (
+                  (aw_monitored_windows_hostname | default('') | string | length) > 0
+                  and (aw_monitored_windows_hostname | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+                )
+                else aw_existing_monitored_windows_hostname
+              }}
+          no_log: true
+
+        - name: Выбрать effective worktime host
+          ansible.builtin.set_fact:
+            aw_effective_worktime_host: >-
+              {{
+                (aw_worktime_host | default('') | string)
+                if (
+                  (aw_worktime_host | default('') | string | length) > 0
+                  and (aw_worktime_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+                )
+                else aw_effective_monitored_windows_hostname
+              }}
+          no_log: true
+
+        - name: Проверить monitored Windows target для production healthd
+          ansible.builtin.assert:
+            that:
+              - (aw_effective_monitored_windows_host | default('') | string | length) > 0
+              - (aw_effective_monitored_windows_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+              - (aw_effective_monitored_windows_hostname | default('') | string | length) > 0
+              - (aw_effective_monitored_windows_hostname | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+              - (aw_effective_worktime_host | default('') | string | length) > 0
+              - (aw_effective_worktime_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+            fail_msg: "aw-rus-healthd получил public example/TEST-NET Windows target. Задайте live значения в private inventory/env или сохраните их в runtime /etc/activitywatch/aw-server.env."
+          when: aw_server_post_deploy_health_check_enabled | default(true) | bool
 
         - name: Проверить Influx token для AW worktime exporter
           ansible.builtin.assert:
@@ -675,7 +724,7 @@
               AW_SERVER_GROUP={{ aw_server_group }}
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
               AW_WORKTIME_TZ={{ aw_worktime_timezone }}
-              AW_WORKTIME_HOST={{ aw_worktime_host | default(aw_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
+              AW_WORKTIME_HOST={{ aw_effective_worktime_host | default(aw_effective_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
               AW_DLP_IOC_DIR={{ aw_dlp_ioc_workdir }}/output
               AW_DLP_POLICY_ENGINE_BIND_HOST={{ aw_dlp_policy_engine_bind_host }}
               AW_DLP_POLICY_ENGINE_PORT={{ aw_dlp_policy_engine_port }}
@@ -717,8 +766,8 @@
               AW_EXPECT_ALWAYS_ACTIVE_PATTERN={{ aw_server_always_active_pattern | default('') }}
               AW_EXPECT_LANDINGPAGE={{ aw_server_landingpage | default('') }}
               AW_HEALTH_STRICT_FILEOPS={{ aw_health_strict_fileops | default(0) }}
-              AW_MONITORED_WINDOWS_HOST={{ aw_monitored_windows_host }}
-              AW_MONITORED_WINDOWS_HOSTNAME={{ aw_monitored_windows_hostname }}
+              AW_MONITORED_WINDOWS_HOST={{ aw_effective_monitored_windows_host }}
+              AW_MONITORED_WINDOWS_HOSTNAME={{ aw_effective_monitored_windows_hostname }}
               AW_RUS_HEALTH_WORKTIME_API={{ aw_rus_health_worktime_api_base | default('http://127.0.0.1:5610') }}
               AW_RUS_HEALTH_STATE_DIR={{ aw_rus_health_state_dir }}
               AW_RUS_HEALTH_VALIDATION_DIR={{ aw_rus_health_validation_dir }}
@@ -731,7 +780,7 @@
               AW_RUS_SLO_TARGET_PERCENT={{ aw_rus_slo_target_percent | default('99.97') }}
               AW_BROWSER_SMOKE_AW_BASE=http://127.0.0.1:5600
               AW_BROWSER_SMOKE_WORKTIME_BASE={{ aw_rus_health_worktime_api_base | default('http://127.0.0.1:5610') }}
-              AW_BROWSER_SMOKE_HOST={{ aw_monitored_windows_hostname }}
+              AW_BROWSER_SMOKE_HOST={{ aw_effective_monitored_windows_hostname }}
               AW_BROWSER_SMOKE_OUTPUT_DIR={{ aw_server_data_dir }}/browser-smoke
               AW_BROWSER_SMOKE_ENGINE={{ aw_browser_smoke_engine | default('chromium-cli') }}
               AW_BROWSER_SMOKE_TIMEOUT_MS={{ aw_browser_smoke_timeout_ms | default(20000) }}

@@ -105,6 +105,7 @@
           [Service]
           Type=simple
           EnvironmentFile=-{{ detmir_portal_env_path }}
+          EnvironmentFile=-/etc/detmir/detmir-check.env
           ExecStart=/usr/local/bin/detmir-portal
           Restart=on-failure
           RestartSec=5s
