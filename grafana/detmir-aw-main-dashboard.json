@@ -45,7 +45,7 @@
       "id": 5,
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => (r._measurement == \"aw_rdp_worktime_hourly\" or r._measurement == \"aw_rdp_worktime_daily\" or r._measurement == \"aw_true_active_app_daily\") and (r._field == \"active_seconds\" or r._field == \"proved_work_seconds\"))\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: (float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0) / 60.0 }))\n  |> set(key: \"_field\", value: \"Свежесть\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"freshness_minutes\")\n",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"aw_worktime_exporter_heartbeat\" and r._field == \"run\")\n  |> last()\n  |> group()\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 1)\n  |> map(fn: (r) => ({ r with _value: (float(v: uint(v: now()) - uint(v: r._time)) / 1000000000.0) / 60.0 }))\n  |> set(key: \"_field\", value: \"Свежесть\")\n  |> keep(columns: [\"_value\", \"_field\"])\n  |> yield(name: \"freshness_minutes\")\n",
           "refId": "A"
         }
       ],

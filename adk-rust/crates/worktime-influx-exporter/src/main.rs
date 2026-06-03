@@ -889,6 +889,14 @@ fn run(cli: &Cli) -> Result<RunSummary> {
         for day in &config.days {
             lines.extend(build_lines_for_day(&client, &config, host, day)?);
         }
+        if let Some(line) = line(
+            "aw_worktime_exporter_heartbeat",
+            vec![("host", host.to_string())],
+            vec![("run", FieldValue::Int(1))],
+            timestamp_ns(utc_now()),
+        ) {
+            lines.push(line);
+        }
     }
     let written = if cli.dry_run {
         0
@@ -979,6 +987,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out, "m,host=A\\ B\\,C\\=D text=\"a\\\"b\" 10");
+    }
+
+    #[test]
+    fn heartbeat_line_uses_current_exporter_timestamp() {
+        let out = line(
+            "aw_worktime_exporter_heartbeat",
+            vec![("host", "SHARKON2025".to_string())],
+            vec![("run", FieldValue::Int(1))],
+            42,
+        )
+        .unwrap();
+        assert_eq!(
+            out,
+            "aw_worktime_exporter_heartbeat,host=SHARKON2025 run=1i 42"
+        );
     }
 
     #[test]

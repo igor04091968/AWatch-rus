@@ -23,10 +23,10 @@ for candidate in "${rust_candidates[@]}"; do
   fi
 done
 
-echo "[1/5] Bash syntax check"
+echo "[1/6] Bash syntax check"
 find aw-server proxmox scripts -type f -name "*.sh" -print0 | xargs -0 -r -n1 bash -n
 
-echo "[2/5] Shellcheck (if available)"
+echo "[2/6] Shellcheck (if available)"
 if command -v shellcheck >/dev/null 2>&1; then
   {
     find aw-server proxmox -type f -name "*.sh"
@@ -36,14 +36,14 @@ else
   echo "shellcheck not found, skipping."
 fi
 
-echo "[3/5] Node syntax check (if node available)"
+echo "[3/6] Node syntax check (if node available)"
 if command -v node >/dev/null 2>&1; then
   node --check scripts/aw-webui-browser-smoke.mjs >/dev/null
 else
   echo "node not found, skipping."
 fi
 
-echo "[4/5] PowerShell parse check (if pwsh available)"
+echo "[4/6] PowerShell parse check (if pwsh available)"
 if command -v pwsh >/dev/null 2>&1; then
   pwsh -NoLogo -NoProfile -Command '
     $ErrorActionPreference = "Stop"
@@ -60,13 +60,38 @@ fi
 
 
 
-echo "[5/5] Ansible syntax check (if ansible-playbook available)"
+echo "[5/6] Ansible syntax check (if ansible-playbook available)"
 if command -v ansible-playbook >/dev/null 2>&1; then
   for playbook in ansible/*.yml; do
     ansible-playbook --syntax-check "$playbook" -i ansible/inventory.example.ini >/dev/null
   done
 else
   echo "ansible-playbook not found, skipping."
+fi
+
+echo "[6/6] DetMir Python runtime retirement guard"
+if command -v git >/dev/null 2>&1; then
+  mapfile -t tracked_py < <(git ls-files '*.py')
+else
+  mapfile -t tracked_py < <(find aw-server proxmox scripts ansible -type f -name '*.py' 2>/dev/null)
+fi
+violations=()
+for path in "${tracked_py[@]}"; do
+  case "$path" in
+    aw-server/dlp-content-analysis/*|clickhouse-1c/ai/*|clickhouse-1c/etl/*|detmir-mcp/main.py|grafana-1c/*|pfsense/*|proxmox/tsj_guardian_bot.py|proxmox/test_tsj_guardian_bot.py)
+      continue
+      ;;
+  esac
+  case "$path" in
+    aw-server/*|proxmox/*|scripts/*|ansible/*)
+      violations+=("$path")
+      ;;
+  esac
+done
+if (( ${#violations[@]} > 0 )); then
+  printf 'Python runtime regression in Rust-retired DetMir paths:\\n' >&2
+  printf '%s\\n' "${violations[@]}" >&2
+  exit 1
 fi
 
 echo "quality-gate: OK"

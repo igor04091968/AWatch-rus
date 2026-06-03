@@ -34,12 +34,12 @@ fn run() -> Result<()> {
 }
 
 fn quality_gate(root: &Path) -> Result<()> {
-    println!("[1/5] Bash syntax check");
+    println!("[1/6] Bash syntax check");
     for file in collect_by_extension(root, &["aw-server", "proxmox", "scripts"], "sh")? {
         run_status(Command::new("bash").arg("-n").arg(&file), false)?;
     }
 
-    println!("[2/5] Shellcheck (if available)");
+    println!("[2/6] Shellcheck (if available)");
     if command_exists("shellcheck") {
         let mut files = collect_by_extension(root, &["aw-server", "proxmox"], "sh")?;
         files.push(root.join("scripts/aw-webui-browser-smoke.sh"));
@@ -53,7 +53,7 @@ fn quality_gate(root: &Path) -> Result<()> {
         println!("shellcheck not found, skipping.");
     }
 
-    println!("[3/5] Node syntax check (if node available)");
+    println!("[3/6] Node syntax check (if node available)");
     if command_exists("node") {
         run_status(
             Command::new("node")
@@ -66,7 +66,7 @@ fn quality_gate(root: &Path) -> Result<()> {
         println!("node not found, skipping.");
     }
 
-    println!("[4/5] PowerShell parse check (if pwsh available)");
+    println!("[4/6] PowerShell parse check (if pwsh available)");
     if command_exists("pwsh") {
         let ps = r#"
 $ErrorActionPreference = "Stop"
@@ -107,7 +107,7 @@ foreach ($path in @("windows/ActivityWatch.Windows.Common.psm1", "windows/Activi
         println!("pwsh not found, skipping.");
     }
 
-    println!("[5/5] Ansible syntax check (if ansible-playbook available)");
+    println!("[5/6] Ansible syntax check (if ansible-playbook available)");
     if command_exists("ansible-playbook") {
         for playbook in collect_top_level_yml(&root.join("ansible"))? {
             run_status(
@@ -123,6 +123,9 @@ foreach ($path in @("windows/ActivityWatch.Windows.Common.psm1", "windows/Activi
     } else {
         println!("ansible-playbook not found, skipping.");
     }
+
+    println!("[6/6] DetMir Python runtime retirement guard");
+    python_runtime_guard(root)?;
 
     println!("quality-gate: OK");
     Ok(())
@@ -200,13 +203,107 @@ fn collect_top_level_yml(dir: &Path) -> Result<Vec<PathBuf>> {
     Ok(out)
 }
 
+fn python_runtime_guard(root: &Path) -> Result<()> {
+    let mut violations = Vec::new();
+    for rel in tracked_files(root)? {
+        if is_allowed_python_runtime_path(&rel) {
+            continue;
+        }
+        if rel.ends_with(".py") && is_detmir_retired_runtime_path(&rel) {
+            violations.push(rel);
+        }
+    }
+
+    if !violations.is_empty() {
+        violations.sort();
+        bail!(
+            "Python runtime regression in Rust-retired DetMir paths:\n{}",
+            violations.join("\n")
+        );
+    }
+    Ok(())
+}
+
+fn tracked_files(root: &Path) -> Result<Vec<String>> {
+    if command_exists("git") {
+        let output = Command::new("git")
+            .arg("ls-files")
+            .current_dir(root)
+            .output()
+            .context("run git ls-files")?;
+        if output.status.success() {
+            return Ok(String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(ToOwned::to_owned)
+                .collect());
+        }
+    }
+
+    let mut out = Vec::new();
+    collect_tracked_fallback(root, root, &mut out)?;
+    out.sort();
+    Ok(out)
+}
+
+fn collect_tracked_fallback(root: &Path, path: &Path, out: &mut Vec<String>) -> Result<()> {
+    for entry in fs::read_dir(path).with_context(|| format!("read dir {}", path.display()))? {
+        let entry = entry.with_context(|| format!("read dir entry {}", path.display()))?;
+        let entry_path = entry.path();
+        let file_type = entry
+            .file_type()
+            .with_context(|| format!("read file type {}", entry_path.display()))?;
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if file_type.is_dir() {
+            if matches!(
+                name.as_ref(),
+                ".git" | "target" | "node_modules" | ".venv" | ".ops" | ".playwright-cli"
+            ) {
+                continue;
+            }
+            collect_tracked_fallback(root, &entry_path, out)?;
+        } else if file_type.is_file() {
+            let rel = entry_path
+                .strip_prefix(root)
+                .with_context(|| format!("strip root from {}", entry_path.display()))?
+                .to_string_lossy()
+                .replace('\\', "/");
+            out.push(rel);
+        }
+    }
+    Ok(())
+}
+
+fn is_allowed_python_runtime_path(rel: &str) -> bool {
+    rel.starts_with("aw-server/dlp-content-analysis/")
+        || rel.starts_with("clickhouse-1c/ai/")
+        || rel.starts_with("clickhouse-1c/etl/")
+        || rel == "detmir-mcp/main.py"
+        || rel.starts_with("grafana-1c/")
+        || rel.starts_with("pfsense/")
+        || rel == "proxmox/tsj_guardian_bot.py"
+        || rel == "proxmox/test_tsj_guardian_bot.py"
+}
+
+fn is_detmir_retired_runtime_path(rel: &str) -> bool {
+    rel.starts_with("aw-server/")
+        || rel.starts_with("proxmox/")
+        || rel.starts_with("scripts/")
+        || rel.starts_with("ansible/")
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
 
     use tempfile::tempdir;
 
-    use super::{collect_by_extension, collect_top_level_yml};
+    use super::{
+        collect_by_extension, collect_top_level_yml, is_allowed_python_runtime_path,
+        is_detmir_retired_runtime_path,
+    };
 
     #[test]
     fn collects_recursive_shell_files_sorted() {
@@ -232,5 +329,32 @@ mod tests {
         let files = collect_top_level_yml(&tmp.path().join("ansible")).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].file_name().unwrap(), "a.yml");
+    }
+
+    #[test]
+    fn allows_agreed_python_runtime_exceptions() {
+        assert!(is_allowed_python_runtime_path(
+            "aw-server/dlp-content-analysis/content_analyzer.py"
+        ));
+        assert!(is_allowed_python_runtime_path(
+            "proxmox/tsj_guardian_bot.py"
+        ));
+        assert!(is_allowed_python_runtime_path("clickhouse-1c/etl/load.py"));
+        assert!(is_allowed_python_runtime_path("detmir-mcp/main.py"));
+        assert!(is_allowed_python_runtime_path(
+            "pfsense/pfsense-aw-poller.py"
+        ));
+    }
+
+    #[test]
+    fn flags_retired_detmir_python_runtime_paths() {
+        assert!(is_detmir_retired_runtime_path(
+            "aw-server/dlp-policy-engine/server.py"
+        ));
+        assert!(is_detmir_retired_runtime_path("scripts/dlp-admin-cli.py"));
+        assert!(!is_allowed_python_runtime_path(
+            "aw-server/dlp-policy-engine/server.py"
+        ));
+        assert!(!is_allowed_python_runtime_path("scripts/dlp-admin-cli.py"));
     }
 }

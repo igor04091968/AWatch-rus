@@ -120,7 +120,7 @@ extract_zip_normalized() {
   while IFS= read -r entry; do
     normalized="${entry//\\//}"
     case "${normalized}" in
-      ""|.|/*|*"/../"*|../*|*".."|*"/..")
+      ""|.|/*|*"/../"*|../*|*"..")
         fail "unsafe zip entry: ${entry}"
         ;;
     esac

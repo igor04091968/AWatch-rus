@@ -27,6 +27,17 @@
 
 ## Проверка
 
+Основной guard встроен в `quality-gate`:
+
+```bash
+scripts/quality-gate.sh
+```
+
+Он проверяет tracked-файлы и блокирует возврат `.py` entrypoints в Rust-retired
+runtime paths (`aw-server`, `proxmox`, `scripts`, `ansible`) за исключением
+согласованных зон: Telegram bot, OCR/content-analysis, 1C/AI/ETL, MCP,
+pfSense/no-touch и Grafana-1C.
+
 ```bash
 rg -n '\.py\b|python3' ansible aw-server scripts adk-rust \
   --glob '!adk-rust/target/**'

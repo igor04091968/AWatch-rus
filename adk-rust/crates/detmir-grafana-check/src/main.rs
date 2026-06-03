@@ -19,6 +19,7 @@ const REQUIRED_MEASUREMENTS: &[&str] = &[
     "aw_rdp_worktime_daily",
     "aw_rdp_worktime_summary_daily",
     "aw_true_active_app_daily",
+    "aw_worktime_exporter_heartbeat",
 ];
 
 #[derive(Debug, Parser)]

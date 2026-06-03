@@ -12,6 +12,8 @@
     grafana_check_user: "{{ detmir_grafana_check_user | default(lookup('env', 'DETMIR_GRAFANA_USER') | default(lookup('env', 'GRAFANA_USER'), true), true) }}"
     grafana_check_password: "{{ detmir_grafana_check_password | default(lookup('env', 'DETMIR_GRAFANA_PASSWORD') | default(lookup('env', 'GRAFANA_PASSWORD'), true), true) }}"
     grafana_check_dashboard_uid: "{{ detmir_grafana_check_dashboard_uid | default('detmir-aw-main') }}"
+    grafana_check_dashboard_file_src: "{{ aw_repo_root }}/grafana/detmir-aw-main-dashboard.json"
+    grafana_check_dashboard_file_dest: /etc/grafana/provisioning/dashboards/aw/detmir-aw-main.json
     grafana_check_host: "{{ detmir_grafana_check_host | default('SHARKON2025') }}"
     grafana_check_max_freshness_minutes: "{{ detmir_grafana_check_max_freshness_minutes | default(360) }}"
     grafana_check_on_calendar: "{{ detmir_grafana_check_on_calendar | default('*:0/15') }}"
@@ -36,6 +38,18 @@
       ansible.builtin.fail:
         msg: "Missing {{ aw_rust_release_dir }}/detmir-grafana-check. Build with cargo build --release -p detmir-grafana-check."
       when: not (grafana_check_binary.stat.exists | default(false))
+
+    - name: Check local DetMir Grafana dashboard JSON
+      ansible.builtin.stat:
+        path: "{{ grafana_check_dashboard_file_src }}"
+      delegate_to: localhost
+      become: false
+      register: grafana_check_dashboard
+
+    - name: Fail when DetMir Grafana dashboard JSON is absent
+      ansible.builtin.fail:
+        msg: "Missing {{ grafana_check_dashboard_file_src }}."
+      when: not (grafana_check_dashboard.stat.exists | default(false))
 
     - name: Copy detmir-grafana-check binary to Proxmox staging
       ansible.builtin.copy:
@@ -67,6 +81,38 @@
           - /usr/local/bin/detmir-grafana-check
       changed_when: true
 
+    - name: Copy DetMir Grafana dashboard JSON to Proxmox staging
+      ansible.builtin.copy:
+        src: "{{ grafana_check_dashboard_file_src }}"
+        dest: /tmp/detmir-aw-main-dashboard.json
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Ensure Grafana provisioning dashboard directory exists in CT
+      ansible.builtin.command:
+        argv:
+          - pct
+          - exec
+          - "{{ grafana_check_ct_id }}"
+          - --
+          - install
+          - "-d"
+          - "-m"
+          - "0755"
+          - "{{ grafana_check_dashboard_file_dest | dirname }}"
+      changed_when: true
+
+    - name: Install DetMir Grafana dashboard JSON into CT provisioning
+      ansible.builtin.command:
+        argv:
+          - pct
+          - push
+          - "{{ grafana_check_ct_id }}"
+          - /tmp/detmir-aw-main-dashboard.json
+          - "{{ grafana_check_dashboard_file_dest }}"
+      changed_when: true
+
     - name: Create Grafana check runtime in CT
       ansible.builtin.command:
         argv:
@@ -89,7 +135,7 @@
         DETMIR_GRAFANA_USER={{ grafana_check_user }}
         DETMIR_GRAFANA_PASSWORD={{ grafana_check_password }}
         DETMIR_GRAFANA_DASHBOARD_UID={{ grafana_check_dashboard_uid }}
-        DETMIR_GRAFANA_DASHBOARD_FILE=/etc/grafana/provisioning/dashboards/aw/detmir-aw-main.json
+        DETMIR_GRAFANA_DASHBOARD_FILE={{ grafana_check_dashboard_file_dest }}
         DETMIR_GRAFANA_HOST={{ grafana_check_host }}
         DETMIR_GRAFANA_MAX_FRESHNESS_MINUTES={{ grafana_check_max_freshness_minutes }}
         DETMIR_GRAFANA_OUTPUT_JSON=/var/lib/detmir-grafana-check/latest.json
