@@ -401,6 +401,8 @@ function renderReportSections(sections) {
 function renderUebaRisk(risk) {
   if (!risk) return "";
   const reasons = Array.isArray(risk.reasons) ? risk.reasons.slice(0, 12) : [];
+  const sources = Array.isArray(risk.risk_sources) ? risk.risk_sources.join(", ") : "-";
+  const confidence = Number.isFinite(Number(risk.confidence)) ? `${Math.round(Number(risk.confidence) * 100)}%` : "0%";
   return `
     <section class="card ueba-risk-card">
       <div class="section-head">
@@ -408,6 +410,7 @@ function renderUebaRisk(risk) {
           <h3>UEBA риск</h3>
           <p class="muted">${escapeHtml(risk.note || "Read-only risk score без автоматического воздействия.")}</p>
           <p class="muted small">Формула: ${escapeHtml(risk.formula || "sum(reason_points) capped at 100")}.</p>
+          <p class="muted small">Confidence: ${escapeHtml(confidence)} · sources: ${escapeHtml(sources)} · baseline: ${escapeHtml(risk.baseline_status || "-")} · policy: ${escapeHtml(risk.policy_version || "-")}</p>
         </div>
         <span class="badge ${statusClass(risk.status)}">${escapeHtml(risk.level || "unknown")} · ${escapeHtml(risk.score ?? 0)}/100</span>
       </div>

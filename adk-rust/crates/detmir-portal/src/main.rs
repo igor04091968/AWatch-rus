@@ -71,6 +71,13 @@ struct Cli {
     )]
     workforce_policy_path: PathBuf,
 
+    #[arg(
+        long,
+        default_value = "/etc/detmir-portal-ueba-policy.yaml",
+        env = "DETMIR_PORTAL_UEBA_POLICY_PATH"
+    )]
+    ueba_policy_path: PathBuf,
+
     #[arg(long, default_value_t = 10, env = "DETMIR_PORTAL_TIMEOUT_SECONDS")]
     timeout_seconds: u64,
 
@@ -402,6 +409,34 @@ struct WorkforceRolePolicy {
     application_weights: BTreeMap<String, f64>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct UebaRiskPolicy {
+    #[serde(default = "default_ueba_policy_version")]
+    version: String,
+    #[serde(default = "default_ueba_baseline_status")]
+    baseline_status: String,
+    #[serde(default = "default_ueba_score_cap")]
+    score_cap: u64,
+    #[serde(default)]
+    weights: BTreeMap<String, u64>,
+    #[serde(default)]
+    confidence: UebaConfidencePolicy,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+struct UebaConfidencePolicy {
+    #[serde(default)]
+    base: Option<f64>,
+    #[serde(default)]
+    evidence_bonus: Option<f64>,
+    #[serde(default)]
+    screenshot_bonus: Option<f64>,
+    #[serde(default)]
+    worktime_bonus: Option<f64>,
+    #[serde(default)]
+    policy_bonus: Option<f64>,
+}
+
 #[derive(Debug)]
 struct WeightedActivity {
     role: String,
@@ -454,7 +489,7 @@ fn run() -> Result<i32> {
         let smoke = json!({
             "health": build_health(&snapshot),
             "summary": build_summary(&snapshot),
-            "reports": build_reports(&snapshot, &incident_state, &build_dlp_evidence_response(&args), &args.workforce_policy_path, false),
+            "reports": build_reports(&snapshot, &incident_state, &build_dlp_evidence_response(&args), &args.workforce_policy_path, &args.ueba_policy_path, false),
             "incidents": build_incidents(&snapshot, &incident_state),
             "dlp_evidence": build_dlp_evidence_response(&args),
         });
@@ -542,6 +577,7 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
                     &incident_state,
                     &evidence,
                     &args.workforce_policy_path,
+                    &args.ueba_policy_path,
                     anonymize,
                 ),
             )
@@ -943,6 +979,7 @@ fn build_reports(
     incident_state: &IncidentStateFile,
     evidence: &DlpEvidenceResponse,
     workforce_policy_path: &Path,
+    ueba_policy_path: &Path,
     anonymize: bool,
 ) -> Value {
     let summary = build_summary(snapshot);
@@ -982,6 +1019,7 @@ fn build_reports(
         &metrics,
         &workforce_policy_explain,
         &insight_items,
+        ueba_policy_path,
     );
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
@@ -1220,12 +1258,141 @@ fn trend_status(trend: &Value) -> String {
     }
 }
 
+fn default_ueba_policy_version() -> String {
+    "ueba-rule-v1".to_string()
+}
+
+fn default_ueba_baseline_status() -> String {
+    "portfolio_only_no_per_user_baseline".to_string()
+}
+
+fn default_ueba_score_cap() -> u64 {
+    100
+}
+
+fn default_ueba_risk_policy() -> UebaRiskPolicy {
+    UebaRiskPolicy {
+        version: default_ueba_policy_version(),
+        baseline_status: default_ueba_baseline_status(),
+        score_cap: default_ueba_score_cap(),
+        weights: BTreeMap::from([
+            ("dlp_fail".to_string(), 35),
+            ("dlp_warn".to_string(), 20),
+            ("open_incidents".to_string(), 15),
+            ("night_activity".to_string(), 20),
+            ("weekend_activity".to_string(), 20),
+            ("workforce_drop".to_string(), 15),
+            ("workforce_anomaly".to_string(), 10),
+            ("application_classification_gap".to_string(), 10),
+            ("application_classification_gap_large".to_string(), 15),
+            ("worktime_unavailable".to_string(), 25),
+        ]),
+        confidence: UebaConfidencePolicy {
+            base: Some(0.55),
+            evidence_bonus: Some(0.10),
+            screenshot_bonus: Some(0.10),
+            worktime_bonus: Some(0.15),
+            policy_bonus: Some(0.10),
+        },
+    }
+}
+
+fn load_ueba_risk_policy(path: &Path) -> (UebaRiskPolicy, bool, Option<String>) {
+    if !path.exists() {
+        return (default_ueba_risk_policy(), false, None);
+    }
+    match fs::read_to_string(path)
+        .with_context(|| format!("read {}", path.display()))
+        .and_then(|data| {
+            serde_yaml::from_str::<UebaRiskPolicy>(&data)
+                .with_context(|| format!("parse {}", path.display()))
+        }) {
+        Ok(mut policy) => {
+            let defaults = default_ueba_risk_policy();
+            for (key, value) in defaults.weights {
+                policy.weights.entry(key).or_insert(value);
+            }
+            if policy.score_cap == 0 {
+                policy.score_cap = default_ueba_score_cap();
+            }
+            (policy, true, None)
+        }
+        Err(err) => (default_ueba_risk_policy(), false, Some(err.to_string())),
+    }
+}
+
+fn risk_weight(policy: &UebaRiskPolicy, key: &str, fallback: u64) -> u64 {
+    policy.weights.get(key).copied().unwrap_or(fallback)
+}
+
+fn confidence_part(value: Option<f64>, fallback: f64) -> f64 {
+    value.unwrap_or(fallback).clamp(0.0, 1.0)
+}
+
+fn ueba_confidence(
+    metrics: &ReportMetrics,
+    workforce_policy: &Value,
+    snapshot: &Snapshot,
+    policy: &UebaRiskPolicy,
+) -> f64 {
+    let mut confidence = confidence_part(policy.confidence.base, 0.55);
+    if metrics.evidence_total > 0 {
+        confidence += confidence_part(policy.confidence.evidence_bonus, 0.10);
+    }
+    if metrics.evidence_screenshots > 0 {
+        confidence += confidence_part(policy.confidence.screenshot_bonus, 0.10);
+    }
+    if snapshot.worktime.ok && snapshot.worktime_management.ok {
+        confidence += confidence_part(policy.confidence.worktime_bonus, 0.15);
+    }
+    if workforce_policy
+        .get("configured")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        confidence += confidence_part(policy.confidence.policy_bonus, 0.10);
+    }
+    (confidence.clamp(0.0, 1.0) * 100.0).round() / 100.0
+}
+
+fn risk_sources(reasons: &[Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    for reason in reasons {
+        let Some(source) = reason.get("source").and_then(Value::as_str) else {
+            continue;
+        };
+        if !out.iter().any(|item| item == source) {
+            out.push(source.to_string());
+        }
+    }
+    out
+}
+
+fn ueba_calculated_from(
+    metrics: &ReportMetrics,
+    workforce_policy: &Value,
+    insight_items: &[Value],
+    policy_configured: bool,
+    policy_error: Option<&str>,
+) -> Vec<Value> {
+    vec![
+        json!({"source": "dlp_counts", "available": true, "warn": metrics.dlp_warn, "fail": metrics.dlp_fail}),
+        json!({"source": "incident_queue", "available": true, "open": metrics.open_incidents}),
+        json!({"source": "evidence", "available": true, "items": metrics.evidence_total, "screenshots": metrics.evidence_screenshots, "used_as": "confidence"}),
+        json!({"source": "workforce_insights", "available": true, "items": insight_items.len()}),
+        json!({"source": "workforce_policy_audit", "available": workforce_policy.get("configured").and_then(Value::as_bool).unwrap_or(false)}),
+        json!({"source": "ueba_policy", "available": policy_configured, "error": policy_error}),
+    ]
+}
+
 fn build_ueba_risk(
     snapshot: &Snapshot,
     metrics: &ReportMetrics,
     workforce_policy: &Value,
     insight_items: &[Value],
+    policy_path: &Path,
 ) -> Value {
+    let (policy, policy_configured, policy_error) = load_ueba_risk_policy(policy_path);
     let mut reasons = Vec::new();
     let mut score = 0_u64;
 
@@ -1233,9 +1400,9 @@ fn build_ueba_risk(
         push_risk_reason(
             &mut reasons,
             &mut score,
-            ("dlp_fail", "DLP FAIL"),
+            ("dlp_fail", "DLP FAIL", "dlp"),
             "FAIL",
-            35,
+            risk_weight(&policy, "dlp_fail", 35),
             format!("fail={}", metrics.dlp_fail),
             "Проверить DLP/case queue и evidence.",
         );
@@ -1244,9 +1411,9 @@ fn build_ueba_risk(
         push_risk_reason(
             &mut reasons,
             &mut score,
-            ("dlp_warn", "DLP WARN"),
+            ("dlp_warn", "DLP WARN", "dlp"),
             "WARN",
-            20,
+            risk_weight(&policy, "dlp_warn", 20),
             format!("warn={}", metrics.dlp_warn),
             "Разобрать предупреждения DLP и подтвердить/отклонить события.",
         );
@@ -1255,25 +1422,11 @@ fn build_ueba_risk(
         push_risk_reason(
             &mut reasons,
             &mut score,
-            ("open_incidents", "Открытые вопросы"),
+            ("open_incidents", "Открытые вопросы", "incidents"),
             "WARN",
-            15,
+            risk_weight(&policy, "open_incidents", 15),
             format!("open={}", metrics.open_incidents),
             "Назначить ответственного и закрыть очередь review.",
-        );
-    }
-    if metrics.evidence_total > 0 {
-        push_risk_reason(
-            &mut reasons,
-            &mut score,
-            ("evidence_present", "Есть evidence"),
-            "INFO",
-            10,
-            format!(
-                "items={}, screenshots={}",
-                metrics.evidence_total, metrics.evidence_screenshots
-            ),
-            "Проверить evidence metadata и audit просмотра.",
         );
     }
 
@@ -1312,9 +1465,9 @@ fn build_ueba_risk(
         push_risk_reason(
             &mut reasons,
             &mut score,
-            (code, title),
+            (code, title, "workforce"),
             status,
-            points,
+            risk_weight(&policy, code, points),
             value,
             "Проверить первичные события ActivityWatch и контекст подразделения.",
         );
@@ -1337,12 +1490,13 @@ fn build_ueba_risk(
             (
                 "application_classification_gap",
                 "Приложения без явного правила",
+                "policy",
             ),
             "WARN",
             if default_weight_seconds >= 3600 {
-                15
+                risk_weight(&policy, "application_classification_gap_large", 15)
             } else {
-                10
+                risk_weight(&policy, "application_classification_gap", 10)
             },
             format!(
                 "default_weight_apps={}, default_weight_time={}",
@@ -1357,31 +1511,48 @@ fn build_ueba_risk(
         push_risk_reason(
             &mut reasons,
             &mut score,
-            ("worktime_unavailable", "Нет надежного Worktime"),
+            ("worktime_unavailable", "Нет надежного Worktime", "worktime"),
             "FAIL",
-            25,
+            risk_weight(&policy, "worktime_unavailable", 25),
             snapshot.worktime.summary.clone(),
             "Восстановить Worktime API/collectors перед выводами по сотрудникам.",
         );
     }
 
-    let score = score.min(100);
+    let calculated_from = ueba_calculated_from(
+        metrics,
+        workforce_policy,
+        insight_items,
+        policy_configured,
+        policy_error.as_deref(),
+    );
+    let confidence = ueba_confidence(metrics, workforce_policy, snapshot, &policy);
+    let risk_sources = risk_sources(&reasons);
+    let score = score.min(policy.score_cap.max(1));
     let (level, status) = ueba_risk_level(score);
     json!({
         "score": score,
         "level": level,
         "status": status,
         "summary": format!("{} risk, {} reason(s)", level, reasons.len()),
-        "formula": "sum(reason_points) capped at 100",
+        "formula": format!("sum(reason_points) capped at {}", policy.score_cap.max(1)),
+        "confidence": confidence,
+        "risk_sources": risk_sources,
+        "baseline_status": policy.baseline_status,
+        "policy_version": policy.version,
+        "policy_path": policy_path.display().to_string(),
+        "policy_configured": policy_configured,
+        "policy_error": policy_error,
+        "calculated_from": calculated_from,
         "reasons": reasons,
-        "note": "Read-only UEBA score: мониторинг и приоритизация проверки, без автоматического воздействия на сеть."
+        "note": "UEBA-compatible rule-based risk scoring v1: read-only мониторинг и приоритизация проверки, без автоматического воздействия на сеть."
     })
 }
 
 fn push_risk_reason(
     reasons: &mut Vec<Value>,
     score: &mut u64,
-    code_title: (&str, &str),
+    code_title_source: (&str, &str, &str),
     severity: &str,
     points: u64,
     evidence: impl Into<String>,
@@ -1389,10 +1560,11 @@ fn push_risk_reason(
 ) {
     *score = score.saturating_add(points);
     reasons.push(json!({
-        "label": code_title.1,
+        "label": code_title_source.1,
         "status": severity,
         "value": evidence.into(),
-        "code": code_title.0,
+        "code": code_title_source.0,
+        "source": code_title_source.2,
         "severity": severity,
         "points": points,
         "recommendation": recommendation,
@@ -1925,6 +2097,25 @@ fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
         risk.get("formula")
             .and_then(Value::as_str)
             .unwrap_or("sum(reason_points) capped at 100")
+    ));
+    text.push_str(&format!(
+        "- Confidence: {:.0}%\n",
+        risk.get("confidence")
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+            * 100.0
+    ));
+    text.push_str(&format!(
+        "- Baseline: {}\n",
+        risk.get("baseline_status")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+    ));
+    text.push_str(&format!(
+        "- Policy version: {}\n",
+        risk.get("policy_version")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
     ));
     if let Some(note) = risk.get("note").and_then(Value::as_str) {
         text.push_str(&format!("- Note: {note}\n"));
@@ -3653,6 +3844,7 @@ mod tests {
             worktime_url: "http://127.0.0.1".to_string(),
             one_c_url: "http://127.0.0.1".to_string(),
             workforce_policy_path: dir.path().join("workforce-policy.json"),
+            ueba_policy_path: dir.path().join("ueba-policy.yaml"),
             timeout_seconds: 1,
             state_dir: dir.path().join("state"),
             dlp_db_path: dir.path().join("dlp.sqlite"),
@@ -3866,11 +4058,13 @@ mod tests {
             error: None,
         };
         let missing_policy = Path::new("/tmp/detmir-missing-workforce-policy.json");
+        let missing_ueba_policy = Path::new("/tmp/detmir-missing-ueba-policy.yaml");
         let report = build_reports(
             &snapshot,
             &IncidentStateFile::default(),
             &evidence,
             missing_policy,
+            missing_ueba_policy,
             false,
         );
         assert_eq!(report["operator_ok"], true);
@@ -3882,13 +4076,20 @@ mod tests {
                 .contains("derived detections/cases")
         );
         assert!(report["kpis"].as_array().unwrap().len() >= 6);
-        assert!(report["ueba_risk"]["score"].as_u64().unwrap() > 0);
+        assert_eq!(report["ueba_risk"]["score"], 0);
         assert!(
-            !report["ueba_risk"]["reasons"]
+            report["ueba_risk"]["reasons"]
                 .as_array()
                 .unwrap()
                 .is_empty()
         );
+        assert!(report["ueba_risk"]["confidence"].as_f64().unwrap() > 0.55);
+        assert_eq!(
+            report["ueba_risk"]["baseline_status"],
+            "portfolio_only_no_per_user_baseline"
+        );
+        assert_eq!(report["ueba_risk"]["policy_version"], "ueba-rule-v1");
+        assert!(report["ueba_risk"]["calculated_from"].is_array());
         assert!(
             report["markdown"]
                 .as_str()
@@ -3905,6 +4106,102 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn ueba_risk_uses_yaml_policy_and_evidence_as_confidence() {
+        let dir = tempfile::tempdir().unwrap();
+        let policy_path = dir.path().join("ueba-policy.yaml");
+        fs::write(
+            &policy_path,
+            r#"
+version: "ueba-rule-v1-test"
+baseline_status: "test_baseline"
+score_cap: 50
+weights:
+  dlp_warn: 7
+confidence:
+  base: 0.2
+  evidence_bonus: 0.3
+  screenshot_bonus: 0.2
+  worktime_bonus: 0.1
+  policy_bonus: 0.1
+"#,
+        )
+        .unwrap();
+        let snapshot = Snapshot {
+            generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            detmir_status: SourceStatus {
+                ok: true,
+                status: "WARN".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            detmir_check: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            failed_units: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            worktime: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            worktime_management: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            one_c: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+        };
+        let metrics = ReportMetrics {
+            users_count: 1,
+            active_seconds: 3600,
+            apps_count: 1,
+            dlp_ok: 21,
+            dlp_warn: 1,
+            dlp_fail: 0,
+            evidence_total: 3,
+            evidence_screenshots: 1,
+            open_incidents: 0,
+            acknowledged_incidents: 0,
+            workforce_index: Some(13),
+        };
+        let risk = build_ueba_risk(
+            &snapshot,
+            &metrics,
+            &json!({"configured": false}),
+            &[],
+            &policy_path,
+        );
+        assert_eq!(risk["score"], 7);
+        assert_eq!(risk["policy_version"], "ueba-rule-v1-test");
+        assert_eq!(risk["baseline_status"], "test_baseline");
+        assert_eq!(risk["policy_configured"], true);
+        assert_eq!(risk["confidence"], 0.8);
+        assert_eq!(risk["risk_sources"][0], "dlp");
+        assert_eq!(risk["reasons"].as_array().unwrap().len(), 1);
+        assert_ne!(risk["reasons"][0]["code"], "evidence_present");
     }
 
     #[test]

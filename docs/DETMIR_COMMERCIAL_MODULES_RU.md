@@ -106,15 +106,29 @@ PDF-экспорт выполняется штатной печатью брау
 заменяются на `Сотрудник N` и `EMPLOYEE-N`. Live-режим без query-флага
 сохраняет реальные имена для внутреннего коммерческого контура DetMir.
 
-### UEBA risk scoring
+### UEBA-compatible rule-based risk scoring v1
 
-DetMir Workforce/Security формирует read-only UEBA score для руководителя и ИБ:
+DetMir Workforce/Security формирует read-only UEBA-compatible rule-based score
+для руководителя и ИБ:
 
 - `risk_score`: сумма reason points, capped at 100;
 - `risk_level`: `normal`, `low`, `medium`, `high`;
-- `reasons`: DLP WARN/FAIL, open review queue, evidence, off-hours/weekend
-  insights, просадки/аномалии Workforce, приложения без явного
+- `confidence`: доверие к расчету; evidence и screenshot повышают confidence,
+  но не добавляют risk score сами по себе;
+- `risk_sources`: типы источников, которые дали risk reasons;
+- `baseline_status`: статус baseline-модели, сейчас
+  `portfolio_only_no_per_user_baseline`;
+- `policy_version`: версия risk policy;
+- `calculated_from`: список источников, участвовавших в расчете;
+- `reasons`: DLP WARN/FAIL, open review queue, off-hours/weekend insights,
+  просадки/аномалии Workforce, приложения без явного
   `application_weights` правила.
+
+Веса настраиваются через YAML policy:
+
+- пример: `configs/detmir-ueba-risk-policy.example.yaml`;
+- runtime-файл: `/etc/detmir-portal-ueba-policy.yaml`;
+- env-путь: `DETMIR_PORTAL_UEBA_POLICY_PATH`.
 
 Важно: текущий UEBA слой только ранжирует риск и объясняет причины. Он не
 выполняет pfSense/NAC/SOAR actions и не меняет сетевые политики.

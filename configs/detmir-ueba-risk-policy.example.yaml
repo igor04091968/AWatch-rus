@@ -1,0 +1,22 @@
+version: "ueba-rule-v1"
+baseline_status: "portfolio_only_no_per_user_baseline"
+score_cap: 100
+
+weights:
+  dlp_fail: 35
+  dlp_warn: 20
+  open_incidents: 15
+  night_activity: 20
+  weekend_activity: 20
+  workforce_drop: 15
+  workforce_anomaly: 10
+  application_classification_gap: 10
+  application_classification_gap_large: 15
+  worktime_unavailable: 25
+
+confidence:
+  base: 0.55
+  evidence_bonus: 0.10
+  screenshot_bonus: 0.10
+  worktime_bonus: 0.15
+  policy_bonus: 0.10
