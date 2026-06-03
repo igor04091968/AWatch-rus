@@ -638,12 +638,16 @@ Production readiness checklist:
 - [ ] `ansible-playbook -i ansible/inventory.ini ansible/deploy_aw_server.yml --syntax-check` passes;
 - [ ] `aw-worktime-influx-exporter.service` and `aw-dlp-influx-exporter.service`
       complete once and write points;
+- [ ] `detmir-readiness --json` returns `status=OK`;
 - [ ] `detmir-check --json`, `detmir-status --json` and Grafana check are green;
 - [ ] rollback path for changed binaries/env files is known.
+
+Full readiness procedure is documented in `docs/PRODUCTION_READINESS_RU.md`.
 
 На Proxmox:
 
 ```bash
+detmir-readiness --json
 detmir-status --json
 detmir-check --json
 detmir-dlp

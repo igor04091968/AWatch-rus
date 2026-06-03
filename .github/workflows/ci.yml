@@ -23,6 +23,18 @@ jobs:
       - name: Run production inventory placeholder guard self-test
         run: bash scripts/check_production_inventory_placeholders.sh --self-test
 
+  rust-runtime-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test detmir-core runtime guard
+        run: cargo test --manifest-path adk-rust/Cargo.toml -p detmir-core runtime_guard
+
+      - name: Test detmir readiness crate
+        run: cargo test --manifest-path adk-rust/Cargo.toml -p detmir-readiness
+
   powershell-analyzer:
     runs-on: ubuntu-latest
     steps:

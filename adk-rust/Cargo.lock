@@ -591,6 +591,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "detmir-readiness"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "detmir-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "urlencoding",
+]
+
+[[package]]
 name = "detmir-state"
 version = "0.1.0"
 dependencies = [

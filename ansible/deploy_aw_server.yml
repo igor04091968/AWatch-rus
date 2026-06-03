@@ -1586,6 +1586,28 @@
             mode: "0644"
           when: aw_dlp_influx_enabled | default(false) | bool
 
+        - name: Проверить локальный Rust DetMir readiness checker
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/detmir-readiness"
+          delegate_to: localhost
+          register: detmir_readiness_rust_binary
+          become: false
+
+        - name: Требовать Rust DetMir readiness checker artifact
+          ansible.builtin.assert:
+            that:
+              - detmir_readiness_rust_binary.stat.exists | default(false)
+            fail_msg: "Missing Rust artifact: {{ aw_rust_release_dir }}/detmir-readiness"
+
+        - name: Установить Rust DetMir readiness checker
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/detmir-readiness"
+            dest: /usr/local/bin/detmir-readiness
+            owner: root
+            group: root
+            mode: "0755"
+          when: detmir_readiness_rust_binary.stat.exists | default(false)
+
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
             daemon_reload: true

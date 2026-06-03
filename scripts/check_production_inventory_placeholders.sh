@@ -4,18 +4,22 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/check_production_inventory_placeholders.sh [--allow-missing] FILE...
+  scripts/check_production_inventory_placeholders.sh [--allow-missing] [--strict] FILE...
   DETMIR_PRODUCTION_CONFIG_PATHS="file1:file2" scripts/check_production_inventory_placeholders.sh
   scripts/check_production_inventory_placeholders.sh --self-test
 
 Fails when production inventory/env files contain public placeholder values:
 TEST-NET addresses, HOST-EXAMPLE, WINDOWS_USER_EXAMPLE, CHANGE_ME, YOUR_*,
 replace-me, or angle-bracket placeholders.
+
+Use --strict for private production override files. Strict mode requires at
+least one existing path and rejects public/example/default files.
 EOF
 }
 
 pattern='(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE|CHANGE_ME|CHANGEME|REPLACE_ME|replace-me|YOUR_[A-Z0-9_]*|<[A-Z0-9_ -]+>)'
 allow_missing=0
+strict=0
 self_test=0
 paths=()
 
@@ -23,6 +27,9 @@ while (($#)); do
   case "$1" in
     --allow-missing)
       allow_missing=1
+      ;;
+    --strict)
+      strict=1
       ;;
     --self-test)
       self_test=1
@@ -42,6 +49,11 @@ run_scan() {
   local file
   local found=0
   for file in "$@"; do
+    if (( strict == 1 )) && [[ "$file" == ansible/group_vars* || "$file" == ansible/inventory.ini || "$file" == *".example."* || "$file" == *"example."* ]]; then
+      printf 'strict mode refuses public/default config path: %s\n' "$file" >&2
+      found=1
+      continue
+    fi
     if [[ ! -e "$file" ]]; then
       if (( allow_missing == 0 )); then
         printf 'missing production config path: %s\n' "$file" >&2
@@ -86,6 +98,13 @@ EOF
     echo "self-test failed: bad fixture was accepted" >&2
     exit 1
   fi
+  saved_strict="$strict"
+  strict=1
+  if run_scan "ansible/group_vars/all.yml" >/dev/null 2>&1; then
+    echo "self-test failed: strict mode accepted public/default file name" >&2
+    exit 1
+  fi
+  strict="$saved_strict"
   echo "production inventory placeholder guard self-test: OK"
   exit 0
 fi
@@ -95,7 +114,7 @@ if ((${#paths[@]} == 0)) && [[ -n "${DETMIR_PRODUCTION_CONFIG_PATHS:-}" ]]; then
 fi
 
 if ((${#paths[@]} == 0)); then
-  if (( allow_missing == 1 )); then
+  if (( allow_missing == 1 && strict == 0 )); then
     echo "production inventory placeholder guard: skipped (no production paths)"
     exit 0
   fi
