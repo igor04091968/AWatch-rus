@@ -1,0 +1,22 @@
+groups:
+  - name: detmir_readiness
+    rules:
+      - alert: DetMirReadinessNotOk
+        expr: detmir_readiness_ok == 0
+        for: 10m
+        labels:
+          severity: critical
+          service: detmir-readiness
+        annotations:
+          summary: "DetMir readiness is not OK"
+          description: "detmir-readiness reported WARN/FAIL or the latest readiness bundle is not acceptable."
+
+      - alert: DetMirReadinessSignatureInvalid
+        expr: detmir_readiness_signature_verified == 0
+        for: 10m
+        labels:
+          severity: critical
+          service: detmir-readiness
+        annotations:
+          summary: "DetMir readiness bundle signature is not verified"
+          description: "The latest readiness bundle does not have a valid detached signature."

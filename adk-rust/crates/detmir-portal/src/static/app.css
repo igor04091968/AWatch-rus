@@ -130,6 +130,40 @@ h1 {
 .status-warn { background: var(--warn-bg); color: var(--warn); }
 .status-fail { background: var(--fail-bg); color: var(--fail); }
 .status-unknown { background: var(--unknown-bg); color: var(--unknown); }
+.text-ok { color: var(--ok); }
+.text-fail { color: var(--fail); }
+
+.readiness-card {
+  grid-column: span 2;
+}
+
+.readiness-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.readiness-head h3 {
+  margin-top: 8px;
+}
+
+.readiness-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 6px;
+}
+
+.readiness-metrics > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.readiness-card code {
+  overflow-wrap: anywhere;
+}
 
 .grid-2 {
   display: grid;
@@ -350,6 +384,9 @@ pre {
   .row { grid-template-columns: 1fr; }
   .incident-row { grid-template-columns: 1fr; }
   .evidence-row { grid-template-columns: 1fr; }
+  .readiness-card { grid-column: span 1; }
+  .readiness-head { flex-direction: column; }
+  .readiness-metrics { grid-template-columns: 1fr; }
   .app-weight-row { grid-template-columns: 1fr; }
   .employee-index-row { grid-template-columns: 1fr; }
   .section-head { flex-direction: column; }

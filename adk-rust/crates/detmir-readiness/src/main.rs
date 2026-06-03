@@ -143,6 +143,7 @@ struct BundleStatus {
     generated_at_utc: String,
     archive_dir: String,
     latest_dir: String,
+    checksum_verified: bool,
     signature: SignatureStatus,
     counts: Counts,
     prometheus_metric_file: String,
@@ -155,6 +156,8 @@ struct SignatureStatus {
     verified: bool,
     method: String,
     summary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    public_key_fingerprint_sha256: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     signature_file: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -772,6 +775,7 @@ fn write_bundle(dir: &Path, report: &Report, cli: &Cli) -> Result<()> {
         generated_at_utc: report.generated_at_utc.clone(),
         archive_dir: archive_dir.display().to_string(),
         latest_dir: dir.display().to_string(),
+        checksum_verified: true,
         signature,
         counts: report.counts.clone(),
         prometheus_metric_file: dir.join("detmir-readiness.prom").display().to_string(),
@@ -840,6 +844,7 @@ fn sign_bundle(archive_dir: &Path, cli: &Cli) -> Result<SignatureStatus> {
             verified: false,
             method: "openssl dgst -sha256".to_string(),
             summary: "signature not configured".to_string(),
+            public_key_fingerprint_sha256: None,
             signature_file: None,
             public_key_file: None,
         });
@@ -854,6 +859,7 @@ fn sign_bundle(archive_dir: &Path, cli: &Cli) -> Result<SignatureStatus> {
             verified: false,
             method: "openssl dgst -sha256".to_string(),
             summary: "signing key not found".to_string(),
+            public_key_fingerprint_sha256: None,
             signature_file: None,
             public_key_file: None,
         });
@@ -890,12 +896,14 @@ fn sign_bundle(archive_dir: &Path, cli: &Cli) -> Result<SignatureStatus> {
             .arg(&sums_path),
         "verify readiness sha256sums signature",
     )?;
+    let fingerprint = sha256_file(&public_key_path)?;
     Ok(SignatureStatus {
         required: cli.require_signature,
         signed: true,
         verified: true,
         method: "openssl dgst -sha256".to_string(),
         summary: "sha256sums detached signature verified".to_string(),
+        public_key_fingerprint_sha256: Some(fingerprint),
         signature_file: Some(sig_path.display().to_string()),
         public_key_file: Some(public_key_path.display().to_string()),
     })
@@ -1337,9 +1345,67 @@ mod tests {
             &fs::read_to_string(dir.path().join("detmir-readiness-status.json")).unwrap(),
         )
         .unwrap();
+        assert_eq!(status["checksum_verified"], true);
         assert_eq!(status["signature"]["signed"], false);
         assert_eq!(status["signature"]["verified"], false);
         let latest_dir = fs::read_to_string(dir.path().join("latest-dir.txt")).unwrap();
         assert!(latest_dir.contains("2026") || latest_dir.contains("20"));
+    }
+
+    #[test]
+    fn writes_signed_bundle_when_openssl_available() {
+        if !command_exists("openssl") {
+            eprintln!("skip signed bundle test: openssl is not available");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("signing-key.pem");
+        run_command(
+            Command::new("openssl")
+                .arg("genpkey")
+                .arg("-algorithm")
+                .arg("RSA")
+                .arg("-pkeyopt")
+                .arg("rsa_keygen_bits:2048")
+                .arg("-out")
+                .arg(&key_path),
+            "generate test signing key",
+        )
+        .unwrap();
+        let mut cli = test_cli();
+        cli.signing_key = Some(key_path);
+        cli.require_signature = true;
+        let report = test_report(vec![ok("env:test", "ok", json!({}))]);
+        write_bundle(dir.path(), &report, &cli).unwrap();
+        assert!(dir.path().join("sha256sums.txt.sig").is_file());
+        assert!(dir.path().join("public-key.pem").is_file());
+        let status: Value = serde_json::from_str(
+            &fs::read_to_string(dir.path().join("detmir-readiness-status.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(status["signature"]["signed"], true);
+        assert_eq!(status["signature"]["verified"], true);
+        assert!(
+            status["signature"]["public_key_fingerprint_sha256"]
+                .as_str()
+                .unwrap_or("")
+                .len()
+                >= 64
+        );
+    }
+
+    #[test]
+    fn prunes_old_readiness_archives() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = dir.path().join("2026-01-01").join("000000Z");
+        let fresh_date = Utc::now().format("%Y-%m-%d").to_string();
+        let fresh = dir.path().join(&fresh_date).join("000000Z");
+        fs::create_dir_all(&old).unwrap();
+        fs::create_dir_all(&fresh).unwrap();
+        fs::write(old.join("marker"), "old").unwrap();
+        fs::write(fresh.join("marker"), "fresh").unwrap();
+        prune_old_archives(dir.path(), 30).unwrap();
+        assert!(!dir.path().join("2026-01-01").exists());
+        assert!(dir.path().join(fresh_date).exists());
     }
 }

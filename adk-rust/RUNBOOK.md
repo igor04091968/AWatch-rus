@@ -650,6 +650,21 @@ Production readiness checklist:
     -signature sha256sums.txt.sig sha256sums.txt
   ```
 
+- [ ] readiness signing public-key fingerprint for the shipped/customer
+      contour is fixed and documented:
+
+  ```text
+  READINESS_PUBLIC_KEY_SHA256=<READINESS_PUBLIC_KEY_SHA256_FINGERPRINT>
+  ```
+
+  Verification command:
+
+  ```bash
+  sha256sum /var/lib/activitywatch/health/readiness-bundle/public-key.pem
+  jq -r '.signature.public_key_fingerprint_sha256' \
+    /var/lib/activitywatch/health/readiness-bundle/detmir-readiness-status.json
+  ```
+
 - [ ] `detmir-readiness-status.json` and `detmir-readiness.prom` expose the
       latest OK/WARN/FAIL state independently from systemd unit result;
 - [ ] `detmir-readiness.timer` is enabled for daily bundle generation;

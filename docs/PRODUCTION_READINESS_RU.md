@@ -130,6 +130,19 @@ Private signing key хранится только на сервере:
 Публичный ключ попадает в bundle как `public-key.pem`. Retention архивов
 управляется переменной `DETMIR_READINESS_RETENTION_DAYS`.
 
+Fingerprint публичного ключа считается как SHA-256 файла `public-key.pem` и
+дублируется в `detmir-readiness-status.json`:
+
+```bash
+sha256sum /var/lib/activitywatch/health/readiness-bundle/public-key.pem
+jq -r '.signature.public_key_fingerprint_sha256' \
+  /var/lib/activitywatch/health/readiness-bundle/detmir-readiness-status.json
+```
+
+Для публичной поставки вместо live fingerprint используется placeholder
+`<READINESS_PUBLIC_KEY_SHA256_FINGERPRINT>`; конкретный customer contour
+фиксирует свой fingerprint в private acceptance package.
+
 ## Ежедневное формирование
 
 При штатном развертывании Ansible устанавливает:
@@ -171,6 +184,26 @@ systemctl status detmir-readiness.service --no-pager
 - `/api/readiness/latest` - последний readiness JSON;
 - `/api/readiness/bundle` - индекс latest bundle и список артефактов;
 - `/api/readiness/verify` - проверка `sha256sum -c` и detached signature.
+
+В UI портала карточка `Готовность системы` показывает статус `OK/WARN/FAIL`,
+дату формирования, состояние checksum/signature и fingerprint публичного ключа.
+Кнопка `Проверить bundle` запускает lightweight verify endpoint без повторного
+запуска runtime checks.
+
+## Prometheus alerts
+
+Поставочный файл правил:
+
+```text
+aw-server/detmir-readiness-alerts.yml
+```
+
+Критичные условия:
+
+```promql
+detmir_readiness_ok == 0
+detmir_readiness_signature_verified == 0
+```
 
 ## Полезные параметры
 

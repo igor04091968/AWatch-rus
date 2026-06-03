@@ -1679,6 +1679,22 @@
             group: root
             mode: "0644"
 
+        - name: Создать каталог Prometheus rules для DetMir readiness
+          ansible.builtin.file:
+            path: /etc/prometheus/rules
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить Prometheus alerts DetMir readiness
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/detmir-readiness-alerts.yml"
+            dest: /etc/prometheus/rules/detmir-readiness-alerts.yml
+            owner: root
+            group: root
+            mode: "0644"
+
         - name: Перезагрузить systemd после установки AW worktime API
           ansible.builtin.systemd:
             daemon_reload: true

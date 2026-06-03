@@ -1,4 +1,4 @@
-const state = { tab: "operator", links: null };
+const state = { tab: "operator", links: null, readiness: null };
 
 function apiBase() {
   const path = window.location.pathname;
@@ -37,18 +37,57 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
-function renderSummary(summary) {
+function renderSummary(summary, readiness) {
   const global = document.getElementById("globalStatus");
   global.className = `status-pill ${statusClass(summary.severity)}`;
   global.textContent = `${summary.severity} · operator ${summary.operator_ok ? "OK" : "NO"}`;
   const blocks = Object.entries(summary.blocks || {});
-  document.getElementById("summary").innerHTML = blocks.map(([name, block]) => `
+  const readinessCard = renderReadinessSummaryCard(readiness);
+  document.getElementById("summary").innerHTML = readinessCard + blocks.map(([name, block]) => `
     <article class="card">
       <span class="badge ${statusClass(block.status)}">${escapeHtml(block.status)}</span>
       <h3>${escapeHtml(label(name))}</h3>
       <p class="muted">${escapeHtml(block.text)}</p>
     </article>
   `).join("");
+}
+
+function renderReadinessSummaryCard(readiness) {
+  const bundle = readiness?.bundle || {};
+  const verify = readiness?.verify || {};
+  const status = bundle.status?.status || bundle.status || (verify.ok ? "OK" : "UNKNOWN");
+  const generated = bundle.status?.generated_at_utc || bundle.generated_at_utc || "-";
+  const signature = bundle.status?.signature || {};
+  const signatureOk = Boolean(verify.signature_verified || signature.verified);
+  const checksumOk = Boolean(verify.checksum_verified || bundle.status?.checksum_verified || verify.ok);
+  const fingerprint = signature.public_key_fingerprint_sha256 || "-";
+  const verificationText = verify.generated_at_utc
+    ? `Проверено: ${verify.generated_at_utc}`
+    : "Проверка не запускалась";
+  return `
+    <article class="card readiness-card">
+      <div class="readiness-head">
+        <div>
+          <span class="badge ${statusClass(status)}">${escapeHtml(status)}</span>
+          <h3>Готовность системы</h3>
+        </div>
+        <button class="small-button" data-readiness-verify="true">Проверить bundle</button>
+      </div>
+      <div class="readiness-metrics">
+        <div><span class="muted">Дата</span><strong>${escapeHtml(generated)}</strong></div>
+        <div><span class="muted">Подпись</span><strong class="${signatureOk ? "text-ok" : "text-fail"}">${signatureOk ? "OK" : "FAIL"}</strong></div>
+        <div><span class="muted">Checksum</span><strong class="${checksumOk ? "text-ok" : "text-fail"}">${checksumOk ? "OK" : "FAIL"}</strong></div>
+      </div>
+      <p class="muted small">Отпечаток: <code>${escapeHtml(shortFingerprint(fingerprint))}</code></p>
+      <p id="readinessVerifyStatus" class="muted small">${escapeHtml(verificationText)}</p>
+    </article>
+  `;
+}
+
+function shortFingerprint(value) {
+  const text = String(value || "-");
+  if (text.length <= 24) return text;
+  return `${text.slice(0, 12)}…${text.slice(-12)}`;
 }
 
 function label(name) {
@@ -464,7 +503,11 @@ function renderReports(data) {
 async function refresh() {
   if (!state.links) state.links = await loadJson("/links");
   const summary = await loadJson("/summary");
-  renderSummary(summary);
+  state.readiness = {
+    bundle: await loadJson("/readiness/bundle").catch(error => ({ ok: false, error: error.message })),
+    verify: state.readiness?.verify || null
+  };
+  renderSummary(summary, state.readiness);
   const content = document.getElementById("content");
   const data = await loadJson(`/${state.tab}`);
   if (state.tab === "operator") content.innerHTML = renderOperator(data);
@@ -514,6 +557,28 @@ document.addEventListener("click", event => {
   if (!button) return;
   anonymizeReport(button).catch(showError);
 });
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-readiness-verify]");
+  if (!button) return;
+  verifyReadinessBundle(button).catch(showError);
+});
+
+async function verifyReadinessBundle(button) {
+  button.disabled = true;
+  button.textContent = "Проверка...";
+  const verify = await loadJson("/readiness/verify");
+  state.readiness = {
+    ...(state.readiness || {}),
+    verify
+  };
+  const status = document.getElementById("readinessVerifyStatus");
+  if (status) {
+    status.textContent = `Проверено: checksum ${verify.checksum_verified ? "OK" : "FAIL"} · signature ${verify.signature_verified ? "OK" : "FAIL"}`;
+  }
+  button.disabled = false;
+  button.textContent = "Проверить bundle";
+}
 
 async function anonymizeReport(button) {
   button.disabled = true;
