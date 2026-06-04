@@ -319,7 +319,6 @@ function renderExecutiveDashboard(report) {
   const highRisk = Array.isArray(dashboard.high_risk_departments) ? dashboard.high_risk_departments : [];
   const candidates = Array.isArray(dashboard.critical_candidates) ? dashboard.critical_candidates : [];
   const summary = dashboard.summary || {};
-  const narrativeStatus = summary.risk_narrative_status || executiveDashboardStatus(dashboard);
   return `
     <section class="card executive-dashboard-card">
       <div class="section-head">
@@ -327,11 +326,7 @@ function renderExecutiveDashboard(report) {
           <h3>Сводка руководителя</h3>
           <p class="muted">Что происходит в организации прямо сейчас: доверие к KPI, покрытие, риски, дела и готовность расследований.</p>
         </div>
-        <span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span>
-      </div>
-      <div class="list compact-list executive-summary-list">
-        <div class="row compact-row"><strong>Главная причина риска</strong><span class="muted">${ui(summary.main_risk_cause || "связанный риск не выражен")}</span><span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span></div>
-        <div class="row compact-row"><strong>Подтверждающие слои</strong><span class="muted">Trust KPI · Agent Coverage · Business Risk · Risk Heatmap · Security Correlation · Incident Candidates · Cases</span><span></span></div>
+        <span class="badge ${statusClass(executiveDashboardStatus(dashboard))}">${ui(dashboard.forensics_readiness || "UNKNOWN")}</span>
       </div>
       <div class="quality-grid">
         <div><span class="muted">Trust KPI</span><strong>${ui(optionalPercent(dashboard.trust_kpi_score))}</strong></div>
@@ -345,6 +340,27 @@ function renderExecutiveDashboard(report) {
         <div class="row compact-row"><strong>Главный риск</strong><span class="muted">${ui(summary.main_risk || "нет данных")}</span><span></span></div>
         <div class="row compact-row"><strong>Главное улучшение</strong><span class="muted">${ui(summary.main_improvement || "нет данных")}</span><span></span></div>
         <div class="row compact-row"><strong>Пробел в данных</strong><span class="muted">${ui(summary.main_data_gap || "нет данных")}</span><span></span></div>
+      </div>
+    </section>
+  `;
+}
+
+function renderRiskNarrative(report) {
+  const dashboard = report?.executive_dashboard;
+  const summary = dashboard?.summary || {};
+  const narrativeStatus = summary.risk_narrative_status || executiveDashboardStatus(dashboard || {});
+  return `
+    <section class="card risk-narrative-card">
+      <div class="section-head">
+        <div>
+          <h3>Связанная картина риска</h3>
+          <p class="muted">Главный управленческий вывод: что происходит, почему это риск и какие слои это подтверждают.</p>
+        </div>
+        <span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span>
+      </div>
+      <div class="list compact-list executive-summary-list">
+        <div class="row compact-row"><strong>Главная причина риска</strong><span class="muted">${ui(summary.main_risk_cause || "связанный риск не выражен")}</span><span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span></div>
+        <div class="row compact-row"><strong>Подтверждающие слои</strong><span class="muted">Trust KPI · Agent Coverage · Business Risk · Risk Heatmap · Security Correlation · Incident Candidates · Cases</span><span></span></div>
       </div>
     </section>
   `;
@@ -873,6 +889,7 @@ function renderOperator(data, report) {
       <span class="badge ${statusClass(report?.severity)}">${escapeHtml(report?.headline || "Оперативный срез")}</span>
     </div>
     ${renderPeriodBanner(report)}
+    ${renderRiskNarrative(report)}
     ${renderExecutiveDashboard(report)}
     ${renderExecutiveMetrics(report, incidents)}
     ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
@@ -2130,6 +2147,7 @@ function renderReports(data) {
       <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
     </div>
     ${renderPeriodBanner(data)}
+    ${renderRiskNarrative(data)}
     ${renderExecutiveDashboard(data)}
     ${renderReportTypeCards()}
     <div class="grid-2">

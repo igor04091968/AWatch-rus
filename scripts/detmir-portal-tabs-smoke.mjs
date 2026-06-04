@@ -124,6 +124,7 @@ async function main() {
         );
         const readyBodyText = await page.locator("#content").innerText({ timeout });
         const requiredExecutive = [
+          "Связанная картина риска",
           "Сотрудников в работе",
           "Средний индекс активности",
           "Главная причина риска",
@@ -147,6 +148,27 @@ async function main() {
           name: "executive_dashboard_layer",
           ok: requiredExecutive.every((marker) => containsText(readyBodyText, marker)),
           required: requiredExecutive,
+        });
+        const riskNarrativeIndex = readyBodyText.indexOf("Связанная картина риска");
+        const executiveIndex = readyBodyText.indexOf("Сводка руководителя");
+        const trustIndex = readyBodyText.indexOf("Достоверность данных агента");
+        const businessRiskIndex = readyBodyText.indexOf("Риски подразделений");
+        const candidatesIndex = readyBodyText.indexOf("Кандидаты в инциденты");
+        checks.push({
+          name: "management_block_order",
+          ok:
+            riskNarrativeIndex >= 0 &&
+            executiveIndex > riskNarrativeIndex &&
+            trustIndex > executiveIndex &&
+            businessRiskIndex > trustIndex &&
+            candidatesIndex > businessRiskIndex,
+          order: [
+            "Связанная картина риска",
+            "Сводка руководителя",
+            "Достоверность данных агента",
+            "Риски подразделений",
+            "Кандидаты в инциденты",
+          ],
         });
       }
       if (item.tab === "settings") {
