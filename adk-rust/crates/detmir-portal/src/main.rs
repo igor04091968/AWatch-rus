@@ -7,6 +7,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+
 use anyhow::{Context, Result, anyhow};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
@@ -26,6 +29,15 @@ const APP_JS: &str = include_str!("static/app.js");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
 const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(5);
 const DEFAULT_DEPARTMENT_LABEL: &str = "Без подразделения";
+
+#[cfg(unix)]
+const SIGKILL: i32 = 9;
+
+#[cfg(unix)]
+unsafe extern "C" {
+    fn setpgid(pid: i32, pgid: i32) -> i32;
+    fn kill(pid: i32, sig: i32) -> i32;
+}
 
 type SnapshotCache = Arc<Mutex<Option<CachedSnapshot>>>;
 
@@ -2570,13 +2582,25 @@ fn security_events_block(summary: &SecurityEventsSummary) -> SummaryBlock {
 }
 
 fn run_shell(command: &str, timeout: Duration) -> Result<(String, String, bool)> {
-    let mut child = Command::new("/bin/sh")
+    let mut shell = Command::new("/bin/sh");
+    shell
         .arg("-lc")
         .arg(command)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .with_context(|| format!("spawn {command}"))?;
+        .stderr(Stdio::piped());
+    #[cfg(unix)]
+    unsafe {
+        shell.pre_exec(|| {
+            // Isolate portal probes so a timeout can kill helper grandchildren
+            // such as detmir-check, not only the shell wrapper.
+            if setpgid(0, 0) == 0 {
+                Ok(())
+            } else {
+                Err(std::io::Error::last_os_error())
+            }
+        });
+    }
+    let mut child = shell.spawn().with_context(|| format!("spawn {command}"))?;
     let started = Instant::now();
     loop {
         if let Some(status) = child.try_wait()? {
@@ -2591,7 +2615,7 @@ fn run_shell(command: &str, timeout: Duration) -> Result<(String, String, bool)>
             return Ok((stdout, stderr, status.success()));
         }
         if started.elapsed() > timeout {
-            let _ = child.kill();
+            kill_shell_tree(&mut child);
             let _ = child.wait();
             return Err(anyhow!(
                 "command timed out after {}s: {command}",
@@ -2600,6 +2624,21 @@ fn run_shell(command: &str, timeout: Duration) -> Result<(String, String, bool)>
         }
         thread::sleep(Duration::from_millis(100));
     }
+}
+
+#[cfg(unix)]
+fn kill_shell_tree(child: &mut std::process::Child) {
+    let pgid = child.id() as i32;
+    // Negative pid targets the process group created in pre_exec above.
+    // Best-effort cleanup: the caller still waits on the direct child.
+    unsafe {
+        let _ = kill(-pgid, SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_shell_tree(child: &mut std::process::Child) {
+    let _ = child.kill();
 }
 
 fn build_health(snapshot: &Snapshot) -> HealthResponse {
@@ -9302,6 +9341,15 @@ mod tests {
         assert_eq!(value["rows"][0]["user"], "Пользователь не определён");
         assert_eq!(value["rows"][0]["user_id"], "HOST\\unknown");
         assert!(!serde_json::to_string(&value).unwrap().contains("\\uFFFD"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_shell_timeout_kills_grandchildren_without_blocking_stdout() {
+        let started = Instant::now();
+        let err = run_shell("sh -c 'sleep 5 & wait'", Duration::from_millis(200)).unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(err.to_string().contains("command timed out"));
     }
 
     #[test]

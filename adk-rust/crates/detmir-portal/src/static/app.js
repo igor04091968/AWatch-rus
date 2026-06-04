@@ -4,6 +4,7 @@ const state = {
   period: "today",
   links: null,
   readiness: null,
+  operatorData: null,
   reports: null,
   cases: null,
   pendingScrollSelector: null,
@@ -203,6 +204,27 @@ function setViewMode(mode) {
   updateViewModeButtons();
   if (state.tab !== "operator") {
     setTab("operator");
+    return;
+  }
+  if (state.operatorData && state.reports) {
+    const content = document.getElementById("content");
+    if (content) {
+      content.innerHTML = renderOperator(state.operatorData, state.reports, { cases: state.cases });
+    }
+    setLoadStatus("READY", "Данные готовы", 100);
+    consumePendingScroll();
+    if (mode === "security" && !state.cases) {
+      loadJson("/cases")
+        .then(cases => {
+          state.cases = cases;
+          if (currentViewMode() === "security" && state.tab === "operator" && content) {
+            content.innerHTML = renderOperator(state.operatorData, state.reports, { cases: state.cases });
+          }
+        })
+        .catch(() => {
+          state.cases = { ok: false, cases: [] };
+        });
+    }
     return;
   }
   refresh({ stage: VIEW_MODES[mode].stage });
@@ -2800,6 +2822,7 @@ async function refresh(options = {}) {
 async function loadCurrentTab() {
   if (state.tab === "operator") {
     const data = await loadJson("/operator");
+    state.operatorData = data;
     state.reports = await loadJson("/reports").catch(() => state.reports);
     if (currentViewMode() === "security") {
       state.cases = await loadJson("/cases").catch(error => ({ ok: false, error: error.message, cases: [] }));
