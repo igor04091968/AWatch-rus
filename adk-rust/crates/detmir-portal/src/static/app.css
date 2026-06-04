@@ -400,6 +400,45 @@ h1 {
   line-height: 1.1;
 }
 
+.ranking-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.attention-panel {
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--warn);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.attention-list {
+  display: grid;
+  gap: 8px;
+}
+
+.attention-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.attention-item p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .analytics-grid {
   display: grid;
   grid-template-columns: minmax(430px, 1.25fr) minmax(320px, 1fr) minmax(300px, 0.9fr);
@@ -455,6 +494,18 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   text-transform: uppercase;
+}
+
+.data-table small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.heatmap-table td {
+  min-width: 120px;
 }
 
 .rank-list {
@@ -666,6 +717,27 @@ h1 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.leader-card {
+  margin-top: 14px;
+}
+
+.leader-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.leader-grid > div {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
 .report-actions {
   display: flex;
   justify-content: flex-end;
@@ -768,9 +840,11 @@ pre {
 @media (max-width: 1280px) {
   .executive-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .analytics-grid { grid-template-columns: 1fr; }
+  .ranking-grid { grid-template-columns: 1fr; }
   .department-panel,
   .anomaly-panel,
   .risk-panel { grid-column: auto; }
+  .leader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
@@ -801,6 +875,8 @@ pre {
   .employee-index-row { grid-template-columns: 1fr; }
   .employee-metrics { grid-template-columns: 1fr; }
   .risk-list li { grid-template-columns: 1fr; }
+  .attention-item { grid-template-columns: 1fr; }
+  .leader-grid { grid-template-columns: 1fr; }
   .section-head { flex-direction: column; }
   .actions { justify-content: flex-start; }
 }

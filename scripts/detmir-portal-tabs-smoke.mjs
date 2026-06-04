@@ -43,6 +43,10 @@ function extractDataTabs(html) {
   return [...html.matchAll(/data-tab=["']([^"']+)["']/g)].map((match) => match[1]);
 }
 
+function containsText(text, marker) {
+  return String(text || "").toLocaleLowerCase("ru-RU").includes(String(marker || "").toLocaleLowerCase("ru-RU"));
+}
+
 function assertStaticTabHandlers() {
   const index = fs.readFileSync(path.join(root, "adk-rust/crates/detmir-portal/src/static/index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "adk-rust/crates/detmir-portal/src/static/app.js"), "utf8");
@@ -112,6 +116,22 @@ async function main() {
       const stillLoading = bodyText.includes("Загрузка") || bodyText.includes("Обновление периода");
       const ok = activeTab.trim() === item.label && bodyText.includes(item.marker) && !stillLoading;
       results.push({ tab: item.tab, label: item.label, marker: item.marker, ok });
+      if (item.tab === "operator") {
+        const requiredExecutive = [
+          "Сотрудников в работе",
+          "Средний индекс активности",
+          "ТОП-5 лучших подразделений",
+          "ТОП-5 проблемных подразделений",
+          "Требует внимания",
+          "Heat Map подразделений",
+          "Карточка руководителя подразделения",
+        ];
+        checks.push({
+          name: "executive_dashboard_layer",
+          ok: requiredExecutive.every((marker) => containsText(bodyText, marker)),
+          required: requiredExecutive,
+        });
+      }
       if (item.tab === "settings") {
         const requiredSettings = [
           "Период расчета",
@@ -123,7 +143,7 @@ async function main() {
         ];
         checks.push({
           name: "settings_readonly_rows",
-          ok: requiredSettings.every((marker) => bodyText.includes(marker)),
+          ok: requiredSettings.every((marker) => containsText(bodyText, marker)),
           required: requiredSettings,
         });
       }

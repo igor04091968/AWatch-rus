@@ -304,21 +304,10 @@ function metricCard(labelText, value, status, context, trend) {
 }
 
 function renderExecutiveMetrics(report, incidents) {
-  const activity = findKpi(report, "Индекс активности");
-  const activeTime = findKpi(report, "Активное время");
-  const employees = findKpi(report, "Сотрудники");
-  const risk = findKpi(report, "UEBA риск");
-  const open = findKpi(report, "Открытые вопросы");
-  const openCount = Array.isArray(incidents) ? incidents.filter(item => !item.acknowledged).length : 0;
-  const anomalies = Array.isArray(report?.workforce?.insights) ? report.workforce.insights.filter(item => item.status !== "OK").length : 0;
+  void incidents;
   return `
     <section class="executive-grid" aria-label="Управленческая сводка">
-      ${metricCard("Активность", activity?.value, activity?.status, activity?.context || "к выбранному периоду")}
-      ${metricCard("Полезное время", activeTime?.value || "нет данных", activeTime?.status || "UNKNOWN", "на сотрудника")}
-      ${metricCard("Сотрудников онлайн", employees?.value, employees?.status, employees?.context || "в текущем срезе")}
-      ${metricCard("Риск-индекс", risk?.value, risk?.status, risk?.context || "низкий / средний / высокий")}
-      ${metricCard("Аномалии", anomalies, anomalies ? "WARN" : "OK", "требуют проверки")}
-      ${metricCard("Инциденты ИБ", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "за выбранный период")}
+      ${executiveDashboardKpis(report)}
     </section>
   `;
 }
@@ -344,6 +333,40 @@ function firstPercent(value) {
   return match ? match[0].replace(",", ".").replace(/\s+/g, "") : "-";
 }
 
+function percentNumber(value) {
+  const text = firstPercent(value);
+  if (text === "-") return null;
+  const number = Number(text.replace("%", ""));
+  return Number.isFinite(number) ? number : null;
+}
+
+function signedPercent(value) {
+  if (!Number.isFinite(value)) return "нет истории";
+  const rounded = Math.round(value);
+  if (rounded > 0) return `+${rounded}%`;
+  return `${rounded}%`;
+}
+
+function parseActivityValue(value) {
+  const text = String(value || "");
+  const activeMatch = text.match(/active\s+(\d+)\s*\/\s*(\d+)/i);
+  const hhmmMatch = text.match(/(\d{1,3}:\d{2})/);
+  return {
+    activity: percentNumber(text),
+    active: activeMatch ? Number(activeMatch[1]) : null,
+    total: activeMatch ? Number(activeMatch[2]) : null,
+    hhmm: hhmmMatch ? hhmmMatch[1] : "00:00",
+  };
+}
+
+function statusWeight(status) {
+  const value = String(status || "INFO").toUpperCase();
+  if (value === "FAIL") return 3;
+  if (value === "WARN") return 2;
+  if (value === "OK") return 1;
+  return 0;
+}
+
 function departmentDeviation(item) {
   const status = String(item?.status || "INFO").toUpperCase();
   const value = item?.value || "";
@@ -358,21 +381,107 @@ function departmentResponsible(owners, index) {
   return item?.label || item?.title || "не назначен";
 }
 
-function renderDepartmentTable(report) {
-  const items = (report?.workforce?.department_comparison || []).slice(0, 8);
+function latestTrend(report) {
+  const trend = Array.isArray(report?.workforce?.trend) ? report.workforce.trend : [];
+  return trend.length ? trend[trend.length - 1] : {};
+}
+
+function weeklyTrendPct(report) {
+  const trend = Array.isArray(report?.workforce?.trend) ? report.workforce.trend : [];
+  if (trend.length < 2) return null;
+  const first = Number(trend[0]?.portfolio_coverage_pct);
+  const last = Number(trend[trend.length - 1]?.portfolio_coverage_pct);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return null;
+  return last - first;
+}
+
+function departmentTrendPct(report, name) {
+  const trend = Array.isArray(report?.workforce?.trend) ? report.workforce.trend : [];
+  const points = trend
+    .map(day => (day.department_rollups || []).find(item => item.name === name))
+    .filter(Boolean);
+  if (points.length < 2) return null;
+  const first = Number(points[0]?.portfolio_coverage_pct);
+  const last = Number(points[points.length - 1]?.portfolio_coverage_pct);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return null;
+  return last - first;
+}
+
+function departmentRows(report) {
+  const departments = report?.workforce?.department_comparison || [];
   const owners = report?.workforce?.owner_comparison || [];
-  if (!items.length) return `<p class="muted">Подразделения пока не рассчитаны.</p>`;
+  return departments.map((item, index) => {
+    const parsed = parseActivityValue(item.value);
+    const activity = item.index_activity ? percentNumber(item.index_activity) : parsed.activity;
+    const trend = departmentTrendPct(report, item.label);
+    const status = item.status || "INFO";
+    const responsible = item.responsible || departmentResponsible(owners, index);
+    return {
+      label: item.label || "Без подразделения",
+      activity,
+      activityText: Number.isFinite(activity) ? `${Math.round(activity)}%` : firstPercent(item.value),
+      deviation: item.deviation || departmentDeviation(item),
+      status,
+      responsible,
+      active: parsed.active,
+      total: parsed.total,
+      hhmm: parsed.hhmm,
+      trend,
+      risk: status === "FAIL" ? "FAIL — требуется действие" : status === "WARN" ? "WARN — требуется внимание" : "LOW — все нормально",
+      reason: departmentRiskReason({ item, parsed, activity, status, trend }),
+      check: departmentCheckText({ parsed, status, trend }),
+    };
+  });
+}
+
+function departmentRiskReason({ parsed, activity, status, trend }) {
+  const reasons = [];
+  if (Number.isFinite(activity)) reasons.push(`индекс активности ${Math.round(activity)}%`);
+  if (Number.isFinite(parsed.active) && Number.isFinite(parsed.total)) reasons.push(`активны ${parsed.active}/${parsed.total} сотрудников`);
+  if (status === "WARN") reasons.push("подразделение ниже рабочего порога");
+  if (status === "FAIL") reasons.push("требуется управленческое действие");
+  if (Number.isFinite(trend) && trend < 0) reasons.push(`недельный тренд ${signedPercent(trend)}`);
+  if (parsed.hhmm === "00:00") reasons.push("нет подтвержденного рабочего времени");
+  return reasons.join("; ") || "недостаточно данных для уверенного вывода";
+}
+
+function departmentCheckText({ parsed, status, trend }) {
+  if (status === "OK") return "держать под наблюдением, действий не требуется";
+  if (parsed.hhmm === "00:00") return "проверить входы в рабочие системы, RDP/1C активность и свежесть данных коллектора";
+  if (Number.isFinite(trend) && trend < 0) return "сверить план задач, нагрузку ответственного и причины падения за неделю";
+  return "поручить ответственному проверить план работ и первичные события ActivityWatch";
+}
+
+function executiveDashboardKpis(report) {
+  const rows = departmentRows(report);
+  const latest = latestTrend(report);
+  const activityValues = rows.map(row => row.activity).filter(Number.isFinite);
+  const average = activityValues.length ? Math.round(activityValues.reduce((sum, value) => sum + value, 0) / activityValues.length) : null;
+  const criticalRisks = (report?.ueba_risk?.reasons || []).filter(item => String(item.status || item.severity).toUpperCase() === "FAIL" || Number(item.points || 0) >= 25).length;
+  return [
+    metricCard("Сотрудников в работе", latest.active_users ?? findKpi(report, "Сотрудники")?.value ?? "нет данных", "OK", "активны сегодня"),
+    metricCard("Средний индекс активности", Number.isFinite(average) ? `${average}%` : findKpi(report, "Индекс активности")?.value, average === null ? "UNKNOWN" : workforceIndexStatus(average), "по подразделениям"),
+    metricCard("WARN подразделений", rows.filter(row => row.status === "WARN").length, rows.some(row => row.status === "WARN") ? "WARN" : "OK", "требуется внимание"),
+    metricCard("FAIL подразделений", rows.filter(row => row.status === "FAIL").length, rows.some(row => row.status === "FAIL") ? "FAIL" : "OK", "требуется действие"),
+    metricCard("Критических рисков", criticalRisks, criticalRisks ? "FAIL" : "OK", "приоритетный разбор"),
+    metricCard("Тренд недели", signedPercent(weeklyTrendPct(report)), Number(weeklyTrendPct(report)) < 0 ? "WARN" : "OK", "динамика активности"),
+  ].join("");
+}
+
+function renderDepartmentTable(report) {
+  const rows = departmentRows(report).slice(0, 12);
+  if (!rows.length) return `<p class="muted">Подразделения пока не рассчитаны.</p>`;
   return `
     <div class="table-scroll">
     <table class="data-table department-table">
       <thead><tr><th>Подразделение</th><th>Индекс активности</th><th>Отклонение</th><th>Статус</th><th>Ответственный</th></tr></thead>
-      <tbody>${items.map((item, index) => `
+      <tbody>${rows.map(row => `
         <tr>
-          <td><strong>${ui(item.label)}</strong></td>
-          <td>${ui(item.index_activity || firstPercent(item.value) || "-")}</td>
-          <td>${ui(item.deviation || departmentDeviation(item))}</td>
-          <td><span class="badge ${statusClass(item.status)}">${ui(item.status || "INFO")}</span></td>
-          <td>${ui(item.responsible || departmentResponsible(owners, index))}</td>
+          <td><strong>${ui(row.label)}</strong></td>
+          <td>${ui(row.activityText || "-")}</td>
+          <td>${ui(row.deviation)}</td>
+          <td><span class="badge ${statusClass(row.status)}">${ui(row.status || "INFO")}</span></td>
+          <td>${ui(row.responsible)}</td>
         </tr>
       `).join("")}</tbody>
     </table>
@@ -435,8 +544,146 @@ function renderTopRisks(report) {
   `).join("")}</ol>`;
 }
 
+function renderDepartmentRanking(report) {
+  const rows = departmentRows(report);
+  if (!rows.length) return "";
+  const best = [...rows]
+    .sort((a, b) => (b.activity ?? -1) - (a.activity ?? -1) || statusWeight(a.status) - statusWeight(b.status))
+    .slice(0, 5);
+  const problem = [...rows]
+    .sort((a, b) => statusWeight(b.status) - statusWeight(a.status) || (a.activity ?? 101) - (b.activity ?? 101))
+    .slice(0, 5);
+  const renderRows = items => `<div class="list compact-list">${items.map(row => `
+    <div class="row compact-row">
+      <strong>${ui(row.label)}</strong>
+      <span class="muted">${ui(row.activityText)} · ${ui(row.deviation)} · ${ui(row.responsible)}</span>
+      <span class="badge ${statusClass(row.status)}">${ui(row.status)}</span>
+    </div>
+  `).join("")}</div>`;
+  return `
+    <section class="ranking-grid">
+      <article class="card">
+        <h3>ТОП-5 лучших подразделений</h3>
+        ${renderRows(best)}
+      </article>
+      <article class="card">
+        <h3>ТОП-5 проблемных подразделений</h3>
+        ${renderRows(problem)}
+      </article>
+    </section>
+  `;
+}
+
+function attentionItems(report) {
+  const rows = departmentRows(report);
+  const items = [];
+  rows
+    .filter(row => row.status === "FAIL" || row.status === "WARN")
+    .slice(0, 3)
+    .forEach(row => items.push({
+      title: `${row.status === "FAIL" ? "Требуется действие" : "Требуется внимание"}: ${row.label}`,
+      why: row.reason,
+      check: row.check,
+      action: `Поручить разбор: ${row.responsible}. Открыть расследование и сверить первичные события.`,
+      status: row.status,
+    }));
+  (report?.workforce?.insights || [])
+    .filter(item => item.status !== "OK")
+    .slice(0, Math.max(0, 5 - items.length))
+    .forEach(item => {
+      const explanation = anomalyExplanation(item);
+      items.push({
+        title: explanation.title,
+        why: explanation.why,
+        check: explanation.check,
+        action: "Назначить владельца проверки и сверить с планом работ.",
+        status: item.status || "WARN",
+      });
+    });
+  return items.slice(0, 5);
+}
+
+function renderAttentionBlock(report) {
+  const items = attentionItems(report);
+  if (!items.length) return "";
+  return `
+    <section class="attention-panel">
+      <div class="band-head"><h3>Требует внимания</h3><span class="muted">что руководителю нужно поручить сегодня</span></div>
+      <div class="attention-list">${items.map(item => `
+        <article class="attention-item">
+          <span class="badge ${statusClass(item.status)}">${ui(item.status || "INFO")}</span>
+          <div>
+            <strong>${ui(item.title)}</strong>
+            <p><b>Почему это важно:</b> ${ui(item.why)}</p>
+            <p><b>Что проверить:</b> ${ui(item.check)}</p>
+            <p><b>Рекомендуемое действие:</b> ${ui(item.action)}</p>
+          </div>
+          <button class="small-button" data-open-investigation="true">Открыть расследование</button>
+        </article>
+      `).join("")}</div>
+    </section>
+  `;
+}
+
+function renderDepartmentHeatMap(report) {
+  const rows = departmentRows(report);
+  if (!rows.length) return "";
+  return `
+    <section class="dashboard-band">
+      <div class="band-head"><h3>Heat Map подразделений</h3><span class="muted">риск понятным языком для руководителя</span></div>
+      <div class="table-scroll">
+        <table class="data-table heatmap-table">
+          <thead><tr><th>Подразделение</th><th>Активность</th><th>Отклонение</th><th>Риск</th><th>Ответственный</th><th>Действие</th></tr></thead>
+          <tbody>${rows.map(row => `
+            <tr>
+              <td><strong>${ui(row.label)}</strong><small>${ui(row.reason)}</small></td>
+              <td>${ui(row.activityText)}</td>
+              <td>${ui(row.deviation)}</td>
+              <td><span class="badge ${statusClass(row.status)}">${ui(row.risk)}</span></td>
+              <td>${ui(row.responsible)}</td>
+              <td><button class="small-button" data-open-investigation="true">Открыть расследование</button></td>
+            </tr>
+          `).join("")}</tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderDepartmentLeaderCard(report) {
+  const rows = departmentRows(report);
+  if (!rows.length) return "";
+  const row = [...rows].sort((a, b) => statusWeight(b.status) - statusWeight(a.status) || (a.activity ?? 101) - (b.activity ?? 101))[0];
+  const best = [...rows].sort((a, b) => (b.activity ?? -1) - (a.activity ?? -1))[0];
+  const worst = [...rows].sort((a, b) => (a.activity ?? 101) - (b.activity ?? 101))[0];
+  return `
+    <section class="card leader-card">
+      <div class="section-head">
+        <div>
+          <h3>Карточка руководителя подразделения</h3>
+          <p class="muted">Read-only срез для поручения разбора ответственному.</p>
+        </div>
+        <span class="badge ${statusClass(row.status)}">${ui(row.risk)}</span>
+      </div>
+      <div class="leader-grid">
+        <div><span class="muted">Подразделение</span><strong>${ui(row.label)}</strong></div>
+        <div><span class="muted">Ответственный</span><strong>${ui(row.responsible)}</strong></div>
+        <div><span class="muted">Сотрудников всего</span><strong>${ui(row.total ?? "-")}</strong></div>
+        <div><span class="muted">Активны сегодня</span><strong>${ui(row.active ?? "-")}</strong></div>
+        <div><span class="muted">Средний индекс</span><strong>${ui(row.activityText)}</strong></div>
+        <div><span class="muted">Лучший показатель</span><strong>${ui(best?.activityText || "-")}</strong></div>
+        <div><span class="muted">Худший показатель</span><strong>${ui(worst?.activityText || "-")}</strong></div>
+        <div><span class="muted">Недельный тренд</span><strong>${ui(signedPercent(row.trend))}</strong></div>
+      </div>
+      <p class="muted"><b>Что проверить:</b> ${ui(row.check)}</p>
+    </section>
+  `;
+}
+
 function renderOverviewAnalytics(report) {
   return `
+    ${renderDepartmentRanking(report)}
+    ${renderAttentionBlock(report)}
     <section class="analytics-grid">
       <article class="analytics-panel department-panel">
         <h3>Подразделения сегодня</h3>
@@ -451,6 +698,8 @@ function renderOverviewAnalytics(report) {
         ${renderTopRisks(report)}
       </article>
     </section>
+    ${renderDepartmentHeatMap(report)}
+    ${renderDepartmentLeaderCard(report)}
   `;
 }
 
