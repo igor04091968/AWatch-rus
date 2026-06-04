@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/awatch-agent-rs",
     "crates/detmir-auto",
     "crates/detmir-aw-client",
     "crates/aw-db-health",

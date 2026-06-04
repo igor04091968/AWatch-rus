@@ -1179,10 +1179,80 @@ function renderDlpEvidence(evidence) {
   `).join("")}</div>`;
 }
 
+function buildAutoInvestigation(report) {
+  report = periodReport(report || state.reports || {});
+  const rows = departmentRows(report);
+  const risky = [...rows].sort((a, b) => statusWeight(b.status) - statusWeight(a.status) || (a.activity ?? 101) - (b.activity ?? 101))[0];
+  const reasons = Array.isArray(report?.ueba_risk?.reasons) ? report.ueba_risk.reasons : [];
+  const risk = reasons[0] || {};
+  const status = risky?.status || risk.status || report?.ueba_risk?.status || "INFO";
+  const department = risky?.label || "Портфель";
+  const owner = risky?.responsible || "ответственный не назначен";
+  const generated = report?.generated_at_utc || new Date().toISOString();
+  const summary = risk.label || risk.code || risky?.reason || "Система сформировала риск-сигнал для ручной проверки";
+  return {
+    incident_id: `auto-${String(department).toLowerCase().replace(/[^a-zа-я0-9]+/gi, "-").replace(/^-|-$/g, "") || "risk"}`,
+    risk_id: risk.code || risk.label || "workforce-ueba-risk",
+    department,
+    owner,
+    activity_index: risky?.activityText || "нет данных",
+    deviation: risky?.deviation || "нет данных",
+    status,
+    summary,
+    why_it_is_risk: risky?.reason || risk.value || "риск может указывать на просадку активности, отклонение от нормы или событие безопасности",
+    what_to_check: risky?.check || risk.recommendation || "проверить первичные события ActivityWatch, RDP/1C активность, процессы и сетевые сигналы",
+    recommended_actions: [
+      "назначить ответственного за ручную проверку",
+      "сопоставить риск с журналами активности и бизнес-задачей",
+      "зафиксировать вывод в отчете по инциденту"
+    ],
+    evidence: [
+      "RDP activity: проверяется по событиям рабочего времени",
+      "process activity: проверяется по процессам и приложениям",
+      "network activity: проверяется по сетевым сигналам",
+      "proxy activity: подключается как внешний источник",
+      "pfSense events: учитываются при наличии интеграционного слоя"
+    ],
+    generated_at: generated
+  };
+}
+
+function renderAutoInvestigationCard(report) {
+  const card = buildAutoInvestigation(report);
+  return `
+    <section class="card investigation-card">
+      <div class="section-head">
+        <div>
+          <h3>Автоматическая карточка расследования</h3>
+          <p class="muted">Расследование сформировано автоматически. Решение принимает ответственный сотрудник.</p>
+        </div>
+        <span class="badge ${statusClass(card.status)}">${ui(card.status)}</span>
+      </div>
+      <div class="investigation-grid">
+        <div><span class="muted">incident_id</span><strong>${ui(card.incident_id)}</strong></div>
+        <div><span class="muted">risk_id</span><strong>${ui(card.risk_id)}</strong></div>
+        <div><span class="muted">department</span><strong>${ui(card.department)}</strong></div>
+        <div><span class="muted">owner</span><strong>${ui(card.owner)}</strong></div>
+        <div><span class="muted">activity_index</span><strong>${ui(card.activity_index)}</strong></div>
+        <div><span class="muted">deviation</span><strong>${ui(card.deviation)}</strong></div>
+        <div><span class="muted">generated_at</span><strong>${ui(card.generated_at)}</strong></div>
+      </div>
+      <div class="list compact-list">
+        <div class="row compact-row"><strong>summary</strong><span class="muted">${ui(card.summary)}</span><span></span></div>
+        <div class="row compact-row"><strong>why_it_is_risk</strong><span class="muted">${ui(card.why_it_is_risk)}</span><span></span></div>
+        <div class="row compact-row"><strong>what_to_check</strong><span class="muted">${ui(card.what_to_check)}</span><span></span></div>
+        <div class="row compact-row"><strong>recommended_actions</strong><span class="muted">${ui(card.recommended_actions.join("; "))}</span><span></span></div>
+        <div class="row compact-row"><strong>evidence</strong><span class="muted">${ui(card.evidence.join("; "))}</span><span></span></div>
+      </div>
+    </section>
+  `;
+}
+
 function renderIncidents(data) {
   const links = state.links || {};
   const incidents = Array.isArray(data) ? data : data.incidents;
   const evidence = Array.isArray(data) ? null : data.evidence;
+  const reports = Array.isArray(data) ? state.reports : data.reports;
   return `
     <div class="page-head">
       <div>
@@ -1201,6 +1271,7 @@ function renderIncidents(data) {
         ${renderDlpLinks(links)}
       </section>
     </div>
+    ${renderAutoInvestigationCard(reports)}
     <section class="card evidence-card">
       <h3>Материалы: скриншоты, хеши, файлы</h3>
       ${renderDlpEvidence(evidence)}
@@ -1391,7 +1462,9 @@ async function refresh() {
   if (state.tab === "incidents") {
     const data = await loadJson("/incidents");
     const evidence = await loadJson("/dlp/evidence").catch(error => ({ ok: false, error: error.message, items: [] }));
-    content.innerHTML = renderIncidents({ incidents: data, evidence });
+    const reports = await loadJson("/reports").catch(() => state.reports || {});
+    state.reports = reports;
+    content.innerHTML = renderIncidents({ incidents: data, evidence, reports });
   }
   if (state.tab === "perimeter") {
     const data = await loadJson("/owner");
@@ -1450,6 +1523,7 @@ document.addEventListener("click", event => {
 document.addEventListener("click", event => {
   const button = event.target.closest("[data-open-investigation]");
   if (!button) return;
+  state.investigationRequested = true;
   setTab("incidents");
 });
 

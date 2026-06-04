@@ -138,6 +138,20 @@ struct Cli {
 
     #[arg(long, env = "DETMIR_PORTAL_EVIDENCE_UPLOAD_TOKEN")]
     evidence_upload_token: Option<String>,
+
+    #[arg(
+        long,
+        default_value = "change-me",
+        env = "DETMIR_PORTAL_TELEMETRY_API_KEY"
+    )]
+    telemetry_api_key: String,
+
+    #[arg(
+        long,
+        default_value = "/var/lib/detmir-portal/telemetry.jsonl",
+        env = "DETMIR_PORTAL_TELEMETRY_STORE_PATH"
+    )]
+    telemetry_store_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -606,6 +620,9 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
     let anonymize = query_flag(&url, "anonymize");
     if method == Method::Post && path == "/api/incidents/action" {
         return handle_incident_action(request, args);
+    }
+    if method == Method::Post && path == "/api/telemetry" {
+        return handle_telemetry_ingest(request, args);
     }
     if method != Method::Get {
         return respond_text(request, StatusCode(405), "Method Not Allowed", "text/plain");
@@ -3282,6 +3299,119 @@ fn handle_incident_action(mut request: Request, args: &Cli) -> Result<()> {
     }
 }
 
+fn handle_telemetry_ingest(mut request: Request, args: &Cli) -> Result<()> {
+    if !telemetry_authorized(&request, args) {
+        return respond_json_status(
+            request,
+            StatusCode(401),
+            &json!({
+                "ok": false,
+                "error": "telemetry api key is missing or invalid"
+            }),
+        );
+    }
+    let mut body = String::new();
+    request
+        .as_reader()
+        .take(1024 * 1024)
+        .read_to_string(&mut body)?;
+    let response = apply_telemetry_ingest(args, &body);
+    match response {
+        Ok(response) => respond_json(request, &response),
+        Err(err) => respond_json_status(
+            request,
+            StatusCode(400),
+            &json!({
+                "ok": false,
+                "error": err.to_string()
+            }),
+        ),
+    }
+}
+
+fn apply_telemetry_ingest(args: &Cli, body: &str) -> Result<Value> {
+    let payload: Value =
+        serde_json::from_str(body).map_err(|err| anyhow!("invalid telemetry JSON: {err}"))?;
+    validate_telemetry_payload(&payload)?;
+    let received_at_utc = now();
+    let envelope = json!({
+        "received_at_utc": received_at_utc,
+        "prototype": true,
+        "record": payload,
+    });
+    if let Some(parent) = args.telemetry_store_path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&args.telemetry_store_path)
+        .with_context(|| format!("open {}", args.telemetry_store_path.display()))?;
+    writeln!(file, "{}", serde_json::to_string(&envelope)?)
+        .with_context(|| format!("append {}", args.telemetry_store_path.display()))?;
+    Ok(json!({
+        "ok": true,
+        "prototype": true,
+        "stored": "file-backed-jsonl",
+        "received_at_utc": received_at_utc,
+    }))
+}
+
+fn validate_telemetry_payload(payload: &Value) -> Result<()> {
+    let Some(object) = payload.as_object() else {
+        return Err(anyhow!("telemetry payload must be a JSON object"));
+    };
+    for field in [
+        "agent_id",
+        "hostname",
+        "os_name",
+        "os_version",
+        "platform",
+        "username",
+        "timestamp",
+        "uptime_seconds",
+        "cpu_usage_percent",
+        "memory_total",
+        "memory_used",
+        "active_sessions",
+        "rdp_sessions",
+        "ssh_sessions",
+        "processes",
+        "network_interfaces",
+        "network_connections",
+        "workforce_activity",
+        "security_events",
+        "collector_version",
+    ] {
+        if !object.contains_key(field) {
+            return Err(anyhow!("telemetry field is missing: {field}"));
+        }
+    }
+    for field in [
+        "active_sessions",
+        "rdp_sessions",
+        "ssh_sessions",
+        "processes",
+        "network_interfaces",
+        "network_connections",
+        "security_events",
+    ] {
+        if payload.get(field).and_then(Value::as_array).is_none() {
+            return Err(anyhow!("telemetry field must be an array: {field}"));
+        }
+    }
+    if payload
+        .get("workforce_activity")
+        .and_then(Value::as_object)
+        .is_none()
+    {
+        return Err(anyhow!(
+            "telemetry field must be an object: workforce_activity"
+        ));
+    }
+    Ok(())
+}
+
 fn apply_incident_action(args: &Cli, actor: &str, body: &str) -> Result<IncidentActionResponse> {
     let action: IncidentActionRequest =
         serde_json::from_str(body).map_err(|err| anyhow!("invalid incident action JSON: {err}"))?;
@@ -4059,6 +4189,24 @@ fn upload_authorized(request: &Request, args: &Cli) -> bool {
     constant_time_eq(actual.as_bytes(), expected.as_bytes())
 }
 
+fn telemetry_authorized(request: &Request, args: &Cli) -> bool {
+    let expected = args.telemetry_api_key.trim();
+    if expected.is_empty() || expected == "change-me" {
+        return false;
+    }
+    let actual = request
+        .headers()
+        .iter()
+        .find(|header| header.field.equiv("x-api-key"))
+        .map(|header| header.value.as_str().trim().to_string())
+        .or_else(|| bearer_token(request));
+    actual
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(|value| constant_time_eq(value.as_bytes(), expected.as_bytes()))
+        .unwrap_or(false)
+}
+
 fn bearer_token(request: &Request) -> Option<String> {
     request
         .headers()
@@ -4444,6 +4592,15 @@ fn respond_json<T: Serialize>(request: Request, value: &T) -> Result<()> {
     )
 }
 
+fn respond_json_status<T: Serialize>(
+    request: Request,
+    status: StatusCode,
+    value: &T,
+) -> Result<()> {
+    let body = serde_json::to_string_pretty(value)?;
+    respond_text(request, status, &body, "application/json; charset=utf-8")
+}
+
 fn respond_text(
     request: Request,
     status: StatusCode,
@@ -4610,6 +4767,8 @@ mod tests {
             json_smoke: false,
             evidence_only: false,
             evidence_upload_token: None,
+            telemetry_api_key: "test-key".to_string(),
+            telemetry_store_path: dir.path().join("telemetry.jsonl"),
         };
         let found = resolve_screenshot_file(&args, &None, &Some(digest.clone()))
             .unwrap()
@@ -4649,6 +4808,64 @@ mod tests {
         assert!(constant_time_eq(b"secret", b"secret"));
         assert!(!constant_time_eq(b"secret", b"other"));
         assert!(!constant_time_eq(b"secret", b"secret2"));
+    }
+
+    #[test]
+    fn telemetry_ingest_validates_and_appends_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = Cli {
+            bind: "127.0.0.1:0".to_string(),
+            status_cmd: "true".to_string(),
+            check_cmd: "true".to_string(),
+            failed_units_cmd: "true".to_string(),
+            worktime_url: "http://127.0.0.1".to_string(),
+            one_c_url: "http://127.0.0.1".to_string(),
+            workforce_policy_path: dir.path().join("workforce-policy.json"),
+            ueba_policy_path: dir.path().join("ueba-policy.yaml"),
+            timeout_seconds: 1,
+            state_dir: dir.path().join("state"),
+            dlp_db_path: dir.path().join("dlp.sqlite"),
+            evidence_root: dir.path().to_path_buf(),
+            readiness_bundle_dir: dir.path().join("readiness-bundle"),
+            evidence_limit: 10,
+            evidence_max_bytes: 1024,
+            json_smoke: false,
+            evidence_only: false,
+            evidence_upload_token: None,
+            telemetry_api_key: "test-key".to_string(),
+            telemetry_store_path: dir.path().join("telemetry/telemetry.jsonl"),
+        };
+        let payload = json!({
+            "agent_id": "agent-1",
+            "hostname": "HOST-EXAMPLE",
+            "os_name": "Linux",
+            "os_version": "test",
+            "platform": "linux",
+            "username": "user",
+            "domain": "",
+            "timestamp": "2026-06-04T00:00:00Z",
+            "uptime_seconds": 1,
+            "cpu_usage_percent": 0.0,
+            "memory_total": 1,
+            "memory_used": 1,
+            "active_sessions": [],
+            "rdp_sessions": [],
+            "ssh_sessions": [],
+            "processes": [],
+            "network_interfaces": [],
+            "network_connections": [],
+            "workforce_activity": {"active_today": true, "explanation": []},
+            "security_events": [],
+            "collector_version": "0.3.0"
+        });
+        let response = apply_telemetry_ingest(&args, &serde_json::to_string(&payload).unwrap())
+            .expect("valid telemetry should be accepted");
+        assert_eq!(response["ok"], true);
+        assert_eq!(response["stored"], "file-backed-jsonl");
+        let stored = fs::read_to_string(&args.telemetry_store_path).unwrap();
+        assert!(stored.contains("\"prototype\":true"));
+        assert!(stored.contains("HOST-EXAMPLE"));
+        assert!(apply_telemetry_ingest(&args, r#"{"agent_id":"only"}"#).is_err());
     }
 
     #[test]

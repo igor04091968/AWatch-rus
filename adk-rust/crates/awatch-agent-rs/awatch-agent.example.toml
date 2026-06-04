@@ -1,0 +1,13 @@
+server_url = "https://awatch.local/api/telemetry"
+api_key = "change-me"
+collect_interval_seconds = 60
+role = "workstation"
+
+enable_processes = true
+enable_network = true
+enable_security_events = true
+enable_workforce_activity = true
+
+spool_dir = "/var/lib/awatch-agent/spool"
+timeout_seconds = 10
+retry_attempts = 3

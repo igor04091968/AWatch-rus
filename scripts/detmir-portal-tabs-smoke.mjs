@@ -163,9 +163,14 @@ async function main() {
         { timeout },
       );
       const activeTab = await page.locator(".tab.is-active").innerText({ timeout });
+      const incidentText = await page.locator("#content").innerText({ timeout });
       checks.push({
         name: "risk_open_investigation_readonly_navigation",
-        ok: activeTab.trim() === "Расследования",
+        ok: activeTab.trim() === "Расследования"
+          && containsText(incidentText, "Расследование сформировано автоматически")
+          && containsText(incidentText, "incident_id")
+          && containsText(incidentText, "risk_id")
+          && containsText(incidentText, "evidence"),
         buttons: investigationButtons,
       });
     } else {

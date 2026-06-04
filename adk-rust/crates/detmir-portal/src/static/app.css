@@ -721,14 +721,16 @@ h1 {
   margin-top: 14px;
 }
 
-.leader-grid {
+.leader-grid,
+.investigation-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin: 12px 0;
 }
 
-.leader-grid > div {
+.leader-grid > div,
+.investigation-grid > div {
   display: grid;
   gap: 4px;
   min-height: 64px;
