@@ -604,6 +604,29 @@ h1 {
   font-weight: 800;
 }
 
+.review-history {
+  margin-top: 6px;
+  max-width: 320px;
+}
+
+.review-history summary {
+  cursor: pointer;
+  color: var(--link);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.review-history ul {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding-left: 16px;
+}
+
+.review-history li {
+  overflow-wrap: anywhere;
+}
+
 .heatmap-table td {
   min-width: 120px;
 }

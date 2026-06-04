@@ -351,6 +351,8 @@ struct RiskIncidentCandidate {
     #[serde(skip_serializing_if = "Option::is_none")]
     recommendation: Option<String>,
     incident_review: IncidentReviewState,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    incident_review_audit: Vec<IncidentReviewAuditEntry>,
 }
 
 #[derive(Debug, Serialize)]
@@ -475,6 +477,28 @@ struct IncidentReviewRequest {
 struct IncidentReviewResponse {
     ok: bool,
     review: IncidentReviewState,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct IncidentReviewAuditEntry {
+    candidate_id: String,
+    old_status: String,
+    new_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reviewer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    comment: Option<String>,
+    changed_at_utc: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+struct IncidentReviewAuditSummary {
+    total_changes: usize,
+    confirmed_count: usize,
+    false_positive_count: usize,
+    postponed_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_change_utc: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -811,11 +835,13 @@ struct ReportMarkdownContext<'a> {
     business_risk_history: &'a [BusinessRiskHistoryItem],
     business_risk_history_summary: &'a BusinessRiskHistorySummary,
     risk_incident_candidates: &'a [RiskIncidentCandidate],
+    incident_review_audit_summary: &'a IncidentReviewAuditSummary,
 }
 
 struct ReportRuntimeInputs<'a> {
     incident_state: &'a IncidentStateFile,
     incident_reviews: &'a IncidentReviewFile,
+    incident_review_audit: &'a [IncidentReviewAuditEntry],
     evidence: &'a DlpEvidenceResponse,
 }
 
@@ -835,17 +861,21 @@ fn run() -> Result<i32> {
     if args.json_smoke {
         let snapshot = build_snapshot(&args);
         let incident_state = load_incident_state_best_effort(&args);
+        let incident_reviews = load_incident_review_best_effort(&args);
+        let incident_review_audit = load_incident_review_audit_best_effort(&args);
+        let evidence = build_dlp_evidence_response(&args);
         let ueba_baseline_path = ueba_baseline_state_path(&args);
         let smoke = json!({
             "health": build_health(&snapshot),
             "summary": build_summary(&snapshot),
             "reports": build_reports(&snapshot, ReportRuntimeInputs {
                 incident_state: &incident_state,
-                incident_reviews: &load_incident_review_best_effort(&args),
-                evidence: &build_dlp_evidence_response(&args),
+                incident_reviews: &incident_reviews,
+                incident_review_audit: &incident_review_audit,
+                evidence: &evidence,
             }, &args.workforce_policy_path, &args.ueba_policy_path, &ueba_baseline_path, false),
             "incidents": build_incidents(&snapshot, &incident_state),
-            "dlp_evidence": build_dlp_evidence_response(&args),
+            "dlp_evidence": evidence,
         });
         println!("{}", serde_json::to_string_pretty(&smoke)?);
         return Ok(if build_health(&snapshot).ok { 0 } else { 2 });
@@ -944,6 +974,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             let snapshot = cached_snapshot(args, snapshot_cache);
             let incident_state = load_incident_state_best_effort(args);
             let incident_reviews = load_incident_review_best_effort(args);
+            let incident_review_audit = load_incident_review_audit_best_effort(args);
             let evidence = build_dlp_evidence_response(args);
             let ueba_baseline_path = ueba_baseline_state_path(args);
             respond_json(
@@ -953,6 +984,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
                     ReportRuntimeInputs {
                         incident_state: &incident_state,
                         incident_reviews: &incident_reviews,
+                        incident_review_audit: &incident_review_audit,
                         evidence: &evidence,
                     },
                     &args.workforce_policy_path,
@@ -2046,7 +2078,13 @@ fn build_reports(
     let business_risk_history_summary = summarize_business_risk_history(&business_risk_history);
     let mut risk_incident_candidates =
         build_risk_incident_candidates(snapshot, &business_risk, &business_risk_history);
-    apply_incident_reviews_to_candidates(&mut risk_incident_candidates, inputs.incident_reviews);
+    apply_incident_reviews_to_candidates(
+        &mut risk_incident_candidates,
+        inputs.incident_reviews,
+        inputs.incident_review_audit,
+    );
+    let incident_review_audit_summary =
+        summarize_incident_review_audit(inputs.incident_review_audit);
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
     let workforce_policy_explain =
@@ -2158,6 +2196,7 @@ fn build_reports(
             business_risk_history: &business_risk_history,
             business_risk_history_summary: &business_risk_history_summary,
             risk_incident_candidates: &risk_incident_candidates,
+            incident_review_audit_summary: &incident_review_audit_summary,
         },
     );
     json!({
@@ -2249,6 +2288,7 @@ fn build_reports(
         "business_risk_history": business_risk_history,
         "business_risk_history_summary": business_risk_history_summary,
         "risk_incident_candidates": risk_incident_candidates,
+        "incident_review_audit_summary": incident_review_audit_summary,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -2664,6 +2704,7 @@ fn build_risk_incident_candidates(
 fn apply_incident_reviews_to_candidates(
     candidates: &mut [RiskIncidentCandidate],
     reviews: &IncidentReviewFile,
+    audit_entries: &[IncidentReviewAuditEntry],
 ) {
     for candidate in candidates {
         candidate.incident_review =
@@ -2678,7 +2719,37 @@ fn apply_incident_reviews_to_candidates(
                     comment: None,
                     updated_at: String::new(),
                 });
+        candidate.incident_review_audit = audit_entries
+            .iter()
+            .filter(|entry| entry.candidate_id == candidate.id)
+            .cloned()
+            .collect();
     }
+}
+
+fn summarize_incident_review_audit(
+    entries: &[IncidentReviewAuditEntry],
+) -> IncidentReviewAuditSummary {
+    let mut summary = IncidentReviewAuditSummary {
+        total_changes: entries.len(),
+        ..IncidentReviewAuditSummary::default()
+    };
+    for entry in entries {
+        match entry.new_status.as_str() {
+            "CONFIRMED" => summary.confirmed_count += 1,
+            "FALSE_POSITIVE" => summary.false_positive_count += 1,
+            "POSTPONED" => summary.postponed_count += 1,
+            _ => {}
+        }
+        if summary
+            .last_change_utc
+            .as_ref()
+            .is_none_or(|current| entry.changed_at_utc > *current)
+        {
+            summary.last_change_utc = Some(entry.changed_at_utc.clone());
+        }
+    }
+    summary
 }
 
 fn stable_high_risk_candidates(history: &[BusinessRiskHistoryItem]) -> Vec<RiskIncidentCandidate> {
@@ -2720,6 +2791,7 @@ fn stable_high_risk_candidates(history: &[BusinessRiskHistoryItem]) -> Vec<RiskI
                         .to_string(),
                 ),
                 incident_review: IncidentReviewState::default(),
+                incident_review_audit: Vec::new(),
             })
         })
         .collect()
@@ -2748,6 +2820,7 @@ fn low_trust_risk_candidates(
             last_seen_utc: Some(snapshot.generated_at_utc.clone()),
             recommendation: Some(item.recommendation.clone()),
             incident_review: IncidentReviewState::default(),
+            incident_review_audit: Vec::new(),
         })
         .collect()
 }
@@ -2777,6 +2850,7 @@ fn agent_quality_candidates(
                 last_seen_utc: Some(node.last_seen_utc.clone()),
                 recommendation: Some(node.recommendation.clone()),
                 incident_review: IncidentReviewState::default(),
+                incident_review_audit: Vec::new(),
             });
         }
         if let Some(error) = &node.collector_error {
@@ -2798,6 +2872,7 @@ fn agent_quality_candidates(
                     "Проверить журнал агента и восстановить основной сбор.".to_string(),
                 ),
                 incident_review: IncidentReviewState::default(),
+                incident_review_audit: Vec::new(),
             });
         }
     }
@@ -2830,6 +2905,7 @@ fn agent_coverage_candidates(snapshot: &Snapshot) -> Vec<RiskIncidentCandidate> 
             last_seen_utc: Some(snapshot.generated_at_utc.clone()),
             recommendation: Some(node.recommendation.clone()),
             incident_review: IncidentReviewState::default(),
+            incident_review_audit: Vec::new(),
         })
         .collect()
 }
@@ -4385,6 +4461,11 @@ fn render_report_markdown(
     );
     append_risk_incident_candidates_markdown(&mut text, context.risk_incident_candidates);
     append_incident_review_markdown(&mut text, context.risk_incident_candidates);
+    append_incident_review_audit_markdown(
+        &mut text,
+        context.risk_incident_candidates,
+        context.incident_review_audit_summary,
+    );
     append_ueba_risk_markdown(&mut text, context.ueba_risk);
     append_workforce_policy_markdown(&mut text, context.workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
@@ -4663,6 +4744,48 @@ fn append_incident_review_markdown(text: &mut String, candidates: &[RiskIncident
             },
             review.comment.as_deref().unwrap_or("-")
         ));
+    }
+}
+
+fn append_incident_review_audit_markdown(
+    text: &mut String,
+    candidates: &[RiskIncidentCandidate],
+    summary: &IncidentReviewAuditSummary,
+) {
+    text.push_str("\n## Аудит проверки инцидентов\n\n");
+    text.push_str(&format!("- Всего изменений: {}\n", summary.total_changes));
+    text.push_str(&format!("- Подтверждено: {}\n", summary.confirmed_count));
+    text.push_str(&format!(
+        "- Ложных срабатываний: {}\n",
+        summary.false_positive_count
+    ));
+    text.push_str(&format!("- Отложено: {}\n", summary.postponed_count));
+    text.push_str(&format!(
+        "- Последнее изменение: {}\n",
+        summary.last_change_utc.as_deref().unwrap_or("-")
+    ));
+    let mut shown = 0usize;
+    for entry in candidates
+        .iter()
+        .flat_map(|candidate| candidate.incident_review_audit.iter())
+        .rev()
+    {
+        text.push_str(&format!(
+            "- {}: {} -> {}, reviewer={}, changed_at={}, comment={}\n",
+            entry.candidate_id,
+            entry.old_status,
+            entry.new_status,
+            entry.reviewer.as_deref().unwrap_or("-"),
+            entry.changed_at_utc,
+            entry.comment.as_deref().unwrap_or("-")
+        ));
+        shown += 1;
+        if shown >= 20 {
+            break;
+        }
+    }
+    if shown == 0 {
+        text.push_str("- История изменений отсутствует.\n");
     }
 }
 
@@ -5337,16 +5460,33 @@ fn apply_incident_review(args: &Cli, actor: &str, body: &str) -> Result<Incident
         .or_else(|| Some(sanitize_text(actor, 80)))
         .filter(|value| !value.is_empty());
     let comment = sanitize_optional_text(request.comment, 500);
+    let mut state = load_incident_review(args)?;
+    let old_status = state
+        .reviews
+        .get(&candidate_id)
+        .map(|review| review.status.clone())
+        .unwrap_or_else(|| "NEW".to_string());
+    let changed_at_utc = now();
     let review = IncidentReviewState {
         candidate_id: candidate_id.clone(),
         status: status.to_string(),
-        reviewer,
-        comment,
-        updated_at: now(),
+        reviewer: reviewer.clone(),
+        comment: comment.clone(),
+        updated_at: changed_at_utc.clone(),
     };
-    let mut state = load_incident_review(args)?;
-    state.reviews.insert(candidate_id, review.clone());
+    state.reviews.insert(candidate_id.clone(), review.clone());
     save_incident_review(args, &state)?;
+    append_incident_review_audit(
+        args,
+        &IncidentReviewAuditEntry {
+            candidate_id,
+            old_status,
+            new_status: status.to_string(),
+            reviewer,
+            comment,
+            changed_at_utc,
+        },
+    )?;
     Ok(IncidentReviewResponse { ok: true, review })
 }
 
@@ -5370,6 +5510,16 @@ fn load_incident_review_best_effort(args: &Cli) -> IncidentReviewFile {
     }
 }
 
+fn load_incident_review_audit_best_effort(args: &Cli) -> Vec<IncidentReviewAuditEntry> {
+    match load_incident_review_audit(args) {
+        Ok(entries) => entries,
+        Err(err) => {
+            eprintln!("detmir-portal incident review audit read failed: {err:#}");
+            Vec::new()
+        }
+    }
+}
+
 fn load_incident_state(args: &Cli) -> Result<IncidentStateFile> {
     let path = incident_state_path(args);
     if !path.exists() {
@@ -5386,6 +5536,25 @@ fn load_incident_review(args: &Cli) -> Result<IncidentReviewFile> {
     }
     let data = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
     serde_json::from_str(&data).with_context(|| format!("parse {}", path.display()))
+}
+
+fn load_incident_review_audit(args: &Cli) -> Result<Vec<IncidentReviewAuditEntry>> {
+    let path = incident_review_audit_path(args);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let data = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let mut entries = Vec::new();
+    for (index, line) in data.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let entry = serde_json::from_str(line)
+            .with_context(|| format!("parse {} line {}", path.display(), index + 1))?;
+        entries.push(entry);
+    }
+    Ok(entries)
 }
 
 fn save_incident_state(args: &Cli, state: &IncidentStateFile) -> Result<()> {
@@ -5425,12 +5594,33 @@ fn append_incident_audit(args: &Cli, entry: &IncidentAuditEntry) -> Result<()> {
     Ok(())
 }
 
+fn append_incident_review_audit(args: &Cli, entry: &IncidentReviewAuditEntry) -> Result<()> {
+    let path = incident_review_audit_path(args);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .with_context(|| format!("open {}", path.display()))?;
+    serde_json::to_writer(&mut file, entry)?;
+    file.write_all(b"\n")?;
+    Ok(())
+}
+
 fn incident_state_path(args: &Cli) -> PathBuf {
     args.state_dir.join("incidents-state.json")
 }
 
 fn incident_review_path(args: &Cli) -> PathBuf {
     args.state_dir.join("data").join("incident_reviews.json")
+}
+
+fn incident_review_audit_path(args: &Cli) -> PathBuf {
+    args.state_dir
+        .join("data")
+        .join("incident_review_audit.jsonl")
 }
 
 fn build_dlp_evidence_response(args: &Cli) -> DlpEvidenceResponse {
@@ -7316,6 +7506,14 @@ mod tests {
             stored.reviews["risk-candidate-123"].comment.as_deref(),
             Some("confirmed by manual check")
         );
+        assert!(incident_review_audit_path(&args).ends_with("data/incident_review_audit.jsonl"));
+        let audit = load_incident_review_audit(&args).unwrap();
+        assert_eq!(audit.len(), 1);
+        assert_eq!(audit[0].candidate_id, "risk-candidate-123");
+        assert_eq!(audit[0].old_status, "NEW");
+        assert_eq!(audit[0].new_status, "CONFIRMED");
+        assert_eq!(audit[0].reviewer.as_deref(), Some("operator"));
+        assert_eq!(summarize_incident_review_audit(&audit).confirmed_count, 1);
         let mut candidates = vec![RiskIncidentCandidate {
             id: "risk-candidate-123".to_string(),
             department: Some("Подразделение".to_string()),
@@ -7328,9 +7526,11 @@ mod tests {
             last_seen_utc: None,
             recommendation: None,
             incident_review: IncidentReviewState::default(),
+            incident_review_audit: Vec::new(),
         }];
-        apply_incident_reviews_to_candidates(&mut candidates, &stored);
+        apply_incident_reviews_to_candidates(&mut candidates, &stored, &audit);
         assert_eq!(candidates[0].incident_review.status, "CONFIRMED");
+        assert_eq!(candidates[0].incident_review_audit.len(), 1);
         assert_eq!(
             validate_incident_review_status("FALSE_POSITIVE").unwrap(),
             "FALSE_POSITIVE"
@@ -7713,6 +7913,7 @@ mod tests {
             ReportRuntimeInputs {
                 incident_state: &IncidentStateFile::default(),
                 incident_reviews: &IncidentReviewFile::default(),
+                incident_review_audit: &[],
                 evidence: &evidence,
             },
             &missing_policy,
@@ -7823,6 +8024,7 @@ mod tests {
             report["risk_incident_candidates"][0]["incident_review"]["status"],
             "NEW"
         );
+        assert_eq!(report["incident_review_audit_summary"]["total_changes"], 0);
         assert!(
             report["executive_points"]
                 .as_array()
@@ -7879,6 +8081,12 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("## Проверка кандидатов в инциденты")
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Аудит проверки инцидентов")
         );
         assert!(report["markdown"].as_str().unwrap().contains("причины:"));
         assert!(

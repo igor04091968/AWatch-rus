@@ -1779,7 +1779,28 @@ function renderCandidateReview(item) {
   const comment = review.comment || "комментария нет";
   const reviewer = review.reviewer || "проверяющий не указан";
   const updated = review.updated_at || "не обновлялось";
-  return `<span class="badge ${statusClass(status)}">${ui(reviewStatusText(status))}</span><br><span class="muted small">${ui(reviewer)} · ${ui(updated)}</span><br><span class="muted small">${ui(comment)}</span>`;
+  const audit = Array.isArray(item?.incident_review_audit) ? item.incident_review_audit.slice(-4).reverse() : [];
+  const history = audit.length ? `
+    <details class="review-history">
+      <summary>История изменений</summary>
+      <ul>
+        ${audit.map(entry => `
+          <li>
+            <span>${ui(reviewStatusText(entry.old_status))} → ${ui(reviewStatusText(entry.new_status))}</span><br>
+            <span class="muted small">${ui(entry.reviewer || "проверяющий не указан")} · ${ui(entry.changed_at_utc || "-")}</span><br>
+            <span class="muted small">${ui(entry.comment || "комментария нет")}</span>
+          </li>
+        `).join("")}
+      </ul>
+    </details>
+  ` : `<span class="muted small">История изменений отсутствует</span>`;
+  return `
+    <span class="badge ${statusClass(status)}">${ui(reviewStatusText(status))}</span><br>
+    <span class="muted small">Изменил: ${ui(reviewer)}</span><br>
+    <span class="muted small">Когда: ${ui(updated)}</span><br>
+    <span class="muted small">Комментарий: ${ui(comment)}</span>
+    ${history}
+  `;
 }
 
 function renderCandidateReviewActions(item) {
