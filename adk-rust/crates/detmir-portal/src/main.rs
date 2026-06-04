@@ -2393,7 +2393,7 @@ SELECT
     toUInt64(countIf((positionCaseInsensitive(search, 'agent') > 0 OR positionCaseInsensitive(search, 'collector') > 0) AND (positionCaseInsensitive(search, 'error') > 0 OR positionCaseInsensitive(search, 'fail') > 0))) AS agent_errors_24h,
     nullIf(formatDateTime(max(ts), '%Y-%m-%dT%H:%i:%SZ'), '1970-01-01T00:00:00Z') AS last_event_utc
 FROM (
-    SELECT ts, concat(event_type, ' ', severity, ' ', source, ' ', summary) AS search
+    SELECT ts, severity, concat(event_type, ' ', severity, ' ', source, ' ', summary) AS search
     FROM {database}.entity_timeline
     WHERE ts >= since
 )
