@@ -6,16 +6,22 @@ BSD-слой нужен для будущей поддержки FreeBSD и pfSe
 
 ## FreeBSD collector
 
-В v0.3 FreeBSD collector имеет стабильный интерфейс и честно возвращает ограничение реализации, если бинарник собран под FreeBSD до включения нативных источников.
+В v0.3 FreeBSD collector уже формирует единый `TelemetryRecord` через read-only системные probe.
 
-Планируемые источники:
+Текущие источники:
 
 - `sysctl`;
+- `ps`;
+- `ifconfig`;
+- `sockstat`;
+- `/var/log/messages`;
+- окружение SSH-сессии.
+
+Следующий слой глубины:
+
 - `procstat`;
 - `kvm`;
-- сетевые интерфейсы ОС;
-- системный syslog;
-- сведения об SSH-сессиях.
+- расширенная статистика pf/pfSense.
 
 ## pfSense mode
 

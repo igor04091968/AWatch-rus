@@ -15,8 +15,8 @@ Agent -> Telemetry -> Analytics -> Risk -> Investigation -> Report
 ## Границы реализации v0.3
 
 - Linux collector собирает реальные данные через `/proc`, `/sys`, окружение сессии и системные журналы.
-- Windows collector имеет стабильный публичный интерфейс и подготовлен под WinAPI, ETW, Event Log API и WMI-библиотеки Rust.
-- FreeBSD collector имеет стабильный публичный интерфейс и подготовлен под `sysctl`, `procstat`, `kvm` и стандартные интерфейсы FreeBSD.
+- Windows collector формирует `TelemetryRecord` без PowerShell primary collection: identity/session/process/network/resource context через read-only системные источники и командные probe-фолбэки. Глубина WinAPI, ETW, Event Log API и WMI-библиотеки Rust является следующим расширением.
+- FreeBSD collector формирует `TelemetryRecord` через read-only системные probe: `uname`, `sysctl`, `ps`, `ifconfig`, `sockstat`, `/var/log/messages`. Глубина `procstat`/`kvm` является следующим расширением.
 - PowerShell не является основным механизмом сбора. Он допускается только как будущий `legacy` fallback под feature flag.
 - Агент не содержит скрытых функций, драйверов ядра, кейлоггера, записи экрана, перехвата документов и контентного DLP-анализа.
 
