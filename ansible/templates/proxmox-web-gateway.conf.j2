@@ -38,6 +38,9 @@ server {
     add_header X-Robots-Tag "noindex, nofollow, noarchive" always;
     add_header Strict-Transport-Security "max-age=31536000" always;
 
+    charset utf-8;
+    charset_types text/plain text/css application/json application/javascript text/javascript application/xml text/xml;
+
     root {{ proxmox_web_gateway_root }};
     index index.html;
 
