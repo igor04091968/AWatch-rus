@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -309,6 +309,24 @@ struct BusinessRiskItem {
     problem_nodes_count: usize,
     missing_nodes_count: usize,
     stale_nodes_count: usize,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct BusinessRiskHistoryItem {
+    date: String,
+    department: String,
+    risk_level: String,
+    trust_score: u8,
+    activity_score: u8,
+    reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+struct BusinessRiskHistorySummary {
+    departments_worsened: usize,
+    departments_improved: usize,
+    stable_high_risk: usize,
+    new_high_risk: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -715,6 +733,15 @@ struct ReportWorkforceSummary {
     owners_count: usize,
     insights_count: usize,
     trend_status: String,
+}
+
+struct ReportMarkdownContext<'a> {
+    workforce: &'a ReportWorkforceSummary,
+    workforce_policy: &'a Value,
+    ueba_risk: &'a Value,
+    business_risk: &'a [BusinessRiskItem],
+    business_risk_history: &'a [BusinessRiskHistoryItem],
+    business_risk_history_summary: &'a BusinessRiskHistorySummary,
 }
 
 fn main() {
@@ -1929,6 +1956,8 @@ fn build_reports(
     let department_items = workforce_rollup_items(snapshot, "department_rollups");
     let owner_items = workforce_rollup_items(snapshot, "owner_rollups");
     let business_risk = build_business_risk(snapshot, &department_items);
+    let business_risk_history = build_business_risk_history(snapshot);
+    let business_risk_history_summary = summarize_business_risk_history(&business_risk_history);
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
     let workforce_policy_explain =
@@ -2006,6 +2035,11 @@ fn build_reports(
             ));
         }
     }
+    for department in stable_high_risk_departments(&business_risk_history, 3) {
+        executive_points.push(format!(
+            "Подразделение {department} сохраняет высокий риск несколько дней подряд."
+        ));
+    }
     let recommendations = owner_recommendations(snapshot, &summary);
     let workforce_summary = ReportWorkforceSummary {
         departments_count: department_items.len(),
@@ -2019,8 +2053,14 @@ fn build_reports(
         &summary,
         &metrics,
         &recommendations,
-        &workforce_summary,
-        (&workforce_policy_explain, &ueba_risk),
+        ReportMarkdownContext {
+            workforce: &workforce_summary,
+            workforce_policy: &workforce_policy_explain,
+            ueba_risk: &ueba_risk,
+            business_risk: &business_risk,
+            business_risk_history: &business_risk_history,
+            business_risk_history_summary: &business_risk_history_summary,
+        },
     );
     json!({
         "generated_at_utc": snapshot.generated_at_utc,
@@ -2108,6 +2148,8 @@ fn build_reports(
         "agent_quality_nodes_summary": agent_quality_nodes_summary,
         "agent_coverage_sla": agent_coverage_sla,
         "business_risk": business_risk,
+        "business_risk_history": business_risk_history,
+        "business_risk_history_summary": business_risk_history_summary,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -2207,6 +2249,33 @@ fn business_risk_item(
     let activity_score = activity.unwrap_or(0);
     let trend_delta = department_trend_delta(snapshot, department);
     let trend = business_risk_trend_label(trend_delta);
+    let (problem_nodes_count, missing_nodes_count, stale_nodes_count) =
+        business_risk_problem_counts(snapshot, department);
+    let trust_score = business_trust_score(snapshot, problem_nodes_count);
+    let assessment = business_risk_assessment(
+        trust_score,
+        activity_score,
+        trend_delta,
+        missing_nodes_count,
+        stale_nodes_count,
+        problem_nodes_count,
+        activity.is_none(),
+    );
+    BusinessRiskItem {
+        department: department.to_string(),
+        trust_score,
+        activity_score,
+        trend,
+        risk_level: assessment.0,
+        reasons: assessment.1,
+        recommendation: assessment.2,
+        problem_nodes_count,
+        missing_nodes_count,
+        stale_nodes_count,
+    }
+}
+
+fn business_risk_problem_counts(snapshot: &Snapshot, department: &str) -> (usize, usize, usize) {
     let department_problem_nodes = snapshot
         .agent_coverage_sla
         .problem_nodes
@@ -2229,7 +2298,18 @@ fn business_risk_item(
         .iter()
         .filter(|node| node.status == "STALE")
         .count();
-    let trust_score = business_trust_score(snapshot, problem_nodes_count);
+    (problem_nodes_count, missing_nodes_count, stale_nodes_count)
+}
+
+fn business_risk_assessment(
+    trust_score: u8,
+    activity_score: u8,
+    trend_delta: Option<f64>,
+    missing_nodes_count: usize,
+    stale_nodes_count: usize,
+    problem_nodes_count: usize,
+    activity_missing: bool,
+) -> (String, Vec<String>, String) {
     let mut score = 0u64;
     let mut reasons = Vec::new();
     if trust_score < 50 {
@@ -2258,7 +2338,7 @@ fn business_risk_item(
             score += 10;
             reasons.push("падающий тренд".to_string());
         }
-    } else if activity.is_none() {
+    } else if activity_missing {
         score += 15;
         reasons.push("нет свежей телеметрии".to_string());
     }
@@ -2279,18 +2359,11 @@ fn business_risk_item(
         stale_nodes_count,
         problem_nodes_count,
     );
-    BusinessRiskItem {
-        department: department.to_string(),
-        trust_score,
-        activity_score,
-        trend,
-        risk_level: business_risk_level(score).to_string(),
+    (
+        business_risk_level(score).to_string(),
         reasons,
         recommendation,
-        problem_nodes_count,
-        missing_nodes_count,
-        stale_nodes_count,
-    }
+    )
 }
 
 fn business_risk_recommendation(
@@ -2314,6 +2387,168 @@ fn business_risk_recommendation(
             .to_string();
     }
     "Держать подразделение под наблюдением; срочных действий не требуется.".to_string()
+}
+
+fn build_business_risk_history(snapshot: &Snapshot) -> Vec<BusinessRiskHistoryItem> {
+    let Some(trend) = snapshot
+        .worktime_management
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("trend"))
+        .and_then(Value::as_array)
+    else {
+        return Vec::new();
+    };
+
+    let mut previous_activity = BTreeMap::<String, u8>::new();
+    let mut rows = Vec::new();
+    for day in trend {
+        let date = day
+            .get("report_date")
+            .or_else(|| day.get("date"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string();
+        let Some(rollups) = day.get("department_rollups").and_then(Value::as_array) else {
+            continue;
+        };
+        let mut current_day = BTreeMap::<String, u8>::new();
+        for item in rollups {
+            let department = item
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or("Без подразделения")
+                .to_string();
+            let activity_score = item
+                .get("portfolio_coverage_pct")
+                .and_then(Value::as_f64)
+                .map(percent_to_score)
+                .unwrap_or(0);
+            let trend_delta = previous_activity
+                .get(&department)
+                .map(|previous| f64::from(activity_score) - f64::from(*previous));
+            let (problem_nodes_count, missing_nodes_count, stale_nodes_count) =
+                business_risk_problem_counts(snapshot, &department);
+            let trust_score = business_trust_score(snapshot, problem_nodes_count);
+            let (risk_level, reasons, _) = business_risk_assessment(
+                trust_score,
+                activity_score,
+                trend_delta,
+                missing_nodes_count,
+                stale_nodes_count,
+                problem_nodes_count,
+                false,
+            );
+            rows.push(BusinessRiskHistoryItem {
+                date: date.clone(),
+                department: department.clone(),
+                risk_level,
+                trust_score,
+                activity_score,
+                reasons,
+            });
+            current_day.insert(department, activity_score);
+        }
+        previous_activity = current_day;
+    }
+
+    rows.sort_by(|left, right| {
+        left.date
+            .cmp(&right.date)
+            .then_with(|| left.department.cmp(&right.department))
+    });
+    let mut dates = rows
+        .iter()
+        .map(|item| item.date.clone())
+        .collect::<Vec<_>>();
+    dates.sort();
+    dates.dedup();
+    let keep_from = dates.len().saturating_sub(30);
+    let keep_dates = dates[keep_from..].iter().cloned().collect::<BTreeSet<_>>();
+    rows.into_iter()
+        .filter(|item| keep_dates.contains(&item.date))
+        .collect()
+}
+
+fn summarize_business_risk_history(
+    history: &[BusinessRiskHistoryItem],
+) -> BusinessRiskHistorySummary {
+    let mut by_department = BTreeMap::<String, Vec<&BusinessRiskHistoryItem>>::new();
+    for item in history {
+        by_department
+            .entry(item.department.clone())
+            .or_default()
+            .push(item);
+    }
+    let mut summary = BusinessRiskHistorySummary::default();
+    for items in by_department.values_mut() {
+        items.sort_by(|left, right| left.date.cmp(&right.date));
+        let Some(first) = items.first() else {
+            continue;
+        };
+        let Some(last) = items.last() else {
+            continue;
+        };
+        let first_rank = business_risk_rank(&first.risk_level);
+        let last_rank = business_risk_rank(&last.risk_level);
+        if last_rank > first_rank {
+            summary.departments_worsened += 1;
+        } else if last_rank < first_rank {
+            summary.departments_improved += 1;
+        }
+        if latest_high_risk_streak(items) >= 3 {
+            summary.stable_high_risk += 1;
+        }
+        if business_risk_is_high(&last.risk_level)
+            && !items
+                .iter()
+                .take(items.len().saturating_sub(1))
+                .any(|item| business_risk_is_high(&item.risk_level))
+        {
+            summary.new_high_risk += 1;
+        }
+    }
+    summary
+}
+
+fn stable_high_risk_departments(history: &[BusinessRiskHistoryItem], limit: usize) -> Vec<String> {
+    let mut by_department = BTreeMap::<String, Vec<&BusinessRiskHistoryItem>>::new();
+    for item in history {
+        by_department
+            .entry(item.department.clone())
+            .or_default()
+            .push(item);
+    }
+    let mut departments = by_department
+        .into_iter()
+        .filter_map(|(department, mut items)| {
+            items.sort_by(|left, right| left.date.cmp(&right.date));
+            (latest_high_risk_streak(&items) >= 3).then_some(department)
+        })
+        .collect::<Vec<_>>();
+    departments.sort();
+    departments.truncate(limit);
+    departments
+}
+
+fn latest_high_risk_streak(items: &[&BusinessRiskHistoryItem]) -> usize {
+    items
+        .iter()
+        .rev()
+        .take_while(|item| business_risk_is_high(&item.risk_level))
+        .count()
+}
+
+fn business_risk_is_high(level: &str) -> bool {
+    matches!(level, "HIGH" | "CRITICAL")
+}
+
+fn percent_to_score(value: f64) -> u8 {
+    if !value.is_finite() {
+        return 0;
+    }
+    value.round().clamp(0.0, 100.0) as u8
 }
 
 fn first_percent_score(text: &str) -> Option<u8> {
@@ -3717,10 +3952,8 @@ fn render_report_markdown(
     summary: &SummaryResponse,
     metrics: &ReportMetrics,
     recommendations: &[String],
-    workforce: &ReportWorkforceSummary,
-    explainability: (&Value, &Value),
+    context: ReportMarkdownContext<'_>,
 ) -> String {
-    let (workforce_policy, ueba_risk) = explainability;
     let mut text = String::new();
     text.push_str("# DetMir оперативный отчет\n\n");
     text.push_str(&format!("Дата снимка: {}\n\n", snapshot.generated_at_utc));
@@ -3763,13 +3996,16 @@ fn render_report_markdown(
     text.push_str(&format!("- Активные приложения: {}\n", metrics.apps_count));
     text.push_str(&format!(
         "- Подразделения/ответственные: {}/{}\n",
-        workforce.departments_count, workforce.owners_count
+        context.workforce.departments_count, context.workforce.owners_count
     ));
     text.push_str(&format!(
         "- Автоматические выводы Workforce: {}\n",
-        workforce.insights_count
+        context.workforce.insights_count
     ));
-    text.push_str(&format!("- Статус тренда: {}\n", workforce.trend_status));
+    text.push_str(&format!(
+        "- Статус тренда: {}\n",
+        context.workforce.trend_status
+    ));
     text.push_str(&format!(
         "- DLP технические сигналы: ok={}, warn={}, fail={}\n",
         metrics.dlp_ok, metrics.dlp_warn, metrics.dlp_fail
@@ -3798,15 +4034,14 @@ fn render_report_markdown(
         &snapshot.agent_quality_nodes_summary,
     );
     append_agent_coverage_sla_markdown(&mut text, &snapshot.agent_coverage_sla);
-    append_business_risk_markdown(
+    append_business_risk_markdown(&mut text, context.business_risk);
+    append_business_risk_history_markdown(
         &mut text,
-        &build_business_risk(
-            snapshot,
-            &workforce_rollup_items(snapshot, "department_rollups"),
-        ),
+        context.business_risk_history,
+        context.business_risk_history_summary,
     );
-    append_ueba_risk_markdown(&mut text, ueba_risk);
-    append_workforce_policy_markdown(&mut text, workforce_policy);
+    append_ueba_risk_markdown(&mut text, context.ueba_risk);
+    append_workforce_policy_markdown(&mut text, context.workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
     text
 }
@@ -3985,6 +4220,44 @@ fn append_business_risk_markdown(text: &mut String, risks: &[BusinessRiskItem]) 
         ));
         text.push_str(&format!("  - причины: {reasons}\n"));
         text.push_str(&format!("  - рекомендация: {}\n", item.recommendation));
+    }
+}
+
+fn append_business_risk_history_markdown(
+    text: &mut String,
+    history: &[BusinessRiskHistoryItem],
+    summary: &BusinessRiskHistorySummary,
+) {
+    text.push_str("\n## Динамика бизнес-рисков\n\n");
+    text.push_str(&format!("- Ухудшились: {}\n", summary.departments_worsened));
+    text.push_str(&format!("- Улучшились: {}\n", summary.departments_improved));
+    text.push_str(&format!(
+        "- Стабильно высокий риск: {}\n",
+        summary.stable_high_risk
+    ));
+    text.push_str(&format!(
+        "- Новый высокий риск: {}\n",
+        summary.new_high_risk
+    ));
+    if history.is_empty() {
+        text.push_str("- История бизнес-рисков пока не накоплена.\n");
+        return;
+    }
+    for item in history.iter().rev().take(10) {
+        let reasons = if item.reasons.is_empty() {
+            "нет существенных причин".to_string()
+        } else {
+            item.reasons.join("; ")
+        };
+        text.push_str(&format!(
+            "- {} · {}: level={}, trust={}%, activity={}%, причины: {}\n",
+            item.date,
+            item.department,
+            item.risk_level,
+            item.trust_score,
+            item.activity_score,
+            reasons
+        ));
     }
 }
 
@@ -6359,6 +6632,8 @@ mod tests {
     fn business_risk_helpers_map_scores_and_percentages() {
         assert_eq!(first_percent_score("50% · active 1/2"), Some(50));
         assert_eq!(first_percent_score("нет данных"), None);
+        assert_eq!(percent_to_score(49.6), 50);
+        assert_eq!(percent_to_score(101.0), 100);
         assert_eq!(business_risk_level(0), "LOW");
         assert_eq!(business_risk_level(25), "MEDIUM");
         assert_eq!(business_risk_level(55), "HIGH");
@@ -6367,6 +6642,87 @@ mod tests {
         assert_eq!(business_risk_trend_label(Some(6.0)), "RISING");
         assert_eq!(business_risk_trend_label(Some(0.0)), "STABLE");
         assert_eq!(business_risk_trend_label(None), "UNKNOWN");
+    }
+
+    #[test]
+    fn business_risk_history_summarizes_negative_trends() {
+        let history = vec![
+            BusinessRiskHistoryItem {
+                date: "2026-06-01".to_string(),
+                department: "Продажи".to_string(),
+                risk_level: "MEDIUM".to_string(),
+                trust_score: 80,
+                activity_score: 65,
+                reasons: vec!["падающий тренд".to_string()],
+            },
+            BusinessRiskHistoryItem {
+                date: "2026-06-02".to_string(),
+                department: "Продажи".to_string(),
+                risk_level: "HIGH".to_string(),
+                trust_score: 70,
+                activity_score: 45,
+                reasons: vec!["низкая активность".to_string()],
+            },
+            BusinessRiskHistoryItem {
+                date: "2026-06-03".to_string(),
+                department: "Продажи".to_string(),
+                risk_level: "HIGH".to_string(),
+                trust_score: 70,
+                activity_score: 40,
+                reasons: vec!["низкая активность".to_string()],
+            },
+            BusinessRiskHistoryItem {
+                date: "2026-06-04".to_string(),
+                department: "Продажи".to_string(),
+                risk_level: "CRITICAL".to_string(),
+                trust_score: 40,
+                activity_score: 30,
+                reasons: vec!["низкий Trust KPI".to_string()],
+            },
+            BusinessRiskHistoryItem {
+                date: "2026-06-01".to_string(),
+                department: "ИТ".to_string(),
+                risk_level: "HIGH".to_string(),
+                trust_score: 70,
+                activity_score: 40,
+                reasons: vec!["низкая активность".to_string()],
+            },
+            BusinessRiskHistoryItem {
+                date: "2026-06-04".to_string(),
+                department: "ИТ".to_string(),
+                risk_level: "LOW".to_string(),
+                trust_score: 95,
+                activity_score: 90,
+                reasons: Vec::new(),
+            },
+            BusinessRiskHistoryItem {
+                date: "2026-06-01".to_string(),
+                department: "Логистика".to_string(),
+                risk_level: "LOW".to_string(),
+                trust_score: 95,
+                activity_score: 90,
+                reasons: Vec::new(),
+            },
+            BusinessRiskHistoryItem {
+                date: "2026-06-04".to_string(),
+                department: "Логистика".to_string(),
+                risk_level: "HIGH".to_string(),
+                trust_score: 65,
+                activity_score: 45,
+                reasons: vec!["низкая активность".to_string()],
+            },
+        ];
+
+        let summary = summarize_business_risk_history(&history);
+
+        assert_eq!(summary.departments_worsened, 2);
+        assert_eq!(summary.departments_improved, 1);
+        assert_eq!(summary.stable_high_risk, 1);
+        assert_eq!(summary.new_high_risk, 1);
+        assert_eq!(
+            stable_high_risk_departments(&history, 3),
+            vec!["Продажи".to_string()]
+        );
     }
 
     #[test]
@@ -6668,7 +7024,24 @@ mod tests {
                     "trend": [
                         {
                             "report_date": "2026-06-03",
-                            "portfolio_coverage_pct": 50.0
+                            "portfolio_coverage_pct": 50.0,
+                            "department_rollups": [
+                                {"name": "Бухгалтерия", "portfolio_coverage_pct": 50.0}
+                            ]
+                        },
+                        {
+                            "report_date": "2026-06-04",
+                            "portfolio_coverage_pct": 50.0,
+                            "department_rollups": [
+                                {"name": "Бухгалтерия", "portfolio_coverage_pct": 50.0}
+                            ]
+                        },
+                        {
+                            "report_date": "2026-06-05",
+                            "portfolio_coverage_pct": 50.0,
+                            "department_rollups": [
+                                {"name": "Бухгалтерия", "portfolio_coverage_pct": 50.0}
+                            ]
                         }
                     ],
                     "trend_insights": [
@@ -6838,6 +7211,20 @@ mod tests {
         assert_eq!(report["business_risk"][0]["problem_nodes_count"], 0);
         assert_eq!(report["business_risk"][0]["missing_nodes_count"], 0);
         assert_eq!(report["business_risk"][0]["stale_nodes_count"], 0);
+        assert_eq!(report["business_risk_history"].as_array().unwrap().len(), 3);
+        assert_eq!(
+            report["business_risk_history"][0]["department"],
+            "Бухгалтерия"
+        );
+        assert!(report["business_risk_history"][0]["reasons"].is_array());
+        assert_eq!(
+            report["business_risk_history_summary"]["departments_worsened"],
+            0
+        );
+        assert_eq!(
+            report["business_risk_history_summary"]["stable_high_risk"],
+            0
+        );
         assert!(
             report["executive_points"]
                 .as_array()
@@ -6869,6 +7256,12 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("## Риски подразделений")
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Динамика бизнес-рисков")
         );
         assert!(report["markdown"].as_str().unwrap().contains("причины:"));
         assert!(

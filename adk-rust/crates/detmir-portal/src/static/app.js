@@ -830,6 +830,7 @@ function renderOperator(data, report) {
     ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(report?.agent_coverage_sla)}
     ${renderBusinessRisk(report?.business_risk)}
+    ${renderBusinessRiskTimeline(report?.business_risk_history, report?.business_risk_history_summary)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1650,6 +1651,69 @@ function businessRiskReasons(item) {
   return `${reasons}. Trust ${item?.trust_score ?? 0}%, активность ${item?.activity_score ?? 0}%, тренд ${businessTrendText(item?.trend)}, проблемных узлов ${item?.problem_nodes_count ?? 0}`;
 }
 
+function renderBusinessRiskTimeline(history, summary) {
+  const s = summary || {};
+  const rows = Array.isArray(history) ? history.slice(-10).reverse() : [];
+  const status = Number(s.stable_high_risk || 0) > 0 || Number(s.new_high_risk || 0) > 0
+    ? "WARN"
+    : "OK";
+  const counters = [
+    ["Ухудшились", s.departments_worsened ?? 0, "рост уровня риска за период"],
+    ["Улучшились", s.departments_improved ?? 0, "снижение уровня риска"],
+    ["Стабильно высокий риск", s.stable_high_risk ?? 0, "3+ дня HIGH/CRITICAL"],
+    ["Новый высокий риск", s.new_high_risk ?? 0, "последняя точка стала HIGH/CRITICAL"],
+  ];
+  return `
+    <section class="card business-risk-timeline-card">
+      <div class="section-head">
+        <div>
+          <h3>Динамика рисков</h3>
+          <p class="muted">Как менялся бизнес-риск подразделений по накопленной daily history.</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      <div class="summary-grid kpi-grid compact-kpis">
+        ${counters.map(([label, value, hint]) => `
+          <article class="mini-kpi">
+            <span>${ui(label)}</span>
+            <strong>${escapeHtml(value)}</strong>
+            <small>${ui(hint)}</small>
+          </article>
+        `).join("")}
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Дата</th>
+              <th>Подразделение</th>
+              <th>Риск</th>
+              <th>Причины</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr>
+                <td>${ui(item.date || "-")}</td>
+                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
+                <td>${ui(Array.isArray(item.reasons) && item.reasons.length ? item.reasons.join("; ") : "нет существенных причин")}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>-</td>
+                <td>История не накоплена</td>
+                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>Нужно дождаться daily history.</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function businessTrendText(value) {
   const trend = String(value || "UNKNOWN").toUpperCase();
   if (trend === "FALLING") return "падает";
@@ -1697,6 +1761,7 @@ function renderReports(data) {
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(data.agent_coverage_sla)}
     ${renderBusinessRisk(data.business_risk)}
+    ${renderBusinessRiskTimeline(data.business_risk_history, data.business_risk_history_summary)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>
