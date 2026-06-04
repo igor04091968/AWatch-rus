@@ -23,9 +23,9 @@ async function postJson(path, payload) {
 
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
-  if (s === "ok" || s === "true") return "status-ok";
-  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale") return "status-warn";
-  if (s === "degraded") return "status-degraded";
+  if (s === "ok" || s === "true" || s === "low") return "status-ok";
+  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale" || s === "medium") return "status-warn";
+  if (s === "degraded" || s === "high") return "status-degraded";
   if (s === "fail" || s === "false" || s === "error" || s === "critical" || s === "missing") return "status-fail";
   return "status-unknown";
 }
@@ -829,6 +829,7 @@ function renderOperator(data, report) {
     ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
     ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(report?.agent_coverage_sla)}
+    ${renderBusinessRisk(report?.business_risk)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1597,6 +1598,62 @@ function renderAgentCoverageSla(sla) {
   `;
 }
 
+function renderBusinessRisk(items) {
+  const rows = Array.isArray(items) ? items.slice(0, 10) : [];
+  const worst = rows[0]?.risk_level || "UNKNOWN";
+  return `
+    <section class="card business-risk-card">
+      <div class="section-head">
+        <div>
+          <h3>Риски подразделений</h3>
+          <p class="muted">Организационные зоны риска по доверию к KPI, активности, тренду и проблемным узлам.</p>
+        </div>
+        <span class="badge ${statusClass(worst)}">${ui(worst)}</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Подразделение</th>
+              <th>Trust KPI</th>
+              <th>Активность</th>
+              <th>Тренд</th>
+              <th>Риск</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr>
+                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td>${escapeHtml(item.trust_score ?? 0)}%</td>
+                <td>${escapeHtml(item.activity_score ?? 0)}%</td>
+                <td>${ui(businessTrendText(item.trend))}</td>
+                <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>Нет данных</td>
+                <td>-</td>
+                <td>-</td>
+                <td>нет данных</td>
+                <td><span class="badge status-unknown">UNKNOWN</span></td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function businessTrendText(value) {
+  const trend = String(value || "UNKNOWN").toUpperCase();
+  if (trend === "FALLING") return "падает";
+  if (trend === "RISING") return "растет";
+  if (trend === "STABLE") return "стабильно";
+  return "нет данных";
+}
+
 function renderReports(data) {
   data = periodReport(data);
   return `
@@ -1635,6 +1692,7 @@ function renderReports(data) {
     ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(data.agent_coverage_sla)}
+    ${renderBusinessRisk(data.business_risk)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>

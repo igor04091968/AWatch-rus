@@ -297,6 +297,15 @@ impl Default for AgentCoverageSla {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct BusinessRiskItem {
+    department: String,
+    trust_score: u8,
+    activity_score: u8,
+    trend: String,
+    risk_level: String,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -1914,6 +1923,7 @@ fn build_reports(
     let dlp_block_value = dlp_block(snapshot);
     let department_items = workforce_rollup_items(snapshot, "department_rollups");
     let owner_items = workforce_rollup_items(snapshot, "owner_rollups");
+    let business_risk = build_business_risk(snapshot, &department_items);
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
     let workforce_policy_explain =
@@ -1977,6 +1987,14 @@ fn build_reports(
             "KPI требует проверки: часть рабочих мест не присылает свежую телеметрию".to_string(),
         ),
         _ => {}
+    }
+    for item in business_risk.iter().take(3) {
+        if item.risk_level != "LOW" {
+            executive_points.push(format!(
+                "Риск подразделения {}: {} (trust={}%, activity={}%, trend={})",
+                item.department, item.risk_level, item.trust_score, item.activity_score, item.trend
+            ));
+        }
     }
     let recommendations = owner_recommendations(snapshot, &summary);
     let workforce_summary = ReportWorkforceSummary {
@@ -2079,6 +2097,7 @@ fn build_reports(
         "agent_quality_nodes": agent_quality_nodes,
         "agent_quality_nodes_summary": agent_quality_nodes_summary,
         "agent_coverage_sla": agent_coverage_sla,
+        "business_risk": business_risk,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -2131,6 +2150,181 @@ fn workforce_rollup_items(snapshot: &Snapshot, key: &str) -> Vec<Value> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn build_business_risk(snapshot: &Snapshot, department_items: &[Value]) -> Vec<BusinessRiskItem> {
+    let mut departments = BTreeMap::<String, Option<u8>>::new();
+    for item in department_items {
+        let department = item
+            .get("label")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("Без подразделения")
+            .to_string();
+        let activity = item
+            .get("value")
+            .and_then(Value::as_str)
+            .and_then(first_percent_score);
+        departments.insert(department, activity);
+    }
+    for node in &snapshot.agent_coverage_sla.problem_nodes {
+        let department = if node.department.trim().is_empty() {
+            "Не задано"
+        } else {
+            node.department.as_str()
+        };
+        departments.entry(department.to_string()).or_insert(None);
+    }
+    let mut items = departments
+        .into_iter()
+        .map(|(department, activity)| business_risk_item(snapshot, &department, activity))
+        .collect::<Vec<_>>();
+    items.sort_by(|left, right| {
+        business_risk_rank(&right.risk_level)
+            .cmp(&business_risk_rank(&left.risk_level))
+            .then_with(|| left.trust_score.cmp(&right.trust_score))
+            .then_with(|| left.activity_score.cmp(&right.activity_score))
+            .then_with(|| left.department.cmp(&right.department))
+    });
+    items
+}
+
+fn business_risk_item(
+    snapshot: &Snapshot,
+    department: &str,
+    activity: Option<u8>,
+) -> BusinessRiskItem {
+    let activity_score = activity.unwrap_or(0);
+    let trend_delta = department_trend_delta(snapshot, department);
+    let trend = business_risk_trend_label(trend_delta);
+    let problem_nodes = snapshot
+        .agent_coverage_sla
+        .problem_nodes
+        .iter()
+        .filter(|node| {
+            let node_department = if node.department.trim().is_empty() {
+                "Не задано"
+            } else {
+                node.department.as_str()
+            };
+            node_department == department
+        })
+        .count();
+    let trust_score = business_trust_score(snapshot, problem_nodes);
+    let mut score = 0u64;
+    if trust_score < 50 {
+        score += 40;
+    } else if trust_score < 75 {
+        score += 25;
+    } else if trust_score < 90 {
+        score += 10;
+    }
+    if activity_score < 35 {
+        score += 35;
+    } else if activity_score < 60 {
+        score += 20;
+    } else if activity_score < 75 {
+        score += 10;
+    }
+    if let Some(delta) = trend_delta {
+        if delta <= -20.0 {
+            score += 25;
+        } else if delta <= -5.0 {
+            score += 10;
+        }
+    } else if activity.is_none() {
+        score += 15;
+    }
+    score += (problem_nodes as u64).saturating_mul(15).min(30);
+    BusinessRiskItem {
+        department: department.to_string(),
+        trust_score,
+        activity_score,
+        trend,
+        risk_level: business_risk_level(score).to_string(),
+    }
+}
+
+fn first_percent_score(text: &str) -> Option<u8> {
+    let bytes = text.as_bytes();
+    for index in 0..bytes.len() {
+        if bytes[index] == b'%' {
+            let mut start = index;
+            while start > 0 && bytes[start - 1].is_ascii_digit() {
+                start -= 1;
+            }
+            if start < index {
+                let value = text[start..index].parse::<u8>().ok()?;
+                return Some(value.min(100));
+            }
+        }
+    }
+    None
+}
+
+fn department_trend_delta(snapshot: &Snapshot, department: &str) -> Option<f64> {
+    let trend = snapshot
+        .worktime_management
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("trend"))
+        .and_then(Value::as_array)?;
+    let points = trend
+        .iter()
+        .filter_map(|day| {
+            day.get("department_rollups")
+                .and_then(Value::as_array)?
+                .iter()
+                .find(|item| item.get("name").and_then(Value::as_str) == Some(department))
+                .and_then(|item| item.get("portfolio_coverage_pct").and_then(Value::as_f64))
+        })
+        .collect::<Vec<_>>();
+    if points.len() < 2 {
+        return None;
+    }
+    Some(points.last()? - points.first()?)
+}
+
+fn business_risk_trend_label(delta: Option<f64>) -> String {
+    match delta {
+        Some(value) if value <= -5.0 => "FALLING".to_string(),
+        Some(value) if value >= 5.0 => "RISING".to_string(),
+        Some(_) => "STABLE".to_string(),
+        None => "UNKNOWN".to_string(),
+    }
+}
+
+fn business_trust_score(snapshot: &Snapshot, problem_nodes: usize) -> u8 {
+    let base = if snapshot.agent_coverage_sla.expected_nodes > 0 {
+        snapshot.agent_coverage_sla.coverage_pct
+    } else if snapshot.agent_quality_nodes_summary.total_nodes > 0 {
+        snapshot.agent_quality_nodes_summary.accepted_kpi_nodes_pct
+    } else {
+        50
+    };
+    base.saturating_sub((problem_nodes as u8).saturating_mul(20))
+}
+
+fn business_risk_level(score: u64) -> &'static str {
+    if score >= 80 {
+        "CRITICAL"
+    } else if score >= 55 {
+        "HIGH"
+    } else if score >= 25 {
+        "MEDIUM"
+    } else {
+        "LOW"
+    }
+}
+
+fn business_risk_rank(level: &str) -> u8 {
+    match level {
+        "CRITICAL" => 4,
+        "HIGH" => 3,
+        "MEDIUM" => 2,
+        "LOW" => 1,
+        _ => 0,
+    }
 }
 
 fn workforce_trend_json(snapshot: &Snapshot) -> Value {
@@ -3533,6 +3727,13 @@ fn render_report_markdown(
         &snapshot.agent_quality_nodes_summary,
     );
     append_agent_coverage_sla_markdown(&mut text, &snapshot.agent_coverage_sla);
+    append_business_risk_markdown(
+        &mut text,
+        &build_business_risk(
+            snapshot,
+            &workforce_rollup_items(snapshot, "department_rollups"),
+        ),
+    );
     append_ueba_risk_markdown(&mut text, ueba_risk);
     append_workforce_policy_markdown(&mut text, workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
@@ -3684,6 +3885,20 @@ fn append_agent_coverage_sla_markdown(text: &mut String, sla: &AgentCoverageSla)
             item.last_seen_utc,
             item.status,
             item.recommendation
+        ));
+    }
+}
+
+fn append_business_risk_markdown(text: &mut String, risks: &[BusinessRiskItem]) {
+    text.push_str("\n## Риски подразделений\n\n");
+    if risks.is_empty() {
+        text.push_str("- Риски подразделений пока не рассчитаны.\n");
+        return;
+    }
+    for item in risks.iter().take(10) {
+        text.push_str(&format!(
+            "- {}: level={}, trust={}%, activity={}%, trend={}\n",
+            item.department, item.risk_level, item.trust_score, item.activity_score, item.trend
         ));
     }
 }
@@ -6056,6 +6271,20 @@ mod tests {
     }
 
     #[test]
+    fn business_risk_helpers_map_scores_and_percentages() {
+        assert_eq!(first_percent_score("50% · active 1/2"), Some(50));
+        assert_eq!(first_percent_score("нет данных"), None);
+        assert_eq!(business_risk_level(0), "LOW");
+        assert_eq!(business_risk_level(25), "MEDIUM");
+        assert_eq!(business_risk_level(55), "HIGH");
+        assert_eq!(business_risk_level(80), "CRITICAL");
+        assert_eq!(business_risk_trend_label(Some(-6.0)), "FALLING");
+        assert_eq!(business_risk_trend_label(Some(6.0)), "RISING");
+        assert_eq!(business_risk_trend_label(Some(0.0)), "STABLE");
+        assert_eq!(business_risk_trend_label(None), "UNKNOWN");
+    }
+
+    #[test]
     fn incident_id_is_stable() {
         assert_eq!(
             incident_id("service", "grafana-data", "stale"),
@@ -6504,12 +6733,22 @@ mod tests {
             50
         );
         assert_eq!(report["agent_coverage_sla"]["sla_status"], "UNKNOWN");
+        assert_eq!(report["business_risk"].as_array().unwrap().len(), 1);
+        assert_eq!(report["business_risk"][0]["department"], "Бухгалтерия");
+        assert_eq!(report["business_risk"][0]["risk_level"], "MEDIUM");
         assert!(
             report["executive_points"]
                 .as_array()
                 .unwrap()
                 .iter()
                 .any(|item| item.as_str().unwrap().contains("менее 80% узлов"))
+        );
+        assert!(
+            report["executive_points"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item.as_str().unwrap().contains("Риск подразделения"))
         );
         assert!(
             report["markdown"]
@@ -6522,6 +6761,12 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("## SLA покрытия агентов")
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Риски подразделений")
         );
         assert!(
             report["markdown"]
