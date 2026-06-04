@@ -86,8 +86,8 @@ function displayText(value) {
     .replaceAll("per-user", "по сотруднику")
     .replaceAll("user:", "сотрудник:")
     .replaceAll("dept:", "подразделение:")
-    .replaceAll("yes", "да")
-    .replaceAll("no", "нет")
+    .replace(/\byes\b/g, "да")
+    .replace(/\bno\b/g, "нет")
     .replaceAll("daily", "день")
     .replaceAll("weekly", "неделя")
     .replaceAll("monthly", "месяц")
@@ -547,7 +547,6 @@ function renderTopRisks(report) {
 
 function renderDepartmentRanking(report) {
   const rows = departmentRows(report);
-  if (!rows.length) return "";
   const best = [...rows]
     .sort((a, b) => (b.activity ?? -1) - (a.activity ?? -1) || statusWeight(a.status) - statusWeight(b.status))
     .slice(0, 5);
@@ -561,15 +560,16 @@ function renderDepartmentRanking(report) {
       <span class="badge ${statusClass(row.status)}">${ui(row.status)}</span>
     </div>
   `).join("")}</div>`;
+  const emptyRows = `<div class="list compact-list"><div class="row compact-row"><strong>Нет данных</strong><span class="muted">Подразделения пока не рассчитаны.</span><span class="badge status-unknown">UNKNOWN</span></div></div>`;
   return `
     <section class="ranking-grid">
       <article class="card">
         <h3>ТОП-5 лучших подразделений</h3>
-        ${renderRows(best)}
+        ${best.length ? renderRows(best) : emptyRows}
       </article>
       <article class="card">
         <h3>ТОП-5 проблемных подразделений</h3>
-        ${renderRows(problem)}
+        ${problem.length ? renderRows(problem) : emptyRows}
       </article>
     </section>
   `;
@@ -628,14 +628,13 @@ function renderAttentionBlock(report) {
 
 function renderDepartmentHeatMap(report) {
   const rows = departmentRows(report);
-  if (!rows.length) return "";
   return `
     <section class="dashboard-band">
       <div class="band-head"><h3>Heat Map подразделений</h3><span class="muted">риск понятным языком для руководителя</span></div>
       <div class="table-scroll">
         <table class="data-table heatmap-table">
           <thead><tr><th>Подразделение</th><th>Активность</th><th>Отклонение</th><th>Риск</th><th>Ответственный</th><th>Действие</th></tr></thead>
-          <tbody>${rows.map(row => `
+          <tbody>${rows.length ? rows.map(row => `
             <tr>
               <td><strong>${ui(row.label)}</strong><small>${ui(row.reason)}</small></td>
               <td>${ui(row.activityText)}</td>
@@ -644,7 +643,16 @@ function renderDepartmentHeatMap(report) {
               <td>${ui(row.responsible)}</td>
               <td><button class="small-button" data-open-investigation="true">Открыть расследование</button></td>
             </tr>
-          `).join("")}</tbody>
+          `).join("") : `
+            <tr>
+              <td><strong>Нет данных</strong><small>Подразделения пока не рассчитаны.</small></td>
+              <td>-</td>
+              <td>-</td>
+              <td><span class="badge status-unknown">UNKNOWN</span></td>
+              <td>-</td>
+              <td><button class="small-button" data-open-investigation="true">Открыть расследование</button></td>
+            </tr>
+          `}</tbody>
         </table>
       </div>
     </section>
@@ -653,10 +661,21 @@ function renderDepartmentHeatMap(report) {
 
 function renderDepartmentLeaderCard(report) {
   const rows = departmentRows(report);
-  if (!rows.length) return "";
-  const row = [...rows].sort((a, b) => statusWeight(b.status) - statusWeight(a.status) || (a.activity ?? 101) - (b.activity ?? 101))[0];
-  const best = [...rows].sort((a, b) => (b.activity ?? -1) - (a.activity ?? -1))[0];
-  const worst = [...rows].sort((a, b) => (a.activity ?? 101) - (b.activity ?? 101))[0];
+  const row = rows.length
+    ? [...rows].sort((a, b) => statusWeight(b.status) - statusWeight(a.status) || (a.activity ?? 101) - (b.activity ?? 101))[0]
+    : {
+        label: "Нет данных",
+        responsible: "-",
+        total: "-",
+        active: "-",
+        activityText: "-",
+        trend: null,
+        status: "UNKNOWN",
+        risk: "UNKNOWN",
+        check: "Дождаться расчета подразделений и проверить источник worktime management."
+      };
+  const best = rows.length ? [...rows].sort((a, b) => (b.activity ?? -1) - (a.activity ?? -1))[0] : row;
+  const worst = rows.length ? [...rows].sort((a, b) => (a.activity ?? 101) - (b.activity ?? 101))[0] : row;
   return `
     <section class="card leader-card">
       <div class="section-head">
@@ -808,6 +827,7 @@ function renderOperator(data, report) {
     ${renderExecutiveMetrics(report, incidents)}
     ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
     ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
+    ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1448,6 +1468,70 @@ function renderAgentQualityHistory(history, summary) {
   `;
 }
 
+function renderAgentQualityNodes(nodes, summary) {
+  const items = Array.isArray(nodes) ? nodes : [];
+  const s = summary || {};
+  const problematic = items.filter(item => String(item.status || "UNKNOWN") !== "OK" || !item.kpi_accepted);
+  const rows = (problematic.length ? problematic : items).slice(0, 10);
+  const status = Number(s.total_nodes || 0) === 0
+    ? "UNKNOWN"
+    : (Number(s.accepted_kpi_nodes_pct || 0) >= 80 ? "OK" : "WARNING");
+  return `
+    <section class="card agent-quality-nodes-card">
+      <div class="section-head">
+        <div>
+          <h3>Качество данных по рабочим местам</h3>
+          <p class="muted">Какие узлы подтверждают KPI, а какие снижают доверие к управленческой аналитике.</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      <div class="quality-decision">
+        <div><span class="muted">Всего узлов</span><strong>${escapeHtml(s.total_nodes ?? 0)}</strong></div>
+        <div><span class="muted">OK</span><strong>${escapeHtml(s.ok_nodes ?? 0)}</strong></div>
+        <div><span class="muted">Проблемных</span><strong>${escapeHtml(Number(s.degraded_nodes || 0) + Number(s.unknown_nodes || 0))}</strong></div>
+        <div><span class="muted">KPI принят</span><strong>${escapeHtml(s.accepted_kpi_nodes_pct ?? 0)}%</strong></div>
+      </div>
+      ${Number(s.total_nodes || 0) > 0 && Number(s.accepted_kpi_nodes_pct || 0) < 80 ? `<div class="quality-warning">KPI требует проверки: менее 80% узлов дают подтвержденные данные.</div>` : ""}
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Узел</th>
+              <th>Статус</th>
+              <th>Источник</th>
+              <th>Последняя телеметрия</th>
+              <th>KPI</th>
+              <th>Рекомендация</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr>
+                <td>${ui(item.hostname || "unknown")}</td>
+                <td><span class="badge ${statusClass(item.status)}">${ui(item.status || "UNKNOWN")}</span></td>
+                <td>${ui(item.source || "unknown")}</td>
+                <td>${escapeHtml(item.last_seen_utc || "-")}</td>
+                <td>${item.kpi_accepted ? "да" : "нет"}</td>
+                <td>${ui(item.recommendation || "")}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>Нет данных</td>
+                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>unknown</td>
+                <td>-</td>
+                <td>нет</td>
+                <td>История качества по рабочим местам отсутствует.</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+      ${problematic.length > 10 ? `<p class="muted small">Показаны первые 10 проблемных узлов из ${escapeHtml(problematic.length)}.</p>` : ""}
+    </section>
+  `;
+}
+
 function renderReports(data) {
   data = periodReport(data);
   return `
@@ -1484,6 +1568,7 @@ function renderReports(data) {
     ${renderKpiCards(data.kpis)}
     ${renderAgentQuality(data.agent_quality, data.agent_quality_explain)}
     ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
+    ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>

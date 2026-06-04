@@ -117,11 +117,18 @@ async function main() {
       const ok = activeTab.trim() === item.label && bodyText.includes(item.marker) && !stillLoading;
       results.push({ tab: item.tab, label: item.label, marker: item.marker, ok });
       if (item.tab === "operator") {
+        await page.waitForFunction(
+          () => document.body && document.body.innerText.includes("Качество данных по рабочим местам"),
+          null,
+          { timeout },
+        );
+        const readyBodyText = await page.locator("#content").innerText({ timeout });
         const requiredExecutive = [
           "Сотрудников в работе",
           "Средний индекс активности",
           "Достоверность данных агента",
           "Стабильность агента за 7 дней",
+          "Качество данных по рабочим местам",
           "ТОП-5 лучших подразделений",
           "ТОП-5 проблемных подразделений",
           "Требует внимания",
@@ -130,7 +137,7 @@ async function main() {
         ];
         checks.push({
           name: "executive_dashboard_layer",
-          ok: requiredExecutive.every((marker) => containsText(bodyText, marker)),
+          ok: requiredExecutive.every((marker) => containsText(readyBodyText, marker)),
           required: requiredExecutive,
         });
       }

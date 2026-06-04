@@ -219,6 +219,29 @@ struct AgentQualityHistorySummary {
     kpi_accepted_pct: u8,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct AgentQualityNodeItem {
+    hostname: String,
+    last_seen_utc: String,
+    source: String,
+    status: String,
+    kpi_accepted: bool,
+    sessions_total: usize,
+    rdp_sessions: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collector_error: Option<String>,
+    recommendation: String,
+}
+
+#[derive(Clone, Debug, Default, Serialize)]
+struct AgentQualityNodesSummary {
+    total_nodes: usize,
+    ok_nodes: usize,
+    degraded_nodes: usize,
+    unknown_nodes: usize,
+    accepted_kpi_nodes_pct: u8,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -459,6 +482,8 @@ struct Snapshot {
     agent_quality: AgentQuality,
     agent_quality_history: Vec<AgentQualityHistoryItem>,
     agent_quality_history_summary: AgentQualityHistorySummary,
+    agent_quality_nodes: Vec<AgentQualityNodeItem>,
+    agent_quality_nodes_summary: AgentQualityNodesSummary,
 }
 
 #[derive(Debug)]
@@ -968,6 +993,8 @@ fn build_snapshot(args: &Cli) -> Snapshot {
     let timeout = Duration::from_secs(args.timeout_seconds);
     let agent_quality_history = load_agent_quality_history(&args.telemetry_store_path, 7);
     let agent_quality_history_summary = summarize_agent_quality_history(&agent_quality_history);
+    let agent_quality_nodes = load_agent_quality_nodes(&args.telemetry_store_path, 7);
+    let agent_quality_nodes_summary = summarize_agent_quality_nodes(&agent_quality_nodes);
     Snapshot {
         generated_at_utc: now(),
         detmir_status: command_json_source("detmir_status", &args.status_cmd, timeout),
@@ -997,6 +1024,8 @@ fn build_snapshot(args: &Cli) -> Snapshot {
         agent_quality: load_agent_quality(&args.telemetry_store_path),
         agent_quality_history,
         agent_quality_history_summary,
+        agent_quality_nodes,
+        agent_quality_nodes_summary,
     }
 }
 
@@ -1042,6 +1071,10 @@ fn load_agent_quality_history_for_date(
 }
 
 fn telemetry_record_date_and_payload(line: &str) -> Option<(NaiveDate, Value)> {
+    telemetry_record_time_date_and_payload(line).map(|(_, date, record)| (date, record))
+}
+
+fn telemetry_record_time_date_and_payload(line: &str) -> Option<(String, NaiveDate, Value)> {
     let envelope = serde_json::from_str::<Value>(line).ok()?;
     let record = envelope
         .get("record")
@@ -1051,10 +1084,11 @@ fn telemetry_record_date_and_payload(line: &str) -> Option<(NaiveDate, Value)> {
         .get("timestamp")
         .or_else(|| envelope.get("stored_at_utc"))
         .and_then(Value::as_str)?;
-    let date = chrono::DateTime::parse_from_rfc3339(timestamp)
-        .ok()?
-        .date_naive();
-    Some((date, record))
+    let parsed = chrono::DateTime::parse_from_rfc3339(timestamp).ok()?;
+    let last_seen_utc = parsed
+        .with_timezone(&Utc)
+        .to_rfc3339_opts(SecondsFormat::Secs, true);
+    Some((last_seen_utc, parsed.date_naive(), record))
 }
 
 fn agent_quality_history_item(date: NaiveDate, record: &Value) -> AgentQualityHistoryItem {
@@ -1100,6 +1134,113 @@ fn summarize_agent_quality_history(
         unknown_days,
         kpi_accepted_days,
         kpi_accepted_pct,
+    }
+}
+
+fn load_agent_quality_nodes(path: &Path, days: i64) -> Vec<AgentQualityNodeItem> {
+    load_agent_quality_nodes_for_date(path, days, Utc::now().date_naive())
+}
+
+fn load_agent_quality_nodes_for_date(
+    path: &Path,
+    days: i64,
+    today: NaiveDate,
+) -> Vec<AgentQualityNodeItem> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let start = today - chrono::Duration::days(days.saturating_sub(1));
+    let mut by_node: BTreeMap<String, (String, Value)> = BTreeMap::new();
+    for line in text.lines() {
+        let Some((last_seen_utc, date, record)) = telemetry_record_time_date_and_payload(line)
+        else {
+            continue;
+        };
+        if date < start || date > today {
+            continue;
+        }
+        let key = telemetry_node_key(&record);
+        let should_replace = by_node
+            .get(&key)
+            .map(|(current_last_seen, _)| last_seen_utc >= *current_last_seen)
+            .unwrap_or(true);
+        if should_replace {
+            by_node.insert(key, (last_seen_utc, record));
+        }
+    }
+    let mut nodes = by_node
+        .into_values()
+        .map(|(last_seen_utc, record)| agent_quality_node_item(last_seen_utc, &record))
+        .collect::<Vec<_>>();
+    nodes.sort_by(|left, right| {
+        agent_quality_node_sort_rank(left)
+            .cmp(&agent_quality_node_sort_rank(right))
+            .then_with(|| left.hostname.cmp(&right.hostname))
+    });
+    nodes
+}
+
+fn telemetry_node_key(record: &Value) -> String {
+    record
+        .get("hostname")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| {
+            record
+                .get("machine_id")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+        })
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+fn agent_quality_node_item(last_seen_utc: String, record: &Value) -> AgentQualityNodeItem {
+    let quality = agent_quality_from_record(record);
+    let explain = agent_quality_explain(&quality);
+    AgentQualityNodeItem {
+        hostname: telemetry_node_key(record),
+        last_seen_utc,
+        source: quality.collector_source,
+        status: explain.status,
+        kpi_accepted: explain.kpi_accepted,
+        sessions_total: quality.sessions_collected_total,
+        rdp_sessions: quality.rdp_sessions_total,
+        collector_error: quality.collector_error,
+        recommendation: explain.recommendation,
+    }
+}
+
+fn agent_quality_node_sort_rank(item: &AgentQualityNodeItem) -> u8 {
+    match item.status.as_str() {
+        "DEGRADED" => 0,
+        "WARNING" => 1,
+        "UNKNOWN" => 2,
+        "OK" if item.kpi_accepted => 4,
+        _ => 3,
+    }
+}
+
+fn summarize_agent_quality_nodes(nodes: &[AgentQualityNodeItem]) -> AgentQualityNodesSummary {
+    let total_nodes = nodes.len();
+    let ok_nodes = nodes.iter().filter(|item| item.status == "OK").count();
+    let unknown_nodes = nodes.iter().filter(|item| item.status == "UNKNOWN").count();
+    let degraded_nodes = nodes
+        .iter()
+        .filter(|item| item.status != "OK" && item.status != "UNKNOWN")
+        .count();
+    let accepted_nodes = nodes.iter().filter(|item| item.kpi_accepted).count();
+    let accepted_kpi_nodes_pct = if total_nodes == 0 {
+        0
+    } else {
+        ((accepted_nodes * 100) / total_nodes) as u8
+    };
+    AgentQualityNodesSummary {
+        total_nodes,
+        ok_nodes,
+        degraded_nodes,
+        unknown_nodes,
+        accepted_kpi_nodes_pct,
     }
 }
 
@@ -1544,6 +1685,8 @@ fn build_reports(
     let agent_quality_explain = agent_quality_explain(&agent_quality);
     let agent_quality_history = snapshot.agent_quality_history.clone();
     let agent_quality_history_summary = snapshot.agent_quality_history_summary.clone();
+    let agent_quality_nodes = snapshot.agent_quality_nodes.clone();
+    let agent_quality_nodes_summary = snapshot.agent_quality_nodes_summary.clone();
     let worktime = worktime_block(snapshot);
     let one_c = one_c_block(snapshot);
     let dlp_block_value = dlp_block(snapshot);
@@ -1596,6 +1739,12 @@ fn build_reports(
     ];
     if agent_quality_history_summary.ok_days < 5 {
         executive_points.push("KPI требует валидации: нестабильный сбор данных агента".to_string());
+    }
+    if agent_quality_nodes_summary.total_nodes > 0
+        && agent_quality_nodes_summary.accepted_kpi_nodes_pct < 80
+    {
+        executive_points
+            .push("KPI требует проверки: менее 80% узлов дают подтвержденные данные".to_string());
     }
     let recommendations = owner_recommendations(snapshot, &summary);
     let workforce_summary = ReportWorkforceSummary {
@@ -1695,6 +1844,8 @@ fn build_reports(
         "agent_quality_explain": agent_quality_explain,
         "agent_quality_history": agent_quality_history,
         "agent_quality_history_summary": agent_quality_history_summary,
+        "agent_quality_nodes": agent_quality_nodes,
+        "agent_quality_nodes_summary": agent_quality_nodes_summary,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -3143,6 +3294,11 @@ fn render_report_markdown(
         &snapshot.agent_quality_history,
         &snapshot.agent_quality_history_summary,
     );
+    append_agent_quality_nodes_markdown(
+        &mut text,
+        &snapshot.agent_quality_nodes,
+        &snapshot.agent_quality_nodes_summary,
+    );
     append_ueba_risk_markdown(&mut text, ueba_risk);
     append_workforce_policy_markdown(&mut text, workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
@@ -3206,6 +3362,62 @@ fn append_agent_quality_history_markdown(
             if item.kpi_accepted { "да" } else { "нет" },
             error
         ));
+    }
+}
+
+fn append_agent_quality_nodes_markdown(
+    text: &mut String,
+    nodes: &[AgentQualityNodeItem],
+    summary: &AgentQualityNodesSummary,
+) {
+    text.push_str("\n## Качество данных по узлам\n\n");
+    text.push_str(&format!("- Всего узлов: {}\n", summary.total_nodes));
+    text.push_str(&format!("- OK узлов: {}\n", summary.ok_nodes));
+    text.push_str(&format!(
+        "- WARNING/DEGRADED узлов: {}\n",
+        summary.degraded_nodes
+    ));
+    text.push_str(&format!("- UNKNOWN узлов: {}\n", summary.unknown_nodes));
+    text.push_str(&format!(
+        "- Узлов, принятых в KPI: {}%\n",
+        summary.accepted_kpi_nodes_pct
+    ));
+    if nodes.is_empty() {
+        text.push_str("- История качества по рабочим местам отсутствует.\n");
+        return;
+    }
+    let mut displayed = 0usize;
+    for item in nodes {
+        if item.status == "OK" && item.kpi_accepted && displayed >= 10 {
+            continue;
+        }
+        if item.status == "OK" && item.kpi_accepted && nodes.len() > 10 {
+            continue;
+        }
+        let error = item
+            .collector_error
+            .as_ref()
+            .map(|value| format!(", error={value}"))
+            .unwrap_or_default();
+        text.push_str(&format!(
+            "- {}: status={}, source={}, last_seen={}, sessions={}, rdp={}, KPI={}{}; рекомендация: {}\n",
+            item.hostname,
+            item.status,
+            item.source,
+            item.last_seen_utc,
+            item.sessions_total,
+            item.rdp_sessions,
+            if item.kpi_accepted { "да" } else { "нет" },
+            error,
+            item.recommendation
+        ));
+        displayed += 1;
+        if displayed >= 10 {
+            break;
+        }
+    }
+    if displayed == 0 {
+        text.push_str("- Проблемных рабочих мест не найдено.\n");
     }
 }
 
@@ -5252,6 +5464,162 @@ mod tests {
         assert_eq!(summary.kpi_accepted_days, 0);
     }
 
+    fn telemetry_node_line(
+        date: &str,
+        hostname: Option<&str>,
+        machine_id: Option<&str>,
+        source: Option<&str>,
+        error: Option<&str>,
+    ) -> String {
+        let diagnostics = source.map(|collector_source| {
+            json!({
+                "collector_source": collector_source,
+                "collector_error": error,
+                "sessions_collected_total": 4,
+                "active_sessions_total": 3,
+                "rdp_sessions_total": 2
+            })
+        });
+        serde_json::to_string(&json!({
+            "record": {
+                "agent_id": "agent-node",
+                "hostname": hostname,
+                "machine_id": machine_id,
+                "timestamp": format!("{date}T10:00:00Z"),
+                "diagnostics": diagnostics
+            }
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn agent_quality_nodes_counts_single_ok_node() {
+        let (_dir, path) = write_history(vec![telemetry_node_line(
+            "2026-06-04",
+            Some("HOST-EXAMPLE-1"),
+            None,
+            Some("wts_api"),
+            None,
+        )]);
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let nodes = load_agent_quality_nodes_for_date(&path, 7, today);
+        let summary = summarize_agent_quality_nodes(&nodes);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].hostname, "HOST-EXAMPLE-1");
+        assert_eq!(nodes[0].status, "OK");
+        assert!(nodes[0].kpi_accepted);
+        assert_eq!(summary.total_nodes, 1);
+        assert_eq!(summary.ok_nodes, 1);
+        assert_eq!(summary.accepted_kpi_nodes_pct, 100);
+    }
+
+    #[test]
+    fn agent_quality_nodes_count_mixed_ok_degraded_unknown() {
+        let (_dir, path) = write_history(vec![
+            telemetry_node_line(
+                "2026-06-04",
+                Some("HOST-EXAMPLE-OK"),
+                None,
+                Some("wts_api"),
+                None,
+            ),
+            telemetry_node_line(
+                "2026-06-04",
+                Some("HOST-EXAMPLE-FALLBACK"),
+                None,
+                Some("quser_utf16"),
+                None,
+            ),
+            telemetry_node_line(
+                "2026-06-04",
+                Some("HOST-EXAMPLE-DEGRADED"),
+                None,
+                Some("local_fallback"),
+                None,
+            ),
+            telemetry_node_line("2026-06-04", Some("HOST-EXAMPLE-UNKNOWN"), None, None, None),
+        ]);
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let nodes = load_agent_quality_nodes_for_date(&path, 7, today);
+        let summary = summarize_agent_quality_nodes(&nodes);
+        assert_eq!(summary.total_nodes, 4);
+        assert_eq!(summary.ok_nodes, 1);
+        assert_eq!(summary.degraded_nodes, 2);
+        assert_eq!(summary.unknown_nodes, 1);
+        assert_eq!(summary.accepted_kpi_nodes_pct, 50);
+    }
+
+    #[test]
+    fn agent_quality_nodes_local_fallback_is_excluded_from_kpi() {
+        let (_dir, path) = write_history(vec![telemetry_node_line(
+            "2026-06-04",
+            Some("HOST-EXAMPLE-LOCAL"),
+            None,
+            Some("local_fallback"),
+            None,
+        )]);
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let nodes = load_agent_quality_nodes_for_date(&path, 7, today);
+        let summary = summarize_agent_quality_nodes(&nodes);
+        assert_eq!(nodes[0].status, "DEGRADED");
+        assert!(!nodes[0].kpi_accepted);
+        assert!(nodes[0].recommendation.contains("WTS API"));
+        assert_eq!(summary.accepted_kpi_nodes_pct, 0);
+    }
+
+    #[test]
+    fn agent_quality_nodes_collector_error_is_visible() {
+        let (_dir, path) = write_history(vec![telemetry_node_line(
+            "2026-06-04",
+            Some("HOST-EXAMPLE-ERR"),
+            None,
+            Some("wts_api"),
+            Some("collector timeout"),
+        )]);
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let nodes = load_agent_quality_nodes_for_date(&path, 7, today);
+        let summary = summarize_agent_quality_nodes(&nodes);
+        assert_eq!(nodes[0].status, "DEGRADED");
+        assert_eq!(
+            nodes[0].collector_error.as_deref(),
+            Some("collector timeout")
+        );
+        assert!(nodes[0].recommendation.contains("журнал агента"));
+        assert_eq!(summary.degraded_nodes, 1);
+    }
+
+    #[test]
+    fn agent_quality_nodes_handle_empty_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("missing.jsonl");
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let nodes = load_agent_quality_nodes_for_date(&path, 7, today);
+        let summary = summarize_agent_quality_nodes(&nodes);
+        assert!(nodes.is_empty());
+        assert_eq!(summary.total_nodes, 0);
+        assert_eq!(summary.accepted_kpi_nodes_pct, 0);
+    }
+
+    #[test]
+    fn agent_quality_nodes_use_machine_id_or_unknown_for_old_payloads() {
+        let (_dir, path) = write_history(vec![
+            telemetry_node_line("2026-06-04", None, Some("MACHINE-EXAMPLE-1"), None, None),
+            telemetry_node_line("2026-06-04", None, None, None, None),
+        ]);
+        let today = NaiveDate::from_ymd_opt(2026, 6, 4).unwrap();
+        let nodes = load_agent_quality_nodes_for_date(&path, 7, today);
+        let summary = summarize_agent_quality_nodes(&nodes);
+        let names = nodes
+            .iter()
+            .map(|item| item.hostname.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"MACHINE-EXAMPLE-1"));
+        assert!(names.contains(&"unknown"));
+        assert!(nodes.iter().all(|item| item.status == "UNKNOWN"));
+        assert!(nodes.iter().all(|item| !item.kpi_accepted));
+        assert_eq!(summary.unknown_nodes, 2);
+    }
+
     #[test]
     fn incident_id_is_stable() {
         assert_eq!(
@@ -5575,6 +5943,37 @@ mod tests {
             agent_quality: AgentQuality::default(),
             agent_quality_history: Vec::new(),
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
+            agent_quality_nodes: vec![
+                AgentQualityNodeItem {
+                    hostname: "HOST-EXAMPLE-OK".to_string(),
+                    last_seen_utc: "2026-06-03T10:00:00Z".to_string(),
+                    source: "wts_api".to_string(),
+                    status: "OK".to_string(),
+                    kpi_accepted: true,
+                    sessions_total: 3,
+                    rdp_sessions: 1,
+                    collector_error: None,
+                    recommendation: "Действий не требуется.".to_string(),
+                },
+                AgentQualityNodeItem {
+                    hostname: "HOST-EXAMPLE-DEGRADED".to_string(),
+                    last_seen_utc: "2026-06-03T10:00:00Z".to_string(),
+                    source: "local_fallback".to_string(),
+                    status: "DEGRADED".to_string(),
+                    kpi_accepted: false,
+                    sessions_total: 1,
+                    rdp_sessions: 0,
+                    collector_error: None,
+                    recommendation: "Проверить основной сбор WTS API.".to_string(),
+                },
+            ],
+            agent_quality_nodes_summary: AgentQualityNodesSummary {
+                total_nodes: 2,
+                ok_nodes: 1,
+                degraded_nodes: 1,
+                unknown_nodes: 0,
+                accepted_kpi_nodes_pct: 50,
+            },
         };
         let evidence = DlpEvidenceResponse {
             ok: true,
@@ -5660,6 +6059,25 @@ mod tests {
         assert_eq!(report["workforce"]["trend_status"], "daily_only");
         assert_eq!(report["workforce"]["insights"].as_array().unwrap().len(), 1);
         assert_eq!(report["agent_quality"]["quality_status"], "unknown");
+        assert!(report["agent_quality_nodes"].is_array());
+        assert!(report["agent_quality_nodes_summary"].is_object());
+        assert_eq!(
+            report["agent_quality_nodes_summary"]["accepted_kpi_nodes_pct"],
+            50
+        );
+        assert!(
+            report["executive_points"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item.as_str().unwrap().contains("менее 80% узлов"))
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Качество данных по узлам")
+        );
         assert!(
             report["markdown"]
                 .as_str()
@@ -5743,6 +6161,8 @@ confidence:
             agent_quality: AgentQuality::default(),
             agent_quality_history: Vec::new(),
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
+            agent_quality_nodes: Vec::new(),
+            agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
         };
         let metrics = ReportMetrics {
             users_count: 1,
@@ -5848,6 +6268,8 @@ confidence:
                 agent_quality: AgentQuality::default(),
                 agent_quality_history: Vec::new(),
                 agent_quality_history_summary: AgentQualityHistorySummary::default(),
+                agent_quality_nodes: Vec::new(),
+                agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
             }
         }
 
@@ -5938,6 +6360,8 @@ confidence:
             agent_quality: AgentQuality::default(),
             agent_quality_history: Vec::new(),
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
+            agent_quality_nodes: Vec::new(),
+            agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
         };
         let policy = WorkforcePolicy {
             default_role: "accountant".to_string(),
@@ -6039,6 +6463,8 @@ confidence:
             agent_quality: AgentQuality::default(),
             agent_quality_history: Vec::new(),
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
+            agent_quality_nodes: Vec::new(),
+            agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
         };
         let explain = build_workforce_policy_explain(&snapshot, &policy_path, false);
         assert_eq!(explain["configured"], true);

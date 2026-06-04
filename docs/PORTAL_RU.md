@@ -96,6 +96,44 @@ agent и проверить поступление telemetry JSONL. Если и�
 Если за 7 дней меньше 5 дней `OK`, портал и executive summary показывают:
 `KPI требует валидации: нестабильный сбор данных агента`.
 
+## Качество данных по рабочим местам
+
+Портал показывает карточку `Качество данных по рабочим местам`. Она отвечает
+на управленческий вопрос: какие узлы дают подтвержденные данные, а какие
+снижают доверие к KPI.
+
+`GET /api/reports` отдает:
+
+- `agent_quality_nodes` - последняя запись качества по каждому
+  `hostname`, при его отсутствии по `machine_id`, иначе `unknown`;
+- `agent_quality_nodes_summary` - сводка по узлам.
+
+Элемент `agent_quality_nodes` содержит:
+
+- `hostname`;
+- `last_seen_utc`;
+- `source`;
+- `status`;
+- `kpi_accepted`;
+- `sessions_total`;
+- `rdp_sessions`;
+- `collector_error`, если он есть;
+- `recommendation`.
+
+Сводка содержит:
+
+- `total_nodes`;
+- `ok_nodes`;
+- `degraded_nodes` - узлы в `WARNING` или `DEGRADED`;
+- `unknown_nodes`;
+- `accepted_kpi_nodes_pct`.
+
+Если `accepted_kpi_nodes_pct < 80` и узлы есть, executive summary показывает:
+`KPI требует проверки: менее 80% узлов дают подтвержденные данные`.
+
+Главная страница не перегружается: показывается сводка и таблица максимум из
+10 проблемных узлов. Источник `local_fallback` никогда не подтверждает KPI.
+
 ## Risk -> Investigation
 
 Кнопка `Открыть расследование` переводит пользователя в read-only карточку.
