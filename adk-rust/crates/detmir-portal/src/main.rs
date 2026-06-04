@@ -165,6 +165,30 @@ struct SourceStatus {
     payload: Option<Value>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct AgentQuality {
+    collector_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    collector_error: Option<String>,
+    sessions_collected_total: usize,
+    active_sessions_total: usize,
+    rdp_sessions_total: usize,
+    quality_status: String,
+}
+
+impl Default for AgentQuality {
+    fn default() -> Self {
+        Self {
+            collector_source: "unknown".to_string(),
+            collector_error: None,
+            sessions_collected_total: 0,
+            active_sessions_total: 0,
+            rdp_sessions_total: 0,
+            quality_status: "unknown".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -402,6 +426,7 @@ struct Snapshot {
     worktime: SourceStatus,
     worktime_management: SourceStatus,
     one_c: SourceStatus,
+    agent_quality: AgentQuality,
 }
 
 #[derive(Debug)]
@@ -935,7 +960,90 @@ fn build_snapshot(args: &Cli) -> Snapshot {
             &format!("{}/api/health", args.one_c_url.trim_end_matches('/')),
             timeout,
         ),
+        agent_quality: load_agent_quality(&args.telemetry_store_path),
     }
+}
+
+fn load_agent_quality(path: &Path) -> AgentQuality {
+    let Some(payload) = latest_telemetry_record(path) else {
+        return AgentQuality::default();
+    };
+    agent_quality_from_record(&payload)
+}
+
+fn latest_telemetry_record(path: &Path) -> Option<Value> {
+    let text = fs::read_to_string(path).ok()?;
+    text.lines().rev().find_map(|line| {
+        let envelope = serde_json::from_str::<Value>(line).ok()?;
+        envelope.get("record").cloned().or(Some(envelope))
+    })
+}
+
+fn agent_quality_from_record(record: &Value) -> AgentQuality {
+    let Some(diagnostics) = record.get("diagnostics").and_then(Value::as_object) else {
+        return AgentQuality::default();
+    };
+    let collector_source = diagnostics
+        .get("collector_source")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("unknown")
+        .to_string();
+    let collector_error = diagnostics
+        .get("collector_error")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string);
+    AgentQuality {
+        sessions_collected_total: diagnostics
+            .get("sessions_collected_total")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
+        active_sessions_total: diagnostics
+            .get("active_sessions_total")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
+        rdp_sessions_total: diagnostics
+            .get("rdp_sessions_total")
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as usize,
+        quality_status: agent_quality_status(&collector_source, collector_error.as_deref())
+            .to_string(),
+        collector_source,
+        collector_error,
+    }
+}
+
+fn agent_quality_status(collector_source: &str, collector_error: Option<&str>) -> &'static str {
+    if let Some(error) = collector_error.filter(|value| !value.trim().is_empty()) {
+        return if critical_collector_error(error) {
+            "error"
+        } else {
+            "degraded"
+        };
+    }
+    match collector_source {
+        "wts_api" => "ok",
+        "quser_utf16" | "quser_lossy" | "env_sessionname_fallback" => "fallback",
+        "local_fallback" => "degraded",
+        _ => "unknown",
+    }
+}
+
+fn critical_collector_error(error: &str) -> bool {
+    let lower = error.to_lowercase();
+    [
+        "access denied",
+        "permission",
+        "unauthorized",
+        "invalid",
+        "panic",
+        "cannot parse",
+        "failed to parse",
+        "missing required",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
 }
 
 fn command_json_source(name: &str, command: &str, timeout: Duration) -> SourceStatus {
@@ -1260,6 +1368,7 @@ fn build_reports(
     };
     let grafana = grafana_block(snapshot);
     let collection = collection_block(snapshot.detmir_check.payload.as_ref());
+    let agent_quality = snapshot.agent_quality.clone();
     let worktime = worktime_block(snapshot);
     let one_c = one_c_block(snapshot);
     let dlp_block_value = dlp_block(snapshot);
@@ -1288,6 +1397,10 @@ fn build_reports(
     };
     let executive_points = vec![
         format!("Сбор данных: {}. {}", collection.status, collection.text),
+        format!(
+            "Качество данных агента: {} через {}",
+            agent_quality.quality_status, agent_quality.collector_source
+        ),
         format!(
             "Работа сегодня: сотрудников={}, активное время={}",
             metrics.users_count,
@@ -1332,6 +1445,7 @@ fn build_reports(
         "executive_points": executive_points,
         "kpis": [
             report_kpi("UEBA риск", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("risk score")),
+            report_kpi("Качество данных агента", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
             report_kpi("Индекс активности", workforce_index_text(metrics.workforce_index), workforce_index_status(metrics.workforce_index), "proxy: активное время / плановое рабочее время"),
             weighted_activity_kpi_from_policy(&workforce_policy_explain),
             report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
@@ -1348,6 +1462,7 @@ fn build_reports(
                 "items": [
                     report_item("DetMir status", snapshot.detmir_status.status.clone(), snapshot.detmir_status.summary.clone()),
                     report_item("Сбор данных", collection.status.clone(), collection.text.clone()),
+                    report_item("Качество данных агента", agent_quality.quality_status.clone(), format!("source={}, sessions={}, active={}, rdp={}", agent_quality.collector_source, agent_quality.sessions_collected_total, agent_quality.active_sessions_total, agent_quality.rdp_sessions_total)),
                     report_item("Grafana", grafana.status.clone(), grafana.text.clone()),
                     report_item("1C analytics", one_c.status.clone(), one_c.text.clone())
                 ]
@@ -1396,6 +1511,7 @@ fn build_reports(
         ],
         "ueba_risk": ueba_risk,
         "ueba_baseline": ueba_baseline,
+        "agent_quality": agent_quality,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -2791,6 +2907,19 @@ fn render_report_markdown(
         "- Индекс активности: {}\n",
         workforce_index_text(metrics.workforce_index)
     ));
+    text.push_str(&format!(
+        "- Качество данных агента: {} через {}\n",
+        snapshot.agent_quality.quality_status, snapshot.agent_quality.collector_source
+    ));
+    text.push_str(&format!(
+        "- Сессии агента: всего={}, активные={}, RDP={}\n",
+        snapshot.agent_quality.sessions_collected_total,
+        snapshot.agent_quality.active_sessions_total,
+        snapshot.agent_quality.rdp_sessions_total
+    ));
+    if let Some(error) = &snapshot.agent_quality.collector_error {
+        text.push_str(&format!("- Ошибка коллектора агента: {error}\n"));
+    }
     text.push_str(&format!(
         "- Сотрудники за сегодня: {}\n",
         metrics.users_count
@@ -4677,6 +4806,57 @@ mod tests {
     }
 
     #[test]
+    fn agent_quality_status_prioritizes_collector_risk() {
+        assert_eq!(agent_quality_status("wts_api", None), "ok");
+        assert_eq!(agent_quality_status("quser_utf16", None), "fallback");
+        assert_eq!(agent_quality_status("quser_lossy", None), "fallback");
+        assert_eq!(
+            agent_quality_status("env_sessionname_fallback", None),
+            "fallback"
+        );
+        assert_eq!(agent_quality_status("local_fallback", None), "degraded");
+        assert_eq!(agent_quality_status("unknown", None), "unknown");
+        assert_eq!(
+            agent_quality_status("wts_api", Some("temporary query failure")),
+            "degraded"
+        );
+        assert_eq!(
+            agent_quality_status("wts_api", Some("access denied by WTS API")),
+            "error"
+        );
+    }
+
+    #[test]
+    fn agent_quality_defaults_to_unknown_for_old_payloads() {
+        let quality = agent_quality_from_record(&json!({
+            "agent_id": "agent-legacy",
+            "hostname": "HOST-EXAMPLE"
+        }));
+        assert_eq!(quality.quality_status, "unknown");
+        assert_eq!(quality.collector_source, "unknown");
+        assert_eq!(quality.sessions_collected_total, 0);
+    }
+
+    #[test]
+    fn agent_quality_loads_latest_jsonl_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("telemetry.jsonl");
+        fs::write(
+            &path,
+            r#"{"record":{"agent_id":"old","diagnostics":{"collector_source":"local_fallback","sessions_collected_total":1,"active_sessions_total":1,"rdp_sessions_total":0}}}
+{"record":{"agent_id":"new","diagnostics":{"collector_source":"wts_api","sessions_collected_total":3,"active_sessions_total":2,"rdp_sessions_total":2}}}
+"#,
+        )
+        .unwrap();
+        let quality = load_agent_quality(&path);
+        assert_eq!(quality.quality_status, "ok");
+        assert_eq!(quality.collector_source, "wts_api");
+        assert_eq!(quality.sessions_collected_total, 3);
+        assert_eq!(quality.active_sessions_total, 2);
+        assert_eq!(quality.rdp_sessions_total, 2);
+    }
+
+    #[test]
     fn incident_id_is_stable() {
         assert_eq!(
             incident_id("service", "grafana-data", "stale"),
@@ -4996,6 +5176,7 @@ mod tests {
                 error: None,
                 payload: Some(json!({"status": "ok", "companies_total": 47})),
             },
+            agent_quality: AgentQuality::default(),
         };
         let evidence = DlpEvidenceResponse {
             ok: true,
@@ -5080,6 +5261,13 @@ mod tests {
         assert_eq!(report["workforce_policy"]["configured"], false);
         assert_eq!(report["workforce"]["trend_status"], "daily_only");
         assert_eq!(report["workforce"]["insights"].as_array().unwrap().len(), 1);
+        assert_eq!(report["agent_quality"]["quality_status"], "unknown");
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("Качество данных агента")
+        );
         assert_eq!(
             report["workforce"]["department_comparison"]
                 .as_array()
@@ -5154,6 +5342,7 @@ confidence:
                 error: None,
                 payload: None,
             },
+            agent_quality: AgentQuality::default(),
         };
         let metrics = ReportMetrics {
             users_count: 1,
@@ -5256,6 +5445,7 @@ confidence:
                     error: None,
                     payload: None,
                 },
+                agent_quality: AgentQuality::default(),
             }
         }
 
@@ -5343,6 +5533,7 @@ confidence:
                 error: None,
                 payload: None,
             },
+            agent_quality: AgentQuality::default(),
         };
         let policy = WorkforcePolicy {
             default_role: "accountant".to_string(),
@@ -5441,6 +5632,7 @@ confidence:
                 error: None,
                 payload: None,
             },
+            agent_quality: AgentQuality::default(),
         };
         let explain = build_workforce_policy_explain(&snapshot, &policy_path, false);
         assert_eq!(explain["configured"], true);

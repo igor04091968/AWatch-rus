@@ -24,8 +24,9 @@ async function postJson(path, payload) {
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
   if (s === "ok" || s === "true") return "status-ok";
-  if (s === "warn" || s === "warning") return "status-warn";
-  if (s === "fail" || s === "false") return "status-fail";
+  if (s === "warn" || s === "warning" || s === "fallback") return "status-warn";
+  if (s === "degraded") return "status-degraded";
+  if (s === "fail" || s === "false" || s === "error") return "status-fail";
   return "status-unknown";
 }
 
@@ -805,6 +806,7 @@ function renderOperator(data, report) {
     </div>
     ${renderPeriodBanner(report)}
     ${renderExecutiveMetrics(report, incidents)}
+    ${renderAgentQuality(report?.agent_quality)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1334,6 +1336,32 @@ function renderUebaRisk(risk) {
   `;
 }
 
+function renderAgentQuality(quality) {
+  const q = quality || {};
+  const status = q.quality_status || "unknown";
+  const source = q.collector_source || "unknown";
+  const warn = ["fallback", "degraded", "error"].includes(String(status).toLowerCase());
+  return `
+    <section class="card agent-quality-card">
+      <div class="section-head">
+        <div>
+          <h3>Качество данных агента</h3>
+          <p class="muted">Доверие к источнику, который подтверждает активность и RDP-сессии.</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      ${warn ? `<div class="quality-warning">Внимание. Данные активности собраны не основным способом. Точность определения активности и RDP-сессий может быть снижена.</div>` : ""}
+      <div class="quality-grid">
+        <div><span class="muted">Источник</span><strong>${ui(source)}</strong></div>
+        <div><span class="muted">Сессий собрано</span><strong>${escapeHtml(q.sessions_collected_total ?? 0)}</strong></div>
+        <div><span class="muted">Активных сессий</span><strong>${escapeHtml(q.active_sessions_total ?? 0)}</strong></div>
+        <div><span class="muted">RDP-сессий</span><strong>${escapeHtml(q.rdp_sessions_total ?? 0)}</strong></div>
+      </div>
+      ${q.collector_error ? `<p class="quality-error">Ошибка коллектора: ${ui(q.collector_error)}</p>` : ""}
+    </section>
+  `;
+}
+
 function renderReports(data) {
   data = periodReport(data);
   return `
@@ -1368,6 +1396,7 @@ function renderReports(data) {
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
+    ${renderAgentQuality(data.agent_quality)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>

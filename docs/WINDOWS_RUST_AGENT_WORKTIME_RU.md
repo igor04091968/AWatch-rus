@@ -73,6 +73,26 @@ aw_worktime_enabled = true
 - `collector_source`;
 - `collector_error`.
 
+## Качество данных агента
+
+Портал и отчеты поднимают diagnostics в блок `agent_quality`.
+
+Статусы:
+
+- `ok` - основной источник `wts_api`, ошибки коллектора нет;
+- `fallback` - данные получены через `quser_utf16`, `quser_lossy` или
+  `env_sessionname_fallback`;
+- `degraded` - используется `local_fallback` или есть некритичная ошибка
+  коллектора;
+- `error` - есть критичная ошибка коллектора, например отказ доступа,
+  некорректный обязательный payload или ошибка парсинга;
+- `unknown` - старый агент или payload без diagnostics.
+
+`local_fallback` считается диагностическим сигналом, а не доказательством
+активности. События worktime, опубликованные из `local_fallback`, получают
+`active=false`, `ignoredForKpi=true` и не должны увеличивать KPI сотрудника или
+подтверждать RDP-активность.
+
 ## PowerShell Legacy Fallback
 
 В `deployment-config.json` используется блок:
@@ -143,7 +163,9 @@ curl "http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-worktime-sessions_<HOST>/eve
 ```json
 {
   "source": "awatch-agent-rs",
-  "sessionSource": "wts_api"
+  "sessionSource": "wts_api",
+  "collectorSource": "wts_api",
+  "ignoredForKpi": false
 }
 ```
 

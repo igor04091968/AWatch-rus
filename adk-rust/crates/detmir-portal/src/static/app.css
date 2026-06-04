@@ -9,6 +9,8 @@
   --ok-bg: #dcfce7;
   --warn: #f97316;
   --warn-bg: #ffedd5;
+  --degraded: #ea580c;
+  --degraded-bg: #fed7aa;
   --fail: #dc2626;
   --fail-bg: #fee2e2;
   --unknown: #64748b;
@@ -262,6 +264,7 @@ h1 {
 
 .status-ok { background: var(--ok-bg); color: var(--ok); }
 .status-warn { background: var(--warn-bg); color: var(--warn); }
+.status-degraded { background: var(--degraded-bg); color: var(--degraded); }
 .status-fail { background: var(--fail-bg); color: var(--fail); }
 .status-unknown { background: var(--unknown-bg); color: var(--unknown); }
 .text-ok { color: var(--ok); }
@@ -502,6 +505,49 @@ h1 {
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.agent-quality-card {
+  margin: 12px 0 16px;
+}
+
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.quality-grid > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.quality-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.quality-warning {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 4px solid var(--warn);
+  border-radius: 8px;
+  background: var(--warn-bg);
+  color: #9a3412;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.quality-error {
+  margin: 10px 0 0;
+  color: var(--fail);
+  font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .heatmap-table td {

@@ -171,6 +171,15 @@ impl AwWorktimePublisher {
         let mut sent = 0;
         let sample_seconds = 60_i64;
         for session in sessions {
+            let ignore_for_kpi = ignored_for_kpi(record, &session);
+            let active_for_kpi = session.active && !ignore_for_kpi;
+            let state = if ignore_for_kpi {
+                "IgnoredForKpi"
+            } else if session.active {
+                "Active"
+            } else {
+                "Disconnected"
+            };
             let payload = serde_json::json!({
                 "timestamp": record.timestamp,
                 "duration": sample_seconds,
@@ -180,8 +189,10 @@ impl AwWorktimePublisher {
                     "sessionId": session_id_number(&session),
                     "sessionName": session.session_type,
                     "sessionSource": session.session_source,
-                    "state": if session.active { "Active" } else { "Disconnected" },
-                    "active": session.active,
+                    "state": state,
+                    "active": active_for_kpi,
+                    "ignoredForKpi": ignore_for_kpi,
+                    "qualityNote": if ignore_for_kpi { Some("local_fallback is diagnostics-only and is not accepted as activity proof") } else { None },
                     "sampleSeconds": sample_seconds,
                     "pollSeconds": sample_seconds,
                     "hostname": record.hostname,
@@ -225,6 +236,11 @@ impl AwWorktimePublisher {
     pub fn flush_spool(&self) -> Result<usize> {
         flush_spool_dir(&self.spool_dir, |record| self.publish(record).map(|_| ()))
     }
+}
+
+fn ignored_for_kpi(record: &TelemetryRecord, session: &SessionInfo) -> bool {
+    record.diagnostics.collector_source == "local_fallback"
+        || session.session_source.as_deref() == Some("local_fallback")
 }
 
 fn ensure_aw_bucket(
@@ -427,6 +443,30 @@ mod tests {
             active: true,
         };
         assert_eq!(session_id_number(&session), 12);
+    }
+
+    #[test]
+    fn local_fallback_sessions_are_diagnostics_only_for_kpi() {
+        let mut wts_record = record();
+        wts_record.diagnostics = diagnostics_for_sessions(&[], &[], "wts_api", None);
+        let session = SessionInfo {
+            session_id: "0".to_string(),
+            username: "user".to_string(),
+            session_type: "local".to_string(),
+            session_source: Some("local_fallback".to_string()),
+            remote_addr: None,
+            started_at: None,
+            active: true,
+        };
+        assert!(ignored_for_kpi(&wts_record, &session));
+
+        let mut fallback_record = record();
+        fallback_record.diagnostics = diagnostics_for_sessions(&[], &[], "local_fallback", None);
+        let session = SessionInfo {
+            session_source: Some("wts_api".to_string()),
+            ..session
+        };
+        assert!(ignored_for_kpi(&fallback_record, &session));
     }
 
     #[test]
