@@ -22,21 +22,21 @@ const VIEW_MODES = {
     title: "Роль руководителя",
     heading: "Представление руководителя",
     description: "Главный вывод, сводка руководителя, риски подразделений и карта рисков.",
-    stage: "Загрузка представления руководителя",
+    stage: "Формирование главного вывода",
   },
   security: {
     label: "Безопасность",
     title: "Роль безопасности",
     heading: "Представление безопасности",
     description: "Очередь проверки, расследования, аудит решений и пакеты расследований.",
-    stage: "Загрузка представления безопасности",
+    stage: "Подготовка разделов проверки и расследований",
   },
   operations: {
     label: "Эксплуатация",
     title: "Роль эксплуатации",
     heading: "Представление эксплуатации",
     description: "Полнота данных, качество сбора, ошибки и телеметрия рабочих мест.",
-    stage: "Загрузка представления эксплуатации",
+    stage: "Подготовка разделов эксплуатации",
   },
 };
 
@@ -92,6 +92,7 @@ function displayText(value) {
     .replaceAll("Risk Narrative", "Главный вывод")
     .replaceAll("Risk Heatmap", "Карта рисков")
     .replaceAll("Business Risk", "Риски подразделений")
+    .replaceAll("Security Events", "События безопасности")
     .replaceAll("Security Correlation", "Связь рисков и активности")
     .replaceAll("Incident Candidates", "Требует проверки")
     .replaceAll("Incident Candidate", "Требует проверки")
@@ -286,6 +287,17 @@ function setLoadStatus(status, stage, progress, options = {}) {
   renderLoadStatus();
 }
 
+function loadStatusLabel(status) {
+  return {
+    LOADING: "Загрузка данных",
+    READY: "Данные готовы",
+    EMPTY: "Данные отсутствуют",
+    STALE: "Данные устарели",
+    ERROR: "Ошибка получения данных",
+    UNKNOWN: "Состояние неизвестно",
+  }[status] || "Состояние неизвестно";
+}
+
 function renderLoadStatus() {
   const box = document.getElementById("loadingStatus");
   if (!box) return;
@@ -297,7 +309,8 @@ function renderLoadStatus() {
   const updatedText = document.getElementById("loadingUpdatedText");
   const bar = document.getElementById("loadingProgressBar");
   box.className = `loading-status loading-status-${status.toLowerCase()}`;
-  if (stateText) stateText.textContent = status;
+  box.dataset.loadStatus = status;
+  if (stateText) stateText.textContent = loadStatusLabel(status);
   if (stageText) stageText.textContent = stage;
   if (updatedText) updatedText.textContent = `последнее обновление: ${formatLoadTime(state.load.lastUpdatedAt)}`;
   if (bar) bar.style.width = `${progress}%`;
@@ -320,7 +333,7 @@ function renderLoadingContent(stage = "Данные загружаются") {
   return `
     <div class="loading-shell" data-loading-state="LOADING">
       <div class="loading-message">
-        <strong>Данные загружаются</strong>
+        <strong>Загрузка данных</strong>
         <p class="muted small">${ui(stage)}</p>
       </div>
       <section class="skeleton-grid" aria-label="Загрузка основных показателей">
@@ -353,7 +366,7 @@ function renderLoadingContent(stage = "Данные загружаются") {
 function renderEmptyState(stage = "Данных за выбранный период нет") {
   return `
     <section class="empty-state" data-loading-state="EMPTY">
-      <span class="badge status-unknown">EMPTY</span>
+      <span class="badge status-unknown">Данные отсутствуют</span>
       <h3>Данных пока нет</h3>
       <p class="muted">${ui(stage)}</p>
     </section>
@@ -364,8 +377,8 @@ function renderErrorState(error) {
   const message = error?.message || error?.stack || String(error || "Неизвестная ошибка");
   return `
     <section class="error-state" data-loading-state="ERROR">
-      <span class="badge status-fail">ERROR</span>
-      <h3>Ошибка загрузки данных</h3>
+      <span class="badge status-fail">Ошибка получения данных</span>
+      <h3>Ошибка получения данных</h3>
       <p class="muted">Портал не получил актуальные данные. Подробности ниже.</p>
       <pre>${escapeHtml(message)}</pre>
     </section>
@@ -376,7 +389,7 @@ function staleBanner(error) {
   const message = error?.message || String(error || "ошибка обновления");
   return `
     <div class="stale-banner" data-loading-state="STALE">
-      <span class="badge status-warn">STALE</span>
+      <span class="badge status-warn">Данные устарели</span>
       <strong>Показаны ранее загруженные данные.</strong>
       <p class="muted small">Последнее обновление: ${escapeHtml(formatLoadTime(state.load.lastUpdatedAt))}. Новая загрузка не завершилась: ${escapeHtml(message)}</p>
     </div>
@@ -2750,33 +2763,34 @@ function renderSettings(report) {
 async function refresh(options = {}) {
   const content = document.getElementById("content");
   const background = Boolean(options.background);
-  const stage = options.stage || "Загрузка данных портала";
+  const stage = options.stage || "Получение данных";
   try {
     setLoadStatus("LOADING", stage, background ? 35 : 8);
     if (!background && content) content.innerHTML = renderLoadingContent(stage);
     if (!state.links) {
-      setLoadStatus("LOADING", "Загрузка ссылок портала", 18);
+      setLoadStatus("LOADING", "Получение данных", 18);
       state.links = await loadJson("/links");
     }
-    setLoadStatus("LOADING", "Загрузка общей сводки", 32);
+    setLoadStatus("LOADING", "Расчёт показателей", 34);
     const summary = await loadJson("/summary");
-    setLoadStatus("LOADING", "Проверка готовности системы", 44);
+    setLoadStatus("LOADING", "Расчёт показателей", 46);
     state.readiness = {
       bundle: await loadJson("/readiness/bundle").catch(error => ({ ok: false, error: error.message })),
       verify: state.readiness?.verify || null
     };
     renderSummary(summary, state.readiness);
-    setLoadStatus("LOADING", tabLoadingStage(state.tab), 62);
+    setLoadStatus("LOADING", "Формирование главного вывода", 68);
     const tabResult = await loadCurrentTab();
+    setLoadStatus("LOADING", "Подготовка разделов", 88);
     if (!hasTabData(state.tab, tabResult)) {
-      setLoadStatus("EMPTY", "Данных за выбранный период нет", 100);
+      setLoadStatus("EMPTY", "Данные отсутствуют", 100);
       if (content) {
         content.innerHTML = `${renderEmptyState("Источники ответили, но полезные записи для текущего раздела пока не найдены.")}${tabResult.html || ""}`;
       }
       return;
     }
     if (content) content.innerHTML = tabResult.html;
-    setLoadStatus("READY", "Данные загружены", 100);
+    setLoadStatus("READY", "Данные готовы", 100);
     consumePendingScroll();
   } catch (error) {
     showError(error);
@@ -2845,14 +2859,14 @@ async function loadCurrentTab() {
 function tabLoadingStage(tab) {
   if (tab === "operator") return currentViewMeta().stage;
   return {
-    employees: "Загрузка карточек сотрудников",
-    departments: "Загрузка подразделений",
-    owner: "Загрузка рисков",
-    incidents: "Загрузка расследований",
-    perimeter: "Загрузка сетевого периметра",
-    reports: "Формирование отчетов",
-    settings: "Загрузка параметров расчета",
-  }[tab] || "Загрузка раздела";
+    employees: "Получение данных сотрудников",
+    departments: "Расчёт показателей подразделений",
+    owner: "Формирование главного вывода по рискам",
+    incidents: "Подготовка разделов расследований",
+    perimeter: "Подготовка разделов сетевого периметра",
+    reports: "Подготовка разделов отчета",
+    settings: "Подготовка раздела настроек",
+  }[tab] || "Подготовка разделов";
 }
 
 function setTab(tab) {
@@ -2907,7 +2921,7 @@ document.querySelectorAll("[data-view-mode]").forEach(btn => {
 
 document.getElementById("periodFilter")?.addEventListener("change", event => {
   state.period = periodFromSelectValue(event.target.value);
-  refresh({ stage: "Обновление периода отчета" });
+  refresh({ stage: "Получение данных за выбранный период" });
 });
 
 document.addEventListener("click", event => {

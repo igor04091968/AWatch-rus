@@ -69,6 +69,21 @@ function assertStaticTabHandlers() {
   if (missing.length) {
     throw new Error(`data-tab without app.js handler: ${missing.join(", ")}`);
   }
+  const loadingTerms = [
+    "Загрузка данных",
+    "Данные готовы",
+    "Данные отсутствуют",
+    "Данные устарели",
+    "Ошибка получения данных",
+    "Получение данных",
+    "Расчёт показателей",
+    "Формирование главного вывода",
+    "Подготовка разделов",
+  ];
+  const missingLoadingTerms = loadingTerms.filter((term) => !app.includes(term) && !index.includes(term));
+  if (missingLoadingTerms.length) {
+    throw new Error(`missing loading/localization terms: ${missingLoadingTerms.join(", ")}`);
+  }
   return tabs;
 }
 
@@ -124,7 +139,7 @@ async function main() {
     await page.waitForSelector(".tab", { timeout });
     smokeStep = "wait_initial_ready";
     await page.waitForFunction(
-      () => document.querySelector("#loadingStateText")?.textContent === "READY",
+      () => document.querySelector("#loadingStatus")?.dataset.loadStatus === "READY",
       null,
       { timeout },
     );
@@ -132,8 +147,9 @@ async function main() {
       name: "loading_refresh_status_ready",
       ok:
         (await page.locator("#loadingStatus").count()) === 1
-        && (await page.locator("#loadingStageText").innerText({ timeout })).includes("Данные загружены")
-        && !(await page.locator("body").innerText({ timeout })).includes("Данные загружаются"),
+        && (await page.locator("#loadingStateText").innerText({ timeout })).includes("Данные готовы")
+        && (await page.locator("#loadingStageText").innerText({ timeout })).includes("Данные готовы")
+        && !(await page.locator("body").innerText({ timeout })).includes("Загрузка данных"),
     });
     smokeStep = "api:security_events_summary";
     const reportsPayload = await page.evaluate(async () => {
@@ -230,7 +246,7 @@ async function main() {
         smokeStep = "role:security";
         await page.click('[data-view-mode="security"]', { timeout });
         await page.waitForFunction(
-          () => document.querySelector("#loadingStateText")?.textContent === "READY"
+          () => document.querySelector("#loadingStatus")?.dataset.loadStatus === "READY"
             && document.body.innerText.includes("Материалы расследования"),
           null,
           { timeout },
@@ -258,7 +274,7 @@ async function main() {
         smokeStep = "role:operations";
         await page.click('[data-view-mode="operations"]', { timeout });
         await page.waitForFunction(
-          () => document.querySelector("#loadingStateText")?.textContent === "READY"
+          () => document.querySelector("#loadingStatus")?.dataset.loadStatus === "READY"
             && document.body.innerText.includes("Телеметрия"),
           null,
           { timeout },
@@ -306,7 +322,7 @@ async function main() {
     await page.click('button[data-tab="operator"]', { timeout });
     await page.click('[data-view-mode="security"]', { timeout });
     await page.waitForFunction(
-      () => document.querySelector("#loadingStateText")?.textContent === "READY"
+      () => document.querySelector("#loadingStatus")?.dataset.loadStatus === "READY"
         && document.body.innerText.includes("Требует проверки"),
       null,
       { timeout },

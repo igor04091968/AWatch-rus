@@ -57,10 +57,10 @@
           </div>
           <div class="header-actions">
             <button class="small-button primary" data-open-reports="true">Сформировать отчет</button>
-            <button class="small-button" data-export-markdown="true">Markdown</button>
-            <button class="small-button" data-print-report="true">PDF</button>
-            <a class="small-button" href="/portal/api/reports" target="_blank" rel="noopener noreferrer">JSON</a>
-            <div id="globalStatus" class="status-pill status-unknown">Загрузка</div>
+            <button class="small-button" data-export-markdown="true">Текстовый отчет</button>
+            <button class="small-button" data-print-report="true">PDF-отчет</button>
+            <a class="small-button" href="/portal/api/reports" target="_blank" rel="noopener noreferrer">Данные</a>
+            <div id="globalStatus" class="status-pill status-unknown">Загрузка данных</div>
           </div>
         </div>
       </header>
@@ -68,8 +68,8 @@
       <section id="loadingStatus" class="loading-status loading-status-unknown" aria-live="polite">
         <div class="loading-status-head">
           <div>
-            <strong id="loadingStateText">LOADING</strong>
-            <span id="loadingStageText">Инициализация портала</span>
+            <strong id="loadingStateText">Загрузка данных</strong>
+            <span id="loadingStageText">Получение данных</span>
           </div>
           <span id="loadingUpdatedText">последнее обновление: -</span>
         </div>
