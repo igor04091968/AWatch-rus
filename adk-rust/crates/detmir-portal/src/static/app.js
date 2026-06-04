@@ -1,4 +1,4 @@
-const state = { tab: "operator", links: null, readiness: null };
+const state = { tab: "operator", links: null, readiness: null, reports: null };
 
 function apiBase() {
   const path = window.location.pathname;
@@ -40,7 +40,7 @@ function escapeHtml(value) {
 function renderSummary(summary, readiness) {
   const global = document.getElementById("globalStatus");
   global.className = `status-pill ${statusClass(summary.severity)}`;
-  global.textContent = `${summary.severity} · operator ${summary.operator_ok ? "OK" : "NO"}`;
+  global.textContent = `Сенсоры ${summary.operator_ok ? "OK" : "NO"} · ${summary.severity}`;
   const blocks = Object.entries(summary.blocks || {});
   const readinessCard = renderReadinessSummaryCard(readiness);
   document.getElementById("summary").innerHTML = readinessCard + blocks.map(([name, block]) => `
@@ -96,8 +96,100 @@ function label(name) {
     grafana: "Grafana",
     dlp: "DLP",
     worktime: "Работа сегодня",
-    one_c: "1С"
+    one_c: "1С",
+    work: "Workforce",
+    security: "Security"
   }[name] || name;
+}
+
+function findKpi(report, needle) {
+  const text = String(needle || "").toLowerCase();
+  return (report?.kpis || []).find(item => String(item.label || "").toLowerCase().includes(text));
+}
+
+function findSection(report, title) {
+  const text = String(title || "").toLowerCase();
+  return (report?.sections || []).find(item => String(item.title || "").toLowerCase().includes(text));
+}
+
+function metricCard(labelText, value, status, context) {
+  return `
+    <article class="metric-card">
+      <span class="badge ${statusClass(status)}">${escapeHtml(status || "INFO")}</span>
+      <h3>${escapeHtml(labelText)}</h3>
+      <p class="metric-value">${escapeHtml(value ?? "Нет данных")}</p>
+      <p class="muted">${escapeHtml(context || "")}</p>
+    </article>
+  `;
+}
+
+function renderExecutiveMetrics(report, incidents) {
+  const activity = findKpi(report, "Индекс активности");
+  const employees = findKpi(report, "Сотрудники");
+  const risk = findKpi(report, "UEBA риск");
+  const open = findKpi(report, "Открытые вопросы");
+  const departments = findKpi(report, "Подразделения");
+  const evidence = findKpi(report, "Evidence");
+  const openCount = Array.isArray(incidents) ? incidents.filter(item => !item.acknowledged).length : 0;
+  return `
+    <section class="executive-grid" aria-label="Управленческая сводка">
+      ${metricCard("Индекс активности за день", activity?.value, activity?.status, activity?.context || "proxy: активное время / плановое время")}
+      ${metricCard("Активные сотрудники", employees?.value, employees?.status, employees?.context)}
+      ${metricCard("Отклонения от нормы", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "вопросы, требующие реакции")}
+      ${metricCard("Подразделения с просадкой", departments?.value, departments?.status, departments?.context || "сравнение текущего дня")}
+      ${metricCard("Риски ИБ", risk?.value, risk?.status, risk?.context || "rule-based UEBA v1")}
+      ${metricCard("Новые инциденты", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "не взятые в работу")}
+      ${metricCard("Готовность отчета", reportReadinessText(report), report?.operator_ok ? "OK" : report?.severity, "daily / weekly / monthly")}
+      ${metricCard("Доказательная база", evidence?.value, evidence?.status, evidence?.context)}
+    </section>
+  `;
+}
+
+function incidentStatusFromCount(count) {
+  const n = Number(count || 0);
+  if (n === 0) return "OK";
+  if (n <= 3) return "WARN";
+  return "FAIL";
+}
+
+function reportReadinessText(report) {
+  const trend = report?.workforce?.trend_status || "daily_only";
+  if (trend === "monthly_ready") return "daily / weekly / monthly";
+  if (trend === "weekly_ready") return "daily / weekly";
+  return "daily";
+}
+
+function renderSectionItems(section, emptyText) {
+  const items = Array.isArray(section?.items) ? section.items : [];
+  if (items.length === 0) {
+    return `<p class="muted">${escapeHtml(emptyText || "Данных для среза пока нет.")}</p>`;
+  }
+  return `<div class="list compact-list">${items.slice(0, 12).map(item => `
+    <div class="row compact-row">
+      <strong>${escapeHtml(item.label || "-")}</strong>
+      <span class="muted">${escapeHtml(item.value || "")}</span>
+      <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status || "INFO")}</span>
+    </div>
+  `).join("")}</div>`;
+}
+
+function renderReportTypeCards() {
+  const types = [
+    ["Ежедневный отчет", "Оперативный срез за сегодня", "OK"],
+    ["Недельный отчет", "Динамика после накопления daily history", "INFO"],
+    ["Месячный отчет", "Готов для управленческой аналитики после накопления истории", "INFO"],
+    ["По подразделению", "Сравнение загрузки и просадок", "OK"],
+    ["По сотруднику", "Drill-down с осторожной трактовкой KPI", "WARN"],
+    ["По инциденту", "Материалы для служебной проверки", "OK"],
+    ["Акт пилота", "Итоги опытной эксплуатации", "OK"]
+  ];
+  return `<div class="report-type-grid">${types.map(([title, text, status]) => `
+    <article class="report-type">
+      <span class="badge ${statusClass(status)}">${escapeHtml(status)}</span>
+      <h3>${escapeHtml(title)}</h3>
+      <p class="muted">${escapeHtml(text)}</p>
+    </article>
+  `).join("")}</div>`;
 }
 
 function renderLinks(links) {
@@ -138,38 +230,62 @@ function renderSourceList(data) {
   `).join("")}</div>`;
 }
 
-function renderOperator(data) {
+function renderOperator(data, report) {
+  const incidents = Array.isArray(data.incidents) ? data.incidents : [];
+  const workforce = findSection(report, "Работа");
+  const insights = findSection(report, "Выводы Workforce");
+  const security = findSection(report, "ИБ");
+  const actions = findSection(report, "Действия");
   return `
-    <h2 class="section-title">Оператор</h2>
-    <div class="grid-2">
-      <section class="card">
-        <h3>Контур</h3>
-        ${renderSourceList(data)}
-      </section>
-      <section class="card">
-        <h3>Быстрые переходы</h3>
-        ${renderLinks(data.links)}
-      </section>
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Управленческая сводка</h2>
+        <p class="muted">За 10 секунд: работают ли люди, где просадка, где риск и что требует внимания.</p>
+      </div>
+      <span class="badge ${statusClass(report?.severity)}">${escapeHtml(report?.headline || "Оперативный срез")}</span>
     </div>
-    <h3 class="section-title">Проблемы</h3>
-    ${renderIncidentsList(data.incidents)}
+    ${renderExecutiveMetrics(report, incidents)}
+    <section class="dashboard-band">
+      <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
+      ${renderSectionItems(workforce, "Workforce-срез пока не сформирован.")}
+      ${renderSectionItems(insights, "Отклонений Workforce пока не найдено.")}
+    </section>
+    <section class="dashboard-band security-band">
+      <div class="band-head"><h3>Контроль безопасности</h3><span class="muted">подозрительные события и приоритет реакции</span></div>
+      ${renderSectionItems(security, "ИБ-событий для реакции пока нет.")}
+    </section>
+    <section class="dashboard-band">
+      <div class="band-head"><h3>Что требует внимания</h3><span class="muted">операторские действия и открытые вопросы</span></div>
+      ${renderIncidentsList(incidents)}
+      ${renderSectionItems(actions, "Рекомендаций нет.")}
+    </section>
+    <section class="dashboard-band technical-band">
+      <div class="band-head"><h3>Технический статус источников</h3><span class="muted">вторичный слой для оператора</span></div>
+      ${renderSourceList(data)}
+    </section>
   `;
 }
 
 function renderManager(data, policyExplain) {
   const workforceIndex = workforceIndexText(data.users_count, data.total_active_seconds);
   return `
-    <h2 class="section-title">Руководитель</h2>
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Рабочая активность сотрудников</h2>
+        <p class="muted">Оценка загрузки, простоев, перегруза и использования рабочих приложений.</p>
+      </div>
+      <span class="badge ${statusClass(data.status?.status)}">${escapeHtml(data.status?.status || "INFO")}</span>
+    </div>
     <div class="grid-2">
       <section class="card">
-        <h3>Работа сегодня</h3>
+        <h3>Индекс активности</h3>
         <p class="kpi-value">${escapeHtml(workforceIndex)}</p>
         <p class="muted">proxy: активное время / плановое рабочее время</p>
         <p class="muted">Сотрудников: ${data.users_count}; активных часов: ${Number(data.total_active_hours || 0).toFixed(1)}</p>
         <p class="muted">${escapeHtml(data.status?.text || "")}</p>
       </section>
       <section class="card">
-        <h3>Приложения</h3>
+        <h3>RDP / 1C / рабочие приложения</h3>
         <div class="list">${(data.applications || []).slice(0, 8).map(app => `
           <div class="row">
             <strong>${escapeHtml(app.application)}</strong>
@@ -180,7 +296,7 @@ function renderManager(data, policyExplain) {
       </section>
     </div>
     ${renderWorkforceIndexExplanation(policyExplain)}
-    <h3 class="section-title">Сотрудники</h3>
+    <h3 class="section-title">Сотрудники без активности и с аномалиями</h3>
     <div class="list">${(data.users || []).map(user => `
       <div class="row">
         <strong>${escapeHtml(user.user)}</strong>
@@ -313,7 +429,13 @@ function workforceIndexStatus(value) {
 function renderOwner(data) {
   const cards = Object.entries(data.cards || {});
   return `
-    <h2 class="section-title">Владелец</h2>
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Контроль безопасности</h2>
+        <p class="muted">Приоритеты ИБ: подозрительные подключения, DLP-сигналы, RDP-аномалии и состояние периметра.</p>
+      </div>
+      <span class="badge ${statusClass(data.summary?.severity)}">${escapeHtml(data.summary?.severity || "INFO")}</span>
+    </div>
     <div class="summary-grid">${cards.map(([name, block]) => `
       <article class="card">
         <span class="badge ${statusClass(block.status)}">${escapeHtml(block.status)}</span>
@@ -322,11 +444,11 @@ function renderOwner(data) {
       </article>
     `).join("")}</div>
     <section class="card">
-      <h3>Что сделать</h3>
+      <h3>Риски с приоритетом</h3>
       <div class="list">${(data.recommendations || []).map(item => `<div class="row"><strong>Рекомендация</strong><span class="muted">${escapeHtml(item)}</span><span></span></div>`).join("")}</div>
     </section>
     <section class="card">
-      <h3>Переходы</h3>
+      <h3>Дашборды безопасности</h3>
       ${renderLinks(data.links)}
     </section>
   `;
@@ -393,19 +515,25 @@ function renderIncidents(data) {
   const incidents = Array.isArray(data) ? data : data.incidents;
   const evidence = Array.isArray(data) ? null : data.evidence;
   return `
-    <h2 class="section-title">Инциденты ИБ</h2>
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Расследования и доказательная база</h2>
+        <p class="muted">Кто, когда, откуда, куда, связанные хосты, evidence и выгрузка материалов.</p>
+      </div>
+      <span class="badge ${statusClass(incidentStatusFromCount((incidents || []).length))}">${escapeHtml((incidents || []).length)} items</span>
+    </div>
     <div class="grid-2">
       <section class="card">
-        <h3>DLP-инциденты</h3>
+        <h3>Карточки инцидентов</h3>
         ${renderDlpIncidentsList(incidents)}
       </section>
       <section class="card">
-        <h3>Графики и дашборды</h3>
+        <h3>Связанные графики и дашборды</h3>
         ${renderDlpLinks(links)}
       </section>
     </div>
     <section class="card evidence-card">
-      <h3>Доказательства</h3>
+      <h3>Evidence: скриншоты, хеши, файлы</h3>
       ${renderDlpEvidence(evidence)}
     </section>
   `;
@@ -468,7 +596,14 @@ function renderUebaRisk(risk) {
 
 function renderReports(data) {
   return `
-    <h2 class="section-title">Отчеты</h2>
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Отчеты</h2>
+        <p class="muted">Ежедневные, недельные, месячные, по подразделению, сотруднику, инциденту и пилотной эксплуатации.</p>
+      </div>
+      <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
+    </div>
+    ${renderReportTypeCards()}
     <div class="grid-2">
       <section class="card report-hero">
         <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
@@ -485,7 +620,9 @@ function renderReports(data) {
     </div>
     <div class="report-actions">
       <button class="small-button" data-anonymize-report="true">Демо без имен</button>
+      <button class="small-button" data-export-markdown="true">Markdown</button>
       <button class="small-button" data-print-report="true">Печать / PDF</button>
+      <a class="small-button" href="${apiBase()}/reports" target="_blank" rel="noopener noreferrer">JSON</a>
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
@@ -510,7 +647,11 @@ async function refresh() {
   renderSummary(summary, state.readiness);
   const content = document.getElementById("content");
   const data = await loadJson(`/${state.tab}`);
-  if (state.tab === "operator") content.innerHTML = renderOperator(data);
+  if (state.tab === "operator") {
+    state.reports = await loadJson("/reports").catch(() => state.reports);
+    content.innerHTML = renderOperator(data, state.reports);
+    updateFilters(state.reports);
+  }
   if (state.tab === "manager") {
     const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
     content.innerHTML = renderManager(data, policyExplain);
@@ -520,16 +661,25 @@ async function refresh() {
     const evidence = await loadJson("/dlp/evidence").catch(error => ({ ok: false, error: error.message, items: [] }));
     content.innerHTML = renderIncidents({ incidents: data, evidence });
   }
-  if (state.tab === "reports") content.innerHTML = renderReports(data);
+  if (state.tab === "reports") {
+    state.reports = data;
+    content.innerHTML = renderReports(data);
+    updateFilters(data);
+  }
 }
 
 function setTab(tab) {
   state.tab = tab;
+  applySecurityMode(tab);
   document.querySelectorAll(".tab").forEach(btn => {
     btn.classList.toggle("is-active", btn.dataset.tab === tab);
   });
   document.getElementById("content").innerHTML = `<p class="muted">Загрузка...</p>`;
   refresh().catch(showError);
+}
+
+function applySecurityMode(tab) {
+  document.body.classList.toggle("security-mode", tab === "owner" || tab === "incidents");
 }
 
 function showError(error) {
@@ -556,6 +706,12 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-anonymize-report]");
   if (!button) return;
   anonymizeReport(button).catch(showError);
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-export-markdown]");
+  if (!button) return;
+  exportMarkdown().catch(showError);
 });
 
 document.addEventListener("click", event => {
@@ -586,6 +742,33 @@ async function anonymizeReport(button) {
   document.getElementById("content").innerHTML = renderReports(data);
 }
 
+async function exportMarkdown() {
+  const data = state.reports || await loadJson("/reports");
+  const markdown = data.markdown || "";
+  const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "awatch-rus-report.md";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function updateFilters(report) {
+  updateSelect("departmentFilter", (report?.workforce?.department_comparison || []).map(item => item.label));
+  updateSelect("ownerFilter", (report?.workforce?.owner_comparison || []).map(item => item.label));
+}
+
+function updateSelect(id, values) {
+  const select = document.getElementById(id);
+  if (!select || select.dataset.loaded === "true") return;
+  const unique = [...new Set((values || []).filter(Boolean))].slice(0, 50);
+  select.innerHTML = `<option>Все</option>` + unique.map(item => `<option>${escapeHtml(item)}</option>`).join("");
+  select.dataset.loaded = "true";
+}
+
 async function incidentAction(button) {
   const id = button.dataset.incidentId;
   const action = button.dataset.incidentAction;
@@ -608,5 +791,6 @@ async function incidentAction(button) {
   await refresh();
 }
 
+applySecurityMode(state.tab);
 refresh().catch(showError);
 setInterval(() => refresh().catch(showError), 60000);

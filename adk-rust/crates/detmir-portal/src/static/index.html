@@ -3,24 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DetMir Portal</title>
+  <title>AWatch-rus Portal</title>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
   <main class="shell">
     <header class="topbar">
-      <div>
-        <p class="eyebrow">DetMir Portal</p>
-        <h1>Контур компании</h1>
+      <div class="brand">
+        <p class="eyebrow">AWatch-rus</p>
+        <h1>Workforce / Security / Forensics</h1>
+        <p class="lead">Рабочий кабинет руководителя, ИБ и расследователя</p>
       </div>
-      <div id="globalStatus" class="status-pill status-unknown">Загрузка</div>
+      <div class="topbar-side" aria-label="Параметры отчета">
+        <div class="control-strip">
+          <label>
+            <span>Период</span>
+            <select id="periodFilter">
+              <option>Сегодня</option>
+              <option>Неделя</option>
+              <option>Месяц</option>
+            </select>
+          </label>
+          <label>
+            <span>Подразделение</span>
+            <select id="departmentFilter">
+              <option>Все</option>
+            </select>
+          </label>
+          <label>
+            <span>Ответственный</span>
+            <select id="ownerFilter">
+              <option>Все</option>
+            </select>
+          </label>
+        </div>
+        <div class="header-actions">
+          <button class="small-button" data-export-markdown="true">Markdown</button>
+          <button class="small-button" data-print-report="true">PDF</button>
+          <div id="globalStatus" class="status-pill status-unknown">Загрузка</div>
+        </div>
+      </div>
     </header>
 
     <nav class="tabs" aria-label="Разделы портала">
-      <button class="tab is-active" data-tab="operator">Оператор</button>
-      <button class="tab" data-tab="manager">Руководитель</button>
-      <button class="tab" data-tab="owner">Владелец</button>
-      <button class="tab" data-tab="incidents">Инциденты ИБ</button>
+      <button class="tab is-active" data-tab="operator">Сводка</button>
+      <button class="tab" data-tab="manager">Workforce</button>
+      <button class="tab" data-tab="owner">Security</button>
+      <button class="tab" data-tab="incidents">Forensics</button>
       <button class="tab" data-tab="reports">Отчеты</button>
     </nav>
 
