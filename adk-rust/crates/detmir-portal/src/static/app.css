@@ -402,7 +402,7 @@ h1 {
 
 .analytics-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr) minmax(280px, 1fr);
+  grid-template-columns: minmax(430px, 1.25fr) minmax(320px, 1fr) minmax(300px, 0.9fr);
   gap: 12px;
   margin-bottom: 14px;
 }
@@ -415,10 +415,32 @@ h1 {
   background: var(--panel);
 }
 
+.department-panel {
+  grid-column: 1 / -1;
+  min-height: auto;
+}
+
+.anomaly-panel {
+  grid-column: span 2;
+}
+
+.risk-panel {
+  grid-column: span 1;
+}
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 13px;
+}
+
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.department-table {
+  min-width: 0;
 }
 
 .data-table th,
@@ -454,16 +476,42 @@ h1 {
   background: var(--soft);
 }
 
+.rank-list small {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.risk-list li {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+}
+
 .anomaly-list li {
   grid-template-columns: auto 1fr;
   align-items: start;
 }
 
-.anomaly-list li strong {
+.anomaly-list li > strong {
   grid-column: 2;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.anomaly-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.department-table th,
+.department-table td,
+.settings-table th,
+.settings-table td {
+  white-space: normal;
 }
 
 .dashboard-band {
@@ -720,6 +768,9 @@ pre {
 @media (max-width: 1280px) {
   .executive-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .analytics-grid { grid-template-columns: 1fr; }
+  .department-panel,
+  .anomaly-panel,
+  .risk-panel { grid-column: auto; }
 }
 
 @media (max-width: 640px) {
@@ -749,6 +800,7 @@ pre {
   .app-weight-row { grid-template-columns: 1fr; }
   .employee-index-row { grid-template-columns: 1fr; }
   .employee-metrics { grid-template-columns: 1fr; }
+  .risk-list li { grid-template-columns: 1fr; }
   .section-head { flex-direction: column; }
   .actions { justify-content: flex-start; }
 }

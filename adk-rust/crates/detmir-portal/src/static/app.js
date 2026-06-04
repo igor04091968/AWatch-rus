@@ -339,45 +339,98 @@ function trendArrow(status) {
   return "→";
 }
 
+function firstPercent(value) {
+  const match = String(value || "").match(/-?\d+(?:[.,]\d+)?\s*%/);
+  return match ? match[0].replace(",", ".").replace(/\s+/g, "") : "-";
+}
+
+function departmentDeviation(item) {
+  const status = String(item?.status || "INFO").toUpperCase();
+  const value = item?.value || "";
+  if (status === "OK") return "в норме";
+  if (status === "WARN") return `отклонение: ${firstPercent(value)}`;
+  if (status === "FAIL") return `критическая просадка: ${firstPercent(value)}`;
+  return "требует данных";
+}
+
+function departmentResponsible(owners, index) {
+  const item = Array.isArray(owners) ? owners[index] : null;
+  return item?.label || item?.title || "не назначен";
+}
+
 function renderDepartmentTable(report) {
   const items = (report?.workforce?.department_comparison || []).slice(0, 8);
+  const owners = report?.workforce?.owner_comparison || [];
   if (!items.length) return `<p class="muted">Подразделения пока не рассчитаны.</p>`;
   return `
-    <table class="data-table">
-      <thead><tr><th>Подразделение</th><th>Активность</th><th>Тренд</th><th>Риск</th></tr></thead>
-      <tbody>${items.map(item => `
+    <div class="table-scroll">
+    <table class="data-table department-table">
+      <thead><tr><th>Подразделение</th><th>Индекс активности</th><th>Отклонение</th><th>Статус</th><th>Ответственный</th></tr></thead>
+      <tbody>${items.map((item, index) => `
         <tr>
           <td><strong>${ui(item.label)}</strong></td>
-          <td>${ui(item.value || "-")}</td>
-          <td>${escapeHtml(trendArrow(item.status))}</td>
-          <td><span class="badge ${statusClass(item.status)}">${ui(statusRiskLabel(item.status))}</span></td>
+          <td>${ui(item.index_activity || firstPercent(item.value) || "-")}</td>
+          <td>${ui(item.deviation || departmentDeviation(item))}</td>
+          <td><span class="badge ${statusClass(item.status)}">${ui(item.status || "INFO")}</span></td>
+          <td>${ui(item.responsible || departmentResponsible(owners, index))}</td>
         </tr>
       `).join("")}</tbody>
     </table>
+    </div>
   `;
+}
+
+function anomalyExplanation(item) {
+  const title = item?.label || item?.title || "Аномалия";
+  const evidence = item?.value || item?.subject || "система отметила отклонение от обычного среза";
+  const status = String(item?.status || "INFO").toUpperCase();
+  const text = `${title} ${evidence}`.toLowerCase();
+  let why = "это может указывать на изменение загрузки, дисциплины процесса или качества сбора данных";
+  let check = "проверить первичные события ActivityWatch, рабочий план и контекст подразделения";
+  if (text.includes("копирован") || text.includes("dlp") || text.includes("файл")) {
+    why = "есть риск неконтролируемого движения данных или подготовки выгрузки";
+    check = "открыть материалы проверки, сверить файл, пользователя, время и разрешенную бизнес-задачу";
+  } else if (text.includes("ноч") || text.includes("вне рабочего")) {
+    why = "активность вне обычного окна может быть переработкой, удаленным доступом или нарушением регламента";
+    check = "сверить RDP-сессию, задачу сотрудника и журнал входов";
+  } else if (text.includes("недогруз") || text.includes("просад") || text.includes("coverage")) {
+    why = "просадка активности может означать простой, неверный план работ или сбой сбора";
+    check = "сравнить план задач, присутствие в системе и свежесть данных коллектора";
+  } else if (status === "FAIL") {
+    why = "событие имеет высокий приоритет и может влиять на безопасность или управляемость";
+    check = "назначить ручную проверку и сопоставить событие с журналами источников";
+  }
+  return { title, evidence, why, check };
 }
 
 function renderAnomalies(report) {
   const insights = Array.isArray(report?.workforce?.insights) ? report.workforce.insights : [];
   const items = insights.filter(item => item.status !== "OK").slice(0, 8);
   if (!items.length) return `<p class="muted">Существенных аномалий за выбранный период нет.</p>`;
-  return `<ul class="rank-list anomaly-list">${items.map(item => `
+  return `<ul class="rank-list anomaly-list">${items.map(item => {
+    const explanation = anomalyExplanation(item);
+    return `
     <li>
       <span class="badge ${statusClass(item.status)}">${ui(statusRiskLabel(item.status))}</span>
-      <span>${ui(item.label || item.title || "Аномалия")}</span>
-      <strong>${ui(item.value || item.subject || "")}</strong>
+      <div>
+        <strong>${ui(explanation.title)}</strong>
+        <p><b>Что произошло:</b> ${ui(explanation.evidence)}</p>
+        <p><b>Почему это риск:</b> ${ui(explanation.why)}</p>
+        <p><b>Что проверить:</b> ${ui(explanation.check)}</p>
+      </div>
     </li>
-  `).join("")}</ul>`;
+  `; }).join("")}</ul>`;
 }
 
 function renderTopRisks(report) {
   const reasons = Array.isArray(report?.ueba_risk?.reasons) ? report.ueba_risk.reasons : [];
   if (!reasons.length) return `<p class="muted">Существенных риск-сигналов нет.</p>`;
-  return `<ol class="rank-list">${reasons.slice(0, 8).map((item, index) => `
+  return `<ol class="rank-list risk-list">${reasons.slice(0, 8).map((item, index) => `
     <li>
       <strong>${index + 1}</strong>
-      <span>${ui(item.label || item.code || "Риск")}</span>
+      <span>${ui(item.label || item.code || "Риск")}<small>${ui(item.recommendation || item.value || "")}</small></span>
       <span class="badge ${statusClass(item.status || item.severity)}">+${escapeHtml(item.points || 0)}</span>
+      <button class="small-button" data-open-investigation="true">Открыть расследование</button>
     </li>
   `).join("")}</ol>`;
 }
@@ -385,15 +438,15 @@ function renderTopRisks(report) {
 function renderOverviewAnalytics(report) {
   return `
     <section class="analytics-grid">
-      <article class="analytics-panel">
+      <article class="analytics-panel department-panel">
         <h3>Подразделения сегодня</h3>
         ${renderDepartmentTable(report)}
       </article>
-      <article class="analytics-panel">
+      <article class="analytics-panel anomaly-panel">
         <h3>Аномалии</h3>
         ${renderAnomalies(report)}
       </article>
-      <article class="analytics-panel">
+      <article class="analytics-panel risk-panel">
         <h3>Топ рисков</h3>
         ${renderTopRisks(report)}
       </article>
@@ -1006,33 +1059,48 @@ function renderReports(data) {
   `;
 }
 
-function renderSettings() {
+function basename(value) {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+  return text.split(/[\\/]/).filter(Boolean).pop() || text;
+}
+
+function settingRows(report) {
+  const policy = report?.workforce_policy || {};
+  const risk = report?.ueba_risk || {};
+  const roles = Array.isArray(policy.available_roles) ? policy.available_roles : [];
+  const activeRole = roles.find(item => item.role === policy.default_role || item.role === policy.role) || roles[0] || {};
+  const workdayHours = activeRole.planned_hours_per_day || (Number(policy.planned_seconds || 0) > 0 ? (Number(policy.planned_seconds) / 3600).toFixed(1) : 8);
+  const period = periodConfig();
+  return [
+    ["Период расчета", period.label, period.key === "today" ? "оперативный дневной срез" : `${period.days} календарных дней`],
+    ["Рабочий день", `${workdayHours} ч`, `роль: ${policy.role_label || activeRole.label || policy.default_role || "default"}`],
+    ["Порог WARN", ">= 15 баллов", "любой ненормальный риск попадает в очередь проверки"],
+    ["Порог FAIL", ">= 70 баллов", "высокий риск требует приоритетного разбора"],
+    ["Источник правил", policy.configured ? basename(policy.path) : "встроенные правила", risk.policy_configured ? `UEBA policy: ${basename(risk.policy_path)}` : "UEBA policy: встроенная модель"],
+    ["Дата последнего пересчета", report?.generated_at_utc || "-", `версия политики: ${risk.policy_version || "ueba-rule-v1"}`],
+  ];
+}
+
+function renderSettings(report) {
+  const rows = settingRows(periodReport(report || state.reports || {}));
   return `
     <div class="page-head">
       <div>
         <h2 class="section-title">Настройки</h2>
-        <p class="muted">Параметры отображения портала и границы интерпретации данных.</p>
+        <p class="muted">Read-only параметры расчета и границы интерпретации данных.</p>
       </div>
       <span class="badge status-ok">только чтение</span>
     </div>
-    <div class="grid-2">
-      <section class="card">
-        <h3>Периоды</h3>
-        <div class="list compact-list">
-          <div class="row compact-row"><strong>Сегодня</strong><span class="muted">текущий дневной срез</span><span class="badge status-ok">готово</span></div>
-          <div class="row compact-row"><strong>7 дней</strong><span class="muted">сводка по накопленной дневной истории</span><span class="badge status-warn">зависит от истории</span></div>
-          <div class="row compact-row"><strong>30 дней</strong><span class="muted">месячная управленческая интерпретация</span><span class="badge status-warn">зависит от истории</span></div>
-        </div>
-      </section>
-      <section class="card">
-        <h3>Модули продукта</h3>
-        <div class="list compact-list">
-          <div class="row compact-row"><strong>Workforce</strong><span class="muted">активность, рабочее время, подразделения, сотрудники</span><span class="badge status-ok">активно</span></div>
-          <div class="row compact-row"><strong>UEBA</strong><span class="muted">правила риска, аномалии, обычный профиль</span><span class="badge status-warn">v1</span></div>
-          <div class="row compact-row"><strong>DLP-lite</strong><span class="muted">события данных, материалы проверки, расследования</span><span class="badge status-warn">read-only</span></div>
-        </div>
-      </section>
-    </div>
+    <section class="card">
+      <h3>Параметры расчета</h3>
+      <table class="data-table settings-table">
+        <thead><tr><th>Параметр</th><th>Значение</th><th>Комментарий</th></tr></thead>
+        <tbody>${rows.map(([name, value, note]) => `
+          <tr><td><strong>${ui(name)}</strong></td><td>${ui(value)}</td><td>${ui(note)}</td></tr>
+        `).join("")}</tbody>
+      </table>
+    </section>
   `;
 }
 
@@ -1089,7 +1157,10 @@ async function refresh() {
     updateFilters(data);
   }
   if (state.tab === "settings") {
-    content.innerHTML = renderSettings();
+    const data = await loadJson("/reports").catch(() => state.reports || {});
+    state.reports = data;
+    content.innerHTML = renderSettings(data);
+    updateFilters(data);
   }
 }
 
@@ -1125,6 +1196,12 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-open-reports]");
   if (!button) return;
   setTab("reports");
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-open-investigation]");
+  if (!button) return;
+  setTab("incidents");
 });
 
 document.addEventListener("click", event => {

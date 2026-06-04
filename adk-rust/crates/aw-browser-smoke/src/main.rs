@@ -71,9 +71,7 @@ fn default_node_path(current: Option<&OsStr>) -> Option<OsString> {
     if current.is_some_and(|value| !value.is_empty()) {
         return None;
     }
-    let Some(home) = std::env::var_os("HOME") else {
-        return None;
-    };
+    let home = std::env::var_os("HOME")?;
     let path = PathBuf::from(home)
         .join(".agents")
         .join("skills")
