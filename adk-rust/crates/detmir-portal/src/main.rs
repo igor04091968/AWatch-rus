@@ -5631,6 +5631,12 @@ fn render_report_markdown(
     text.push_str("# DetMir оперативный отчет\n\n");
     text.push_str(&format!("Дата снимка: {}\n\n", snapshot.generated_at_utc));
     text.push_str(&format!("Итог: {headline}\n\n"));
+    append_linked_risk_narrative_markdown(
+        &mut text,
+        context.risk_heatmap,
+        context.security_correlation,
+    );
+    append_executive_dashboard_markdown(&mut text, context.executive_dashboard);
     text.push_str("## KPI\n\n");
     text.push_str(&format!("- Общий статус: {}\n", summary.severity));
     text.push_str(&format!(
@@ -5695,12 +5701,6 @@ fn render_report_markdown(
     for item in recommendations {
         text.push_str(&format!("- {item}\n"));
     }
-    append_executive_dashboard_markdown(&mut text, context.executive_dashboard);
-    append_linked_risk_narrative_markdown(
-        &mut text,
-        context.risk_heatmap,
-        context.security_correlation,
-    );
     append_agent_quality_markdown(&mut text, &snapshot.agent_quality);
     append_agent_quality_history_markdown(
         &mut text,
@@ -10103,6 +10103,13 @@ mod tests {
                 .contains("## Связанная картина риска")
         );
         let markdown = report["markdown"].as_str().unwrap();
+        assert!(
+            markdown.find("## Связанная картина риска").unwrap() < markdown.find("## KPI").unwrap()
+        );
+        assert!(
+            markdown.find("## Связанная картина риска").unwrap()
+                < markdown.find("## Сводка руководителя").unwrap()
+        );
         assert!(
             markdown.find("## Связанная картина риска").unwrap()
                 < markdown.find("## Достоверность данных").unwrap()
