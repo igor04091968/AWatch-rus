@@ -910,6 +910,13 @@ h1 {
   gap: 6px;
 }
 
+.investigation-pack-button {
+  margin-top: 8px;
+  width: 100%;
+  justify-content: center;
+  text-align: center;
+}
+
 .small-button {
   min-height: 32px;
   padding: 6px 8px;

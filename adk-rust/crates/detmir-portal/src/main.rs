@@ -355,6 +355,33 @@ struct RiskIncidentCandidate {
     incident_review_audit: Vec<IncidentReviewAuditEntry>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct InvestigationPack {
+    candidate_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    department: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hostname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    risk_level: Option<String>,
+    reasons: Vec<String>,
+    evidence: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    first_seen_utc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_seen_utc: Option<String>,
+    current_review_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    review_comment: Option<String>,
+    review_audit_history: Vec<IncidentReviewAuditEntry>,
+    trust_kpi_snapshot: Value,
+    agent_quality_snapshot: Value,
+    business_risk_snapshot: Value,
+    markdown: String,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -921,6 +948,9 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
     if path == "/api/dlp/evidence" {
         return respond_json(request, &build_dlp_evidence_response(args));
     }
+    if let Some(candidate_id) = parse_investigation_pack_path(&path) {
+        return handle_investigation_pack(request, args, snapshot_cache, &url, &candidate_id);
+    }
     if let Some((evidence_id, download)) = parse_evidence_screenshot_path(&path) {
         return handle_evidence_screenshot(request, args, &evidence_id, download);
     }
@@ -1187,6 +1217,21 @@ fn query_flag(url: &str, key: &str) -> bool {
         let (name, value) = pair.split_once('=').unwrap_or((pair, "1"));
         name == key && matches!(value, "1" | "true" | "yes" | "on")
     })
+}
+
+fn query_param(url: &str, key: &str) -> Option<String> {
+    let query = url.split_once('?').map(|(_, query)| query)?;
+    query.split('&').find_map(|pair| {
+        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
+        (name == key && !value.is_empty()).then(|| value.to_string())
+    })
+}
+
+fn parse_investigation_pack_path(path: &str) -> Option<String> {
+    path.strip_prefix("/api/investigation-pack/")
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && !value.contains('/'))
+        .map(ToString::to_string)
 }
 
 fn cached_snapshot(args: &Cli, cache: &SnapshotCache) -> Snapshot {
@@ -2699,6 +2744,226 @@ fn build_risk_incident_candidates(
         .into_iter()
         .filter(|item| seen.insert(item.id.clone()))
         .collect()
+}
+
+fn build_reviewed_risk_incident_candidates(
+    snapshot: &Snapshot,
+    incident_reviews: &IncidentReviewFile,
+    audit_entries: &[IncidentReviewAuditEntry],
+) -> (Vec<RiskIncidentCandidate>, Vec<BusinessRiskItem>) {
+    let department_items = workforce_rollup_items(snapshot, "department_rollups");
+    let business_risk = build_business_risk(snapshot, &department_items);
+    let business_risk_history = build_business_risk_history(snapshot);
+    let mut candidates =
+        build_risk_incident_candidates(snapshot, &business_risk, &business_risk_history);
+    apply_incident_reviews_to_candidates(&mut candidates, incident_reviews, audit_entries);
+    (candidates, business_risk)
+}
+
+fn build_investigation_pack(
+    snapshot: &Snapshot,
+    candidate_id: &str,
+    incident_reviews: &IncidentReviewFile,
+    audit_entries: &[IncidentReviewAuditEntry],
+) -> Result<InvestigationPack> {
+    let candidate_id = validate_short_token(candidate_id, "candidate_id", 128)?;
+    let (candidates, business_risk) =
+        build_reviewed_risk_incident_candidates(snapshot, incident_reviews, audit_entries);
+    let candidate = candidates
+        .iter()
+        .find(|item| item.id == candidate_id)
+        .ok_or_else(|| anyhow!("candidate not found: {candidate_id}"))?;
+    let related_business_risk = candidate.department.as_deref().and_then(|department| {
+        business_risk
+            .iter()
+            .find(|item| item.department == department)
+    });
+    let reasons = investigation_reasons(candidate, related_business_risk);
+    let review = &candidate.incident_review;
+    let trust_kpi_snapshot = investigation_trust_kpi_snapshot(
+        candidate,
+        related_business_risk,
+        &snapshot.agent_quality,
+        &snapshot.agent_quality_nodes_summary,
+        &snapshot.agent_coverage_sla,
+    );
+    let agent_quality_snapshot = investigation_agent_quality_snapshot(snapshot, candidate);
+    let business_risk_snapshot = related_business_risk
+        .map(|item| serde_json::to_value(item).unwrap_or_else(|_| json!({})))
+        .unwrap_or_else(|| {
+            json!({
+                "available": false,
+                "department": candidate.department,
+                "risk_level": candidate.risk_level,
+                "reasons": reasons,
+            })
+        });
+    let mut pack = InvestigationPack {
+        candidate_id: candidate.id.clone(),
+        department: candidate.department.clone(),
+        owner: candidate.owner.clone(),
+        hostname: candidate.hostname.clone(),
+        risk_level: candidate.risk_level.clone(),
+        reasons,
+        evidence: candidate.evidence.clone(),
+        first_seen_utc: candidate.first_seen_utc.clone(),
+        last_seen_utc: candidate.last_seen_utc.clone(),
+        current_review_status: review.status.clone(),
+        review_comment: review.comment.clone(),
+        review_audit_history: candidate.incident_review_audit.clone(),
+        trust_kpi_snapshot,
+        agent_quality_snapshot,
+        business_risk_snapshot,
+        markdown: String::new(),
+    };
+    pack.markdown = render_investigation_pack_markdown(&pack);
+    Ok(pack)
+}
+
+fn investigation_reasons(
+    candidate: &RiskIncidentCandidate,
+    business_risk: Option<&BusinessRiskItem>,
+) -> Vec<String> {
+    let mut reasons = Vec::new();
+    if let Some(reason) = candidate
+        .reason
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
+        reasons.push(reason.to_string());
+    }
+    if let Some(risk) = business_risk {
+        reasons.extend(risk.reasons.iter().cloned());
+    }
+    if reasons.is_empty() {
+        reasons.push("кандидат требует ручной проверки".to_string());
+    }
+    reasons.sort();
+    reasons.dedup();
+    reasons
+}
+
+fn investigation_trust_kpi_snapshot(
+    candidate: &RiskIncidentCandidate,
+    business_risk: Option<&BusinessRiskItem>,
+    agent_quality: &AgentQuality,
+    agent_quality_nodes_summary: &AgentQualityNodesSummary,
+    agent_coverage_sla: &AgentCoverageSla,
+) -> Value {
+    json!({
+        "department": candidate.department,
+        "hostname": candidate.hostname,
+        "trust_score": business_risk.map(|item| item.trust_score),
+        "activity_score": business_risk.map(|item| item.activity_score),
+        "business_risk_level": business_risk.map(|item| item.risk_level.clone()),
+        "agent_quality_status": agent_quality.quality_status,
+        "agent_quality_source": agent_quality.collector_source,
+        "accepted_kpi_nodes_pct": agent_quality_nodes_summary.accepted_kpi_nodes_pct,
+        "coverage_sla_status": agent_coverage_sla.sla_status,
+        "coverage_pct": agent_coverage_sla.coverage_pct,
+        "freshness_pct": agent_coverage_sla.freshness_pct,
+    })
+}
+
+fn investigation_agent_quality_snapshot(
+    snapshot: &Snapshot,
+    candidate: &RiskIncidentCandidate,
+) -> Value {
+    let node = candidate.hostname.as_deref().and_then(|hostname| {
+        snapshot
+            .agent_quality_nodes
+            .iter()
+            .find(|item| item.hostname == hostname)
+    });
+    json!({
+        "global": snapshot.agent_quality,
+        "global_explain": agent_quality_explain(&snapshot.agent_quality),
+        "node": node,
+        "nodes_summary": snapshot.agent_quality_nodes_summary,
+        "coverage_sla": snapshot.agent_coverage_sla,
+    })
+}
+
+fn render_investigation_pack_markdown(pack: &InvestigationPack) -> String {
+    let mut text = String::new();
+    text.push_str("# Пакет расследования кандидата\n\n");
+    text.push_str("## Краткое резюме\n\n");
+    text.push_str(&format!("- Кандидат: {}\n", pack.candidate_id));
+    text.push_str(&format!(
+        "- Подразделение: {}\n",
+        pack.department.as_deref().unwrap_or("-")
+    ));
+    text.push_str(&format!(
+        "- Ответственный: {}\n",
+        pack.owner.as_deref().unwrap_or("-")
+    ));
+    text.push_str(&format!(
+        "- Узел: {}\n",
+        pack.hostname.as_deref().unwrap_or("-")
+    ));
+    text.push_str(&format!(
+        "- Риск: {}\n",
+        pack.risk_level.as_deref().unwrap_or("UNKNOWN")
+    ));
+    text.push_str(&format!(
+        "- Период наблюдения: {} - {}\n",
+        pack.first_seen_utc.as_deref().unwrap_or("-"),
+        pack.last_seen_utc.as_deref().unwrap_or("-")
+    ));
+    text.push_str(&format!(
+        "- Текущий статус проверки: {}\n",
+        pack.current_review_status
+    ));
+    text.push_str(&format!(
+        "- Комментарий проверки: {}\n",
+        pack.review_comment.as_deref().unwrap_or("-")
+    ));
+    text.push_str("\n## Причины риска\n\n");
+    for reason in &pack.reasons {
+        text.push_str(&format!("- {reason}\n"));
+    }
+    text.push_str("\n## Доказательства\n\n");
+    if pack.evidence.is_empty() {
+        text.push_str("- Evidence отсутствует, требуется ручная проверка первичных источников.\n");
+    } else {
+        for item in &pack.evidence {
+            text.push_str(&format!("- {item}\n"));
+        }
+    }
+    text.push_str("\n## История проверки\n\n");
+    if pack.review_audit_history.is_empty() {
+        text.push_str("- История изменений отсутствует.\n");
+    } else {
+        for entry in &pack.review_audit_history {
+            text.push_str(&format!(
+                "- {}: {} -> {}, проверяющий={}, комментарий={}\n",
+                entry.changed_at_utc,
+                entry.old_status,
+                entry.new_status,
+                entry.reviewer.as_deref().unwrap_or("-"),
+                entry.comment.as_deref().unwrap_or("-")
+            ));
+        }
+    }
+    text.push_str("\n## Снимок доверия к KPI\n\n");
+    append_json_markdown(&mut text, &pack.trust_kpi_snapshot);
+    text.push_str("\n## Качество данных агента\n\n");
+    append_json_markdown(&mut text, &pack.agent_quality_snapshot);
+    text.push_str("\n## Бизнес-риск\n\n");
+    append_json_markdown(&mut text, &pack.business_risk_snapshot);
+    text.push_str("\n## Вывод\n\n");
+    text.push_str("- Пакет является экспортом кандидата для ручной проверки.\n");
+    text.push_str("- Автоматическое создание или подтверждение инцидента не выполнялось.\n");
+    text.push_str(
+        "- Решение принимает ответственный сотрудник после проверки первичных источников.\n",
+    );
+    text
+}
+
+fn append_json_markdown(text: &mut String, value: &Value) {
+    text.push_str("```json\n");
+    text.push_str(&serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string()));
+    text.push_str("\n```\n");
 }
 
 fn apply_incident_reviews_to_candidates(
@@ -5278,6 +5543,54 @@ fn handle_incident_review(mut request: Request, args: &Cli) -> Result<()> {
     }
 }
 
+fn handle_investigation_pack(
+    request: Request,
+    args: &Cli,
+    snapshot_cache: &SnapshotCache,
+    url: &str,
+    candidate_id: &str,
+) -> Result<()> {
+    let snapshot = cached_snapshot(args, snapshot_cache);
+    let incident_reviews = load_incident_review_best_effort(args);
+    let incident_review_audit = load_incident_review_audit_best_effort(args);
+    let pack = build_investigation_pack(
+        &snapshot,
+        candidate_id,
+        &incident_reviews,
+        &incident_review_audit,
+    );
+    match pack {
+        Ok(pack) => {
+            let format = query_param(url, "format")
+                .unwrap_or_else(|| "json".to_string())
+                .to_ascii_lowercase();
+            if matches!(format.as_str(), "md" | "markdown") {
+                let filename = format!(
+                    "investigation-pack-{}.md",
+                    safe_download_stem(&pack.candidate_id)
+                );
+                respond_text_download(
+                    request,
+                    StatusCode(200),
+                    &pack.markdown,
+                    "text/markdown; charset=utf-8",
+                    &filename,
+                )
+            } else {
+                respond_json(request, &pack)
+            }
+        }
+        Err(err) => respond_json_status(
+            request,
+            StatusCode(404),
+            &json!({
+                "ok": false,
+                "error": err.to_string()
+            }),
+        ),
+    }
+}
+
 fn handle_telemetry_ingest(mut request: Request, args: &Cli) -> Result<()> {
     if !telemetry_authorized(&request, args) {
         return respond_json_status(
@@ -6728,6 +7041,27 @@ fn respond_text(
     request.respond(response).map_err(|err| anyhow!("{err}"))
 }
 
+fn respond_text_download(
+    request: Request,
+    status: StatusCode,
+    body: &str,
+    content_type: &str,
+    download_name: &str,
+) -> Result<()> {
+    let response = Response::from_string(body.to_string())
+        .with_status_code(status)
+        .with_header(header("Content-Type", content_type)?)
+        .with_header(header("Cache-Control", "no-store")?)
+        .with_header(header(
+            "Content-Disposition",
+            &format!(
+                "attachment; filename=\"{}\"",
+                download_name.replace('"', "")
+            ),
+        )?);
+    request.respond(response).map_err(|err| anyhow!("{err}"))
+}
+
 fn respond_file(
     request: Request,
     path: &Path,
@@ -6746,6 +7080,25 @@ fn respond_file(
         )?);
     }
     request.respond(response).map_err(|err| anyhow!("{err}"))
+}
+
+fn safe_download_stem(value: &str) -> String {
+    let stem = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(96)
+        .collect::<String>();
+    if stem.is_empty() {
+        "candidate".to_string()
+    } else {
+        stem
+    }
 }
 
 fn header(name: &str, value: &str) -> Result<Header> {
@@ -6769,6 +7122,15 @@ mod tests {
         assert!(query_flag("/api/reports?anonymize=1", "anonymize"));
         assert!(query_flag("/api/reports?anonymize=true", "anonymize"));
         assert!(!query_flag("/api/reports?anonymize=0", "anonymize"));
+        assert_eq!(
+            query_param("/api/investigation-pack/c1?format=markdown", "format").as_deref(),
+            Some("markdown")
+        );
+        assert_eq!(
+            parse_investigation_pack_path("/api/investigation-pack/risk-candidate-123").as_deref(),
+            Some("risk-candidate-123")
+        );
+        assert_eq!(safe_download_stem("risk:candidate/1"), "risk_candidate_1");
     }
 
     #[test]
@@ -8023,6 +8385,29 @@ mod tests {
         assert_eq!(
             report["risk_incident_candidates"][0]["incident_review"]["status"],
             "NEW"
+        );
+        let candidate_id = report["risk_incident_candidates"][0]["id"]
+            .as_str()
+            .unwrap();
+        let pack =
+            build_investigation_pack(&snapshot, candidate_id, &IncidentReviewFile::default(), &[])
+                .unwrap();
+        assert_eq!(pack.candidate_id, candidate_id);
+        assert!(pack.markdown.contains("# Пакет расследования кандидата"));
+        assert!(pack.markdown.contains("## Причины риска"));
+        assert!(pack.markdown.contains("## Доказательства"));
+        assert!(pack.markdown.contains("## История проверки"));
+        assert!(pack.trust_kpi_snapshot.is_object());
+        assert!(pack.agent_quality_snapshot.is_object());
+        assert!(pack.business_risk_snapshot.is_object());
+        assert!(
+            build_investigation_pack(
+                &snapshot,
+                "risk-candidate-absent",
+                &IncidentReviewFile::default(),
+                &[]
+            )
+            .is_err()
         );
         assert_eq!(report["incident_review_audit_summary"]["total_changes"], 0);
         assert!(

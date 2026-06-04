@@ -1811,9 +1811,13 @@ function renderCandidateReviewActions(item) {
     ["FALSE_POSITIVE", "Ложный"],
     ["POSTPONED", "Отложить"],
   ];
-  return `<div class="button-row compact-actions">${actions.map(([status, label]) => `
-    <button class="small-button" data-review-status="${escapeHtml(status)}" data-candidate-id="${escapeHtml(id)}">${ui(label)}</button>
-  `).join("")}</div>`;
+  const packUrl = `/portal/api/investigation-pack/${encodeURIComponent(id)}?format=markdown`;
+  return `
+    <div class="button-row compact-actions">${actions.map(([status, label]) => `
+      <button class="small-button" data-review-status="${escapeHtml(status)}" data-candidate-id="${escapeHtml(id)}">${ui(label)}</button>
+    `).join("")}</div>
+    <a class="small-button investigation-pack-button" href="${escapeHtml(packUrl)}" download>Скачать пакет расследования</a>
+  `;
 }
 
 function reviewStatusText(status) {
