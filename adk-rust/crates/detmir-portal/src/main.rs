@@ -446,6 +446,53 @@ struct CaseDetailsResponse {
     markdown: String,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct ExecutiveRiskDepartment {
+    department: String,
+    risk_level: String,
+    trust_score: u8,
+    activity_score: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    reasons: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ExecutiveCandidateSummary {
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    department: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hostname: Option<String>,
+    risk_level: String,
+    reason: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ExecutiveDashboardSummary {
+    main_risk: String,
+    main_improvement: String,
+    main_data_gap: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ExecutiveDashboard {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust_kpi_score: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_coverage_pct: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    high_risk_departments: Option<Vec<ExecutiveRiskDepartment>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    critical_candidates: Option<Vec<ExecutiveCandidateSummary>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    open_cases: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    resolved_cases_30d: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    forensics_readiness: Option<String>,
+    summary: ExecutiveDashboardSummary,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -920,6 +967,7 @@ struct ReportWorkforceSummary {
 
 struct ReportMarkdownContext<'a> {
     workforce: &'a ReportWorkforceSummary,
+    executive_dashboard: &'a ExecutiveDashboard,
     workforce_policy: &'a Value,
     ueba_risk: &'a Value,
     business_risk: &'a [BusinessRiskItem],
@@ -933,6 +981,7 @@ struct ReportRuntimeInputs<'a> {
     incident_state: &'a IncidentStateFile,
     incident_reviews: &'a IncidentReviewFile,
     incident_review_audit: &'a [IncidentReviewAuditEntry],
+    cases: &'a CaseFile,
     evidence: &'a DlpEvidenceResponse,
 }
 
@@ -954,6 +1003,7 @@ fn run() -> Result<i32> {
         let incident_state = load_incident_state_best_effort(&args);
         let incident_reviews = load_incident_review_best_effort(&args);
         let incident_review_audit = load_incident_review_audit_best_effort(&args);
+        let cases = load_cases_best_effort(&args);
         let evidence = build_dlp_evidence_response(&args);
         let ueba_baseline_path = ueba_baseline_state_path(&args);
         let smoke = json!({
@@ -963,6 +1013,7 @@ fn run() -> Result<i32> {
                 incident_state: &incident_state,
                 incident_reviews: &incident_reviews,
                 incident_review_audit: &incident_review_audit,
+                cases: &cases,
                 evidence: &evidence,
             }, &args.workforce_policy_path, &args.ueba_policy_path, &ueba_baseline_path, false),
             "incidents": build_incidents(&snapshot, &incident_state),
@@ -1080,6 +1131,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             let incident_state = load_incident_state_best_effort(args);
             let incident_reviews = load_incident_review_best_effort(args);
             let incident_review_audit = load_incident_review_audit_best_effort(args);
+            let cases = load_cases_best_effort(args);
             let evidence = build_dlp_evidence_response(args);
             let ueba_baseline_path = ueba_baseline_state_path(args);
             respond_json(
@@ -1090,6 +1142,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
                         incident_state: &incident_state,
                         incident_reviews: &incident_reviews,
                         incident_review_audit: &incident_review_audit,
+                        cases: &cases,
                         evidence: &evidence,
                     },
                     &args.workforce_policy_path,
@@ -2221,6 +2274,15 @@ fn build_reports(
     );
     let incident_review_audit_summary =
         summarize_incident_review_audit(inputs.incident_review_audit);
+    let executive_dashboard = build_executive_dashboard(
+        snapshot,
+        &agent_quality_explain,
+        &business_risk,
+        &business_risk_history_summary,
+        &risk_incident_candidates,
+        inputs.cases,
+        inputs.evidence,
+    );
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
     let workforce_policy_explain =
@@ -2311,6 +2373,18 @@ fn build_reports(
             candidate.reason.as_deref().unwrap_or("требуется проверка")
         ));
     }
+    executive_points.push(format!(
+        "Главный риск: {}",
+        executive_dashboard.summary.main_risk
+    ));
+    executive_points.push(format!(
+        "Главное улучшение: {}",
+        executive_dashboard.summary.main_improvement
+    ));
+    executive_points.push(format!(
+        "Главный пробел в данных: {}",
+        executive_dashboard.summary.main_data_gap
+    ));
     let recommendations = owner_recommendations(snapshot, &summary);
     let workforce_summary = ReportWorkforceSummary {
         departments_count: department_items.len(),
@@ -2326,6 +2400,7 @@ fn build_reports(
         &recommendations,
         ReportMarkdownContext {
             workforce: &workforce_summary,
+            executive_dashboard: &executive_dashboard,
             workforce_policy: &workforce_policy_explain,
             ueba_risk: &ueba_risk,
             business_risk: &business_risk,
@@ -2343,6 +2418,7 @@ fn build_reports(
         "operator_ok": summary.operator_ok,
         "headline": headline,
         "executive_points": executive_points,
+        "executive_dashboard": executive_dashboard,
         "kpis": [
             report_kpi("UEBA риск", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("risk score")),
             report_kpi("Качество данных агента", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
@@ -2849,6 +2925,203 @@ fn build_reviewed_risk_incident_candidates(
         build_risk_incident_candidates(snapshot, &business_risk, &business_risk_history);
     apply_incident_reviews_to_candidates(&mut candidates, incident_reviews, audit_entries);
     (candidates, business_risk)
+}
+
+fn build_executive_dashboard(
+    snapshot: &Snapshot,
+    agent_quality_explain: &AgentQualityExplain,
+    business_risk: &[BusinessRiskItem],
+    business_risk_history_summary: &BusinessRiskHistorySummary,
+    candidates: &[RiskIncidentCandidate],
+    cases: &CaseFile,
+    evidence: &DlpEvidenceResponse,
+) -> ExecutiveDashboard {
+    let trust_kpi_score = executive_trust_kpi_score(snapshot, agent_quality_explain);
+    let agent_coverage_pct = (snapshot.agent_coverage_sla.expected_nodes > 0)
+        .then_some(snapshot.agent_coverage_sla.coverage_pct);
+    let high_risk_departments = business_risk
+        .iter()
+        .filter(|item| business_risk_is_high(&item.risk_level))
+        .take(10)
+        .map(|item| ExecutiveRiskDepartment {
+            department: item.department.clone(),
+            risk_level: item.risk_level.clone(),
+            trust_score: item.trust_score,
+            activity_score: item.activity_score,
+            reasons: item.reasons.clone(),
+        })
+        .collect::<Vec<_>>();
+    let critical_candidates = candidates
+        .iter()
+        .filter(|item| {
+            matches!(
+                item.risk_level.as_deref().unwrap_or("UNKNOWN"),
+                "HIGH" | "CRITICAL"
+            )
+        })
+        .take(10)
+        .map(|item| ExecutiveCandidateSummary {
+            id: item.id.clone(),
+            department: item.department.clone(),
+            hostname: item.hostname.clone(),
+            risk_level: item
+                .risk_level
+                .clone()
+                .unwrap_or_else(|| "UNKNOWN".to_string()),
+            reason: item
+                .reason
+                .clone()
+                .unwrap_or_else(|| "требуется проверка".to_string()),
+        })
+        .collect::<Vec<_>>();
+    let open_cases = cases
+        .cases
+        .values()
+        .filter(|item| matches!(item.status.as_str(), "OPEN" | "IN_PROGRESS"))
+        .count();
+    let resolved_cases_30d = resolved_cases_30d(cases);
+    let forensics_readiness = forensics_readiness(snapshot, candidates, evidence);
+    let summary = ExecutiveDashboardSummary {
+        main_risk: executive_main_risk(
+            &high_risk_departments,
+            &critical_candidates,
+            &snapshot.agent_coverage_sla,
+        ),
+        main_improvement: executive_main_improvement(
+            business_risk_history_summary,
+            resolved_cases_30d,
+            &critical_candidates,
+        ),
+        main_data_gap: executive_main_data_gap(snapshot, agent_quality_explain),
+    };
+    ExecutiveDashboard {
+        trust_kpi_score,
+        agent_coverage_pct,
+        high_risk_departments: Some(high_risk_departments),
+        critical_candidates: Some(critical_candidates),
+        open_cases: Some(open_cases),
+        resolved_cases_30d: Some(resolved_cases_30d),
+        forensics_readiness: Some(forensics_readiness),
+        summary,
+    }
+}
+
+fn executive_trust_kpi_score(
+    snapshot: &Snapshot,
+    agent_quality_explain: &AgentQualityExplain,
+) -> Option<u8> {
+    if snapshot.agent_quality_nodes_summary.total_nodes > 0 {
+        Some(snapshot.agent_quality_nodes_summary.accepted_kpi_nodes_pct)
+    } else if agent_quality_explain.status == "UNKNOWN" {
+        None
+    } else if agent_quality_explain.kpi_accepted {
+        Some(100)
+    } else {
+        Some(0)
+    }
+}
+
+fn resolved_cases_30d(cases: &CaseFile) -> usize {
+    let since = Utc::now() - chrono::Duration::days(30);
+    cases
+        .cases
+        .values()
+        .filter(|item| item.status == "RESOLVED")
+        .filter(|item| {
+            chrono::DateTime::parse_from_rfc3339(&item.updated_at_utc)
+                .map(|timestamp| timestamp.with_timezone(&Utc) >= since)
+                .unwrap_or(false)
+        })
+        .count()
+}
+
+fn forensics_readiness(
+    snapshot: &Snapshot,
+    candidates: &[RiskIncidentCandidate],
+    evidence: &DlpEvidenceResponse,
+) -> String {
+    let has_audit_ready_candidates = candidates
+        .iter()
+        .any(|item| !item.incident_review_audit.is_empty() || item.incident_review.status != "NEW");
+    if evidence.items.iter().any(|item| item.screenshot_available) && has_audit_ready_candidates {
+        "READY".to_string()
+    } else if !evidence.items.is_empty() || !candidates.is_empty() {
+        "PARTIAL".to_string()
+    } else if matches!(
+        snapshot.agent_quality.quality_status.as_str(),
+        "ok" | "fallback" | "degraded"
+    ) {
+        "OBSERVE".to_string()
+    } else {
+        "LIMITED".to_string()
+    }
+}
+
+fn executive_main_risk(
+    high_risk_departments: &[ExecutiveRiskDepartment],
+    critical_candidates: &[ExecutiveCandidateSummary],
+    sla: &AgentCoverageSla,
+) -> String {
+    if sla.sla_status == "CRITICAL" {
+        return "покрытие агентов критически недостаточно, KPI нерепрезентативен".to_string();
+    }
+    if let Some(item) = high_risk_departments.first() {
+        let reason = item
+            .reasons
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "требуется управленческая проверка".to_string());
+        return format!(
+            "подразделение {}: {} — {}",
+            item.department, item.risk_level, reason
+        );
+    }
+    if let Some(item) = critical_candidates.first() {
+        return format!(
+            "кандидат {}: {} — {}",
+            item.id, item.risk_level, item.reason
+        );
+    }
+    "критичных управленческих рисков в текущем срезе нет".to_string()
+}
+
+fn executive_main_improvement(
+    history_summary: &BusinessRiskHistorySummary,
+    resolved_cases_30d: usize,
+    critical_candidates: &[ExecutiveCandidateSummary],
+) -> String {
+    if resolved_cases_30d > 0 {
+        return format!("закрыто дел за 30 дней: {resolved_cases_30d}");
+    }
+    if history_summary.departments_improved > 0 {
+        return format!(
+            "улучшились подразделения: {}",
+            history_summary.departments_improved
+        );
+    }
+    if critical_candidates.is_empty() {
+        return "нет критичных кандидатов в инциденты".to_string();
+    }
+    "улучшение пока не подтверждено накопленной историей".to_string()
+}
+
+fn executive_main_data_gap(
+    snapshot: &Snapshot,
+    agent_quality_explain: &AgentQualityExplain,
+) -> String {
+    if snapshot.agent_coverage_sla.expected_nodes == 0 {
+        return "не настроен список ожидаемых рабочих мест для SLA покрытия".to_string();
+    }
+    if snapshot.agent_coverage_sla.coverage_pct < 90 {
+        return format!(
+            "покрытие агентов {}%, часть рабочих мест не подтверждает KPI",
+            snapshot.agent_coverage_sla.coverage_pct
+        );
+    }
+    if !agent_quality_explain.kpi_accepted {
+        return agent_quality_explain.summary.clone();
+    }
+    "критичных пробелов в данных не выявлено".to_string()
 }
 
 fn build_investigation_pack(
@@ -4797,6 +5070,7 @@ fn render_report_markdown(
     for item in recommendations {
         text.push_str(&format!("- {item}\n"));
     }
+    append_executive_dashboard_markdown(&mut text, context.executive_dashboard);
     append_agent_quality_markdown(&mut text, &snapshot.agent_quality);
     append_agent_quality_history_markdown(
         &mut text,
@@ -4826,6 +5100,67 @@ fn render_report_markdown(
     append_workforce_policy_markdown(&mut text, context.workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
     text
+}
+
+fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveDashboard) {
+    text.push_str("\n## Сводка руководителя\n\n");
+    text.push_str(&format!(
+        "- Trust KPI: {}\n",
+        dashboard
+            .trust_kpi_score
+            .map(|value| format!("{value}%"))
+            .unwrap_or_else(|| "нет данных".to_string())
+    ));
+    text.push_str(&format!(
+        "- Покрытие агентов: {}\n",
+        dashboard
+            .agent_coverage_pct
+            .map(|value| format!("{value}%"))
+            .unwrap_or_else(|| "не настроено".to_string())
+    ));
+    text.push_str(&format!(
+        "- Подразделения высокого риска: {}\n",
+        dashboard
+            .high_risk_departments
+            .as_ref()
+            .map(Vec::len)
+            .unwrap_or(0)
+    ));
+    text.push_str(&format!(
+        "- Кандидаты в инциденты: {}\n",
+        dashboard
+            .critical_candidates
+            .as_ref()
+            .map(Vec::len)
+            .unwrap_or(0)
+    ));
+    text.push_str(&format!(
+        "- Открытые дела: {}\n",
+        dashboard.open_cases.unwrap_or(0)
+    ));
+    text.push_str(&format!(
+        "- Закрытые дела за 30 дней: {}\n",
+        dashboard.resolved_cases_30d.unwrap_or(0)
+    ));
+    text.push_str(&format!(
+        "- Готовность расследований: {}\n",
+        dashboard
+            .forensics_readiness
+            .as_deref()
+            .unwrap_or("UNKNOWN")
+    ));
+    text.push_str(&format!(
+        "- Главный риск: {}\n",
+        dashboard.summary.main_risk
+    ));
+    text.push_str(&format!(
+        "- Главное улучшение: {}\n",
+        dashboard.summary.main_improvement
+    ));
+    text.push_str(&format!(
+        "- Главный пробел в данных: {}\n",
+        dashboard.summary.main_data_gap
+    ));
 }
 
 fn append_agent_quality_markdown(text: &mut String, quality: &AgentQuality) {
@@ -8664,6 +8999,7 @@ mod tests {
                 incident_state: &IncidentStateFile::default(),
                 incident_reviews: &IncidentReviewFile::default(),
                 incident_review_audit: &[],
+                cases: &CaseFile::default(),
                 evidence: &evidence,
             },
             &missing_policy,
@@ -8716,6 +9052,22 @@ mod tests {
             50
         );
         assert_eq!(report["agent_coverage_sla"]["sla_status"], "UNKNOWN");
+        assert!(report["executive_dashboard"].is_object());
+        assert_eq!(report["executive_dashboard"]["trust_kpi_score"], 50);
+        assert_eq!(report["executive_dashboard"]["open_cases"], 0);
+        assert_eq!(report["executive_dashboard"]["resolved_cases_30d"], 0);
+        assert!(
+            !report["executive_dashboard"]["critical_candidates"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            report["executive_dashboard"]["summary"]["main_data_gap"]
+                .as_str()
+                .unwrap()
+                .contains("не настроен список")
+        );
         assert_eq!(report["business_risk"].as_array().unwrap().len(), 1);
         assert_eq!(report["business_risk"][0]["department"], "Бухгалтерия");
         assert_eq!(report["business_risk"][0]["risk_level"], "MEDIUM");
@@ -8900,6 +9252,12 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|item| item.as_str().unwrap().contains("Кандидат в инцидент"))
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Сводка руководителя")
         );
         assert!(
             report["markdown"]

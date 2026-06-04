@@ -34,11 +34,30 @@ Business Risk не является автоматическим обвинен�
 - `missing_nodes_count` - сколько ожидаемых узлов не прислали telemetry;
 - `stale_nodes_count` - сколько узлов присылали telemetry, но данные устарели.
 
-Также `GET /api/reports` отдает историю:
+Также `GET /api/reports` отдает управленческую сводку и историю:
 
+- `executive_dashboard` - сводка руководителя по Trust KPI, покрытию агентов,
+  рискам, кандидатам, делам и готовности расследований;
 - `business_risk_history` - timeline риска по подразделениям;
 - `business_risk_history_summary` - сводка динамики.
 - `risk_incident_candidates` - read-only кандидаты для ручной проверки.
+
+`executive_dashboard`:
+
+- `trust_kpi_score` - доверие к KPI активности в процентах, если доступно;
+- `agent_coverage_pct` - покрытие ожидаемых рабочих мест агентами, если
+  настроен список expected nodes;
+- `high_risk_departments` - до 10 подразделений с уровнем риска `HIGH` или
+  `CRITICAL`;
+- `critical_candidates` - до 10 кандидатов в инциденты с уровнем `HIGH` или
+  `CRITICAL`;
+- `open_cases` - количество открытых дел;
+- `resolved_cases_30d` - количество дел, закрытых за последние 30 дней;
+- `forensics_readiness` - готовность доказательного слоя: `READY`, `PARTIAL`,
+  `OBSERVE` или `LIMITED`;
+- `summary.main_risk` - главный риск текущего среза;
+- `summary.main_improvement` - главное подтвержденное улучшение;
+- `summary.main_data_gap` - главный пробел в данных.
 
 Элемент `business_risk_history`:
 
@@ -281,6 +300,7 @@ POST /api/cases/{case_id}/status
 Оперативный отчет содержит раздел:
 
 ```text
+## Сводка руководителя
 ## Риски подразделений
 ## Динамика бизнес-рисков
 ## Кандидаты в инциденты

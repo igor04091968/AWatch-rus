@@ -313,6 +313,52 @@ function renderExecutiveMetrics(report, incidents) {
   `;
 }
 
+function renderExecutiveDashboard(report) {
+  const dashboard = report?.executive_dashboard;
+  if (!dashboard) return "";
+  const highRisk = Array.isArray(dashboard.high_risk_departments) ? dashboard.high_risk_departments : [];
+  const candidates = Array.isArray(dashboard.critical_candidates) ? dashboard.critical_candidates : [];
+  const summary = dashboard.summary || {};
+  return `
+    <section class="card executive-dashboard-card">
+      <div class="section-head">
+        <div>
+          <h3>Сводка руководителя</h3>
+          <p class="muted">Что происходит в организации прямо сейчас: доверие к KPI, покрытие, риски, дела и готовность расследований.</p>
+        </div>
+        <span class="badge ${statusClass(executiveDashboardStatus(dashboard))}">${ui(dashboard.forensics_readiness || "UNKNOWN")}</span>
+      </div>
+      <div class="quality-grid">
+        <div><span class="muted">Trust KPI</span><strong>${ui(optionalPercent(dashboard.trust_kpi_score))}</strong></div>
+        <div><span class="muted">Покрытие агентов</span><strong>${ui(optionalPercent(dashboard.agent_coverage_pct))}</strong></div>
+        <div><span class="muted">Высокий риск</span><strong>${ui(highRisk.length)}</strong></div>
+        <div><span class="muted">Кандидаты</span><strong>${ui(candidates.length)}</strong></div>
+        <div><span class="muted">Открытые дела</span><strong>${ui(dashboard.open_cases ?? 0)}</strong></div>
+        <div><span class="muted">Закрыто за 30 дней</span><strong>${ui(dashboard.resolved_cases_30d ?? 0)}</strong></div>
+      </div>
+      <div class="list compact-list executive-summary-list">
+        <div class="row compact-row"><strong>Главный риск</strong><span class="muted">${ui(summary.main_risk || "нет данных")}</span><span></span></div>
+        <div class="row compact-row"><strong>Главное улучшение</strong><span class="muted">${ui(summary.main_improvement || "нет данных")}</span><span></span></div>
+        <div class="row compact-row"><strong>Пробел в данных</strong><span class="muted">${ui(summary.main_data_gap || "нет данных")}</span><span></span></div>
+      </div>
+      ${highRisk.length ? `<p class="muted small">Риск-подразделения: ${ui(highRisk.slice(0, 5).map(item => `${item.department} (${item.risk_level})`).join("; "))}</p>` : ""}
+      ${candidates.length ? `<p class="muted small">Кандидаты для проверки: ${ui(candidates.slice(0, 5).map(item => `${item.id} (${item.risk_level})`).join("; "))}</p>` : ""}
+    </section>
+  `;
+}
+
+function optionalPercent(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${Math.round(number)}%` : "нет данных";
+}
+
+function executiveDashboardStatus(dashboard) {
+  if ((dashboard.critical_candidates || []).length > 0) return "WARN";
+  if ((dashboard.high_risk_departments || []).length > 0) return "WARN";
+  if (Number(dashboard.agent_coverage_pct) < 75) return "FAIL";
+  return "OK";
+}
+
 function statusRiskLabel(status) {
   const value = String(status || "INFO").toUpperCase();
   if (value === "FAIL") return "high";
@@ -824,6 +870,7 @@ function renderOperator(data, report) {
       <span class="badge ${statusClass(report?.severity)}">${escapeHtml(report?.headline || "Оперативный срез")}</span>
     </div>
     ${renderPeriodBanner(report)}
+    ${renderExecutiveDashboard(report)}
     ${renderExecutiveMetrics(report, incidents)}
     ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
     ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
@@ -1941,6 +1988,7 @@ function renderReports(data) {
       <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
     </div>
     ${renderPeriodBanner(data)}
+    ${renderExecutiveDashboard(data)}
     ${renderReportTypeCards()}
     <div class="grid-2">
       <section class="card report-hero">
