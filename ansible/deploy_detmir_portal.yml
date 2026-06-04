@@ -46,13 +46,13 @@
         content: |
           DETMIR_PORTAL_BIND={{ detmir_portal_bind }}
           DETMIR_PORTAL_STATUS_CMD=detmir-status --json
-          DETMIR_PORTAL_CHECK_CMD=detmir-check --json
+          DETMIR_PORTAL_CHECK_CMD=detmir-check --json --aw-api "$DETMIR_AW_API" --worktime-url "$DETMIR_WORKTIME_URL" --one-c-url "$DETMIR_ONE_C_URL" --rdp-host "$DETMIR_RDP_HOST" --hostname "$DETMIR_HOSTNAME"
           DETMIR_PORTAL_FAILED_UNITS_CMD=systemctl --failed --no-pager
           DETMIR_PORTAL_WORKTIME_URL={{ detmir_portal_worktime_url }}
           DETMIR_PORTAL_ONE_C_URL={{ detmir_portal_one_c_url }}
           DETMIR_PORTAL_WORKFORCE_POLICY_PATH={{ detmir_portal_workforce_policy_path }}
           DETMIR_PORTAL_UEBA_POLICY_PATH={{ detmir_portal_ueba_policy_path }}
-          DETMIR_PORTAL_TIMEOUT_SECONDS=10
+          DETMIR_PORTAL_TIMEOUT_SECONDS=25
           DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
           DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
           DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/detmir-portal/evidence
