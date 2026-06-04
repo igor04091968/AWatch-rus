@@ -38,6 +38,8 @@ Business Risk не является автоматическим обвинен�
 
 - `executive_dashboard` - сводка руководителя по Trust KPI, покрытию агентов,
   рискам, кандидатам, делам и готовности расследований;
+- `risk_heatmap` - карта рисков подразделений по Trust KPI, активности,
+  покрытию агентов, открытым делам и кандидатам в инциденты;
 - `business_risk_history` - timeline риска по подразделениям;
 - `business_risk_history_summary` - сводка динамики.
 - `risk_incident_candidates` - read-only кандидаты для ручной проверки.
@@ -58,6 +60,19 @@ Business Risk не является автоматическим обвинен�
 - `summary.main_risk` - главный риск текущего среза;
 - `summary.main_improvement` - главное подтвержденное улучшение;
 - `summary.main_data_gap` - главный пробел в данных.
+
+`risk_heatmap`:
+
+- `department` - подразделение;
+- `trust_kpi_score` - доверие к KPI активности, если доступно;
+- `activity_score` - индекс активности подразделения, если доступен;
+- `agent_coverage_pct` - оценка покрытия агентов; если список expected nodes
+  не настроен, поле отсутствует, а UI показывает `UNKNOWN`;
+- `business_risk_level` - текущий уровень Business Risk;
+- `open_cases` - открытые дела по кандидатам этого подразделения;
+- `critical_candidates` - кандидаты `HIGH`/`CRITICAL`;
+- `heat_level` - итоговая зона карты: `LOW`, `MEDIUM`, `HIGH`,
+  `CRITICAL` или `UNKNOWN`.
 
 Элемент `business_risk_history`:
 
@@ -301,6 +316,7 @@ POST /api/cases/{case_id}/status
 
 ```text
 ## Сводка руководителя
+## Карта рисков подразделений
 ## Риски подразделений
 ## Динамика бизнес-рисков
 ## Кандидаты в инциденты

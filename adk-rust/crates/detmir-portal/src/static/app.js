@@ -876,6 +876,7 @@ function renderOperator(data, report) {
     ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
     ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(report?.agent_coverage_sla)}
+    ${renderRiskHeatmap(report?.risk_heatmap)}
     ${renderBusinessRisk(report?.business_risk)}
     ${renderBusinessRiskTimeline(report?.business_risk_history, report?.business_risk_history_summary)}
     ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
@@ -1767,6 +1768,65 @@ function renderBusinessRisk(items) {
   `;
 }
 
+function renderRiskHeatmap(items) {
+  const rows = Array.isArray(items) ? items.slice(0, 10) : [];
+  const worst = rows[0]?.heat_level || "UNKNOWN";
+  return `
+    <section class="card risk-heatmap-card">
+      <div class="section-head">
+        <div>
+          <h3>Карта рисков подразделений</h3>
+          <p class="muted">Где одновременно слабый Trust KPI, низкая активность, плохое покрытие агентов, кандидаты и открытые дела.</p>
+        </div>
+        <span class="badge ${statusClass(worst)}">${ui(worst)}</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Подразделение</th>
+              <th>Trust KPI</th>
+              <th>Активность</th>
+              <th>Покрытие</th>
+              <th>Риск</th>
+              <th>Дела</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr class="heatmap-row heatmap-${escapeHtml(String(item.heat_level || "unknown").toLowerCase())}">
+                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td>${ui(riskPercentText(item.trust_kpi_score))}</td>
+                <td>${ui(riskPercentText(item.activity_score))}</td>
+                <td>${ui(riskPercentText(item.agent_coverage_pct))}</td>
+                <td>
+                  <span class="badge ${statusClass(item.heat_level)}">${ui(item.heat_level || "UNKNOWN")}</span><br>
+                  <span class="muted small">${ui(item.business_risk_level || "UNKNOWN")} · кандидаты ${ui(item.critical_candidates ?? 0)}</span>
+                </td>
+                <td>${ui(item.open_cases ?? 0)}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>Нет данных</td>
+                <td>UNKNOWN</td>
+                <td>UNKNOWN</td>
+                <td>UNKNOWN</td>
+                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>0</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function riskPercentText(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? `${Math.round(number)}%` : "UNKNOWN";
+}
+
 function businessRiskReasons(item) {
   const reasons = Array.isArray(item?.reasons) && item.reasons.length
     ? item.reasons.join("; ")
@@ -2016,6 +2076,7 @@ function renderReports(data) {
     ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(data.agent_coverage_sla)}
+    ${renderRiskHeatmap(data.risk_heatmap)}
     ${renderBusinessRisk(data.business_risk)}
     ${renderBusinessRiskTimeline(data.business_risk_history, data.business_risk_history_summary)}
     ${renderRiskIncidentCandidates(data.risk_incident_candidates)}

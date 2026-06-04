@@ -330,6 +330,24 @@ struct BusinessRiskHistorySummary {
 }
 
 #[derive(Clone, Debug, Serialize)]
+struct RiskHeatmapItem {
+    department: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    trust_kpi_score: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    activity_score: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent_coverage_pct: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    business_risk_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    open_cases: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    critical_candidates: Option<usize>,
+    heat_level: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
 struct RiskIncidentCandidate {
     id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -973,6 +991,7 @@ struct ReportMarkdownContext<'a> {
     business_risk: &'a [BusinessRiskItem],
     business_risk_history: &'a [BusinessRiskHistoryItem],
     business_risk_history_summary: &'a BusinessRiskHistorySummary,
+    risk_heatmap: &'a [RiskHeatmapItem],
     risk_incident_candidates: &'a [RiskIncidentCandidate],
     incident_review_audit_summary: &'a IncidentReviewAuditSummary,
 }
@@ -2274,6 +2293,12 @@ fn build_reports(
     );
     let incident_review_audit_summary =
         summarize_incident_review_audit(inputs.incident_review_audit);
+    let risk_heatmap = build_risk_heatmap(
+        snapshot,
+        &business_risk,
+        &risk_incident_candidates,
+        inputs.cases,
+    );
     let executive_dashboard = build_executive_dashboard(
         snapshot,
         &agent_quality_explain,
@@ -2373,6 +2398,21 @@ fn build_reports(
             candidate.reason.as_deref().unwrap_or("требуется проверка")
         ));
     }
+    for item in risk_heatmap
+        .iter()
+        .filter(|item| !matches!(item.heat_level.as_str(), "LOW" | "UNKNOWN"))
+        .take(3)
+    {
+        executive_points.push(format!(
+            "Проблемная зона {}: {} — Trust {}, активность {}, покрытие {}, дела {}",
+            item.department,
+            item.heat_level,
+            optional_score_text(item.trust_kpi_score),
+            optional_score_text(item.activity_score),
+            optional_score_text(item.agent_coverage_pct),
+            item.open_cases.unwrap_or(0)
+        ));
+    }
     executive_points.push(format!(
         "Главный риск: {}",
         executive_dashboard.summary.main_risk
@@ -2406,6 +2446,7 @@ fn build_reports(
             business_risk: &business_risk,
             business_risk_history: &business_risk_history,
             business_risk_history_summary: &business_risk_history_summary,
+            risk_heatmap: &risk_heatmap,
             risk_incident_candidates: &risk_incident_candidates,
             incident_review_audit_summary: &incident_review_audit_summary,
         },
@@ -2499,6 +2540,7 @@ fn build_reports(
         "business_risk": business_risk,
         "business_risk_history": business_risk_history,
         "business_risk_history_summary": business_risk_history_summary,
+        "risk_heatmap": risk_heatmap,
         "risk_incident_candidates": risk_incident_candidates,
         "incident_review_audit_summary": incident_review_audit_summary,
         "workforce_policy": workforce_policy_explain,
@@ -2925,6 +2967,228 @@ fn build_reviewed_risk_incident_candidates(
         build_risk_incident_candidates(snapshot, &business_risk, &business_risk_history);
     apply_incident_reviews_to_candidates(&mut candidates, incident_reviews, audit_entries);
     (candidates, business_risk)
+}
+
+fn build_risk_heatmap(
+    snapshot: &Snapshot,
+    business_risk: &[BusinessRiskItem],
+    candidates: &[RiskIncidentCandidate],
+    cases: &CaseFile,
+) -> Vec<RiskHeatmapItem> {
+    let open_case_counts = open_case_counts_by_department(candidates, cases);
+    let critical_candidate_counts = critical_candidate_counts_by_department(candidates);
+    let mut departments = BTreeSet::new();
+    for item in business_risk {
+        departments.insert(item.department.clone());
+    }
+    for department in open_case_counts.keys() {
+        departments.insert(department.clone());
+    }
+    for department in critical_candidate_counts.keys() {
+        departments.insert(department.clone());
+    }
+    let risk_by_department = business_risk
+        .iter()
+        .map(|item| (item.department.as_str(), item))
+        .collect::<BTreeMap<_, _>>();
+    let mut items = departments
+        .into_iter()
+        .map(|department| {
+            let risk = risk_by_department.get(department.as_str()).copied();
+            let trust_kpi_score = risk.map(|item| item.trust_score);
+            let activity_score = risk.map(|item| item.activity_score);
+            let agent_coverage_pct =
+                risk.and_then(|item| department_agent_coverage_pct(snapshot, item));
+            let business_risk_level = risk.map(|item| item.risk_level.clone());
+            let open_cases = open_case_counts.get(&department).copied().unwrap_or(0);
+            let critical_candidates = critical_candidate_counts
+                .get(&department)
+                .copied()
+                .unwrap_or(0);
+            let heat_level = risk_heatmap_level(
+                trust_kpi_score,
+                activity_score,
+                agent_coverage_pct,
+                business_risk_level.as_deref(),
+                open_cases,
+                critical_candidates,
+            );
+            RiskHeatmapItem {
+                department,
+                trust_kpi_score,
+                activity_score,
+                agent_coverage_pct,
+                business_risk_level,
+                open_cases: Some(open_cases),
+                critical_candidates: Some(critical_candidates),
+                heat_level,
+            }
+        })
+        .collect::<Vec<_>>();
+    items.sort_by(|left, right| {
+        heatmap_rank(&right.heat_level)
+            .cmp(&heatmap_rank(&left.heat_level))
+            .then_with(|| {
+                right
+                    .critical_candidates
+                    .unwrap_or(0)
+                    .cmp(&left.critical_candidates.unwrap_or(0))
+            })
+            .then_with(|| {
+                right
+                    .open_cases
+                    .unwrap_or(0)
+                    .cmp(&left.open_cases.unwrap_or(0))
+            })
+            .then_with(|| {
+                left.trust_kpi_score
+                    .unwrap_or(101)
+                    .cmp(&right.trust_kpi_score.unwrap_or(101))
+            })
+            .then_with(|| left.department.cmp(&right.department))
+    });
+    items
+}
+
+fn open_case_counts_by_department(
+    candidates: &[RiskIncidentCandidate],
+    cases: &CaseFile,
+) -> BTreeMap<String, usize> {
+    let candidate_departments = candidates
+        .iter()
+        .map(|item| {
+            (
+                item.id.as_str(),
+                item.department
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or("Не задано"),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut counts = BTreeMap::new();
+    for item in cases
+        .cases
+        .values()
+        .filter(|item| case_is_open(&item.status))
+    {
+        let department = candidate_departments
+            .get(item.candidate_id.as_str())
+            .copied()
+            .unwrap_or("Не задано");
+        *counts.entry(department.to_string()).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn critical_candidate_counts_by_department(
+    candidates: &[RiskIncidentCandidate],
+) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for item in candidates.iter().filter(|item| {
+        matches!(
+            item.risk_level.as_deref().unwrap_or("UNKNOWN"),
+            "HIGH" | "CRITICAL"
+        )
+    }) {
+        let department = item
+            .department
+            .as_deref()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or("Не задано");
+        *counts.entry(department.to_string()).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn case_is_open(status: &str) -> bool {
+    matches!(status, "OPEN" | "IN_PROGRESS")
+}
+
+fn department_agent_coverage_pct(snapshot: &Snapshot, risk: &BusinessRiskItem) -> Option<u8> {
+    if snapshot.agent_coverage_sla.expected_nodes == 0 {
+        return None;
+    }
+    let penalty = (risk.missing_nodes_count as u8)
+        .saturating_mul(40)
+        .saturating_add((risk.stale_nodes_count as u8).saturating_mul(25))
+        .saturating_add((risk.problem_nodes_count as u8).saturating_mul(10));
+    Some(
+        snapshot
+            .agent_coverage_sla
+            .coverage_pct
+            .saturating_sub(penalty),
+    )
+}
+
+fn risk_heatmap_level(
+    trust_kpi_score: Option<u8>,
+    activity_score: Option<u8>,
+    agent_coverage_pct: Option<u8>,
+    business_risk_level: Option<&str>,
+    open_cases: usize,
+    critical_candidates: usize,
+) -> String {
+    if trust_kpi_score.is_none()
+        && activity_score.is_none()
+        && agent_coverage_pct.is_none()
+        && business_risk_level.is_none()
+        && open_cases == 0
+        && critical_candidates == 0
+    {
+        return "UNKNOWN".to_string();
+    }
+    let mut score = match business_risk_level.unwrap_or("UNKNOWN") {
+        "CRITICAL" => 80,
+        "HIGH" => 60,
+        "MEDIUM" => 35,
+        "LOW" => 10,
+        _ => 0,
+    } as u64;
+    if let Some(value) = trust_kpi_score {
+        if value < 50 {
+            score += 30;
+        } else if value < 75 {
+            score += 20;
+        } else if value < 90 {
+            score += 10;
+        }
+    }
+    if let Some(value) = activity_score {
+        if value < 35 {
+            score += 25;
+        } else if value < 60 {
+            score += 15;
+        }
+    }
+    if let Some(value) = agent_coverage_pct {
+        if value < 75 {
+            score += 30;
+        } else if value < 90 {
+            score += 15;
+        }
+    }
+    score += (open_cases as u64).saturating_mul(15).min(30);
+    score += (critical_candidates as u64).saturating_mul(20).min(40);
+    if score >= 100 {
+        "CRITICAL".to_string()
+    } else if score >= 70 {
+        "HIGH".to_string()
+    } else if score >= 35 {
+        "MEDIUM".to_string()
+    } else {
+        "LOW".to_string()
+    }
+}
+
+fn heatmap_rank(level: &str) -> u8 {
+    match level {
+        "CRITICAL" => 4,
+        "HIGH" => 3,
+        "MEDIUM" => 2,
+        "LOW" => 1,
+        _ => 0,
+    }
 }
 
 fn build_executive_dashboard(
@@ -3597,6 +3861,12 @@ fn percent_to_score(value: f64) -> u8 {
         return 0;
     }
     value.round().clamp(0.0, 100.0) as u8
+}
+
+fn optional_score_text(value: Option<u8>) -> String {
+    value
+        .map(|score| format!("{score}%"))
+        .unwrap_or_else(|| "UNKNOWN".to_string())
 }
 
 fn first_percent_score(text: &str) -> Option<u8> {
@@ -5089,6 +5359,7 @@ fn render_report_markdown(
         context.business_risk_history,
         context.business_risk_history_summary,
     );
+    append_risk_heatmap_markdown(&mut text, context.risk_heatmap);
     append_risk_incident_candidates_markdown(&mut text, context.risk_incident_candidates);
     append_incident_review_markdown(&mut text, context.risk_incident_candidates);
     append_incident_review_audit_markdown(
@@ -5374,6 +5645,29 @@ fn append_business_risk_history_markdown(
             item.trust_score,
             item.activity_score,
             reasons
+        ));
+    }
+}
+
+fn append_risk_heatmap_markdown(text: &mut String, items: &[RiskHeatmapItem]) {
+    text.push_str("\n## Карта рисков подразделений\n\n");
+    if items.is_empty() {
+        text.push_str(
+            "- Карта рисков пока не рассчитана: недостаточно данных по подразделениям.\n",
+        );
+        return;
+    }
+    for item in items.iter().take(10) {
+        text.push_str(&format!(
+            "- {}: heat={}, Trust={}, activity={}, coverage={}, business_risk={}, open_cases={}, critical_candidates={}\n",
+            item.department,
+            item.heat_level,
+            optional_score_text(item.trust_kpi_score),
+            optional_score_text(item.activity_score),
+            optional_score_text(item.agent_coverage_pct),
+            item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+            item.open_cases.unwrap_or(0),
+            item.critical_candidates.unwrap_or(0)
         ));
     }
 }
@@ -9088,6 +9382,17 @@ mod tests {
         assert_eq!(report["business_risk"][0]["problem_nodes_count"], 0);
         assert_eq!(report["business_risk"][0]["missing_nodes_count"], 0);
         assert_eq!(report["business_risk"][0]["stale_nodes_count"], 0);
+        assert!(report["risk_heatmap"].is_array());
+        assert!(
+            report["risk_heatmap"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["department"] == "Бухгалтерия")
+        );
+        assert_eq!(report["risk_heatmap"][0]["heat_level"], "HIGH");
+        assert_eq!(report["risk_heatmap"][0]["trust_kpi_score"], 50);
+        assert_eq!(report["risk_heatmap"][0]["activity_score"], 50);
         assert_eq!(report["business_risk_history"].as_array().unwrap().len(), 3);
         assert_eq!(
             report["business_risk_history"][0]["department"],
@@ -9251,6 +9556,13 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
+                .any(|item| item.as_str().unwrap().contains("Проблемная зона"))
+        );
+        assert!(
+            report["executive_points"]
+                .as_array()
+                .unwrap()
+                .iter()
                 .any(|item| item.as_str().unwrap().contains("Кандидат в инцидент"))
         );
         assert!(
@@ -9258,6 +9570,12 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("## Сводка руководителя")
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Карта рисков подразделений")
         );
         assert!(
             report["markdown"]
