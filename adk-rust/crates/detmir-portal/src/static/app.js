@@ -580,6 +580,7 @@ function renderExecutiveDashboard(report) {
         <div ${tooltip("Сколько записей нужно срочно проверить вручную.")}><span class="muted">Срочно проверить</span><strong>${ui(candidates.length)}</strong></div>
         <div ${tooltip("Сколько расследований сейчас в работе.")}><span class="muted">Активные расследования</span><strong>${ui(dashboard.open_cases ?? 0)}</strong></div>
         <div><span class="muted">Закрыто за 30 дней</span><strong>${ui(dashboard.resolved_cases_30d ?? 0)}</strong></div>
+        <div ${tooltip("Агрегированная сводка событий безопасности за последние 24 часа, без сырых логов.")}><span class="muted">События безопасности</span><strong>${ui(dashboard.security_events_24h ?? "откл.")}</strong></div>
       </div>
       <div class="list compact-list executive-summary-list">
         <div class="row compact-row"><strong>Главный риск</strong><span class="muted">${ui(summary.main_risk || "нет данных")}</span><span></span></div>
@@ -1160,6 +1161,7 @@ function renderExecutiveView(report, incidents) {
   return `
     ${renderRiskNarrative(report)}
     ${renderExecutiveDashboard(report)}
+    ${renderSecurityEventsSummary(report?.security_events_summary, { compact: true })}
     ${renderBusinessRisk(report?.business_risk)}
     ${renderRiskHeatmap(report?.risk_heatmap)}
     ${renderOverviewAnalytics(report)}
@@ -1169,6 +1171,7 @@ function renderExecutiveView(report, incidents) {
 function renderSecurityView(data, report, extras = {}) {
   const cases = Array.isArray(extras.cases?.cases) ? extras.cases.cases : [];
   return `
+    ${renderSecurityEventsSummary(report?.security_events_summary)}
     ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
     ${renderSecurityCorrelation(report?.security_correlation)}
     ${renderCases(cases)}
@@ -1185,6 +1188,7 @@ function renderOperationsView(data, report) {
   return `
     ${renderAgentCoverageSla(report?.agent_coverage_sla)}
     ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
+    ${renderSecurityEventsSummary(report?.security_events_summary, { operations: true })}
     ${renderOperationsErrors(data, report)}
     <section class="dashboard-band technical-band">
       <div class="band-head"><h3>Телеметрия</h3><span class="muted">свежесть, стабильность и источники данных</span></div>
@@ -1201,6 +1205,13 @@ function renderOperationsErrors(data, report) {
   if (collectorError) {
     rows.push(["Ошибка коллектора", collectorError, report?.agent_quality?.quality_status || "DEGRADED"]);
   }
+  if (report?.security_events_summary?.fallback_used) {
+    rows.push([
+      "События безопасности",
+      report.security_events_summary.error || "ClickHouse недоступен",
+      "WARN",
+    ]);
+  }
   const problemNodes = Array.isArray(report?.agent_coverage_sla?.problem_nodes)
     ? report.agent_coverage_sla.problem_nodes
     : [];
@@ -1214,7 +1225,7 @@ function renderOperationsErrors(data, report) {
   for (const [name, source] of Object.entries(data || {})) {
     if (!source || typeof source !== "object") continue;
     const status = source.status || (source.ok === false ? "FAIL" : "");
-    if (!status || ["OK", "READY", "INFO"].includes(String(status).toUpperCase())) continue;
+    if (!status || ["OK", "READY", "INFO", "DISABLED"].includes(String(status).toUpperCase())) continue;
     rows.push([label(name), source.summary || source.error || "требуется проверка", status]);
   }
   return `
@@ -2139,6 +2150,74 @@ function renderAgentCoverageSla(sla) {
   `;
 }
 
+function renderSecurityEventsSummary(summary, options = {}) {
+  const s = summary || {};
+  const backend = s.backend || "disabled";
+  const disabled = backend === "disabled" || s.status === "disabled" || !summary;
+  const fallback = Boolean(s.fallback_used);
+  const status = disabled ? "UNKNOWN" : fallback ? "WARN" : Number(s.events_24h || 0) > 0 ? "WARN" : "OK";
+  const title = options.compact
+    ? "События безопасности"
+    : "События безопасности за 24 часа";
+  const subtitle = disabled
+    ? "Агрегированный источник событий безопасности отключён."
+    : fallback
+      ? "ClickHouse недоступен, портал работает в резервном режиме без событий безопасности."
+      : "Агрегированная сводка без сырых журналов и без автоматического создания инцидентов.";
+  const top = Array.isArray(s.top_departments) ? s.top_departments.slice(0, 5) : [];
+  const warning = fallback
+    ? `<div class="quality-warning">События безопасности временно недоступны. Проверьте ClickHouse и переменные SECURITY_EVENTS_BACKEND/CLICKHOUSE_*.</div>`
+    : "";
+  return `
+    <section class="card security-events-card">
+      <div class="section-head">
+        <div>
+          <h3 ${tooltip("Краткая агрегированная сводка событий безопасности за последние 24 часа. Это не SIEM-журнал.")}>${ui(title)}</h3>
+          <p class="muted">${ui(subtitle)}</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      <div class="quality-grid">
+        <div><span class="muted">Источник</span><strong>${ui(backend)}</strong></div>
+        <div><span class="muted">Событий</span><strong>${ui(s.events_24h ?? 0)}</strong></div>
+        <div><span class="muted">Неуспешные входы</span><strong>${ui(s.failed_logins_24h ?? 0)}</strong></div>
+        <div><span class="muted">Подозрительные входы</span><strong>${ui(s.suspicious_logins_24h ?? 0)}</strong></div>
+        <div><span class="muted">RDP-сессии</span><strong>${ui(s.rdp_sessions_24h ?? 0)}</strong></div>
+        <div><span class="muted">Ошибки агентов</span><strong>${ui(s.agent_errors_24h ?? 0)}</strong></div>
+      </div>
+      ${warning}
+      ${s.error ? `<p class="muted small">Причина: ${ui(s.error)}</p>` : ""}
+      ${disabled ? `<p class="muted small">Для включения задайте SECURITY_EVENTS_BACKEND=clickhouse и параметры CLICKHOUSE_*.</p>` : ""}
+      ${options.compact ? "" : `
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Подразделение</th>
+                <th>События</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${top.length ? top.map(item => `
+                <tr>
+                  <td>${ui(item.department || "Без подразделения")}</td>
+                  <td>${ui(item.events ?? 0)}</td>
+                </tr>
+              `).join("") : `
+                <tr>
+                  <td>${disabled ? "Источник отключён" : "Нет данных"}</td>
+                  <td>0</td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+        <p class="muted small">Последнее событие: ${ui(s.last_event_utc || "нет данных")} · запрос ${ui(s.query_ms ?? 0)} ms.</p>
+      `}
+    </section>
+  `;
+}
+
 function renderBusinessRisk(items) {
   const rows = Array.isArray(items) ? items.slice(0, 10) : [];
   const worst = rows[0]?.risk_level || "UNKNOWN";
@@ -2158,6 +2237,7 @@ function renderBusinessRisk(items) {
               <th>Подразделение</th>
               <th>Риск</th>
               <th>Причины</th>
+              <th>События</th>
               <th>Рекомендация</th>
             </tr>
           </thead>
@@ -2167,6 +2247,7 @@ function renderBusinessRisk(items) {
                 <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
                 <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
                 <td>${ui(businessRiskReasons(item))}</td>
+                <td>${ui(item.security_events_24h ?? 0)}</td>
                 <td>${ui(item.recommendation || "Проверить первичные данные подразделения.")}</td>
               </tr>
             `).join("") : `
@@ -2174,6 +2255,7 @@ function renderBusinessRisk(items) {
                 <td>Нет данных</td>
                 <td><span class="badge status-unknown">UNKNOWN</span></td>
                 <td>нет данных</td>
+                <td>0</td>
                 <td>Дождаться расчета подразделений.</td>
               </tr>
             `}
@@ -2205,6 +2287,7 @@ function renderRiskHeatmap(items) {
               <th>Активность</th>
               <th>Покрытие</th>
               <th>Риск</th>
+              <th>События</th>
               <th>Расследования</th>
               <th>Связи</th>
             </tr>
@@ -2220,6 +2303,7 @@ function renderRiskHeatmap(items) {
                   <span class="badge ${statusClass(item.heat_level)}">${ui(item.heat_level || "UNKNOWN")}</span><br>
                   <span class="muted small">${ui(item.business_risk_level || "UNKNOWN")} · проверить ${ui(item.critical_candidates ?? 0)}</span>
                 </td>
+                <td>${ui(item.security_events_24h ?? 0)}</td>
                 <td>${ui(item.open_cases ?? 0)}</td>
                 <td>${renderRiskLayerLinks(item.links)}</td>
               </tr>
@@ -2230,6 +2314,7 @@ function renderRiskHeatmap(items) {
                 <td>UNKNOWN</td>
                 <td>UNKNOWN</td>
                 <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>0</td>
                 <td>0</td>
                 <td>-</td>
               </tr>
@@ -2255,6 +2340,7 @@ function riskLayerTarget(target) {
   if (value === "risk_heatmap") return { tab: "operator", selector: ".risk-heatmap-card" };
   if (value === "business_risk") return { tab: "operator", selector: "#business-risk-section" };
   if (value === "security_correlation") return { tab: "operator", selector: ".security-correlation-card" };
+  if (value === "security_events") return { tab: "operator", selector: ".security-events-card" };
   if (value === "incident_candidates") return { tab: "operator", selector: "#risk-candidates-section" };
   if (value === "cases") return { tab: "incidents", selector: "#cases-section" };
   if (value === "agent_coverage") return { tab: "operator", selector: "#agent-coverage-section" };
@@ -2288,6 +2374,7 @@ function renderSecurityCorrelation(items) {
               <th>Активность</th>
               <th>Риск подразделения</th>
               <th>Проверки</th>
+              <th>События</th>
               <th>Взаимосвязь</th>
               <th>Причина</th>
             </tr>
@@ -2300,6 +2387,7 @@ function renderSecurityCorrelation(items) {
                 <td>${ui(riskPercentText(item.activity_score))}</td>
                 <td><span class="badge ${statusClass(item.business_risk_level)}">${ui(item.business_risk_level || "UNKNOWN")}</span></td>
                 <td>проверить ${ui(item.critical_candidates ?? 0)} · расследования ${ui(item.open_cases ?? 0)}</td>
+                <td>${ui(item.security_events_24h ?? 0)}</td>
                 <td><strong>${ui(Number(item.correlation_score || 0))}/100</strong></td>
                 <td>${ui(item.explanation || item.correlation_reason || "связь не выражена")}</td>
               </tr>
@@ -2310,6 +2398,7 @@ function renderSecurityCorrelation(items) {
                 <td>UNKNOWN</td>
                 <td><span class="badge status-unknown">UNKNOWN</span></td>
                 <td>проверить 0 · расследования 0</td>
+                <td>0</td>
                 <td>0/100</td>
                 <td>недостаточно данных по подразделениям</td>
               </tr>
@@ -2325,7 +2414,7 @@ function businessRiskReasons(item) {
   const reasons = Array.isArray(item?.reasons) && item.reasons.length
     ? item.reasons.join("; ")
     : "существенных причин не найдено";
-  return `${reasons}. Доверие ${item?.trust_score ?? 0}%, активность ${item?.activity_score ?? 0}%, тренд ${businessTrendText(item?.trend)}, проблемных рабочих мест ${item?.problem_nodes_count ?? 0}`;
+  return `${reasons}. Доверие ${item?.trust_score ?? 0}%, активность ${item?.activity_score ?? 0}%, тренд ${businessTrendText(item?.trend)}, проблемных рабочих мест ${item?.problem_nodes_count ?? 0}, событий безопасности за 24 часа ${item?.security_events_24h ?? 0}`;
 }
 
 function renderBusinessRiskTimeline(history, summary) {
@@ -2571,6 +2660,7 @@ function renderReports(data) {
     ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(data.agent_coverage_sla)}
+    ${renderSecurityEventsSummary(data.security_events_summary)}
     ${renderRiskHeatmap(data.risk_heatmap)}
     ${renderSecurityCorrelation(data.security_correlation)}
     ${renderBusinessRisk(data.business_risk)}

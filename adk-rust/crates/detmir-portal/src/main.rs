@@ -160,6 +160,21 @@ struct Cli {
         env = "DETMIR_PORTAL_EXPECTED_NODES_PATH"
     )]
     expected_nodes_path: PathBuf,
+
+    #[arg(long, default_value = "disabled", env = "SECURITY_EVENTS_BACKEND")]
+    security_events_backend: String,
+
+    #[arg(long, default_value = "http://127.0.0.1:8123", env = "CLICKHOUSE_URL")]
+    clickhouse_url: String,
+
+    #[arg(long, default_value = "analytics_1c", env = "CLICKHOUSE_DATABASE")]
+    clickhouse_database: String,
+
+    #[arg(long, default_value = "default", env = "CLICKHOUSE_USER")]
+    clickhouse_user: String,
+
+    #[arg(long, default_value = "", env = "CLICKHOUSE_PASSWORD")]
+    clickhouse_password: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -171,6 +186,79 @@ struct SourceStatus {
     error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     payload: Option<Value>,
+}
+
+#[derive(Clone, Debug)]
+struct SecurityEventsConfig {
+    backend: String,
+    clickhouse_url: String,
+    clickhouse_database: String,
+    clickhouse_user: String,
+    clickhouse_password: String,
+    timeout: Duration,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SecurityEventsDepartment {
+    department: String,
+    events: u64,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SecurityEventsSummary {
+    status: String,
+    backend: String,
+    events_24h: u64,
+    failed_logins_24h: u64,
+    suspicious_logins_24h: u64,
+    rdp_sessions_24h: u64,
+    account_changes_24h: u64,
+    agent_errors_24h: u64,
+    top_departments: Vec<SecurityEventsDepartment>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_event_utc: Option<String>,
+    query_ms: u128,
+    fallback_used: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl SecurityEventsSummary {
+    fn disabled() -> Self {
+        Self {
+            status: "disabled".to_string(),
+            backend: "disabled".to_string(),
+            events_24h: 0,
+            failed_logins_24h: 0,
+            suspicious_logins_24h: 0,
+            rdp_sessions_24h: 0,
+            account_changes_24h: 0,
+            agent_errors_24h: 0,
+            top_departments: Vec::new(),
+            last_event_utc: None,
+            query_ms: 0,
+            fallback_used: false,
+            error: None,
+        }
+    }
+
+    fn fallback(error: impl Into<String>, query_ms: u128) -> Self {
+        Self {
+            status: "fallback".to_string(),
+            backend: "clickhouse".to_string(),
+            events_24h: 0,
+            failed_logins_24h: 0,
+            suspicious_logins_24h: 0,
+            rdp_sessions_24h: 0,
+            account_changes_24h: 0,
+            agent_errors_24h: 0,
+            top_departments: Vec::new(),
+            last_event_utc: None,
+            query_ms,
+            fallback_used: true,
+            error: Some(error.into()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -283,6 +371,27 @@ struct AgentCoverageSla {
     problem_nodes: Vec<AgentCoverageProblemNode>,
 }
 
+#[derive(Clone, Copy)]
+struct BusinessRiskSignals {
+    trend_delta: Option<f64>,
+    missing_nodes_count: usize,
+    stale_nodes_count: usize,
+    problem_nodes_count: usize,
+    security_events_24h: u64,
+    activity_missing: bool,
+}
+
+#[derive(Clone, Copy)]
+struct RiskLayerMetrics<'a> {
+    trust_kpi_score: Option<u8>,
+    activity_score: Option<u8>,
+    agent_coverage_pct: Option<u8>,
+    business_risk_level: Option<&'a str>,
+    open_cases: usize,
+    critical_candidates: usize,
+    security_events_24h: u64,
+}
+
 impl Default for AgentCoverageSla {
     fn default() -> Self {
         Self {
@@ -310,6 +419,8 @@ struct BusinessRiskItem {
     problem_nodes_count: usize,
     missing_nodes_count: usize,
     stale_nodes_count: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    security_events_24h: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -345,6 +456,8 @@ struct RiskHeatmapItem {
     open_cases: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     critical_candidates: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    security_events_24h: Option<u64>,
     heat_level: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     links: Vec<RiskNarrativeLink>,
@@ -365,6 +478,8 @@ struct SecurityCorrelationItem {
     critical_candidates: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     open_cases: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    security_events_24h: Option<u64>,
     correlation_score: u8,
     correlation_reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -543,6 +658,8 @@ struct ExecutiveDashboard {
     resolved_cases_30d: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     forensics_readiness: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    security_events_24h: Option<u64>,
     summary: ExecutiveDashboardSummary,
 }
 
@@ -855,6 +972,7 @@ struct Snapshot {
     agent_quality_nodes: Vec<AgentQualityNodeItem>,
     agent_quality_nodes_summary: AgentQualityNodesSummary,
     agent_coverage_sla: AgentCoverageSla,
+    security_events_summary: SecurityEventsSummary,
 }
 
 #[derive(Debug)]
@@ -1028,6 +1146,7 @@ struct ReportMarkdownContext<'a> {
     business_risk_history_summary: &'a BusinessRiskHistorySummary,
     risk_heatmap: &'a [RiskHeatmapItem],
     security_correlation: &'a [SecurityCorrelationItem],
+    security_events_summary: &'a SecurityEventsSummary,
     risk_incident_candidates: &'a [RiskIncidentCandidate],
     incident_review_audit_summary: &'a IncidentReviewAuditSummary,
 }
@@ -1046,6 +1165,7 @@ struct ExecutiveDashboardInputs<'a> {
     business_risk_history_summary: &'a BusinessRiskHistorySummary,
     risk_heatmap: &'a [RiskHeatmapItem],
     security_correlation: &'a [SecurityCorrelationItem],
+    security_events_summary: &'a SecurityEventsSummary,
     candidates: &'a [RiskIncidentCandidate],
     cases: &'a CaseFile,
     evidence: &'a DlpEvidenceResponse,
@@ -1461,6 +1581,14 @@ fn cached_snapshot(args: &Cli, cache: &SnapshotCache) -> Snapshot {
 
 fn build_snapshot(args: &Cli) -> Snapshot {
     let timeout = Duration::from_secs(args.timeout_seconds);
+    let security_events_config = SecurityEventsConfig {
+        backend: args.security_events_backend.clone(),
+        clickhouse_url: args.clickhouse_url.clone(),
+        clickhouse_database: args.clickhouse_database.clone(),
+        clickhouse_user: args.clickhouse_user.clone(),
+        clickhouse_password: args.clickhouse_password.clone(),
+        timeout: timeout.min(Duration::from_secs(5)),
+    };
     let agent_quality_history = load_agent_quality_history(&args.telemetry_store_path, 7);
     let agent_quality_history_summary = summarize_agent_quality_history(&agent_quality_history);
     let agent_quality_nodes = load_agent_quality_nodes(&args.telemetry_store_path, 7);
@@ -1499,6 +1627,7 @@ fn build_snapshot(args: &Cli) -> Snapshot {
         agent_quality_nodes,
         agent_quality_nodes_summary,
         agent_coverage_sla,
+        security_events_summary: build_security_events_summary(&security_events_config),
     }
 }
 
@@ -2226,6 +2355,206 @@ fn http_json_source(name: &str, url: &str, timeout: Duration) -> SourceStatus {
     }
 }
 
+fn build_security_events_summary(config: &SecurityEventsConfig) -> SecurityEventsSummary {
+    let backend = config.backend.trim().to_ascii_lowercase();
+    if backend.is_empty() || backend == "disabled" {
+        return SecurityEventsSummary::disabled();
+    }
+    if backend != "clickhouse" {
+        return SecurityEventsSummary::fallback(
+            format!("неизвестный источник событий безопасности: {backend}"),
+            0,
+        );
+    }
+    let started = Instant::now();
+    match query_clickhouse_security_events(config) {
+        Ok(mut summary) => {
+            summary.query_ms = started.elapsed().as_millis();
+            summary
+        }
+        Err(err) => SecurityEventsSummary::fallback(err.to_string(), started.elapsed().as_millis()),
+    }
+}
+
+fn query_clickhouse_security_events(
+    config: &SecurityEventsConfig,
+) -> Result<SecurityEventsSummary> {
+    let database = clickhouse_identifier(&config.clickhouse_database)
+        .ok_or_else(|| anyhow!("некорректное имя базы ClickHouse"))?;
+    let aggregate_sql = format!(
+        r#"
+WITH now() - INTERVAL 24 HOUR AS since
+SELECT
+    toUInt64(count()) AS events_24h,
+    toUInt64(countIf((positionCaseInsensitive(search, 'failed') > 0 AND positionCaseInsensitive(search, 'login') > 0) OR positionCaseInsensitive(search, '4625') > 0)) AS failed_logins_24h,
+    toUInt64(countIf(positionCaseInsensitive(search, 'suspicious') > 0 OR positionCaseInsensitive(search, 'anomaly') > 0 OR lower(severity) IN ('high', 'critical'))) AS suspicious_logins_24h,
+    toUInt64((SELECT coalesce(sum(rdp_sessions), 0) FROM {database}.host_events WHERE ts >= since)) AS rdp_sessions_24h,
+    toUInt64(countIf(positionCaseInsensitive(search, 'account') > 0 OR positionCaseInsensitive(search, 'user change') > 0 OR positionCaseInsensitive(search, '4720') > 0 OR positionCaseInsensitive(search, '4726') > 0)) AS account_changes_24h,
+    toUInt64(countIf((positionCaseInsensitive(search, 'agent') > 0 OR positionCaseInsensitive(search, 'collector') > 0) AND (positionCaseInsensitive(search, 'error') > 0 OR positionCaseInsensitive(search, 'fail') > 0))) AS agent_errors_24h,
+    nullIf(formatDateTime(max(ts), '%Y-%m-%dT%H:%i:%SZ'), '1970-01-01T00:00:00Z') AS last_event_utc
+FROM (
+    SELECT ts, concat(event_type, ' ', severity, ' ', source, ' ', summary) AS search
+    FROM {database}.entity_timeline
+    WHERE ts >= since
+)
+FORMAT JSONEachRow
+"#
+    );
+    let top_sql = format!(
+        r#"
+WITH now() - INTERVAL 24 HOUR AS since
+SELECT if(empty(infobase), 'Без подразделения', infobase) AS department, toUInt64(count()) AS events
+FROM {database}.entity_timeline
+WHERE ts >= since
+GROUP BY department
+ORDER BY events DESC, department ASC
+LIMIT 5
+FORMAT JSONEachRow
+"#
+    );
+    let aggregate = clickhouse_query_first_json(config, &aggregate_sql)?
+        .ok_or_else(|| anyhow!("ClickHouse не вернул агрегаты событий безопасности"))?;
+    let top_departments = clickhouse_query_json_lines(config, &top_sql)?
+        .into_iter()
+        .map(|row| SecurityEventsDepartment {
+            department: row
+                .get("department")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or(DEFAULT_DEPARTMENT_LABEL)
+                .to_string(),
+            events: json_u64(&row, "events"),
+        })
+        .collect();
+    Ok(SecurityEventsSummary {
+        status: "ok".to_string(),
+        backend: "clickhouse".to_string(),
+        events_24h: json_u64(&aggregate, "events_24h"),
+        failed_logins_24h: json_u64(&aggregate, "failed_logins_24h"),
+        suspicious_logins_24h: json_u64(&aggregate, "suspicious_logins_24h"),
+        rdp_sessions_24h: json_u64(&aggregate, "rdp_sessions_24h"),
+        account_changes_24h: json_u64(&aggregate, "account_changes_24h"),
+        agent_errors_24h: json_u64(&aggregate, "agent_errors_24h"),
+        top_departments,
+        last_event_utc: aggregate
+            .get("last_event_utc")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .map(ToString::to_string),
+        query_ms: 0,
+        fallback_used: false,
+        error: None,
+    })
+}
+
+fn clickhouse_identifier(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || !trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn clickhouse_query_first_json(config: &SecurityEventsConfig, sql: &str) -> Result<Option<Value>> {
+    Ok(clickhouse_query_json_lines(config, sql)?.into_iter().next())
+}
+
+fn clickhouse_query_json_lines(config: &SecurityEventsConfig, sql: &str) -> Result<Vec<Value>> {
+    let client = Client::builder()
+        .timeout(config.timeout)
+        .no_proxy()
+        .build()
+        .context("ClickHouse HTTP client")?;
+    let url = config.clickhouse_url.trim_end_matches('/');
+    let mut request = client
+        .post(url)
+        .query(&[("database", config.clickhouse_database.trim())])
+        .body(sql.to_string());
+    if !config.clickhouse_user.trim().is_empty() {
+        request = request.basic_auth(
+            config.clickhouse_user.trim().to_string(),
+            Some(config.clickhouse_password.clone()),
+        );
+    }
+    let text = request
+        .send()
+        .context("ClickHouse request")?
+        .error_for_status()
+        .context("ClickHouse HTTP status")?
+        .text()
+        .context("ClickHouse response body")?;
+    let mut rows = Vec::new();
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        rows.push(serde_json::from_str::<Value>(line).context("ClickHouse JSONEachRow")?);
+    }
+    Ok(rows)
+}
+
+fn json_u64(value: &Value, key: &str) -> u64 {
+    value
+        .get(key)
+        .and_then(|item| item.as_u64().or_else(|| item.as_str()?.parse().ok()))
+        .unwrap_or(0)
+}
+
+fn security_events_department_count(summary: &SecurityEventsSummary, department: &str) -> u64 {
+    let normalized = display_department_name(Some(department));
+    summary
+        .top_departments
+        .iter()
+        .find(|item| display_department_name(Some(&item.department)) == normalized)
+        .map(|item| item.events)
+        .unwrap_or(0)
+}
+
+fn security_events_summary_status(summary: &SecurityEventsSummary) -> String {
+    if summary.backend == "disabled" || summary.status == "disabled" {
+        "UNKNOWN".to_string()
+    } else if summary.fallback_used
+        || summary.events_24h > 0
+        || summary.failed_logins_24h > 0
+        || summary.suspicious_logins_24h > 0
+        || summary.account_changes_24h > 0
+        || summary.agent_errors_24h > 0
+    {
+        "WARN".to_string()
+    } else {
+        "OK".to_string()
+    }
+}
+
+fn security_events_summary_text(summary: &SecurityEventsSummary) -> String {
+    if summary.backend == "disabled" || summary.status == "disabled" {
+        return "агрегированные события безопасности отключены".to_string();
+    }
+    if summary.fallback_used {
+        return format!(
+            "ClickHouse недоступен, используется локальный режим; причина: {}",
+            summary.error.as_deref().unwrap_or("неизвестная ошибка")
+        );
+    }
+    format!(
+        "событий={}, неуспешных входов={}, подозрительных входов={}, RDP={}, изменения учетных записей={}, ошибки агентов={}",
+        summary.events_24h,
+        summary.failed_logins_24h,
+        summary.suspicious_logins_24h,
+        summary.rdp_sessions_24h,
+        summary.account_changes_24h,
+        summary.agent_errors_24h
+    )
+}
+
+fn security_events_block(summary: &SecurityEventsSummary) -> SummaryBlock {
+    SummaryBlock {
+        status: security_events_summary_status(summary),
+        text: security_events_summary_text(summary),
+    }
+}
+
 fn run_shell(command: &str, timeout: Duration) -> Result<(String, String, bool)> {
     let mut child = Command::new("/bin/sh")
         .arg("-lc")
@@ -2271,6 +2600,10 @@ fn build_health(snapshot: &Snapshot) -> HealthResponse {
     );
     sources.insert("dlp_health".to_string(), dlp_ok(snapshot));
     sources.insert("one_c".to_string(), snapshot.one_c.ok);
+    sources.insert(
+        "security_events".to_string(),
+        snapshot.security_events_summary.status != "error",
+    );
     HealthResponse {
         ok: sources.values().all(|value| *value),
         generated_at_utc: snapshot.generated_at_utc.clone(),
@@ -2308,6 +2641,10 @@ fn build_summary(snapshot: &Snapshot) -> SummaryResponse {
     blocks.insert("dlp".to_string(), dlp_block(snapshot));
     blocks.insert("worktime".to_string(), worktime_block(snapshot));
     blocks.insert("one_c".to_string(), one_c_block(snapshot));
+    blocks.insert(
+        "security_events".to_string(),
+        security_events_block(&snapshot.security_events_summary),
+    );
     SummaryResponse {
         severity: severity.clone(),
         operator_ok,
@@ -2330,6 +2667,7 @@ fn build_operator(snapshot: &Snapshot, incident_state: &IncidentStateFile) -> Va
         "failed_units": snapshot.failed_units,
         "grafana_data": grafana_service(snapshot),
         "worktime_management": snapshot.worktime_management,
+        "security_events_summary": snapshot.security_events_summary,
         "links": links(),
         "incidents": build_incidents(snapshot, incident_state),
     })
@@ -2426,6 +2764,7 @@ fn build_reports(
     let agent_quality_nodes = snapshot.agent_quality_nodes.clone();
     let agent_quality_nodes_summary = snapshot.agent_quality_nodes_summary.clone();
     let agent_coverage_sla = snapshot.agent_coverage_sla.clone();
+    let security_events_summary = snapshot.security_events_summary.clone();
     let worktime = worktime_block(snapshot);
     let one_c = one_c_block(snapshot);
     let dlp_block_value = dlp_block(snapshot);
@@ -2449,7 +2788,7 @@ fn build_reports(
         &risk_incident_candidates,
         inputs.cases,
     );
-    let security_correlation = build_security_correlation(&risk_heatmap);
+    let security_correlation = build_security_correlation(&risk_heatmap, &security_events_summary);
     let executive_dashboard = build_executive_dashboard(
         snapshot,
         ExecutiveDashboardInputs {
@@ -2458,6 +2797,7 @@ fn build_reports(
             business_risk_history_summary: &business_risk_history_summary,
             risk_heatmap: &risk_heatmap,
             security_correlation: &security_correlation,
+            security_events_summary: &security_events_summary,
             candidates: &risk_incident_candidates,
             cases: inputs.cases,
             evidence: inputs.evidence,
@@ -2500,6 +2840,10 @@ fn build_reports(
             .risk_narrative_status
             .as_deref()
             .unwrap_or("NORMAL")
+    ));
+    executive_points.push(format!(
+        "События безопасности за 24 часа: {}",
+        security_events_summary_text(&security_events_summary)
     ));
     executive_points.extend([
         format!("Сбор данных: {}. {}", collection.status, collection.text),
@@ -2584,6 +2928,7 @@ fn build_reports(
             business_risk_history_summary: &business_risk_history_summary,
             risk_heatmap: &risk_heatmap,
             security_correlation: &security_correlation,
+            security_events_summary: &security_events_summary,
             risk_incident_candidates: &risk_incident_candidates,
             incident_review_audit_summary: &incident_review_audit_summary,
         },
@@ -2608,6 +2953,7 @@ fn build_reports(
             report_kpi("Приложения", metrics.apps_count.to_string(), worktime.status.clone(), "true active applications"),
             report_kpi("Подразделения", department_items.len().to_string(), snapshot.worktime_management.status.clone(), "сравнение групп за текущий день"),
             report_kpi("Сигналы проверки", format!("{}/{}", metrics.dlp_warn, metrics.dlp_fail), dlp_block_value.status.clone(), "технические сигналы безопасности"),
+            report_kpi("События безопасности", security_events_summary.events_24h.to_string(), security_events_summary_status(&security_events_summary), "агрегированная сводка за 24 часа, без сырых логов"),
             report_kpi("Материалы проверки", format!("{}/{}", metrics.evidence_screenshots, metrics.evidence_total), evidence_status(inputs.evidence), "скриншоты / все материалы"),
             report_kpi("Открытые вопросы", metrics.open_incidents.to_string(), incident_status(metrics.open_incidents), "не взятые в работу записи")
         ],
@@ -2655,6 +3001,7 @@ fn build_reports(
                 "title": "Безопасность и материалы проверки",
                 "items": [
                     report_item("Проверки безопасности", dlp_block_value.status.clone(), dlp_block_value.text.clone()),
+                    report_item("События безопасности за 24 часа", security_events_summary_status(&security_events_summary), security_events_summary_text(&security_events_summary)),
                     report_item("Материалы проверки", evidence_status(inputs.evidence), format!("записей={}", metrics.evidence_total)),
                     report_item("Скриншоты", evidence_status(inputs.evidence), format!("available={}", metrics.evidence_screenshots)),
                     report_item("Формулировка", "OK", "derived detections/cases, не сертифицированная СЗИ")
@@ -2674,6 +3021,7 @@ fn build_reports(
         "agent_quality_nodes": agent_quality_nodes,
         "agent_quality_nodes_summary": agent_quality_nodes_summary,
         "agent_coverage_sla": agent_coverage_sla,
+        "security_events_summary": security_events_summary,
         "business_risk": business_risk,
         "business_risk_history": business_risk_history,
         "business_risk_history_summary": business_risk_history_summary,
@@ -2770,15 +3118,20 @@ fn business_risk_item(
     let trend = business_risk_trend_label(trend_delta);
     let (problem_nodes_count, missing_nodes_count, stale_nodes_count) =
         business_risk_problem_counts(snapshot, department);
+    let security_events_24h =
+        security_events_department_count(&snapshot.security_events_summary, department);
     let trust_score = business_trust_score(snapshot, problem_nodes_count);
     let assessment = business_risk_assessment(
         trust_score,
         activity_score,
-        trend_delta,
-        missing_nodes_count,
-        stale_nodes_count,
-        problem_nodes_count,
-        activity.is_none(),
+        BusinessRiskSignals {
+            trend_delta,
+            missing_nodes_count,
+            stale_nodes_count,
+            problem_nodes_count,
+            security_events_24h,
+            activity_missing: activity.is_none(),
+        },
     );
     BusinessRiskItem {
         department: department.to_string(),
@@ -2791,6 +3144,7 @@ fn business_risk_item(
         problem_nodes_count,
         missing_nodes_count,
         stale_nodes_count,
+        security_events_24h: (security_events_24h > 0).then_some(security_events_24h),
     }
 }
 
@@ -2819,11 +3173,7 @@ fn business_risk_problem_counts(snapshot: &Snapshot, department: &str) -> (usize
 fn business_risk_assessment(
     trust_score: u8,
     activity_score: u8,
-    trend_delta: Option<f64>,
-    missing_nodes_count: usize,
-    stale_nodes_count: usize,
-    problem_nodes_count: usize,
-    activity_missing: bool,
+    signals: BusinessRiskSignals,
 ) -> (String, Vec<String>, String) {
     let mut score = 0u64;
     let mut reasons = Vec::new();
@@ -2845,7 +3195,7 @@ fn business_risk_assessment(
     } else if activity_score < 75 {
         score += 10;
     }
-    if let Some(delta) = trend_delta {
+    if let Some(delta) = signals.trend_delta {
         if delta <= -20.0 {
             score += 25;
             reasons.push("падающий тренд".to_string());
@@ -2853,27 +3203,29 @@ fn business_risk_assessment(
             score += 10;
             reasons.push("падающий тренд".to_string());
         }
-    } else if activity_missing {
+    } else if signals.activity_missing {
         score += 15;
         reasons.push("нет свежей телеметрии".to_string());
     }
-    if missing_nodes_count > 0 || stale_nodes_count > 0 {
+    if signals.missing_nodes_count > 0 || signals.stale_nodes_count > 0 {
         reasons.push("нет свежей телеметрии".to_string());
     }
-    if problem_nodes_count > 0 {
+    if signals.problem_nodes_count > 0 {
         reasons.push("много проблемных узлов".to_string());
+    }
+    if signals.security_events_24h > 0 {
+        score += signals.security_events_24h.saturating_mul(5).min(25);
+        reasons.push(format!(
+            "агрегированные события безопасности за 24 часа: {}",
+            signals.security_events_24h
+        ));
     }
     reasons.sort();
     reasons.dedup();
-    score += (problem_nodes_count as u64).saturating_mul(15).min(30);
-    let recommendation = business_risk_recommendation(
-        trust_score,
-        activity_score,
-        trend_delta,
-        missing_nodes_count,
-        stale_nodes_count,
-        problem_nodes_count,
-    );
+    score += (signals.problem_nodes_count as u64)
+        .saturating_mul(15)
+        .min(30);
+    let recommendation = business_risk_recommendation(trust_score, activity_score, signals);
     (
         business_risk_level(score).to_string(),
         reasons,
@@ -2884,20 +3236,21 @@ fn business_risk_assessment(
 fn business_risk_recommendation(
     trust_score: u8,
     activity_score: u8,
-    trend_delta: Option<f64>,
-    missing_nodes_count: usize,
-    stale_nodes_count: usize,
-    problem_nodes_count: usize,
+    signals: BusinessRiskSignals,
 ) -> String {
-    if missing_nodes_count > 0 || stale_nodes_count > 0 {
+    if signals.security_events_24h > 0 {
+        return "Проверить агрегированные события безопасности подразделения за 24 часа и сопоставить их с активностью сотрудников."
+            .to_string();
+    }
+    if signals.missing_nodes_count > 0 || signals.stale_nodes_count > 0 {
         return "Восстановить свежую телеметрию агентов и проверить expected nodes по подразделению."
             .to_string();
     }
-    if trust_score < 75 || problem_nodes_count > 0 {
+    if trust_score < 75 || signals.problem_nodes_count > 0 {
         return "Проверить качество данных агентов, резервные источники и подтверждение показателей по рабочим местам."
             .to_string();
     }
-    if activity_score < 60 || trend_delta.is_some_and(|value| value <= -5.0) {
+    if activity_score < 60 || signals.trend_delta.is_some_and(|value| value <= -5.0) {
         return "Поручить ответственному сверить план работ, загрузку сотрудников и причины падения активности."
             .to_string();
     }
@@ -2944,11 +3297,17 @@ fn build_business_risk_history(snapshot: &Snapshot) -> Vec<BusinessRiskHistoryIt
             let (risk_level, reasons, _) = business_risk_assessment(
                 trust_score,
                 activity_score,
-                trend_delta,
-                missing_nodes_count,
-                stale_nodes_count,
-                problem_nodes_count,
-                false,
+                BusinessRiskSignals {
+                    trend_delta,
+                    missing_nodes_count,
+                    stale_nodes_count,
+                    problem_nodes_count,
+                    security_events_24h: security_events_department_count(
+                        &snapshot.security_events_summary,
+                        &department,
+                    ),
+                    activity_missing: false,
+                },
             );
             rows.push(BusinessRiskHistoryItem {
                 date: date.clone(),
@@ -3104,6 +3463,9 @@ fn build_risk_heatmap(
     for department in critical_candidate_counts.keys() {
         departments.insert(department.clone());
     }
+    for department in &snapshot.security_events_summary.top_departments {
+        departments.insert(display_department_name(Some(&department.department)));
+    }
     let risk_by_department = business_risk
         .iter()
         .map(|item| (item.department.as_str(), item))
@@ -3122,32 +3484,20 @@ fn build_risk_heatmap(
                 .get(&department)
                 .copied()
                 .unwrap_or(0);
-            let heat_level = risk_heatmap_level(
+            let security_events_24h =
+                security_events_department_count(&snapshot.security_events_summary, &department);
+            let metrics = RiskLayerMetrics {
                 trust_kpi_score,
                 activity_score,
                 agent_coverage_pct,
-                business_risk_level.as_deref(),
+                business_risk_level: business_risk_level.as_deref(),
                 open_cases,
                 critical_candidates,
-            );
-            let links = risk_narrative_links(
-                &heat_level,
-                trust_kpi_score,
-                activity_score,
-                agent_coverage_pct,
-                business_risk_level.as_deref(),
-                open_cases,
-                critical_candidates,
-            );
-            let summary = risk_heatmap_summary(
-                &heat_level,
-                trust_kpi_score,
-                activity_score,
-                agent_coverage_pct,
-                business_risk_level.as_deref(),
-                open_cases,
-                critical_candidates,
-            );
+                security_events_24h,
+            };
+            let heat_level = risk_heatmap_level(metrics);
+            let links = risk_narrative_links(&heat_level, metrics);
+            let summary = risk_heatmap_summary(&heat_level, metrics);
             RiskHeatmapItem {
                 department,
                 trust_kpi_score,
@@ -3156,6 +3506,7 @@ fn build_risk_heatmap(
                 business_risk_level,
                 open_cases: Some(open_cases),
                 critical_candidates: Some(critical_candidates),
+                security_events_24h: (security_events_24h > 0).then_some(security_events_24h),
                 heat_level,
                 links,
                 summary: Some(summary),
@@ -3251,31 +3602,25 @@ fn department_agent_coverage_pct(snapshot: &Snapshot, risk: &BusinessRiskItem) -
     )
 }
 
-fn risk_heatmap_level(
-    trust_kpi_score: Option<u8>,
-    activity_score: Option<u8>,
-    agent_coverage_pct: Option<u8>,
-    business_risk_level: Option<&str>,
-    open_cases: usize,
-    critical_candidates: usize,
-) -> String {
-    if trust_kpi_score.is_none()
-        && activity_score.is_none()
-        && agent_coverage_pct.is_none()
-        && business_risk_level.is_none()
-        && open_cases == 0
-        && critical_candidates == 0
+fn risk_heatmap_level(metrics: RiskLayerMetrics<'_>) -> String {
+    if metrics.trust_kpi_score.is_none()
+        && metrics.activity_score.is_none()
+        && metrics.agent_coverage_pct.is_none()
+        && metrics.business_risk_level.is_none()
+        && metrics.open_cases == 0
+        && metrics.critical_candidates == 0
+        && metrics.security_events_24h == 0
     {
         return "UNKNOWN".to_string();
     }
-    let mut score = match business_risk_level.unwrap_or("UNKNOWN") {
+    let mut score = match metrics.business_risk_level.unwrap_or("UNKNOWN") {
         "CRITICAL" => 80,
         "HIGH" => 60,
         "MEDIUM" => 35,
         "LOW" => 10,
         _ => 0,
     } as u64;
-    if let Some(value) = trust_kpi_score {
+    if let Some(value) = metrics.trust_kpi_score {
         if value < 50 {
             score += 30;
         } else if value < 75 {
@@ -3284,22 +3629,25 @@ fn risk_heatmap_level(
             score += 10;
         }
     }
-    if let Some(value) = activity_score {
+    if let Some(value) = metrics.activity_score {
         if value < 35 {
             score += 25;
         } else if value < 60 {
             score += 15;
         }
     }
-    if let Some(value) = agent_coverage_pct {
+    if let Some(value) = metrics.agent_coverage_pct {
         if value < 75 {
             score += 30;
         } else if value < 90 {
             score += 15;
         }
     }
-    score += (open_cases as u64).saturating_mul(15).min(30);
-    score += (critical_candidates as u64).saturating_mul(20).min(40);
+    score += (metrics.open_cases as u64).saturating_mul(15).min(30);
+    score += (metrics.critical_candidates as u64)
+        .saturating_mul(20)
+        .min(40);
+    score += metrics.security_events_24h.saturating_mul(5).min(25);
     if score >= 100 {
         "CRITICAL".to_string()
     } else if score >= 70 {
@@ -3321,29 +3669,24 @@ fn heatmap_rank(level: &str) -> u8 {
     }
 }
 
-fn risk_narrative_links(
-    heat_level: &str,
-    trust_kpi_score: Option<u8>,
-    activity_score: Option<u8>,
-    agent_coverage_pct: Option<u8>,
-    business_risk_level: Option<&str>,
-    open_cases: usize,
-    critical_candidates: usize,
-) -> Vec<RiskNarrativeLink> {
-    vec![
+fn risk_narrative_links(heat_level: &str, metrics: RiskLayerMetrics<'_>) -> Vec<RiskNarrativeLink> {
+    let mut links = vec![
         RiskNarrativeLink {
             target: "trust_kpi".to_string(),
             label: "Достоверность показателей".to_string(),
             summary: format!(
                 "достоверность {}, активность {}",
-                optional_score_text(trust_kpi_score),
-                optional_score_text(activity_score)
+                optional_score_text(metrics.trust_kpi_score),
+                optional_score_text(metrics.activity_score)
             ),
         },
         RiskNarrativeLink {
             target: "business_risk".to_string(),
             label: "Риски подразделений".to_string(),
-            summary: format!("уровень {}", business_risk_level.unwrap_or("UNKNOWN")),
+            summary: format!(
+                "уровень {}",
+                metrics.business_risk_level.unwrap_or("UNKNOWN")
+            ),
         },
         RiskNarrativeLink {
             target: "risk_heatmap".to_string(),
@@ -3358,78 +3701,76 @@ fn risk_narrative_links(
         RiskNarrativeLink {
             target: "incident_candidates".to_string(),
             label: "Требует проверки".to_string(),
-            summary: format!("записей высокого риска: {critical_candidates}"),
+            summary: format!("записей высокого риска: {}", metrics.critical_candidates),
         },
         RiskNarrativeLink {
             target: "cases".to_string(),
             label: "Расследования".to_string(),
-            summary: format!("активных расследований: {open_cases}"),
+            summary: format!("активных расследований: {}", metrics.open_cases),
         },
         RiskNarrativeLink {
             target: "agent_coverage".to_string(),
             label: "Полнота данных".to_string(),
-            summary: format!("покрытие {}", optional_score_text(agent_coverage_pct)),
+            summary: format!(
+                "покрытие {}",
+                optional_score_text(metrics.agent_coverage_pct)
+            ),
         },
-    ]
+    ];
+    if metrics.security_events_24h > 0 {
+        links.push(RiskNarrativeLink {
+            target: "security_events".to_string(),
+            label: "События безопасности".to_string(),
+            summary: format!(
+                "агрегированных событий за 24 часа: {}",
+                metrics.security_events_24h
+            ),
+        });
+    }
+    links
 }
 
-fn risk_heatmap_summary(
-    heat_level: &str,
-    trust_kpi_score: Option<u8>,
-    activity_score: Option<u8>,
-    agent_coverage_pct: Option<u8>,
-    business_risk_level: Option<&str>,
-    open_cases: usize,
-    critical_candidates: usize,
-) -> String {
+fn risk_heatmap_summary(heat_level: &str, metrics: RiskLayerMetrics<'_>) -> String {
     format!(
-        "Достоверность {} → полнота данных {} → риск подразделения {} → карта рисков {} → связь рисков и активности → требует проверки {} → расследования {} → {}",
-        optional_score_text(trust_kpi_score),
-        optional_score_text(agent_coverage_pct),
-        business_risk_level.unwrap_or("UNKNOWN"),
+        "Достоверность {} → полнота данных {} → риск подразделения {} → события безопасности {} → карта рисков {} → связь рисков и активности → требует проверки {} → расследования {} → {}",
+        optional_score_text(metrics.trust_kpi_score),
+        optional_score_text(metrics.agent_coverage_pct),
+        metrics.business_risk_level.unwrap_or("UNKNOWN"),
+        metrics.security_events_24h,
         heat_level,
-        critical_candidates,
-        open_cases,
-        risk_narrative_conclusion(
-            trust_kpi_score,
-            activity_score,
-            agent_coverage_pct,
-            business_risk_level,
-            open_cases,
-            critical_candidates,
-        )
+        metrics.critical_candidates,
+        metrics.open_cases,
+        risk_narrative_conclusion(metrics)
     )
 }
 
-fn risk_narrative_conclusion(
-    trust_kpi_score: Option<u8>,
-    activity_score: Option<u8>,
-    agent_coverage_pct: Option<u8>,
-    business_risk_level: Option<&str>,
-    open_cases: usize,
-    critical_candidates: usize,
-) -> String {
+fn risk_narrative_conclusion(metrics: RiskLayerMetrics<'_>) -> String {
     let mut reasons = Vec::new();
-    if trust_kpi_score.is_some_and(|value| value < 75) {
+    if metrics.trust_kpi_score.is_some_and(|value| value < 75) {
         reasons.push("низкой достоверности показателей");
     }
-    if activity_score.is_some_and(|value| value < 60) {
+    if metrics.activity_score.is_some_and(|value| value < 60) {
         reasons.push("падения активности");
     }
-    if agent_coverage_pct.is_some_and(|value| value < 90) || agent_coverage_pct.is_none() {
+    if metrics.agent_coverage_pct.is_some_and(|value| value < 90)
+        || metrics.agent_coverage_pct.is_none()
+    {
         reasons.push("неполных данных по рабочим местам");
     }
     if matches!(
-        business_risk_level.unwrap_or("UNKNOWN"),
+        metrics.business_risk_level.unwrap_or("UNKNOWN"),
         "HIGH" | "CRITICAL" | "MEDIUM"
     ) {
         reasons.push("повышенного риска подразделения");
     }
-    if critical_candidates > 0 {
+    if metrics.critical_candidates > 0 {
         reasons.push("записей, которые срочно нужно проверить");
     }
-    if open_cases > 0 {
+    if metrics.open_cases > 0 {
         reasons.push("открытых расследований");
+    }
+    if metrics.security_events_24h > 0 {
+        reasons.push("агрегированных событий безопасности");
     }
     if reasons.is_empty() {
         "связанный риск не выражен".to_string()
@@ -3438,10 +3779,13 @@ fn risk_narrative_conclusion(
     }
 }
 
-fn build_security_correlation(heatmap: &[RiskHeatmapItem]) -> Vec<SecurityCorrelationItem> {
+fn build_security_correlation(
+    heatmap: &[RiskHeatmapItem],
+    security_events_summary: &SecurityEventsSummary,
+) -> Vec<SecurityCorrelationItem> {
     let mut items = heatmap
         .iter()
-        .map(security_correlation_item)
+        .map(|item| security_correlation_item(item, security_events_summary))
         .collect::<Vec<_>>();
     items.sort_by(|left, right| {
         right
@@ -3457,7 +3801,10 @@ fn build_security_correlation(heatmap: &[RiskHeatmapItem]) -> Vec<SecurityCorrel
     items
 }
 
-fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem {
+fn security_correlation_item(
+    item: &RiskHeatmapItem,
+    security_events_summary: &SecurityEventsSummary,
+) -> SecurityCorrelationItem {
     let mut score = 0u64;
     let mut reasons = Vec::new();
     let trust = item.trust_kpi_score;
@@ -3465,6 +3812,9 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
     let business_level = item.business_risk_level.as_deref().unwrap_or("UNKNOWN");
     let critical_candidates = item.critical_candidates.unwrap_or(0);
     let open_cases = item.open_cases.unwrap_or(0);
+    let security_events_24h = item.security_events_24h.unwrap_or_else(|| {
+        security_events_department_count(security_events_summary, &item.department)
+    });
 
     match business_level {
         "CRITICAL" => score += 40,
@@ -3509,6 +3859,12 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
         score += (open_cases as u64).saturating_mul(15).min(30);
         reasons.push("рост открытых расследований".to_string());
     }
+    if security_events_24h > 0 {
+        score += security_events_24h.saturating_mul(5).min(25);
+        reasons.push(format!(
+            "агрегированные события безопасности за 24 часа: {security_events_24h}"
+        ));
+    }
     if reasons.is_empty() {
         reasons.push("прямая связь активности и рисков не выражена".to_string());
     }
@@ -3519,6 +3875,7 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
         business_risk_level: item.business_risk_level.clone(),
         critical_candidates: item.critical_candidates,
         open_cases: item.open_cases,
+        security_events_24h: (security_events_24h > 0).then_some(security_events_24h),
         correlation_score: score.min(100) as u8,
         correlation_reason: reasons.join("; "),
         explanation: Some(security_correlation_explanation(item, &reasons)),
@@ -3527,10 +3884,11 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
 
 fn security_correlation_explanation(item: &RiskHeatmapItem, reasons: &[String]) -> String {
     format!(
-        "Связаны слои: достоверность показателей {}, активность {}, риск подразделения {}, требует проверки {}, расследования {}. Причина: {}. Для руководителя это означает, что управленческую просадку нужно проверять вместе с качеством данных и очередью ручной проверки.",
+        "Связаны слои: достоверность показателей {}, активность {}, риск подразделения {}, события безопасности {}, требует проверки {}, расследования {}. Причина: {}. Для руководителя это означает, что управленческую просадку нужно проверять вместе с качеством данных и очередью ручной проверки.",
         optional_score_text(item.trust_kpi_score),
         optional_score_text(item.activity_score),
         item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+        item.security_events_24h.unwrap_or(0),
         item.critical_candidates.unwrap_or(0),
         item.open_cases.unwrap_or(0),
         reasons.join("; ")
@@ -3598,6 +3956,7 @@ fn build_executive_dashboard(
         main_risk_cause: executive_main_risk_cause(
             inputs.risk_heatmap,
             inputs.security_correlation,
+            inputs.security_events_summary,
             &forensics_readiness,
         ),
         main_risk: executive_main_risk(
@@ -3620,6 +3979,8 @@ fn build_executive_dashboard(
         open_cases: Some(open_cases),
         resolved_cases_30d: Some(resolved_cases_30d),
         forensics_readiness: Some(forensics_readiness),
+        security_events_24h: (inputs.security_events_summary.backend != "disabled")
+            .then_some(inputs.security_events_summary.events_24h),
         summary,
     }
 }
@@ -3736,6 +4097,10 @@ fn executive_main_data_gap(
             snapshot.agent_coverage_sla.coverage_pct
         );
     }
+    if snapshot.security_events_summary.fallback_used {
+        return "агрегированные события безопасности недоступны: проверить ClickHouse и переменные SECURITY_EVENTS_BACKEND/CLICKHOUSE_*"
+            .to_string();
+    }
     if !agent_quality_explain.kpi_accepted {
         return agent_quality_explain.summary.clone();
     }
@@ -3774,8 +4139,21 @@ fn risk_narrative_status(
 fn executive_main_risk_cause(
     risk_heatmap: &[RiskHeatmapItem],
     security_correlation: &[SecurityCorrelationItem],
+    security_events_summary: &SecurityEventsSummary,
     forensics_readiness: &str,
 ) -> Option<String> {
+    if security_events_summary.fallback_used {
+        return Some(
+            "агрегированные события безопасности временно недоступны: ClickHouse не ответил"
+                .to_string(),
+        );
+    }
+    if risk_heatmap.is_empty() && security_events_summary.events_24h > 0 {
+        return Some(format!(
+            "за 24 часа обнаружены агрегированные события безопасности: {}",
+            security_events_summary.events_24h
+        ));
+    }
     let top = risk_heatmap
         .iter()
         .find(|item| !matches!(item.heat_level.as_str(), "LOW" | "UNKNOWN"))?;
@@ -3795,6 +4173,15 @@ fn risk_narrative_statement(
     item: &RiskHeatmapItem,
     correlation: Option<&SecurityCorrelationItem>,
 ) -> String {
+    let metrics = RiskLayerMetrics {
+        trust_kpi_score: item.trust_kpi_score,
+        activity_score: item.activity_score,
+        agent_coverage_pct: item.agent_coverage_pct,
+        business_risk_level: item.business_risk_level.as_deref(),
+        open_cases: item.open_cases.unwrap_or(0),
+        critical_candidates: item.critical_candidates.unwrap_or(0),
+        security_events_24h: item.security_events_24h.unwrap_or(0),
+    };
     let correlation_score = correlation
         .map(|value| format!("{}/100", value.correlation_score))
         .unwrap_or_else(|| "0/100".to_string());
@@ -3802,23 +4189,17 @@ fn risk_narrative_statement(
         .map(|value| format!(" Причина корреляции: {}.", value.correlation_reason))
         .unwrap_or_default();
     format!(
-        "В подразделении {} связаны слои: достоверность показателей {}, полнота данных {}, риск подразделения {}, карта рисков {}, связь рисков и активности {}, требует проверки {}, расследования {}. {}.{}",
+        "В подразделении {} связаны слои: достоверность показателей {}, полнота данных {}, риск подразделения {}, события безопасности за 24 часа {}, карта рисков {}, связь рисков и активности {}, требует проверки {}, расследования {}. {}.{}",
         item.department,
         optional_score_text(item.trust_kpi_score),
         optional_score_text(item.agent_coverage_pct),
         item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+        item.security_events_24h.unwrap_or(0),
         item.heat_level,
         correlation_score,
         item.critical_candidates.unwrap_or(0),
         item.open_cases.unwrap_or(0),
-        risk_narrative_conclusion(
-            item.trust_kpi_score,
-            item.activity_score,
-            item.agent_coverage_pct,
-            item.business_risk_level.as_deref(),
-            item.open_cases.unwrap_or(0),
-            item.critical_candidates.unwrap_or(0),
-        ),
+        risk_narrative_conclusion(metrics),
         correlation_reason
     )
 }
@@ -5770,6 +6151,10 @@ fn render_report_markdown(
         metrics.dlp_ok, metrics.dlp_warn, metrics.dlp_fail
     ));
     text.push_str(&format!(
+        "- События безопасности за 24 часа: {}\n",
+        security_events_summary_text(context.security_events_summary)
+    ));
+    text.push_str(&format!(
         "- Материалы проверки: записи={}, скриншоты={}\n",
         metrics.evidence_total, metrics.evidence_screenshots
     ));
@@ -5793,6 +6178,7 @@ fn render_report_markdown(
         &snapshot.agent_quality_nodes_summary,
     );
     append_agent_coverage_sla_markdown(&mut text, &snapshot.agent_coverage_sla);
+    append_security_events_markdown(&mut text, context.security_events_summary);
     append_business_risk_markdown(&mut text, context.business_risk);
     append_business_risk_history_markdown(
         &mut text,
@@ -5878,6 +6264,9 @@ fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveD
             .as_deref()
             .unwrap_or("UNKNOWN")
     ));
+    if let Some(events) = dashboard.security_events_24h {
+        text.push_str(&format!("- События безопасности за 24 часа: {events}\n"));
+    }
     text.push_str(&format!(
         "- Главный риск: {}\n",
         dashboard.summary.main_risk
@@ -6044,6 +6433,48 @@ fn append_agent_coverage_sla_markdown(text: &mut String, sla: &AgentCoverageSla)
     }
 }
 
+fn append_security_events_markdown(text: &mut String, summary: &SecurityEventsSummary) {
+    text.push_str("\n## События безопасности за 24 часа\n\n");
+    text.push_str(&format!(
+        "- Статус: {}\n",
+        security_events_summary_status(summary)
+    ));
+    text.push_str(&format!("- Источник: {}\n", summary.backend));
+    text.push_str(&format!("- Событий всего: {}\n", summary.events_24h));
+    text.push_str(&format!(
+        "- Неуспешные/подозрительные входы: {}/{}\n",
+        summary.failed_logins_24h, summary.suspicious_logins_24h
+    ));
+    text.push_str(&format!("- RDP-сессии: {}\n", summary.rdp_sessions_24h));
+    text.push_str(&format!(
+        "- Изменения учетных записей: {}\n",
+        summary.account_changes_24h
+    ));
+    text.push_str(&format!("- Ошибки агентов: {}\n", summary.agent_errors_24h));
+    text.push_str(&format!(
+        "- Последнее событие: {}\n",
+        summary.last_event_utc.as_deref().unwrap_or("нет данных")
+    ));
+    text.push_str(&format!("- Время запроса: {} ms\n", summary.query_ms));
+    if summary.fallback_used {
+        text.push_str(&format!(
+            "- Резервный режим: да; причина: {}\n",
+            summary.error.as_deref().unwrap_or("неизвестная ошибка")
+        ));
+    }
+    if summary.top_departments.is_empty() {
+        text.push_str("- Топ подразделений: нет данных.\n");
+    } else {
+        text.push_str("- Топ подразделений:\n");
+        for item in &summary.top_departments {
+            text.push_str(&format!("  - {}: {}\n", item.department, item.events));
+        }
+    }
+    text.push_str(
+        "- Примечание: это агрегированная сводка, а не SIEM-журнал и не сырой лог событий.\n",
+    );
+}
+
 fn append_business_risk_markdown(text: &mut String, risks: &[BusinessRiskItem]) {
     text.push_str("\n## Риски подразделений\n\n");
     if risks.is_empty() {
@@ -6057,7 +6488,7 @@ fn append_business_risk_markdown(text: &mut String, risks: &[BusinessRiskItem]) 
             item.reasons.join("; ")
         };
         text.push_str(&format!(
-            "- {}: уровень={}, доверие={}%, активность={}%, тренд={}, проблемные_рабочие_места={}, отсутствуют={}, устарели={}\n",
+            "- {}: уровень={}, доверие={}%, активность={}%, тренд={}, проблемные_рабочие_места={}, отсутствуют={}, устарели={}, события_безопасности_24ч={}\n",
             item.department,
             item.risk_level,
             item.trust_score,
@@ -6065,7 +6496,8 @@ fn append_business_risk_markdown(text: &mut String, risks: &[BusinessRiskItem]) 
             item.trend,
             item.problem_nodes_count,
             item.missing_nodes_count,
-            item.stale_nodes_count
+            item.stale_nodes_count,
+            item.security_events_24h.unwrap_or(0)
         ));
         text.push_str(&format!("  - причины: {reasons}\n"));
         text.push_str(&format!("  - рекомендация: {}\n", item.recommendation));
@@ -6120,13 +6552,14 @@ fn append_risk_heatmap_markdown(text: &mut String, items: &[RiskHeatmapItem]) {
     }
     for item in items.iter().take(10) {
         text.push_str(&format!(
-            "- {}: уровень={}, достоверность={}, активность={}, полнота={}, риск_подразделения={}, активные_расследования={}, срочно_проверить={}\n",
+            "- {}: уровень={}, достоверность={}, активность={}, полнота={}, риск_подразделения={}, события_безопасности_24ч={}, активные_расследования={}, срочно_проверить={}\n",
             item.department,
             item.heat_level,
             optional_score_text(item.trust_kpi_score),
             optional_score_text(item.activity_score),
             optional_score_text(item.agent_coverage_pct),
             item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+            item.security_events_24h.unwrap_or(0),
             item.open_cases.unwrap_or(0),
             item.critical_candidates.unwrap_or(0)
         ));
@@ -6142,12 +6575,13 @@ fn append_security_correlation_markdown(text: &mut String, items: &[SecurityCorr
     text.push_str("- Примечание: это аналитическая связка признаков, она не создает инциденты автоматически.\n");
     for item in items.iter().take(10) {
         text.push_str(&format!(
-            "- {}: уровень_взаимосвязи={}/100, достоверность={}, активность={}, риск_подразделения={}, срочно_проверить={}, активные_расследования={}\n",
+            "- {}: уровень_взаимосвязи={}/100, достоверность={}, активность={}, риск_подразделения={}, события_безопасности_24ч={}, срочно_проверить={}, активные_расследования={}\n",
             item.department,
             item.correlation_score,
             optional_score_text(item.trust_kpi_score),
             optional_score_text(item.activity_score),
             item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+            item.security_events_24h.unwrap_or(0),
             item.critical_candidates.unwrap_or(0),
             item.open_cases.unwrap_or(0)
         ));
@@ -6177,11 +6611,12 @@ fn append_linked_risk_narrative_markdown(
             .map(|value| format!("{}/100", value.correlation_score))
             .unwrap_or_else(|| "0/100".to_string());
         text.push_str(&format!(
-            "- {} → достоверность {} → полнота данных {} → риск подразделения {} → карта рисков {} → связь рисков и активности {} → требует проверки {} → расследования {} → {}\n",
+            "- {} → достоверность {} → полнота данных {} → риск подразделения {} → события безопасности {} → карта рисков {} → связь рисков и активности {} → требует проверки {} → расследования {} → {}\n",
             item.department,
             optional_score_text(item.trust_kpi_score),
             optional_score_text(item.agent_coverage_pct),
             item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+            item.security_events_24h.unwrap_or(0),
             item.heat_level,
             correlation_text,
             item.critical_candidates.unwrap_or(0),
@@ -9425,6 +9860,11 @@ mod tests {
             telemetry_api_key: "test-key".to_string(),
             telemetry_store_path: dir.path().join("telemetry.jsonl"),
             expected_nodes_path: dir.path().join("expected_nodes.json"),
+            security_events_backend: "disabled".to_string(),
+            clickhouse_url: "http://127.0.0.1:8123".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
         };
         let body = json!({
             "candidate_id": "risk-candidate-123",
@@ -9528,6 +9968,11 @@ mod tests {
             telemetry_api_key: "test-key".to_string(),
             telemetry_store_path: dir.path().join("telemetry.jsonl"),
             expected_nodes_path: dir.path().join("expected_nodes.json"),
+            security_events_backend: "disabled".to_string(),
+            clickhouse_url: "http://127.0.0.1:8123".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
         };
         let found = resolve_screenshot_file(&args, &None, &Some(digest.clone()))
             .unwrap()
@@ -9594,6 +10039,11 @@ mod tests {
             telemetry_api_key: "test-key".to_string(),
             telemetry_store_path: dir.path().join("telemetry/telemetry.jsonl"),
             expected_nodes_path: dir.path().join("expected_nodes.json"),
+            security_events_backend: "disabled".to_string(),
+            clickhouse_url: "http://127.0.0.1:8123".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
         };
         let payload = json!({
             "agent_id": "agent-1",
@@ -9645,6 +10095,44 @@ mod tests {
         assert_eq!(workforce_index_status(Some(84)), "OK");
         assert_eq!(workforce_index_status(Some(70)), "WARN");
         assert_eq!(workforce_index_status(Some(30)), "FAIL");
+    }
+
+    #[test]
+    fn security_events_disabled_summary_is_safe_default() {
+        let summary = build_security_events_summary(&SecurityEventsConfig {
+            backend: "disabled".to_string(),
+            clickhouse_url: "http://127.0.0.1:8123".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
+            timeout: Duration::from_millis(10),
+        });
+        assert_eq!(summary.status, "disabled");
+        assert_eq!(summary.backend, "disabled");
+        assert!(!summary.fallback_used);
+        assert_eq!(security_events_summary_status(&summary), "UNKNOWN");
+    }
+
+    #[test]
+    fn security_events_clickhouse_bad_database_falls_back() {
+        let summary = build_security_events_summary(&SecurityEventsConfig {
+            backend: "clickhouse".to_string(),
+            clickhouse_url: "http://127.0.0.1:8123".to_string(),
+            clickhouse_database: "bad;database".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
+            timeout: Duration::from_millis(10),
+        });
+        assert_eq!(summary.backend, "clickhouse");
+        assert_eq!(summary.status, "fallback");
+        assert!(summary.fallback_used);
+        assert!(
+            summary
+                .error
+                .as_deref()
+                .unwrap_or("")
+                .contains("ClickHouse")
+        );
     }
 
     #[test]
@@ -9808,6 +10296,7 @@ mod tests {
                 accepted_kpi_nodes_pct: 50,
             },
             agent_coverage_sla: AgentCoverageSla::default(),
+            security_events_summary: SecurityEventsSummary::disabled(),
         };
         let evidence = DlpEvidenceResponse {
             ok: true,
@@ -9862,6 +10351,8 @@ mod tests {
         );
         assert_eq!(report["operator_ok"], true);
         assert_eq!(report["severity"], "OK");
+        assert_eq!(report["security_events_summary"]["status"], "disabled");
+        assert_eq!(report["security_events_summary"]["backend"], "disabled");
         assert!(
             report["markdown"]
                 .as_str()
@@ -10099,6 +10590,11 @@ mod tests {
             telemetry_api_key: "test-key".to_string(),
             telemetry_store_path: case_dir.path().join("telemetry.jsonl"),
             expected_nodes_path: case_dir.path().join("expected_nodes.json"),
+            security_events_backend: "disabled".to_string(),
+            clickhouse_url: "http://127.0.0.1:8123".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
         };
         assert!(
             apply_create_case(
@@ -10362,6 +10858,7 @@ confidence:
             agent_quality_nodes: Vec::new(),
             agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
             agent_coverage_sla: AgentCoverageSla::default(),
+            security_events_summary: SecurityEventsSummary::disabled(),
         };
         let metrics = ReportMetrics {
             users_count: 1,
@@ -10470,6 +10967,7 @@ confidence:
                 agent_quality_nodes: Vec::new(),
                 agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
                 agent_coverage_sla: AgentCoverageSla::default(),
+                security_events_summary: SecurityEventsSummary::disabled(),
             }
         }
 
@@ -10563,6 +11061,7 @@ confidence:
             agent_quality_nodes: Vec::new(),
             agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
             agent_coverage_sla: AgentCoverageSla::default(),
+            security_events_summary: SecurityEventsSummary::disabled(),
         };
         let policy = WorkforcePolicy {
             default_role: "accountant".to_string(),
@@ -10667,6 +11166,7 @@ confidence:
             agent_quality_nodes: Vec::new(),
             agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
             agent_coverage_sla: AgentCoverageSla::default(),
+            security_events_summary: SecurityEventsSummary::disabled(),
         };
         let explain = build_workforce_policy_explain(&snapshot, &policy_path, false);
         assert_eq!(explain["configured"], true);

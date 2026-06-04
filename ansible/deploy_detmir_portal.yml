@@ -59,6 +59,11 @@
           DETMIR_PORTAL_READINESS_BUNDLE_DIR={{ detmir_portal_readiness_bundle_dir }}
           DETMIR_PORTAL_EVIDENCE_LIMIT=30
           DETMIR_PORTAL_EVIDENCE_MAX_BYTES=8388608
+          SECURITY_EVENTS_BACKEND={{ detmir_security_events_backend | default('disabled') }}
+          CLICKHOUSE_URL={{ detmir_clickhouse_url | default('http://127.0.0.1:8123') }}
+          CLICKHOUSE_DATABASE={{ detmir_clickhouse_database | default('analytics_1c') }}
+          CLICKHOUSE_USER={{ detmir_clickhouse_user | default('default') }}
+          CLICKHOUSE_PASSWORD={{ detmir_clickhouse_password | default('') }}
 
     - name: Install initial workforce policy when absent
       ansible.builtin.copy:

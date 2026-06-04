@@ -60,6 +60,21 @@ struct Cli {
 
     #[arg(long, default_value_t = false)]
     disable_grafana_check: bool,
+
+    #[arg(long, default_value = "disabled")]
+    security_events_backend: String,
+
+    #[arg(long, default_value = "http://127.0.0.1:8123")]
+    clickhouse_url: String,
+
+    #[arg(long, default_value = "analytics_1c")]
+    clickhouse_database: String,
+
+    #[arg(long, default_value = "default")]
+    clickhouse_user: String,
+
+    #[arg(long, default_value = "")]
+    clickhouse_password: String,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -318,7 +333,95 @@ fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
     if !args.disable_grafana_check {
         checks.push(grafana_data_check(args));
     }
+    if security_events_clickhouse_enabled(args) {
+        checks.push(clickhouse_security_events_check(args));
+    }
     checks
+}
+
+fn security_events_clickhouse_enabled(args: &Cli) -> bool {
+    args.security_events_backend
+        .trim()
+        .eq_ignore_ascii_case("clickhouse")
+}
+
+fn clickhouse_security_events_check(args: &Cli) -> ServiceCheck {
+    let name = "security-events-clickhouse".to_string();
+    let Some(database) = clickhouse_identifier(&args.clickhouse_database) else {
+        return ServiceCheck {
+            name,
+            required: false,
+            ok: false,
+            url: None,
+            payload: None,
+            error: Some("invalid ClickHouse database identifier".to_string()),
+        };
+    };
+    let timeout = Duration::from_secs(args.service_timeout_seconds.min(5));
+    let sql = format!(
+        "SELECT toUInt64(count()) AS events_24h FROM {database}.entity_timeline WHERE ts >= now() - INTERVAL 24 HOUR FORMAT JSONEachRow"
+    );
+    match clickhouse_query_first(args, &sql, timeout) {
+        Ok(payload) => ServiceCheck {
+            name,
+            required: false,
+            ok: true,
+            url: Some(args.clickhouse_url.trim_end_matches('/').to_string()),
+            payload: Some(payload.unwrap_or_else(|| serde_json::json!({"events_24h": 0}))),
+            error: None,
+        },
+        Err(err) => ServiceCheck {
+            name,
+            required: false,
+            ok: false,
+            url: Some(args.clickhouse_url.trim_end_matches('/').to_string()),
+            payload: None,
+            error: Some(err.to_string()),
+        },
+    }
+}
+
+fn clickhouse_identifier(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || !trimmed
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    {
+        return None;
+    }
+    Some(trimmed.to_string())
+}
+
+fn clickhouse_query_first(args: &Cli, sql: &str, timeout: Duration) -> Result<Option<Value>> {
+    let client = Client::builder()
+        .timeout(timeout)
+        .no_proxy()
+        .build()
+        .context("ClickHouse HTTP client")?;
+    let mut request = client
+        .post(args.clickhouse_url.trim_end_matches('/'))
+        .query(&[("database", args.clickhouse_database.trim())])
+        .body(sql.to_string());
+    if !args.clickhouse_user.trim().is_empty() {
+        request = request.basic_auth(
+            args.clickhouse_user.trim().to_string(),
+            Some(args.clickhouse_password.clone()),
+        );
+    }
+    let text = request
+        .send()
+        .context("ClickHouse request")?
+        .error_for_status()
+        .context("ClickHouse HTTP status")?
+        .text()
+        .context("ClickHouse response body")?;
+    let Some(line) = text.lines().map(str::trim).find(|line| !line.is_empty()) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        serde_json::from_str::<Value>(line).context("ClickHouse JSONEachRow")?,
+    ))
 }
 
 fn grafana_data_check(args: &Cli) -> ServiceCheck {
@@ -675,6 +778,12 @@ fn main() -> Result<()> {
     args.rdp_host = env_or_default("DETMIR_RDP_HOST", &args.rdp_host);
     args.hostname = env_or_default("DETMIR_HOSTNAME", &args.hostname);
     args.grafana_check_json = env_or_default("DETMIR_GRAFANA_CHECK_JSON", &args.grafana_check_json);
+    args.security_events_backend =
+        env_or_default("SECURITY_EVENTS_BACKEND", &args.security_events_backend);
+    args.clickhouse_url = env_or_default("CLICKHOUSE_URL", &args.clickhouse_url);
+    args.clickhouse_database = env_or_default("CLICKHOUSE_DATABASE", &args.clickhouse_database);
+    args.clickhouse_user = env_or_default("CLICKHOUSE_USER", &args.clickhouse_user);
+    args.clickhouse_password = env_or_default("CLICKHOUSE_PASSWORD", &args.clickhouse_password);
 
     let report = build_report(&args)?;
     if args.json {
@@ -722,5 +831,37 @@ mod tests {
         let (status, ok) = classify_missing_bucket(BucketMode::InteractiveFresh, false);
         assert_eq!(status, "INACTIVE");
         assert!(ok);
+    }
+
+    #[test]
+    fn security_events_backend_disabled_by_default() {
+        let args = Cli::parse_from(["detmir-check"]);
+        assert!(!security_events_clickhouse_enabled(&args));
+    }
+
+    #[test]
+    fn security_events_backend_clickhouse_is_optional() {
+        let args = Cli::parse_from([
+            "detmir-check",
+            "--security-events-backend",
+            "clickhouse",
+            "--clickhouse-database",
+            "analytics_1c",
+        ]);
+        assert!(security_events_clickhouse_enabled(&args));
+        assert_eq!(
+            clickhouse_identifier(&args.clickhouse_database).as_deref(),
+            Some("analytics_1c")
+        );
+    }
+
+    #[test]
+    fn clickhouse_database_identifier_rejects_injection() {
+        assert_eq!(
+            clickhouse_identifier("analytics_1c").as_deref(),
+            Some("analytics_1c")
+        );
+        assert!(clickhouse_identifier("analytics_1c;DROP TABLE x").is_none());
+        assert!(clickhouse_identifier("").is_none());
     }
 }
