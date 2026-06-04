@@ -1214,7 +1214,7 @@ function renderSecurityView(data, report, extras = {}) {
     ${renderInvestigationPacks(report?.risk_incident_candidates)}
     <section class="dashboard-band security-band">
       <div class="band-head"><h3>Расследования</h3><span class="muted">ручная проверка, решения и материалы</span></div>
-      ${renderIncidentsList(extras.incidents || data.incidents || [])}
+      ${renderDlpIncidentsList(extras.incidents || data.incidents || [])}
     </section>
   `;
 }

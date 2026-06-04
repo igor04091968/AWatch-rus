@@ -290,6 +290,14 @@ async function main() {
           ].every((marker) => containsText(securityText, marker)),
         });
         checks.push({
+          name: "security_role_hides_technical_health_sources",
+          ok:
+            !containsText(securityText, "detmir_check")
+            && !containsText(securityText, "detmir_status")
+            && !containsText(securityText, "command failed")
+            && !containsText(securityText, "command returned non-zero"),
+        });
+        checks.push({
           name: "security_events_security_text",
           ok: !expectedSecurityText || containsText(securityText, expectedSecurityText),
           mode: securityMode,

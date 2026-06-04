@@ -2240,33 +2240,30 @@ fn agent_quality_explain(quality: &AgentQuality) -> AgentQualityExplain {
 
 fn command_json_source(name: &str, command: &str, timeout: Duration) -> SourceStatus {
     match run_shell(command, timeout) {
-        Ok((stdout, stderr, success)) => {
-            if !success {
-                return SourceStatus {
-                    ok: false,
-                    status: "FAIL".to_string(),
-                    summary: format!("{name} command returned non-zero status"),
-                    error: Some(stderr.trim().to_string()),
-                    payload: None,
-                };
-            }
-            match serde_json::from_str::<Value>(&stdout) {
-                Ok(payload) => SourceStatus {
-                    ok: payload_bool(&payload, "/ok").unwrap_or(true),
-                    status: status_from_payload(&payload),
-                    summary: source_summary(name, &payload),
-                    error: None,
-                    payload: Some(payload),
+        Ok((stdout, stderr, success)) => match serde_json::from_str::<Value>(&stdout) {
+            Ok(payload) => SourceStatus {
+                ok: payload_bool(&payload, "/ok").unwrap_or(true),
+                status: status_from_payload(&payload),
+                summary: source_summary(name, &payload),
+                error: if success || stderr.trim().is_empty() {
+                    None
+                } else {
+                    Some(stderr.trim().to_string())
                 },
-                Err(err) => SourceStatus {
-                    ok: false,
-                    status: "FAIL".to_string(),
-                    summary: format!("{name} returned invalid JSON"),
-                    error: Some(err.to_string()),
-                    payload: None,
+                payload: Some(payload),
+            },
+            Err(err) => SourceStatus {
+                ok: false,
+                status: "FAIL".to_string(),
+                summary: if success {
+                    format!("{name} returned invalid JSON")
+                } else {
+                    format!("{name} command returned non-zero status")
                 },
-            }
-        }
+                error: Some(err.to_string()),
+                payload: None,
+            },
+        },
         Err(err) => SourceStatus {
             ok: false,
             status: "FAIL".to_string(),
@@ -9350,6 +9347,19 @@ mod tests {
         let err = run_shell("sh -c 'sleep 5 & wait'", Duration::from_millis(200)).unwrap_err();
         assert!(started.elapsed() < Duration::from_secs(2));
         assert!(err.to_string().contains("command timed out"));
+    }
+
+    #[test]
+    fn command_json_source_accepts_valid_json_with_nonzero_exit() {
+        let source = command_json_source(
+            "detmir_status",
+            "printf '%s' '{\"severity\":\"OK\",\"ok_for_operator\":false}'; exit 2",
+            Duration::from_secs(1),
+        );
+        assert!(source.ok);
+        assert_eq!(source.status, "OK");
+        assert!(source.payload.is_some());
+        assert!(!source.summary.contains("command returned non-zero"));
     }
 
     #[test]
