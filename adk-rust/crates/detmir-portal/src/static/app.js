@@ -1170,6 +1170,7 @@ function renderSecurityView(data, report, extras = {}) {
   const cases = Array.isArray(extras.cases?.cases) ? extras.cases.cases : [];
   return `
     ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
+    ${renderSecurityCorrelation(report?.security_correlation)}
     ${renderCases(cases)}
     ${renderIncidentReviewAuditSummary(report)}
     ${renderInvestigationPacks(report?.risk_incident_candidates)}
@@ -1273,8 +1274,8 @@ function renderInvestigationPacks(candidates) {
     <section class="card investigation-packs-card">
       <div class="section-head">
         <div>
-          <h3>Пакеты расследований</h3>
-          <p class="muted">Выгружаемые материалы по каждой записи для ручной проверки.</p>
+          <h3>Материалы расследования</h3>
+          <p class="muted">Выгружаемые пакеты материалов по каждой записи для ручной проверки.</p>
         </div>
         <span class="badge ${statusClass(rows.length ? "INFO" : "UNKNOWN")}">${rows.length}</span>
       </div>

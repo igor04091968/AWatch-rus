@@ -186,7 +186,7 @@ async function main() {
         await page.click('[data-view-mode="security"]', { timeout });
         await page.waitForFunction(
           () => document.querySelector("#loadingStateText")?.textContent === "READY"
-            && document.body.innerText.includes("Пакеты расследований"),
+            && document.body.innerText.includes("Материалы расследования"),
           null,
           { timeout },
         );
@@ -198,7 +198,8 @@ async function main() {
             "Требует проверки",
             "Расследования",
             "Аудит",
-            "Пакеты расследований",
+            "Материалы расследования",
+            "Связь рисков и активности",
           ].every((marker) => containsText(securityText, marker)),
         });
 
