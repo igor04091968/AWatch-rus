@@ -1,4 +1,4 @@
-const state = { tab: "operator", links: null, readiness: null, reports: null };
+const state = { tab: "operator", period: "today", links: null, readiness: null, reports: null };
 
 function apiBase() {
   const path = window.location.pathname;
@@ -174,6 +174,120 @@ function findSection(report, title) {
   return (report?.sections || []).find(item => String(item.title || "").toLowerCase().includes(text));
 }
 
+function periodConfig(period = state.period) {
+  if (period === "week") return { key: "week", label: "неделя", days: 7 };
+  if (period === "month") return { key: "month", label: "месяц", days: 30 };
+  return { key: "today", label: "сегодня", days: 1 };
+}
+
+function periodFromSelectValue(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("нед")) return "week";
+  if (text.includes("мес")) return "month";
+  return "today";
+}
+
+function trendPoints(report, days) {
+  const trend = Array.isArray(report?.workforce?.trend) ? report.workforce.trend : [];
+  return trend.slice(Math.max(0, trend.length - days));
+}
+
+function averageCoverage(points) {
+  const values = points
+    .map(item => Number(item.portfolio_coverage_pct))
+    .filter(value => Number.isFinite(value));
+  if (values.length === 0) return null;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function periodStatus(points, config) {
+  if (config.key === "today") return "OK";
+  if (points.length >= config.days) return "OK";
+  if (points.length > 0) return "WARN";
+  return "UNKNOWN";
+}
+
+function periodReadinessText(report, config = periodConfig()) {
+  if (config.key === "today") return "дневной срез";
+  const points = trendPoints(report, config.days);
+  if (points.length >= config.days) return `готово: ${config.label}`;
+  return `накоплено ${points.length}/${config.days} дней`;
+}
+
+function periodReport(report) {
+  if (!report || state.period === "today") return report;
+  const config = periodConfig();
+  const points = trendPoints(report, config.days);
+  const average = averageCoverage(points);
+  const next = JSON.parse(JSON.stringify(report));
+  next.period = `управленческий срез за период: ${config.label}`;
+  next.period_view = {
+    key: config.key,
+    label: config.label,
+    required_days: config.days,
+    available_days: points.length,
+    status: periodStatus(points, config),
+    average_coverage_pct: average
+  };
+  next.kpis = (next.kpis || []).map(item => {
+    if (item.label === "Индекс активности") {
+      return {
+        ...item,
+        value: average === null ? "нет данных" : `${average}%`,
+        status: periodStatus(points, config),
+        context: `${config.label}: среднее по накопленной истории, ${points.length}/${config.days} дней`
+      };
+    }
+    if (item.label === "Активное время") {
+      return {
+        ...item,
+        value: state.period === "week" ? "по дням" : "по истории",
+        status: periodStatus(points, config),
+        context: "агрегация времени требует накопленных дневных срезов"
+      };
+    }
+    if (item.label === "Подразделения") {
+      return {
+        ...item,
+        context: `${config.label}: текущий состав групп, тренд по истории`
+      };
+    }
+    return item;
+  });
+  return next;
+}
+
+function renderPeriodBanner(report) {
+  const config = periodConfig();
+  if (config.key === "today") return "";
+  const view = periodReport(report)?.period_view || {};
+  const status = view.status || "UNKNOWN";
+  const avg = Number.isFinite(Number(view.average_coverage_pct)) ? `${view.average_coverage_pct}%` : "нет данных";
+  return `
+    <section class="period-banner">
+      <div>
+        <strong>Период: ${ui(config.label)}</strong>
+        <span class="muted">Накоплено ${escapeHtml(view.available_days ?? 0)} из ${escapeHtml(config.days)} дневных срезов. Средняя активность: ${escapeHtml(avg)}.</span>
+      </div>
+      <span class="badge ${statusClass(status)}">${ui(periodReadinessText(report, config))}</span>
+    </section>
+  `;
+}
+
+function renderDailyDetailNotice() {
+  const config = periodConfig();
+  if (config.key === "today") return "";
+  return `
+    <section class="period-banner">
+      <div>
+        <strong>Период: ${ui(config.label)}</strong>
+        <span class="muted">Этот детальный экран показывает последний дневной срез. Сводная интерпретация за период доступна в разделах "Пульс организации", "Подразделения" и "Отчеты".</span>
+      </div>
+      <span class="badge status-warn">дневная детализация</span>
+    </section>
+  `;
+}
+
 function metricCard(labelText, value, status, context) {
   return `
     <article class="metric-card">
@@ -201,7 +315,7 @@ function renderExecutiveMetrics(report, incidents) {
       ${metricCard("Подразделения с просадкой", departments?.value, departments?.status, departments?.context || "сравнение текущего дня")}
       ${metricCard("Риски ИБ", risk?.value, risk?.status, risk?.context || "оценка по правилам")}
       ${metricCard("Новые инциденты", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "не взятые в работу")}
-      ${metricCard("Готовность отчета", reportReadinessText(report), report?.operator_ok ? "OK" : report?.severity, "daily / weekly / monthly")}
+      ${metricCard("Готовность отчета", periodReadinessText(report), report?.period_view?.status || (report?.operator_ok ? "OK" : report?.severity), "день / неделя / месяц")}
       ${metricCard("Доказательная база", evidence?.value, evidence?.status, evidence?.context)}
     </section>
   `;
@@ -293,6 +407,7 @@ function renderSourceList(data) {
 }
 
 function renderOperator(data, report) {
+  report = periodReport(report);
   const incidents = Array.isArray(data.incidents) ? data.incidents : [];
   const workforce = findSection(report, "Работа");
   const insights = findSection(report, "Выводы Workforce");
@@ -306,6 +421,7 @@ function renderOperator(data, report) {
       </div>
       <span class="badge ${statusClass(report?.severity)}">${escapeHtml(report?.headline || "Оперативный срез")}</span>
     </div>
+    ${renderPeriodBanner(report)}
     ${renderExecutiveMetrics(report, incidents)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -338,6 +454,7 @@ function renderManager(data, policyExplain) {
       </div>
       <span class="badge ${statusClass(data.status?.status)}">${escapeHtml(data.status?.status || "INFO")}</span>
     </div>
+    ${renderDailyDetailNotice()}
     <div class="grid-2">
       <section class="card">
         <h3>Индекс активности</h3>
@@ -370,6 +487,7 @@ function renderManager(data, policyExplain) {
 }
 
 function renderDepartments(report) {
+  report = periodReport(report);
   const departments = report?.workforce?.department_comparison || [];
   const owners = report?.workforce?.owner_comparison || [];
   const insights = report?.workforce?.insights || [];
@@ -381,6 +499,7 @@ function renderDepartments(report) {
       </div>
       <span class="badge ${statusClass(report?.severity)}">${ui(report?.severity || "INFO")}</span>
     </div>
+    ${renderPeriodBanner(report)}
     <div class="grid-2">
       <section class="card">
         <h3>Рейтинг подразделений</h3>
@@ -410,6 +529,7 @@ function renderEmployees(data, policyExplain) {
       </div>
       <span class="badge ${statusClass(data.status?.status)}">${escapeHtml(data.users_count || 0)} сотрудников</span>
     </div>
+    ${renderDailyDetailNotice()}
     <div class="employee-card-grid">${selected.map(user => renderEmployeeCard(user, employees)).join("") || `<p class="muted">Сотрудники пока не найдены.</p>`}</div>
     ${renderWorkforceIndexExplanation(policyExplain)}
   `;
@@ -595,6 +715,7 @@ function renderOwner(data) {
 }
 
 function renderPerimeter(data, report) {
+  report = periodReport(report);
   const risk = report?.ueba_risk || {};
   const cards = Object.entries(data.cards || {});
   return `
@@ -605,6 +726,7 @@ function renderPerimeter(data, report) {
       </div>
       <span class="badge status-unknown">наблюдение</span>
     </div>
+    ${renderPeriodBanner(report)}
     <div class="summary-grid">
       ${metricCard("Нетипичные направления", "нет данных", "UNKNOWN", "источник периметра не подключен к порталу")}
       ${metricCard("Сетевые события", "нет данных", "UNKNOWN", "ожидается интеграционный слой")}
@@ -759,6 +881,7 @@ function renderUebaRisk(risk) {
 }
 
 function renderReports(data) {
+  data = periodReport(data);
   return `
     <div class="page-head">
       <div>
@@ -767,6 +890,7 @@ function renderReports(data) {
       </div>
       <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
     </div>
+    ${renderPeriodBanner(data)}
     ${renderReportTypeCards()}
     <div class="grid-2">
       <section class="card report-hero">
@@ -877,6 +1001,12 @@ document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
 });
 
+document.getElementById("periodFilter")?.addEventListener("change", event => {
+  state.period = periodFromSelectValue(event.target.value);
+  document.getElementById("content").innerHTML = `<p class="muted">Обновление периода...</p>`;
+  refresh().catch(showError);
+});
+
 document.addEventListener("click", event => {
   const button = event.target.closest("[data-incident-action]");
   if (!button) return;
@@ -926,12 +1056,13 @@ async function verifyReadinessBundle(button) {
 async function anonymizeReport(button) {
   button.disabled = true;
   const data = await loadJson("/reports?anonymize=1");
+  state.reports = data;
   document.getElementById("content").innerHTML = renderReports(data);
 }
 
 async function exportMarkdown() {
   const data = state.reports || await loadJson("/reports");
-  const markdown = displayText(data.markdown || "");
+  const markdown = displayText(periodReport(data)?.markdown || data.markdown || "");
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");

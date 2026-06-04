@@ -332,6 +332,24 @@ h1 {
   background: var(--panel);
 }
 
+.period-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--warn);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.period-banner > div {
+  display: grid;
+  gap: 4px;
+}
+
 .security-band {
   border-left: 4px solid #7c2d12;
 }
@@ -560,6 +578,7 @@ pre {
   .control-strip label { min-width: 100%; }
   h1 { font-size: 24px; }
   .page-head { flex-direction: column; }
+  .period-banner { flex-direction: column; align-items: flex-start; }
   .band-head { flex-direction: column; align-items: flex-start; }
   .row { grid-template-columns: 1fr; }
   .incident-row { grid-template-columns: 1fr; }
