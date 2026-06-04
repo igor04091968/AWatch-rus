@@ -47,6 +47,20 @@ function containsText(text, marker) {
   return String(text || "").toLocaleLowerCase("ru-RU").includes(String(marker || "").toLocaleLowerCase("ru-RU"));
 }
 
+function securityEventsMode(summary) {
+  const s = summary || {};
+  if (!summary || s.backend === "disabled" || s.status === "disabled") return "disabled";
+  if (s.fallback_used) return "fallback";
+  return "available";
+}
+
+function expectedSecurityEventsText(mode) {
+  if (mode === "disabled") return "Источник событий безопасности отключён";
+  if (mode === "fallback") return "События безопасности временно недоступны";
+  if (mode === "available") return "События безопасности доступны";
+  return "";
+}
+
 function assertStaticTabHandlers() {
   const index = fs.readFileSync(path.join(root, "adk-rust/crates/detmir-portal/src/static/index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "adk-rust/crates/detmir-portal/src/static/app.js"), "utf8");
@@ -121,6 +135,26 @@ async function main() {
         && (await page.locator("#loadingStageText").innerText({ timeout })).includes("Данные загружены")
         && !(await page.locator("body").innerText({ timeout })).includes("Данные загружаются"),
     });
+    smokeStep = "api:security_events_summary";
+    const reportsPayload = await page.evaluate(async () => {
+      const response = await fetch("api/reports", { cache: "no-store" });
+      return { ok: response.ok, status: response.status, json: await response.json() };
+    });
+    const securitySummary = reportsPayload.json?.security_events_summary || null;
+    const securityMode = securityEventsMode(securitySummary);
+    const expectedSecurityMode = env("DETMIR_PORTAL_SMOKE_SECURITY_EVENTS_EXPECT", "auto").toLowerCase();
+    checks.push({
+      name: "security_events_api_json",
+      ok: reportsPayload.ok && Boolean(securitySummary),
+      mode: securityMode,
+      status: reportsPayload.status,
+    });
+    checks.push({
+      name: "security_events_expected_mode",
+      ok: expectedSecurityMode === "auto" || expectedSecurityMode === securityMode,
+      expected: expectedSecurityMode,
+      actual: securityMode,
+    });
     for (const item of expectedTabs) {
       smokeStep = `tab:${item.tab}`;
       await page.click(`button[data-tab="${item.tab}"]`, { timeout });
@@ -181,6 +215,17 @@ async function main() {
             && (await page.locator('[data-view-mode="security"]').count()) === 1
             && (await page.locator('[data-view-mode="operations"]').count()) === 1,
         });
+        const expectedSecurityText = expectedSecurityEventsText(securityMode);
+        checks.push({
+          name: "security_events_executive_text",
+          ok:
+            !expectedSecurityText
+            || (containsText(readyBodyText, expectedSecurityText)
+              && !containsText(readyBodyText, "SECURITY_EVENTS_BACKEND")
+              && !containsText(readyBodyText, "CLICKHOUSE_*")),
+          mode: securityMode,
+          expected_text: expectedSecurityText,
+        });
 
         smokeStep = "role:security";
         await page.click('[data-view-mode="security"]', { timeout });
@@ -203,6 +248,12 @@ async function main() {
             "Связь рисков и активности",
           ].every((marker) => containsText(securityText, marker)),
         });
+        checks.push({
+          name: "security_events_security_text",
+          ok: !expectedSecurityText || containsText(securityText, expectedSecurityText),
+          mode: securityMode,
+          expected_text: expectedSecurityText,
+        });
 
         smokeStep = "role:operations";
         await page.click('[data-view-mode="operations"]', { timeout });
@@ -224,6 +275,15 @@ async function main() {
             "Ошибки",
             "Телеметрия",
           ].every((marker) => containsText(operationsText, marker)),
+        });
+        checks.push({
+          name: "security_events_operations_text",
+          ok:
+            !expectedSecurityText
+            || (containsText(operationsText, expectedSecurityText)
+              && (securityMode !== "fallback" || containsText(operationsText, "События безопасности временно недоступны"))),
+          mode: securityMode,
+          expected_text: expectedSecurityText,
         });
       }
       if (item.tab === "settings") {

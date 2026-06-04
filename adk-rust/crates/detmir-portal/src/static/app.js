@@ -2156,18 +2156,42 @@ function renderSecurityEventsSummary(summary, options = {}) {
   const disabled = backend === "disabled" || s.status === "disabled" || !summary;
   const fallback = Boolean(s.fallback_used);
   const status = disabled ? "UNKNOWN" : fallback ? "WARN" : Number(s.events_24h || 0) > 0 ? "WARN" : "OK";
+  const stateText = disabled
+    ? "Источник событий безопасности отключён"
+    : fallback
+      ? "События безопасности временно недоступны"
+      : "События безопасности доступны";
+  const localModeText = disabled ? "Используется локальный режим без ClickHouse" : "";
   const title = options.compact
     ? "События безопасности"
     : "События безопасности за 24 часа";
   const subtitle = disabled
-    ? "Агрегированный источник событий безопасности отключён."
+    ? `${stateText}. ${localModeText}.`
     : fallback
-      ? "ClickHouse недоступен, портал работает в резервном режиме без событий безопасности."
+      ? "Портал работает в резервном режиме без событий безопасности."
       : "Агрегированная сводка без сырых журналов и без автоматического создания инцидентов.";
   const top = Array.isArray(s.top_departments) ? s.top_departments.slice(0, 5) : [];
   const warning = fallback
     ? `<div class="quality-warning">События безопасности временно недоступны. Проверьте ClickHouse и переменные SECURITY_EVENTS_BACKEND/CLICKHOUSE_*.</div>`
     : "";
+  if (options.compact) {
+    return `
+      <section class="card security-events-card">
+        <div class="section-head">
+          <div>
+            <h3 ${tooltip("Краткая управленческая сводка доступности событий безопасности за последние 24 часа.")}>${ui(title)}</h3>
+            <p class="muted">${ui(stateText)}</p>
+          </div>
+          <span class="badge ${statusClass(status)}">${ui(status)}</span>
+        </div>
+        <div class="quality-grid">
+          <div><span class="muted">Состояние</span><strong>${ui(stateText)}</strong></div>
+          <div><span class="muted">Событий за 24 часа</span><strong>${ui(s.events_24h ?? 0)}</strong></div>
+          <div><span class="muted">Режим</span><strong>${ui(disabled ? localModeText : "Агрегированная сводка")}</strong></div>
+        </div>
+      </section>
+    `;
+  }
   return `
     <section class="card security-events-card">
       <div class="section-head">
@@ -2178,6 +2202,7 @@ function renderSecurityEventsSummary(summary, options = {}) {
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
       <div class="quality-grid">
+        <div><span class="muted">Состояние</span><strong>${ui(stateText)}</strong></div>
         <div><span class="muted">Источник</span><strong>${ui(backend)}</strong></div>
         <div><span class="muted">Событий</span><strong>${ui(s.events_24h ?? 0)}</strong></div>
         <div><span class="muted">Неуспешные входы</span><strong>${ui(s.failed_logins_24h ?? 0)}</strong></div>

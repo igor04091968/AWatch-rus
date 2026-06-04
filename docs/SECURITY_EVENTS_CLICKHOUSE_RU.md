@@ -100,3 +100,28 @@ detmir-check --json
 Ожидаемый результат при недоступном ClickHouse: портал возвращает
 `fallback_used=true`, а `detmir-check` показывает предупреждение
 `security-events-clickhouse` с `required=false`.
+
+## Пилотная проверка UI
+
+Для демонстрационного стенда проверяются три режима:
+
+1. `SECURITY_EVENTS_BACKEND=disabled` - штатный режим без ClickHouse.
+2. `SECURITY_EVENTS_BACKEND=clickhouse` и доступный ClickHouse - сводка
+   показывает “События безопасности доступны”.
+3. `SECURITY_EVENTS_BACKEND=clickhouse` и недоступный ClickHouse - портал
+   показывает “События безопасности временно недоступны”, но `/api/reports`
+   остается валидным.
+
+Smoke-тест поддерживает явное ожидание режима:
+
+```bash
+DETMIR_PORTAL_SMOKE_SECURITY_EVENTS_EXPECT=disabled \
+node scripts/detmir-portal-tabs-smoke.mjs
+
+DETMIR_PORTAL_SMOKE_SECURITY_EVENTS_EXPECT=fallback \
+node scripts/detmir-portal-tabs-smoke.mjs
+```
+
+В представлении руководителя не выводятся технические параметры
+`SECURITY_EVENTS_BACKEND` и `CLICKHOUSE_*`. Подробная причина отказа видна в
+представлении эксплуатации.

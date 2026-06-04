@@ -2529,16 +2529,17 @@ fn security_events_summary_status(summary: &SecurityEventsSummary) -> String {
 
 fn security_events_summary_text(summary: &SecurityEventsSummary) -> String {
     if summary.backend == "disabled" || summary.status == "disabled" {
-        return "агрегированные события безопасности отключены".to_string();
+        return "Источник событий безопасности отключён. Используется локальный режим без ClickHouse."
+            .to_string();
     }
     if summary.fallback_used {
         return format!(
-            "ClickHouse недоступен, используется локальный режим; причина: {}",
+            "События безопасности временно недоступны. Используется локальный режим без ClickHouse; причина: {}",
             summary.error.as_deref().unwrap_or("неизвестная ошибка")
         );
     }
     format!(
-        "событий={}, неуспешных входов={}, подозрительных входов={}, RDP={}, изменения учетных записей={}, ошибки агентов={}",
+        "События безопасности доступны: событий={}, неуспешных входов={}, подозрительных входов={}, RDP={}, изменения учетных записей={}, ошибки агентов={}",
         summary.events_24h,
         summary.failed_logins_24h,
         summary.suspicious_logins_24h,
@@ -10133,6 +10134,46 @@ mod tests {
                 .unwrap_or("")
                 .contains("ClickHouse")
         );
+    }
+
+    #[test]
+    fn security_events_summary_texts_are_pilot_safe() {
+        let disabled = SecurityEventsSummary::disabled();
+        assert!(
+            security_events_summary_text(&disabled)
+                .contains("Источник событий безопасности отключён")
+        );
+        assert!(
+            security_events_summary_text(&disabled)
+                .contains("Используется локальный режим без ClickHouse")
+        );
+
+        let fallback = SecurityEventsSummary::fallback("network unavailable", 1);
+        assert!(
+            security_events_summary_text(&fallback)
+                .contains("События безопасности временно недоступны")
+        );
+        assert!(
+            security_events_summary_text(&fallback)
+                .contains("Используется локальный режим без ClickHouse")
+        );
+
+        let available = SecurityEventsSummary {
+            status: "ok".to_string(),
+            backend: "clickhouse".to_string(),
+            events_24h: 3,
+            failed_logins_24h: 1,
+            suspicious_logins_24h: 0,
+            rdp_sessions_24h: 2,
+            account_changes_24h: 0,
+            agent_errors_24h: 0,
+            top_departments: Vec::new(),
+            last_event_utc: Some("2026-06-04T10:00:00Z".to_string()),
+            query_ms: 7,
+            fallback_used: false,
+            error: None,
+        };
+        assert!(security_events_summary_text(&available).contains("События безопасности доступны"));
     }
 
     #[test]
