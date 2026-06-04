@@ -25,6 +25,7 @@ const APP_CSS: &str = include_str!("static/app.css");
 const APP_JS: &str = include_str!("static/app.js");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
 const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(5);
+const DEFAULT_DEPARTMENT_LABEL: &str = "Без подразделения";
 
 type SnapshotCache = Arc<Mutex<Option<CachedSnapshot>>>;
 
@@ -1743,6 +1744,109 @@ fn load_expected_nodes(path: &Path) -> Vec<ExpectedNode> {
     sanitize_expected_nodes(nodes)
 }
 
+fn display_department_name(value: Option<&str>) -> String {
+    display_name_opt(value, DEFAULT_DEPARTMENT_LABEL)
+}
+
+fn display_rollup_name(value: Option<&str>, key: &str) -> String {
+    let fallback = if key == "department_rollups" {
+        DEFAULT_DEPARTMENT_LABEL
+    } else {
+        "Без группы"
+    };
+    display_name_opt(value, fallback)
+}
+
+fn display_name_or(value: &str, fallback: &str) -> String {
+    display_name_opt(Some(value), fallback)
+}
+
+fn display_name_opt(value: Option<&str>, fallback: &str) -> String {
+    let Some(value) = value else {
+        return fallback.to_string();
+    };
+    let value = value.trim();
+    if value.is_empty() || has_broken_display_chars(value) {
+        fallback.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn display_text_opt(value: Option<&str>, fallback: &str) -> String {
+    let Some(value) = value else {
+        return fallback.to_string();
+    };
+    repair_broken_display_text(value, fallback)
+}
+
+fn repair_broken_display_text(value: &str, fallback: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        return fallback.to_string();
+    }
+    if !has_broken_display_chars(value) {
+        return value.to_string();
+    }
+    let mut repaired = String::new();
+    let mut replacement_open = false;
+    for ch in value.chars() {
+        if ch == '\u{FFFD}' {
+            if !replacement_open {
+                repaired.push_str(fallback);
+                replacement_open = true;
+            }
+            continue;
+        }
+        replacement_open = false;
+        if ch.is_control() && ch != '\t' {
+            continue;
+        }
+        repaired.push(ch);
+    }
+    let repaired = repaired.trim();
+    if repaired.is_empty() {
+        fallback.to_string()
+    } else {
+        repaired.to_string()
+    }
+}
+
+fn sanitize_workforce_json(value: Value) -> Value {
+    match value {
+        Value::Array(items) => {
+            Value::Array(items.into_iter().map(sanitize_workforce_json).collect())
+        }
+        Value::Object(map) => Value::Object(
+            map.into_iter()
+                .map(|(key, value)| {
+                    let value = match (key.as_str(), value) {
+                        ("name", Value::String(value)) => {
+                            Value::String(display_name_or(&value, "Без группы"))
+                        }
+                        ("user", Value::String(value)) => {
+                            Value::String(display_name_or(&value, "Пользователь не определён"))
+                        }
+                        ("user_id", Value::String(value)) => {
+                            Value::String(display_text_opt(Some(&value), "unknown"))
+                        }
+                        (_, value) => sanitize_workforce_json(value),
+                    };
+                    (key, value)
+                })
+                .collect(),
+        ),
+        Value::String(value) => Value::String(display_text_opt(Some(&value), "Без значения")),
+        value => value,
+    }
+}
+
+fn has_broken_display_chars(value: &str) -> bool {
+    value
+        .chars()
+        .any(|ch| ch == '\u{FFFD}' || (ch.is_control() && ch != '\t'))
+}
+
 fn sanitize_expected_nodes(nodes: Vec<ExpectedNode>) -> Vec<ExpectedNode> {
     let mut by_hostname = BTreeMap::new();
     for node in nodes {
@@ -1754,9 +1858,9 @@ fn sanitize_expected_nodes(nodes: Vec<ExpectedNode>) -> Vec<ExpectedNode> {
             hostname.to_string(),
             ExpectedNode {
                 hostname: hostname.to_string(),
-                department: node.department.trim().to_string(),
-                owner: node.owner.trim().to_string(),
-                criticality: node.criticality.trim().to_string(),
+                department: display_name_or(&node.department, "Не задано"),
+                owner: display_name_or(&node.owner, "Не назначен"),
+                criticality: display_name_or(&node.criticality, "normal"),
             },
         );
     }
@@ -2599,10 +2703,7 @@ fn workforce_rollup_items(snapshot: &Snapshot, key: &str) -> Vec<Value> {
                 .iter()
                 .filter(|item| item.get("users_count").and_then(Value::as_i64).unwrap_or(0) > 0)
                 .map(|item| {
-                    let name = item
-                        .get("name")
-                        .and_then(Value::as_str)
-                        .unwrap_or("Без группы");
+                    let name = display_rollup_name(item.get("name").and_then(Value::as_str), key);
                     let coverage = item
                         .get("portfolio_coverage_pct")
                         .and_then(Value::as_f64)
@@ -2617,7 +2718,7 @@ fn workforce_rollup_items(snapshot: &Snapshot, key: &str) -> Vec<Value> {
                         .and_then(Value::as_str)
                         .unwrap_or("00:00");
                     report_item(
-                        name,
+                        &name,
                         coverage_status(coverage),
                         format!("{coverage:.0}% · active {active}/{users} · {hhmm}"),
                     )
@@ -2630,12 +2731,7 @@ fn workforce_rollup_items(snapshot: &Snapshot, key: &str) -> Vec<Value> {
 fn build_business_risk(snapshot: &Snapshot, department_items: &[Value]) -> Vec<BusinessRiskItem> {
     let mut departments = BTreeMap::<String, Option<u8>>::new();
     for item in department_items {
-        let department = item
-            .get("label")
-            .and_then(Value::as_str)
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or("Без подразделения")
-            .to_string();
+        let department = display_department_name(item.get("label").and_then(Value::as_str));
         let activity = item
             .get("value")
             .and_then(Value::as_str)
@@ -2643,12 +2739,8 @@ fn build_business_risk(snapshot: &Snapshot, department_items: &[Value]) -> Vec<B
         departments.insert(department, activity);
     }
     for node in &snapshot.agent_coverage_sla.problem_nodes {
-        let department = if node.department.trim().is_empty() {
-            "Не задано"
-        } else {
-            node.department.as_str()
-        };
-        departments.entry(department.to_string()).or_insert(None);
+        let department = display_name_or(&node.department, "Не задано");
+        departments.entry(department).or_insert(None);
     }
     let mut items = departments
         .into_iter()
@@ -2704,11 +2796,7 @@ fn business_risk_problem_counts(snapshot: &Snapshot, department: &str) -> (usize
         .problem_nodes
         .iter()
         .filter(|node| {
-            let node_department = if node.department.trim().is_empty() {
-                "Не задано"
-            } else {
-                node.department.as_str()
-            };
+            let node_department = display_name_or(&node.department, "Не задано");
             node_department == department
         })
         .collect::<Vec<_>>();
@@ -2837,12 +2925,7 @@ fn build_business_risk_history(snapshot: &Snapshot) -> Vec<BusinessRiskHistoryIt
         };
         let mut current_day = BTreeMap::<String, u8>::new();
         for item in rollups {
-            let department = item
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or("Без подразделения")
-                .to_string();
+            let department = display_department_name(item.get("name").and_then(Value::as_str));
             let activity_score = item
                 .get("portfolio_coverage_pct")
                 .and_then(Value::as_f64)
@@ -3109,10 +3192,7 @@ fn open_case_counts_by_department(
         .map(|item| {
             (
                 item.id.as_str(),
-                item.department
-                    .as_deref()
-                    .filter(|value| !value.trim().is_empty())
-                    .unwrap_or("Не задано"),
+                display_name_opt(item.department.as_deref(), "Не задано"),
             )
         })
         .collect::<BTreeMap<_, _>>();
@@ -3124,9 +3204,9 @@ fn open_case_counts_by_department(
     {
         let department = candidate_departments
             .get(item.candidate_id.as_str())
-            .copied()
-            .unwrap_or("Не задано");
-        *counts.entry(department.to_string()).or_insert(0) += 1;
+            .cloned()
+            .unwrap_or_else(|| "Не задано".to_string());
+        *counts.entry(department).or_insert(0) += 1;
     }
     counts
 }
@@ -3141,12 +3221,8 @@ fn critical_candidate_counts_by_department(
             "HIGH" | "CRITICAL"
         )
     }) {
-        let department = item
-            .department
-            .as_deref()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or("Не задано");
-        *counts.entry(department.to_string()).or_insert(0) += 1;
+        let department = display_name_opt(item.department.as_deref(), "Не задано");
+        *counts.entry(department).or_insert(0) += 1;
     }
     counts
 }
@@ -4083,8 +4159,8 @@ fn agent_quality_candidates(
         if !node.kpi_accepted {
             items.push(RiskIncidentCandidate {
                 id: risk_candidate_id("kpi-not-accepted", &node.hostname, &node.status),
-                department: coverage.map(|item| item.department.clone()),
-                owner: coverage.map(|item| item.owner.clone()),
+                department: coverage.map(|item| display_name_or(&item.department, "Не задано")),
+                owner: coverage.map(|item| display_name_or(&item.owner, "Не назначен")),
                 hostname: Some(node.hostname.clone()),
                 risk_level: Some(agent_quality_candidate_level(node)),
                 reason: Some("KPI не принят".to_string()),
@@ -4104,8 +4180,8 @@ fn agent_quality_candidates(
         if let Some(error) = &node.collector_error {
             items.push(RiskIncidentCandidate {
                 id: risk_candidate_id("collector-error", &node.hostname, error),
-                department: coverage.map(|item| item.department.clone()),
-                owner: coverage.map(|item| item.owner.clone()),
+                department: coverage.map(|item| display_name_or(&item.department, "Не задано")),
+                owner: coverage.map(|item| display_name_or(&item.owner, "Не назначен")),
                 hostname: Some(node.hostname.clone()),
                 risk_level: Some("HIGH".to_string()),
                 reason: Some("collector_error".to_string()),
@@ -4135,8 +4211,8 @@ fn agent_coverage_candidates(snapshot: &Snapshot) -> Vec<RiskIncidentCandidate> 
         .filter(|node| matches!(node.status.as_str(), "MISSING" | "STALE"))
         .map(|node| RiskIncidentCandidate {
             id: risk_candidate_id("coverage-node", &node.hostname, &node.status),
-            department: Some(node.department.clone()),
-            owner: Some(node.owner.clone()),
+            department: Some(display_name_or(&node.department, "Не задано")),
+            owner: Some(display_name_or(&node.owner, "Не назначен")),
             hostname: Some(node.hostname.clone()),
             risk_level: Some(if node.status == "MISSING" {
                 "HIGH".to_string()
@@ -4254,7 +4330,9 @@ fn department_trend_delta(snapshot: &Snapshot, department: &str) -> Option<f64> 
             day.get("department_rollups")
                 .and_then(Value::as_array)?
                 .iter()
-                .find(|item| item.get("name").and_then(Value::as_str) == Some(department))
+                .find(|item| {
+                    display_department_name(item.get("name").and_then(Value::as_str)) == department
+                })
                 .and_then(|item| item.get("portfolio_coverage_pct").and_then(Value::as_f64))
         })
         .collect::<Vec<_>>();
@@ -4313,6 +4391,7 @@ fn workforce_trend_json(snapshot: &Snapshot) -> Value {
         .as_ref()
         .and_then(|payload| payload.get("trend"))
         .cloned()
+        .map(sanitize_workforce_json)
         .unwrap_or_else(|| json!([]))
 }
 
@@ -4327,23 +4406,20 @@ fn workforce_insight_items(snapshot: &Snapshot) -> Vec<Value> {
             items
                 .iter()
                 .map(|item| {
-                    let title = item
-                        .get("title")
-                        .and_then(Value::as_str)
-                        .unwrap_or("Вывод Workforce");
-                    let subject = item
-                        .get("subject")
-                        .and_then(Value::as_str)
-                        .unwrap_or("Workforce");
+                    let title = display_text_opt(
+                        item.get("title").and_then(Value::as_str),
+                        "Вывод Workforce",
+                    );
+                    let subject =
+                        display_name_opt(item.get("subject").and_then(Value::as_str), "Workforce");
                     let severity = item
                         .get("severity")
                         .and_then(Value::as_str)
                         .unwrap_or("INFO");
-                    let evidence = item.get("evidence").and_then(Value::as_str).unwrap_or("");
-                    let recommendation = item
-                        .get("recommendation")
-                        .and_then(Value::as_str)
-                        .unwrap_or("");
+                    let evidence =
+                        display_text_opt(item.get("evidence").and_then(Value::as_str), "");
+                    let recommendation =
+                        display_text_opt(item.get("recommendation").and_then(Value::as_str), "");
                     report_item(
                         &format!("{title}: {subject}"),
                         severity,
@@ -4595,8 +4671,8 @@ fn current_department_baseline_points(snapshot: &Snapshot) -> Vec<CurrentBaselin
         .map(|rows| {
             rows.iter()
                 .filter_map(|row| {
-                    let name = row.get("name").and_then(Value::as_str).unwrap_or("");
-                    if name.trim().is_empty() {
+                    let name = display_department_name(row.get("name").and_then(Value::as_str));
+                    if name == DEFAULT_DEPARTMENT_LABEL {
                         return None;
                     }
                     let index = row
@@ -4610,8 +4686,8 @@ fn current_department_baseline_points(snapshot: &Snapshot) -> Vec<CurrentBaselin
                             .unwrap_or(""),
                     );
                     Some(CurrentBaselinePoint {
-                        key: name.to_string(),
-                        label: name.to_string(),
+                        key: name.clone(),
+                        label: name,
                         index,
                         active_seconds,
                         users_count: row.get("users_count").and_then(Value::as_i64),
@@ -5398,18 +5474,18 @@ fn employee_index_details(
             let user = if anonymize {
                 format!("Сотрудник {}", idx + 1)
             } else {
-                row.get("user")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string()
+                display_name_opt(
+                    row.get("user").and_then(Value::as_str),
+                    &format!("Сотрудник {}", idx + 1),
+                )
             };
             let user_id = if anonymize {
                 format!("EMPLOYEE-{}", idx + 1)
             } else {
-                row.get("user_id")
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string()
+                display_text_opt(
+                    row.get("user_id").and_then(Value::as_str),
+                    &format!("EMPLOYEE-{}", idx + 1),
+                )
             };
             json!({
                 "user": user,
@@ -8739,6 +8815,39 @@ mod tests {
         let path = dir.path().join("telemetry.jsonl");
         fs::write(&path, lines.join("\n")).unwrap();
         (dir, path)
+    }
+
+    #[test]
+    fn display_department_name_replaces_corrupt_runtime_labels() {
+        assert_eq!(display_department_name(Some("Бухгалтерия")), "Бухгалтерия");
+        assert_eq!(display_department_name(Some("")), DEFAULT_DEPARTMENT_LABEL);
+        assert_eq!(
+            display_department_name(Some("\u{FFFD}\u{FFFD}\u{FFFD}\u{FFFD}")),
+            DEFAULT_DEPARTMENT_LABEL
+        );
+        assert_eq!(
+            display_department_name(Some("  \u{FFFD}\u{FFFD}  ")),
+            DEFAULT_DEPARTMENT_LABEL
+        );
+    }
+
+    #[test]
+    fn sanitize_workforce_json_replaces_corrupt_nested_strings() {
+        assert_eq!(
+            display_text_opt(
+                Some("Текущая недогрузка: \u{FFFD}\u{FFFD}\u{FFFD}"),
+                "Без значения"
+            ),
+            "Текущая недогрузка: Без значения"
+        );
+        let value = sanitize_workforce_json(json!({
+            "department_rollups": [{"name": "\u{FFFD}\u{FFFD}"}],
+            "rows": [{"user": "\u{FFFD}", "user_id": "HOST\\\u{FFFD}\u{FFFD}"}]
+        }));
+        assert_eq!(value["department_rollups"][0]["name"], "Без группы");
+        assert_eq!(value["rows"][0]["user"], "Пользователь не определён");
+        assert_eq!(value["rows"][0]["user_id"], "HOST\\unknown");
+        assert!(!serde_json::to_string(&value).unwrap().contains("\\uFFFD"));
     }
 
     #[test]
