@@ -369,6 +369,84 @@ function renderManager(data, policyExplain) {
   `;
 }
 
+function renderDepartments(report) {
+  const departments = report?.workforce?.department_comparison || [];
+  const owners = report?.workforce?.owner_comparison || [];
+  const insights = report?.workforce?.insights || [];
+  return `
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Подразделения</h2>
+        <p class="muted">Сравнение активности, тренда, риска и ответственных по группам.</p>
+      </div>
+      <span class="badge ${statusClass(report?.severity)}">${ui(report?.severity || "INFO")}</span>
+    </div>
+    <div class="grid-2">
+      <section class="card">
+        <h3>Рейтинг подразделений</h3>
+        ${renderSimpleItems(departments, "Подразделения пока не рассчитаны.")}
+      </section>
+      <section class="card">
+        <h3>Ответственные</h3>
+        ${renderSimpleItems(owners, "Ответственные пока не рассчитаны.")}
+      </section>
+    </div>
+    <section class="dashboard-band">
+      <div class="band-head"><h3>Просадки и отклонения</h3><span class="muted">что требует управленческого внимания</span></div>
+      ${renderSimpleItems(insights, "Существенных отклонений по подразделениям пока нет.")}
+    </section>
+  `;
+}
+
+function renderEmployees(data, policyExplain) {
+  const employees = Array.isArray(policyExplain?.employee_details) ? policyExplain.employee_details : [];
+  const users = Array.isArray(data.users) ? data.users : [];
+  const selected = users.slice(0, 12);
+  return `
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Карточки сотрудников</h2>
+        <p class="muted">Рабочий день, приложения, активность, последнее событие и риск-сигналы.</p>
+      </div>
+      <span class="badge ${statusClass(data.status?.status)}">${escapeHtml(data.users_count || 0)} сотрудников</span>
+    </div>
+    <div class="employee-card-grid">${selected.map(user => renderEmployeeCard(user, employees)).join("") || `<p class="muted">Сотрудники пока не найдены.</p>`}</div>
+    ${renderWorkforceIndexExplanation(policyExplain)}
+  `;
+}
+
+function renderEmployeeCard(user, employeeDetails) {
+  const detail = employeeDetails.find(item => item.user === user.user) || {};
+  return `
+    <article class="employee-card">
+      <div class="section-head">
+        <div>
+          <h3>${ui(user.user || "Сотрудник")}</h3>
+          <p class="muted small">Последняя активность: ${ui(user.last_activity || "-")}</p>
+        </div>
+        <span class="badge ${statusClass(detail.status || "INFO")}">${ui(workforceIndexTextFromValue(detail.index))}</span>
+      </div>
+      <div class="index-metrics employee-metrics">
+        <div><span class="muted">Активность</span><strong>${ui(user.active_hhmm || "00:00")}</strong></div>
+        <div><span class="muted">Сессии</span><strong>${escapeHtml(user.sessions_count || 0)}</strong></div>
+        <div><span class="muted">План</span><strong>${escapeHtml(humanSeconds(detail.planned_seconds))}</strong></div>
+      </div>
+      <p class="muted">${ui(detail.reason || "Персональный разбор по приложениям будет точнее после накопления данных по ролям.")}</p>
+    </article>
+  `;
+}
+
+function renderSimpleItems(items, emptyText) {
+  if (!Array.isArray(items) || items.length === 0) return `<p class="muted">${ui(emptyText)}</p>`;
+  return `<div class="list compact-list">${items.slice(0, 16).map(item => `
+    <div class="row compact-row">
+      <strong>${ui(item.label || item.title || "-")}</strong>
+      <span class="muted">${ui(item.value || item.subject || "")}</span>
+      <span class="badge ${statusClass(item.status)}">${ui(item.status || "INFO")}</span>
+    </div>
+  `).join("")}</div>`;
+}
+
 function workforceIndexText(usersCount, activeSeconds) {
   const users = Number(usersCount || 0);
   const seconds = Number(activeSeconds || 0);
@@ -512,6 +590,30 @@ function renderOwner(data) {
     <section class="card">
       <h3>Графики безопасности</h3>
       ${renderLinks(data.links)}
+    </section>
+  `;
+}
+
+function renderPerimeter(data, report) {
+  const risk = report?.ueba_risk || {};
+  const cards = Object.entries(data.cards || {});
+  return `
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Сетевой периметр</h2>
+        <p class="muted">Режим наблюдения: состояние внешних сигналов, необычные направления и связь с рисками сотрудников. Управление сетью отсюда не выполняется.</p>
+      </div>
+      <span class="badge status-unknown">наблюдение</span>
+    </div>
+    <div class="summary-grid">
+      ${metricCard("Нетипичные направления", "нет данных", "UNKNOWN", "источник периметра не подключен к порталу")}
+      ${metricCard("Сетевые события", "нет данных", "UNKNOWN", "ожидается интеграционный слой")}
+      ${metricCard("Связь с рисками", `${risk.score ?? 0}/100`, risk.status || "UNKNOWN", risk.summary || "оценка по правилам")}
+      ${metricCard("Автоматическое воздействие", "выключено", "OK", "портал работает только на чтение")}
+    </div>
+    <section class="dashboard-band security-band">
+      <div class="band-head"><h3>Состояние доступных сигналов</h3><span class="muted">без изменения правил периметра</span></div>
+      ${renderSimpleItems(cards.map(([name, block]) => ({ label: label(name), value: block.text, status: block.status })), "Сигналы периметра пока не подключены.")}
     </section>
   `;
 }
@@ -708,22 +810,45 @@ async function refresh() {
   };
   renderSummary(summary, state.readiness);
   const content = document.getElementById("content");
-  const data = await loadJson(`/${state.tab}`);
   if (state.tab === "operator") {
+    const data = await loadJson("/operator");
     state.reports = await loadJson("/reports").catch(() => state.reports);
     content.innerHTML = renderOperator(data, state.reports);
     updateFilters(state.reports);
   }
   if (state.tab === "manager") {
+    const data = await loadJson("/manager");
     const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
     content.innerHTML = renderManager(data, policyExplain);
   }
-  if (state.tab === "owner") content.innerHTML = renderOwner(data);
+  if (state.tab === "departments") {
+    const data = await loadJson("/reports");
+    state.reports = data;
+    content.innerHTML = renderDepartments(data);
+    updateFilters(data);
+  }
+  if (state.tab === "employees") {
+    const data = await loadJson("/manager");
+    const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
+    content.innerHTML = renderEmployees(data, policyExplain);
+  }
+  if (state.tab === "owner") {
+    const data = await loadJson("/owner");
+    content.innerHTML = renderOwner(data);
+  }
   if (state.tab === "incidents") {
+    const data = await loadJson("/incidents");
     const evidence = await loadJson("/dlp/evidence").catch(error => ({ ok: false, error: error.message, items: [] }));
     content.innerHTML = renderIncidents({ incidents: data, evidence });
   }
+  if (state.tab === "perimeter") {
+    const data = await loadJson("/owner");
+    const reports = await loadJson("/reports").catch(() => state.reports);
+    state.reports = reports;
+    content.innerHTML = renderPerimeter(data, reports);
+  }
   if (state.tab === "reports") {
+    const data = await loadJson("/reports");
     state.reports = data;
     content.innerHTML = renderReports(data);
     updateFilters(data);
@@ -741,7 +866,7 @@ function setTab(tab) {
 }
 
 function applySecurityMode(tab) {
-  document.body.classList.toggle("security-mode", tab === "owner" || tab === "incidents");
+  document.body.classList.toggle("security-mode", tab === "owner" || tab === "incidents" || tab === "perimeter");
 }
 
 function showError(error) {

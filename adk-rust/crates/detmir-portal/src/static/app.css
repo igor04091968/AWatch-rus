@@ -439,6 +439,25 @@ h1 {
   grid-template-columns: minmax(140px, 1fr) minmax(280px, 2fr) auto;
 }
 
+.employee-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.employee-card {
+  min-height: 180px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.employee-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .report-actions {
   display: flex;
   justify-content: flex-end;
@@ -550,6 +569,7 @@ pre {
   .readiness-metrics { grid-template-columns: 1fr; }
   .app-weight-row { grid-template-columns: 1fr; }
   .employee-index-row { grid-template-columns: 1fr; }
+  .employee-metrics { grid-template-columns: 1fr; }
   .section-head { flex-direction: column; }
   .actions { justify-content: flex-start; }
 }
