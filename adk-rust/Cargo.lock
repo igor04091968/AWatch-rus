@@ -564,6 +564,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "detmir-dpd-portal"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "reqwest",
+ "serde_json",
+ "tiny_http",
+]
+
+[[package]]
 name = "detmir-grafana-check"
 version = "0.1.0"
 dependencies = [
