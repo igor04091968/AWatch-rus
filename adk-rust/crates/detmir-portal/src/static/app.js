@@ -23,9 +23,9 @@ async function postJson(path, payload) {
 
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
-  if (s === "ok" || s === "true" || s === "low" || s === "false_positive") return "status-ok";
-  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale" || s === "medium" || s === "in_review" || s === "postponed") return "status-warn";
-  if (s === "degraded" || s === "high" || s === "confirmed") return "status-degraded";
+  if (s === "ok" || s === "true" || s === "low" || s === "false_positive" || s === "resolved") return "status-ok";
+  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale" || s === "medium" || s === "in_review" || s === "postponed" || s === "open" || s === "in_progress") return "status-warn";
+  if (s === "degraded" || s === "high" || s === "confirmed" || s === "rejected" || s === "archived") return "status-degraded";
   if (s === "fail" || s === "false" || s === "error" || s === "critical" || s === "missing") return "status-fail";
   return "status-unknown";
 }
@@ -1280,6 +1280,7 @@ function renderIncidents(data) {
   const incidents = Array.isArray(data) ? data : data.incidents;
   const evidence = Array.isArray(data) ? null : data.evidence;
   const reports = Array.isArray(data) ? state.reports : data.reports;
+  const cases = Array.isArray(data?.cases?.cases) ? data.cases.cases : [];
   return `
     <div class="page-head">
       <div>
@@ -1299,11 +1300,85 @@ function renderIncidents(data) {
       </section>
     </div>
     ${renderAutoInvestigationCard(reports)}
+    ${renderCases(cases)}
     <section class="card evidence-card">
       <h3>Материалы: скриншоты, хеши, файлы</h3>
       ${renderDlpEvidence(evidence)}
     </section>
   `;
+}
+
+function renderCases(cases) {
+  const rows = Array.isArray(cases) ? cases.slice(0, 20) : [];
+  return `
+    <section class="card cases-card">
+      <div class="section-head">
+        <div>
+          <h3>Дела</h3>
+          <p class="muted">Ручные дела, созданные из подтвержденных кандидатов. Автоматически дела не создаются.</p>
+        </div>
+        <span class="badge ${statusClass(rows.length ? "OPEN" : "OK")}">${rows.length}</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Дело</th>
+              <th>Кандидат</th>
+              <th>Статус</th>
+              <th>Ответственный</th>
+              <th>Решение</th>
+              <th>Действие</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr>
+                <td><strong>${ui(item.title || item.case_id)}</strong><br><code>${ui(item.case_id || "-")}</code><br><span class="muted small">${ui(item.created_at_utc || "-")} · ${ui(item.updated_at_utc || "-")}</span></td>
+                <td><code>${ui(item.candidate_id || "-")}</code><br><span class="muted small">${ui(item.summary || "резюме не задано")}</span></td>
+                <td><span class="badge ${statusClass(item.status)}">${ui(caseStatusText(item.status))}</span></td>
+                <td>${ui(item.owner || "ответственный не указан")}</td>
+                <td>${ui(item.decision || "решение не зафиксировано")}</td>
+                <td>${renderCaseActions(item)}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>Нет дел</td>
+                <td>-</td>
+                <td><span class="badge status-ok">OK</span></td>
+                <td>-</td>
+                <td>Создайте дело из подтвержденного кандидата.</td>
+                <td>-</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
+function renderCaseActions(item) {
+  const id = item?.case_id || "";
+  const packUrl = `/portal/api/cases/${encodeURIComponent(id)}?format=markdown`;
+  return `
+    <div class="button-row compact-actions">
+      <button class="small-button" data-case-status="IN_PROGRESS" data-case-id="${escapeHtml(id)}">В работу</button>
+      <button class="small-button" data-case-status="RESOLVED" data-case-id="${escapeHtml(id)}">Решено</button>
+      <button class="small-button" data-case-status="REJECTED" data-case-id="${escapeHtml(id)}">Отклонить</button>
+      <button class="small-button" data-case-status="ARCHIVED" data-case-id="${escapeHtml(id)}">В архив</button>
+    </div>
+    <a class="small-button investigation-pack-button" href="${escapeHtml(packUrl)}" download>Скачать карточку дела</a>
+  `;
+}
+
+function caseStatusText(status) {
+  const value = String(status || "OPEN").toUpperCase();
+  if (value === "IN_PROGRESS") return "В работе";
+  if (value === "RESOLVED") return "Решено";
+  if (value === "REJECTED") return "Отклонено";
+  if (value === "ARCHIVED") return "Архив";
+  return "Открыто";
 }
 
 function renderKpiCards(items) {
@@ -1805,6 +1880,7 @@ function renderCandidateReview(item) {
 
 function renderCandidateReviewActions(item) {
   const id = item?.id || "";
+  const reviewStatus = String(item?.incident_review?.status || "NEW").toUpperCase();
   const actions = [
     ["IN_REVIEW", "В проверку"],
     ["CONFIRMED", "Подтвердить"],
@@ -1812,11 +1888,15 @@ function renderCandidateReviewActions(item) {
     ["POSTPONED", "Отложить"],
   ];
   const packUrl = `/portal/api/investigation-pack/${encodeURIComponent(id)}?format=markdown`;
+  const createCase = reviewStatus === "CONFIRMED"
+    ? `<button class="small-button investigation-pack-button primary" data-create-case="true" data-candidate-id="${escapeHtml(id)}">Создать дело</button>`
+    : "";
   return `
     <div class="button-row compact-actions">${actions.map(([status, label]) => `
       <button class="small-button" data-review-status="${escapeHtml(status)}" data-candidate-id="${escapeHtml(id)}">${ui(label)}</button>
     `).join("")}</div>
     <a class="small-button investigation-pack-button" href="${escapeHtml(packUrl)}" download>Скачать пакет расследования</a>
+    ${createCase}
   `;
 }
 
@@ -1986,8 +2066,9 @@ async function refresh() {
     const data = await loadJson("/incidents");
     const evidence = await loadJson("/dlp/evidence").catch(error => ({ ok: false, error: error.message, items: [] }));
     const reports = await loadJson("/reports").catch(() => state.reports || {});
+    const cases = await loadJson("/cases").catch(error => ({ ok: false, error: error.message, cases: [] }));
     state.reports = reports;
-    content.innerHTML = renderIncidents({ incidents: data, evidence, reports });
+    content.innerHTML = renderIncidents({ incidents: data, evidence, reports, cases });
   }
   if (state.tab === "perimeter") {
     const data = await loadJson("/owner");
@@ -2060,6 +2141,18 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-review-status]");
   if (!button) return;
   candidateReviewAction(button).catch(showError);
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-create-case]");
+  if (!button) return;
+  createCaseAction(button).catch(showError);
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-case-status]");
+  if (!button) return;
+  caseStatusAction(button).catch(showError);
 });
 
 document.addEventListener("click", event => {
@@ -2171,6 +2264,38 @@ async function candidateReviewAction(button) {
     status,
     reviewer,
     comment,
+  });
+  await refresh();
+}
+
+async function createCaseAction(button) {
+  const candidateId = button.dataset.candidateId;
+  const title = window.prompt("Название дела", `Дело по кандидату ${candidateId}`);
+  if (title === null || title.trim() === "") return;
+  const owner = window.prompt("Ответственный по делу", "");
+  if (owner === null) return;
+  const summary = window.prompt("Краткое резюме дела", "");
+  if (summary === null) return;
+  button.disabled = true;
+  await postJson("/cases", {
+    candidate_id: candidateId,
+    title,
+    owner,
+    summary,
+  });
+  state.tab = "incidents";
+  await refresh();
+}
+
+async function caseStatusAction(button) {
+  const caseId = button.dataset.caseId;
+  const status = button.dataset.caseStatus;
+  const decision = window.prompt("Решение или комментарий по делу", "");
+  if (decision === null) return;
+  button.disabled = true;
+  await postJson(`/cases/${encodeURIComponent(caseId)}/status`, {
+    status,
+    decision,
   });
   await refresh();
 }

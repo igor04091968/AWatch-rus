@@ -382,6 +382,70 @@ struct InvestigationPack {
     markdown: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct CaseItem {
+    case_id: String,
+    candidate_id: String,
+    title: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner: Option<String>,
+    created_at_utc: String,
+    updated_at_utc: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    summary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    decision: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct CaseFile {
+    cases: BTreeMap<String, CaseItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateCaseRequest {
+    candidate_id: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    owner: Option<String>,
+    #[serde(default)]
+    summary: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CaseStatusRequest {
+    status: String,
+    #[serde(default)]
+    owner: Option<String>,
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
+    decision: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CaseResponse {
+    ok: bool,
+    case: CaseItem,
+}
+
+#[derive(Debug, Serialize)]
+struct CaseListResponse {
+    ok: bool,
+    cases: Vec<CaseItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct CaseDetailsResponse {
+    ok: bool,
+    case: CaseItem,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    investigation_pack: Option<InvestigationPack>,
+    markdown: String,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -939,6 +1003,14 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
     if method == Method::Post && path == "/api/incident-review" {
         return handle_incident_review(request, args);
     }
+    if method == Method::Post && path == "/api/cases" {
+        return handle_create_case(request, args, snapshot_cache);
+    }
+    if method == Method::Post {
+        if let Some(case_id) = parse_case_status_path(&path) {
+            return handle_case_status(request, args, &case_id);
+        }
+    }
     if method == Method::Post && path == "/api/telemetry" {
         return handle_telemetry_ingest(request, args);
     }
@@ -950,6 +1022,9 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
     }
     if let Some(candidate_id) = parse_investigation_pack_path(&path) {
         return handle_investigation_pack(request, args, snapshot_cache, &url, &candidate_id);
+    }
+    if let Some(case_id) = parse_case_path(&path) {
+        return handle_case_details(request, args, snapshot_cache, &url, &case_id);
     }
     if let Some((evidence_id, download)) = parse_evidence_screenshot_path(&path) {
         return handle_evidence_screenshot(request, args, &evidence_id, download);
@@ -1029,6 +1104,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             let incident_state = load_incident_state_best_effort(args);
             respond_json(request, &build_incidents(&snapshot, &incident_state))
         }
+        "/api/cases" => respond_json(request, &build_case_list(args)),
         "/api/links" => respond_json(request, &links()),
         _ => respond_text(
             request,
@@ -1229,6 +1305,21 @@ fn query_param(url: &str, key: &str) -> Option<String> {
 
 fn parse_investigation_pack_path(path: &str) -> Option<String> {
     path.strip_prefix("/api/investigation-pack/")
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && !value.contains('/'))
+        .map(ToString::to_string)
+}
+
+fn parse_case_path(path: &str) -> Option<String> {
+    path.strip_prefix("/api/cases/")
+        .map(str::trim)
+        .filter(|value| !value.is_empty() && !value.contains('/'))
+        .map(ToString::to_string)
+}
+
+fn parse_case_status_path(path: &str) -> Option<String> {
+    path.strip_prefix("/api/cases/")
+        .and_then(|value| value.strip_suffix("/status"))
         .map(str::trim)
         .filter(|value| !value.is_empty() && !value.contains('/'))
         .map(ToString::to_string)
@@ -5591,6 +5682,84 @@ fn handle_investigation_pack(
     }
 }
 
+fn handle_create_case(
+    mut request: Request,
+    args: &Cli,
+    snapshot_cache: &SnapshotCache,
+) -> Result<()> {
+    let mut body = String::new();
+    request
+        .as_reader()
+        .take(32 * 1024)
+        .read_to_string(&mut body)?;
+    match apply_create_case(args, &cached_snapshot(args, snapshot_cache), &body) {
+        Ok(response) => respond_json(request, &response),
+        Err(err) => respond_json_status(
+            request,
+            StatusCode(400),
+            &json!({
+                "ok": false,
+                "error": err.to_string()
+            }),
+        ),
+    }
+}
+
+fn handle_case_status(mut request: Request, args: &Cli, case_id: &str) -> Result<()> {
+    let mut body = String::new();
+    request
+        .as_reader()
+        .take(32 * 1024)
+        .read_to_string(&mut body)?;
+    match apply_case_status(args, case_id, &body) {
+        Ok(response) => respond_json(request, &response),
+        Err(err) => respond_json_status(
+            request,
+            StatusCode(400),
+            &json!({
+                "ok": false,
+                "error": err.to_string()
+            }),
+        ),
+    }
+}
+
+fn handle_case_details(
+    request: Request,
+    args: &Cli,
+    snapshot_cache: &SnapshotCache,
+    url: &str,
+    case_id: &str,
+) -> Result<()> {
+    match build_case_details(args, &cached_snapshot(args, snapshot_cache), case_id) {
+        Ok(details) => {
+            let format = query_param(url, "format")
+                .unwrap_or_else(|| "json".to_string())
+                .to_ascii_lowercase();
+            if matches!(format.as_str(), "md" | "markdown") {
+                let filename = format!("case-{}.md", safe_download_stem(&details.case.case_id));
+                respond_text_download(
+                    request,
+                    StatusCode(200),
+                    &details.markdown,
+                    "text/markdown; charset=utf-8",
+                    &filename,
+                )
+            } else {
+                respond_json(request, &details)
+            }
+        }
+        Err(err) => respond_json_status(
+            request,
+            StatusCode(404),
+            &json!({
+                "ok": false,
+                "error": err.to_string()
+            }),
+        ),
+    }
+}
+
 fn handle_telemetry_ingest(mut request: Request, args: &Cli) -> Result<()> {
     if !telemetry_authorized(&request, args) {
         return respond_json_status(
@@ -5803,6 +5972,179 @@ fn apply_incident_review(args: &Cli, actor: &str, body: &str) -> Result<Incident
     Ok(IncidentReviewResponse { ok: true, review })
 }
 
+fn apply_create_case(args: &Cli, snapshot: &Snapshot, body: &str) -> Result<CaseResponse> {
+    let request: CreateCaseRequest =
+        serde_json::from_str(body).map_err(|err| anyhow!("invalid case JSON: {err}"))?;
+    let candidate_id = validate_short_token(&request.candidate_id, "candidate_id", 128)?;
+    let incident_reviews = load_incident_review_best_effort(args);
+    let incident_review_audit = load_incident_review_audit_best_effort(args);
+    let pack = build_investigation_pack(
+        snapshot,
+        &candidate_id,
+        &incident_reviews,
+        &incident_review_audit,
+    )?;
+    if pack.current_review_status != "CONFIRMED" {
+        return Err(anyhow!("case can be created only from CONFIRMED candidate"));
+    }
+
+    let mut case_file = load_cases(args)?;
+    if let Some(existing) = case_file
+        .cases
+        .values()
+        .find(|item| item.candidate_id == candidate_id && item.status != "ARCHIVED")
+        .cloned()
+    {
+        return Ok(CaseResponse {
+            ok: true,
+            case: existing,
+        });
+    }
+
+    let now = now();
+    let title = sanitize_optional_text(request.title, 160)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| format!("Дело по кандидату {}", pack.candidate_id));
+    let owner = sanitize_optional_text(request.owner, 80)
+        .or_else(|| pack.owner.clone())
+        .filter(|value| !value.is_empty());
+    let summary = sanitize_optional_text(request.summary, 1000)
+        .or_else(|| pack.reasons.first().cloned())
+        .filter(|value| !value.is_empty());
+    let case_id = unique_case_id(&case_file, &pack.candidate_id, &now);
+    let case = CaseItem {
+        case_id: case_id.clone(),
+        candidate_id: pack.candidate_id,
+        title,
+        status: "OPEN".to_string(),
+        owner,
+        created_at_utc: now.clone(),
+        updated_at_utc: now,
+        summary,
+        decision: None,
+    };
+    case_file.cases.insert(case_id, case.clone());
+    save_cases(args, &case_file)?;
+    Ok(CaseResponse { ok: true, case })
+}
+
+fn apply_case_status(args: &Cli, case_id: &str, body: &str) -> Result<CaseResponse> {
+    let case_id = validate_short_token(case_id, "case_id", 128)?;
+    let request: CaseStatusRequest =
+        serde_json::from_str(body).map_err(|err| anyhow!("invalid case status JSON: {err}"))?;
+    let status = validate_case_status(&request.status)?;
+    let mut case_file = load_cases(args)?;
+    let Some(case) = case_file.cases.get_mut(&case_id) else {
+        return Err(anyhow!("case not found: {case_id}"));
+    };
+    case.status = status.to_string();
+    if let Some(owner) = sanitize_optional_text(request.owner, 80) {
+        case.owner = (!owner.is_empty()).then_some(owner);
+    }
+    if let Some(summary) = sanitize_optional_text(request.summary, 1000) {
+        case.summary = (!summary.is_empty()).then_some(summary);
+    }
+    if let Some(decision) = sanitize_optional_text(request.decision, 1000) {
+        case.decision = (!decision.is_empty()).then_some(decision);
+    }
+    case.updated_at_utc = now();
+    let case = case.clone();
+    save_cases(args, &case_file)?;
+    Ok(CaseResponse { ok: true, case })
+}
+
+fn build_case_list(args: &Cli) -> CaseListResponse {
+    let mut cases = load_cases_best_effort(args)
+        .cases
+        .into_values()
+        .collect::<Vec<_>>();
+    cases.sort_by(|left, right| {
+        right
+            .updated_at_utc
+            .cmp(&left.updated_at_utc)
+            .then_with(|| left.case_id.cmp(&right.case_id))
+    });
+    CaseListResponse { ok: true, cases }
+}
+
+fn build_case_details(
+    args: &Cli,
+    snapshot: &Snapshot,
+    case_id: &str,
+) -> Result<CaseDetailsResponse> {
+    let case_id = validate_short_token(case_id, "case_id", 128)?;
+    let case_file = load_cases(args)?;
+    let case = case_file
+        .cases
+        .get(&case_id)
+        .cloned()
+        .ok_or_else(|| anyhow!("case not found: {case_id}"))?;
+    let incident_reviews = load_incident_review_best_effort(args);
+    let incident_review_audit = load_incident_review_audit_best_effort(args);
+    let investigation_pack = build_investigation_pack(
+        snapshot,
+        &case.candidate_id,
+        &incident_reviews,
+        &incident_review_audit,
+    )
+    .ok();
+    let markdown = render_case_markdown(&case, investigation_pack.as_ref());
+    Ok(CaseDetailsResponse {
+        ok: true,
+        case,
+        investigation_pack,
+        markdown,
+    })
+}
+
+fn unique_case_id(case_file: &CaseFile, candidate_id: &str, timestamp: &str) -> String {
+    let mut case_id = incident_id("case", candidate_id, timestamp);
+    let mut counter = 1usize;
+    while case_file.cases.contains_key(&case_id) {
+        counter += 1;
+        case_id = incident_id("case", candidate_id, &format!("{timestamp}:{counter}"));
+    }
+    case_id
+}
+
+fn render_case_markdown(case: &CaseItem, pack: Option<&InvestigationPack>) -> String {
+    let mut text = String::new();
+    text.push_str("# Карточка дела\n\n");
+    text.push_str("## Сведения о деле\n\n");
+    text.push_str(&format!("- Дело: {}\n", case.case_id));
+    text.push_str(&format!("- Кандидат: {}\n", case.candidate_id));
+    text.push_str(&format!("- Название: {}\n", case.title));
+    text.push_str(&format!("- Статус: {}\n", case.status));
+    text.push_str(&format!(
+        "- Ответственный: {}\n",
+        case.owner.as_deref().unwrap_or("-")
+    ));
+    text.push_str(&format!("- Создано: {}\n", case.created_at_utc));
+    text.push_str(&format!("- Обновлено: {}\n", case.updated_at_utc));
+    text.push_str(&format!(
+        "- Резюме: {}\n",
+        case.summary.as_deref().unwrap_or("-")
+    ));
+    text.push_str(&format!(
+        "- Решение: {}\n",
+        case.decision.as_deref().unwrap_or("-")
+    ));
+    text.push_str("\n## Пакет расследования\n\n");
+    if let Some(pack) = pack {
+        text.push_str(&pack.markdown);
+    } else {
+        text.push_str("- Пакет расследования недоступен для текущего кандидата.\n");
+    }
+    text.push_str("\n## Решение по делу\n\n");
+    text.push_str(
+        case.decision
+            .as_deref()
+            .unwrap_or("Решение пока не зафиксировано. Дело требует ручного рассмотрения."),
+    );
+    text.push('\n');
+    text
+}
+
 fn load_incident_state_best_effort(args: &Cli) -> IncidentStateFile {
     match load_incident_state(args) {
         Ok(state) => state,
@@ -5829,6 +6171,16 @@ fn load_incident_review_audit_best_effort(args: &Cli) -> Vec<IncidentReviewAudit
         Err(err) => {
             eprintln!("detmir-portal incident review audit read failed: {err:#}");
             Vec::new()
+        }
+    }
+}
+
+fn load_cases_best_effort(args: &Cli) -> CaseFile {
+    match load_cases(args) {
+        Ok(state) => state,
+        Err(err) => {
+            eprintln!("detmir-portal cases read failed: {err:#}");
+            CaseFile::default()
         }
     }
 }
@@ -5870,10 +6222,31 @@ fn load_incident_review_audit(args: &Cli) -> Result<Vec<IncidentReviewAuditEntry
     Ok(entries)
 }
 
+fn load_cases(args: &Cli) -> Result<CaseFile> {
+    let path = cases_path(args);
+    if !path.exists() {
+        return Ok(CaseFile::default());
+    }
+    let data = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    serde_json::from_str(&data).with_context(|| format!("parse {}", path.display()))
+}
+
 fn save_incident_state(args: &Cli, state: &IncidentStateFile) -> Result<()> {
     fs::create_dir_all(&args.state_dir)
         .with_context(|| format!("create {}", args.state_dir.display()))?;
     let path = incident_state_path(args);
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, serde_json::to_vec_pretty(state)?)
+        .with_context(|| format!("write {}", tmp.display()))?;
+    fs::rename(&tmp, &path).with_context(|| format!("rename {}", path.display()))?;
+    Ok(())
+}
+
+fn save_cases(args: &Cli, state: &CaseFile) -> Result<()> {
+    let path = cases_path(args);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+    }
     let tmp = path.with_extension("json.tmp");
     fs::write(&tmp, serde_json::to_vec_pretty(state)?)
         .with_context(|| format!("write {}", tmp.display()))?;
@@ -5934,6 +6307,10 @@ fn incident_review_audit_path(args: &Cli) -> PathBuf {
     args.state_dir
         .join("data")
         .join("incident_review_audit.jsonl")
+}
+
+fn cases_path(args: &Cli) -> PathBuf {
+    args.state_dir.join("data").join("cases.json")
 }
 
 fn build_dlp_evidence_response(args: &Cli) -> DlpEvidenceResponse {
@@ -6693,6 +7070,17 @@ fn validate_incident_review_status(value: &str) -> Result<&'static str> {
         "FALSE_POSITIVE" => Ok("FALSE_POSITIVE"),
         "POSTPONED" => Ok("POSTPONED"),
         _ => Err(anyhow!("unsupported incident review status")),
+    }
+}
+
+fn validate_case_status(value: &str) -> Result<&'static str> {
+    match value.trim() {
+        "OPEN" => Ok("OPEN"),
+        "IN_PROGRESS" => Ok("IN_PROGRESS"),
+        "RESOLVED" => Ok("RESOLVED"),
+        "REJECTED" => Ok("REJECTED"),
+        "ARCHIVED" => Ok("ARCHIVED"),
+        _ => Err(anyhow!("unsupported case status")),
     }
 }
 
@@ -8400,6 +8788,88 @@ mod tests {
         assert!(pack.trust_kpi_snapshot.is_object());
         assert!(pack.agent_quality_snapshot.is_object());
         assert!(pack.business_risk_snapshot.is_object());
+        let case_dir = tempfile::tempdir().unwrap();
+        let case_args = Cli {
+            bind: "127.0.0.1:0".to_string(),
+            status_cmd: "true".to_string(),
+            check_cmd: "true".to_string(),
+            failed_units_cmd: "true".to_string(),
+            worktime_url: "http://127.0.0.1".to_string(),
+            one_c_url: "http://127.0.0.1".to_string(),
+            workforce_policy_path: case_dir.path().join("workforce-policy.json"),
+            ueba_policy_path: case_dir.path().join("ueba-policy.yaml"),
+            timeout_seconds: 1,
+            state_dir: case_dir.path().join("state"),
+            dlp_db_path: case_dir.path().join("dlp.sqlite"),
+            evidence_root: case_dir.path().to_path_buf(),
+            readiness_bundle_dir: case_dir.path().join("readiness-bundle"),
+            evidence_limit: 10,
+            evidence_max_bytes: 1024,
+            json_smoke: false,
+            evidence_only: false,
+            evidence_upload_token: None,
+            telemetry_api_key: "test-key".to_string(),
+            telemetry_store_path: case_dir.path().join("telemetry.jsonl"),
+            expected_nodes_path: case_dir.path().join("expected_nodes.json"),
+        };
+        assert!(
+            apply_create_case(
+                &case_args,
+                &snapshot,
+                &json!({
+                    "candidate_id": candidate_id,
+                    "title": "Case must fail before confirmation"
+                })
+                .to_string()
+            )
+            .is_err()
+        );
+        let mut confirmed_reviews = IncidentReviewFile::default();
+        confirmed_reviews.reviews.insert(
+            candidate_id.to_string(),
+            IncidentReviewState {
+                candidate_id: candidate_id.to_string(),
+                status: "CONFIRMED".to_string(),
+                reviewer: Some("operator".to_string()),
+                comment: Some("confirmed for case".to_string()),
+                updated_at: "2026-06-04T12:00:00Z".to_string(),
+            },
+        );
+        save_incident_review(&case_args, &confirmed_reviews).unwrap();
+        let case_response = apply_create_case(
+            &case_args,
+            &snapshot,
+            &json!({
+                "candidate_id": candidate_id,
+                "title": "Проверка KPI",
+                "owner": "operator",
+                "summary": "manual case"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(case_response.case.status, "OPEN");
+        assert!(cases_path(&case_args).ends_with("data/cases.json"));
+        let list = build_case_list(&case_args);
+        assert_eq!(list.cases.len(), 1);
+        let status_response = apply_case_status(
+            &case_args,
+            &case_response.case.case_id,
+            &json!({
+                "status": "RESOLVED",
+                "decision": "issue resolved"
+            })
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(status_response.case.status, "RESOLVED");
+        let details =
+            build_case_details(&case_args, &snapshot, &case_response.case.case_id).unwrap();
+        assert!(details.investigation_pack.is_some());
+        assert!(details.markdown.contains("# Карточка дела"));
+        assert!(details.markdown.contains("## Пакет расследования"));
+        assert_eq!(validate_case_status("ARCHIVED").unwrap(), "ARCHIVED");
+        assert!(validate_case_status("AUTO").is_err());
         assert!(
             build_investigation_pack(
                 &snapshot,
