@@ -37,17 +37,79 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function displayText(value) {
+  return String(value ?? "")
+    .replaceAll("Workforce", "Работа сотрудников")
+    .replaceAll("workforce", "работа сотрудников")
+    .replaceAll("Security", "Безопасность")
+    .replaceAll("Forensics", "Расследования")
+    .replaceAll("UEBA риск", "Индекс риска")
+    .replaceAll("UEBA", "оценка риска")
+    .replaceAll("DLP/ИБ", "ИБ")
+    .replaceAll("DLP", "Проверки ИБ")
+    .replaceAll("Evidence metadata", "Материалы проверки")
+    .replaceAll("Evidence", "Материалы")
+    .replaceAll("evidence", "материалы")
+    .replaceAll("Grafana dashboards", "графики")
+    .replaceAll("Grafana data", "данные графиков")
+    .replaceAll("Grafana", "Графики")
+    .replaceAll("DetMir ActivityWatch", "Журнал активности")
+    .replaceAll("AW UI", "Журнал активности")
+    .replaceAll("bundle", "пакет проверки")
+    .replaceAll("Checksum", "Контрольная сумма")
+    .replaceAll("Markdown", "Текстовый отчет")
+    .replaceAll("JSON", "Данные")
+    .replaceAll("proxy:", "расчет:")
+    .replaceAll("rule-based", "по правилам")
+    .replaceAll("Read-only risk score", "Оценка риска без автоматического воздействия")
+    .replaceAll("Confidence", "Достоверность")
+    .replaceAll("sources", "источники")
+    .replaceAll("baseline", "обычный профиль")
+    .replaceAll("policy", "правила")
+    .replaceAll("default_weight", "нет явного правила")
+    .replaceAll("App time", "Время приложений")
+    .replaceAll("Weighted", "С учетом правил")
+    .replaceAll("Worktime", "Рабочее время")
+    .replaceAll("Management report", "Сводка руководителя")
+    .replaceAll("Drill-down", "Разбор")
+    .replaceAll("KPI", "показатель")
+    .replaceAll("items", "записи")
+    .replaceAll("medium risk", "средний риск")
+    .replaceAll("low risk", "низкий риск")
+    .replaceAll("high risk", "высокий риск")
+    .replaceAll("critical risk", "критический риск")
+    .replaceAll("weighted_seconds", "время с учетом правил")
+    .replaceAll("planned_seconds", "плановое время")
+    .replaceAll("active_seconds", "активное время")
+    .replaceAll("app-weight", "вес приложений")
+    .replaceAll("per-user", "по сотруднику")
+    .replaceAll("user:", "сотрудник:")
+    .replaceAll("dept:", "подразделение:")
+    .replaceAll("yes", "да")
+    .replaceAll("no", "нет")
+    .replaceAll("daily", "день")
+    .replaceAll("weekly", "неделя")
+    .replaceAll("monthly", "месяц")
+    .replaceAll("OK", "OK")
+    .replaceAll("FAIL", "FAIL")
+    .replaceAll("WARN", "WARN");
+}
+
+function ui(value) {
+  return escapeHtml(displayText(value));
+}
+
 function renderSummary(summary, readiness) {
   const global = document.getElementById("globalStatus");
   global.className = `status-pill ${statusClass(summary.severity)}`;
-  global.textContent = `Сенсоры ${summary.operator_ok ? "OK" : "NO"} · ${summary.severity}`;
+  global.textContent = `Сбор данных ${summary.operator_ok ? "OK" : "NO"} · ${summary.severity}`;
   const blocks = Object.entries(summary.blocks || {});
   const readinessCard = renderReadinessSummaryCard(readiness);
   document.getElementById("summary").innerHTML = readinessCard + blocks.map(([name, block]) => `
     <article class="card">
       <span class="badge ${statusClass(block.status)}">${escapeHtml(block.status)}</span>
-      <h3>${escapeHtml(label(name))}</h3>
-      <p class="muted">${escapeHtml(block.text)}</p>
+      <h3>${ui(label(name))}</h3>
+      <p class="muted">${ui(block.text)}</p>
     </article>
   `).join("");
 }
@@ -71,14 +133,14 @@ function renderReadinessSummaryCard(readiness) {
           <span class="badge ${statusClass(status)}">${escapeHtml(status)}</span>
           <h3>Готовность системы</h3>
         </div>
-        <button class="small-button" data-readiness-verify="true">Проверить bundle</button>
+        <button class="small-button" data-readiness-verify="true">Проверить пакет</button>
       </div>
       <div class="readiness-metrics">
         <div><span class="muted">Дата</span><strong>${escapeHtml(generated)}</strong></div>
         <div><span class="muted">Подпись</span><strong class="${signatureOk ? "text-ok" : "text-fail"}">${signatureOk ? "OK" : "FAIL"}</strong></div>
-        <div><span class="muted">Checksum</span><strong class="${checksumOk ? "text-ok" : "text-fail"}">${checksumOk ? "OK" : "FAIL"}</strong></div>
+        <div><span class="muted">Контрольная сумма</span><strong class="${checksumOk ? "text-ok" : "text-fail"}">${checksumOk ? "OK" : "FAIL"}</strong></div>
       </div>
-      <p class="muted small">Отпечаток: <code>${escapeHtml(shortFingerprint(fingerprint))}</code></p>
+      <p class="muted small">Отпечаток ключа: <code>${escapeHtml(shortFingerprint(fingerprint))}</code></p>
       <p id="readinessVerifyStatus" class="muted small">${escapeHtml(verificationText)}</p>
     </article>
   `;
@@ -93,12 +155,12 @@ function shortFingerprint(value) {
 function label(name) {
   return {
     collection: "Сбор данных",
-    grafana: "Grafana",
-    dlp: "DLP",
+    grafana: "Графики",
+    dlp: "Проверки ИБ",
     worktime: "Работа сегодня",
     one_c: "1С",
-    work: "Workforce",
-    security: "Security"
+    work: "Работа сотрудников",
+    security: "Безопасность"
   }[name] || name;
 }
 
@@ -116,9 +178,9 @@ function metricCard(labelText, value, status, context) {
   return `
     <article class="metric-card">
       <span class="badge ${statusClass(status)}">${escapeHtml(status || "INFO")}</span>
-      <h3>${escapeHtml(labelText)}</h3>
-      <p class="metric-value">${escapeHtml(value ?? "Нет данных")}</p>
-      <p class="muted">${escapeHtml(context || "")}</p>
+      <h3>${ui(labelText)}</h3>
+      <p class="metric-value">${ui(value ?? "Нет данных")}</p>
+      <p class="muted">${ui(context || "")}</p>
     </article>
   `;
 }
@@ -133,11 +195,11 @@ function renderExecutiveMetrics(report, incidents) {
   const openCount = Array.isArray(incidents) ? incidents.filter(item => !item.acknowledged).length : 0;
   return `
     <section class="executive-grid" aria-label="Управленческая сводка">
-      ${metricCard("Индекс активности за день", activity?.value, activity?.status, activity?.context || "proxy: активное время / плановое время")}
+      ${metricCard("Индекс активности за день", activity?.value, activity?.status, activity?.context || "расчет: активное время / плановое время")}
       ${metricCard("Активные сотрудники", employees?.value, employees?.status, employees?.context)}
       ${metricCard("Отклонения от нормы", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "вопросы, требующие реакции")}
       ${metricCard("Подразделения с просадкой", departments?.value, departments?.status, departments?.context || "сравнение текущего дня")}
-      ${metricCard("Риски ИБ", risk?.value, risk?.status, risk?.context || "rule-based UEBA v1")}
+      ${metricCard("Риски ИБ", risk?.value, risk?.status, risk?.context || "оценка по правилам")}
       ${metricCard("Новые инциденты", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "не взятые в работу")}
       ${metricCard("Готовность отчета", reportReadinessText(report), report?.operator_ok ? "OK" : report?.severity, "daily / weekly / monthly")}
       ${metricCard("Доказательная база", evidence?.value, evidence?.status, evidence?.context)}
@@ -154,9 +216,9 @@ function incidentStatusFromCount(count) {
 
 function reportReadinessText(report) {
   const trend = report?.workforce?.trend_status || "daily_only";
-  if (trend === "monthly_ready") return "daily / weekly / monthly";
-  if (trend === "weekly_ready") return "daily / weekly";
-  return "daily";
+  if (trend === "monthly_ready") return "день / неделя / месяц";
+  if (trend === "weekly_ready") return "день / неделя";
+  return "день";
 }
 
 function renderSectionItems(section, emptyText) {
@@ -166,8 +228,8 @@ function renderSectionItems(section, emptyText) {
   }
   return `<div class="list compact-list">${items.slice(0, 12).map(item => `
     <div class="row compact-row">
-      <strong>${escapeHtml(item.label || "-")}</strong>
-      <span class="muted">${escapeHtml(item.value || "")}</span>
+      <strong>${ui(item.label || "-")}</strong>
+      <span class="muted">${ui(item.value || "")}</span>
       <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status || "INFO")}</span>
     </div>
   `).join("")}</div>`;
@@ -176,18 +238,18 @@ function renderSectionItems(section, emptyText) {
 function renderReportTypeCards() {
   const types = [
     ["Ежедневный отчет", "Оперативный срез за сегодня", "OK"],
-    ["Недельный отчет", "Динамика после накопления daily history", "INFO"],
+    ["Недельный отчет", "Динамика после накопления истории по дням", "INFO"],
     ["Месячный отчет", "Готов для управленческой аналитики после накопления истории", "INFO"],
     ["По подразделению", "Сравнение загрузки и просадок", "OK"],
-    ["По сотруднику", "Drill-down с осторожной трактовкой KPI", "WARN"],
+    ["По сотруднику", "Разбор показателя с осторожной трактовкой", "WARN"],
     ["По инциденту", "Материалы для служебной проверки", "OK"],
     ["Акт пилота", "Итоги опытной эксплуатации", "OK"]
   ];
   return `<div class="report-type-grid">${types.map(([title, text, status]) => `
     <article class="report-type">
       <span class="badge ${statusClass(status)}">${escapeHtml(status)}</span>
-      <h3>${escapeHtml(title)}</h3>
-      <p class="muted">${escapeHtml(text)}</p>
+      <h3>${ui(title)}</h3>
+      <p class="muted">${ui(text)}</p>
     </article>
   `).join("")}</div>`;
 }
@@ -195,9 +257,9 @@ function renderReportTypeCards() {
 function renderLinks(links) {
   const link = (text, href) => `<a class="button" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
   return `<div class="links">
-    ${link("DetMir ActivityWatch", links.detmir_activitywatch)}
-    ${link("Grafana", links.grafana_dashboards)}
-    ${link("AW UI", links.aw_ui)}
+    ${link("Журнал активности", links.detmir_activitywatch)}
+    ${link("Графики", links.grafana_dashboards)}
+    ${link("События рабочих мест", links.aw_ui)}
     ${link("Рабочее время", links.worktime_report)}
     ${link("1С сводка", links.file1c_brief)}
     ${link("1С действия", links.file1c_actions)}
@@ -207,10 +269,10 @@ function renderLinks(links) {
 function renderDlpLinks(links) {
   const link = (text, href) => `<a class="button" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
   return `<div class="links">
-    ${link("ИБ дашборд", links.dlp_security_dashboard)}
+    ${link("ИБ-графики", links.dlp_security_dashboard)}
     ${link("ИБ для руководства", links.dlp_management_dashboard)}
-    ${link("DLP обзор", links.dlp_overview_dashboard)}
-    ${link("Все Grafana dashboards", links.grafana_dashboards)}
+    ${link("Обзор рисков данных", links.dlp_overview_dashboard)}
+    ${link("Все графики", links.grafana_dashboards)}
   </div>`;
 }
 
@@ -218,13 +280,13 @@ function renderSourceList(data) {
   const sources = [
     ["DetMir", data.detmir_status],
     ["Проверки", data.detmir_check],
-    ["Systemd", data.failed_units],
-    ["Grafana data", data.grafana_data]
+    ["Сервисы", data.failed_units],
+    ["Данные графиков", data.grafana_data]
   ];
   return `<div class="list">${sources.map(([name, source]) => `
     <div class="row">
-      <strong>${escapeHtml(name)}</strong>
-      <span class="muted">${escapeHtml(source?.summary || source?.error || "нет данных")}</span>
+      <strong>${ui(name)}</strong>
+      <span class="muted">${ui(source?.summary || source?.error || "нет данных")}</span>
       <span class="badge ${statusClass(source?.status || source?.ok)}">${escapeHtml(source?.status || (source?.ok ? "OK" : "FAIL"))}</span>
     </div>
   `).join("")}</div>`;
@@ -247,8 +309,8 @@ function renderOperator(data, report) {
     ${renderExecutiveMetrics(report, incidents)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
-      ${renderSectionItems(workforce, "Workforce-срез пока не сформирован.")}
-      ${renderSectionItems(insights, "Отклонений Workforce пока не найдено.")}
+      ${renderSectionItems(workforce, "Срез по работе сотрудников пока не сформирован.")}
+      ${renderSectionItems(insights, "Отклонений по работе сотрудников пока не найдено.")}
     </section>
     <section class="dashboard-band security-band">
       <div class="band-head"><h3>Контроль безопасности</h3><span class="muted">подозрительные события и приоритет реакции</span></div>
@@ -280,7 +342,7 @@ function renderManager(data, policyExplain) {
       <section class="card">
         <h3>Индекс активности</h3>
         <p class="kpi-value">${escapeHtml(workforceIndex)}</p>
-        <p class="muted">proxy: активное время / плановое рабочее время</p>
+        <p class="muted">расчет: активное время / плановое рабочее время</p>
         <p class="muted">Сотрудников: ${data.users_count}; активных часов: ${Number(data.total_active_hours || 0).toFixed(1)}</p>
         <p class="muted">${escapeHtml(data.status?.text || "")}</p>
       </section>
@@ -334,7 +396,7 @@ function renderWorkforceIndexExplanation(policy) {
     return `
       <section class="card index-explain-card">
         <h3>Почему такой индекс?</h3>
-        <p class="muted">Role/application policy не настроена. Доступен только нейтральный индекс активности.</p>
+        <p class="muted">Правила ролей и приложений не настроены. Доступен только нейтральный индекс активности.</p>
       </section>
     `;
   }
@@ -342,13 +404,13 @@ function renderWorkforceIndexExplanation(policy) {
   const employees = Array.isArray(policy.employee_details) ? policy.employee_details.slice(0, 12) : [];
   const weightedTotal = Math.max(1, Number(policy.weighted_seconds || 0));
   const appRows = details.length === 0
-    ? `<div class="row compact-row"><strong>Нет приложений</strong><span class="muted">Нет top breakdown для weighted KPI</span><span></span></div>`
+    ? `<div class="row compact-row"><strong>Нет приложений</strong><span class="muted">Нет разбора по приложениям для взвешенного показателя</span><span></span></div>`
     : details.map(item => {
         const contribution = Math.round(Number(item.weighted_seconds || 0) / weightedTotal * 100);
         return `
           <div class="row app-weight-row">
             <strong>${escapeHtml(item.application || "-")}</strong>
-            <span class="muted">${escapeHtml(humanSeconds(item.seconds))} · вес ${escapeHtml(pctText(item.weight))} · правило ${escapeHtml(item.matched_rule || "default_weight")}</span>
+            <span class="muted">${escapeHtml(humanSeconds(item.seconds))} · вес ${escapeHtml(pctText(item.weight))} · правило ${ui(item.matched_rule || "нет явного правила")}</span>
             <span class="badge ${Number(item.weight || 0) > 0 ? "status-ok" : "status-unknown"}">${escapeHtml(humanSeconds(item.weighted_seconds))} · ${contribution}%</span>
           </div>
         `;
@@ -358,16 +420,16 @@ function renderWorkforceIndexExplanation(policy) {
       <div class="section-head">
         <div>
           <h3>Почему такой индекс?</h3>
-          <p class="muted">${escapeHtml(policy.explanation || "Индекс = взвешенное время приложений / плановое время роли.")}</p>
-          <p class="muted small">Формула: ${escapeHtml(policy.formula || "index = weighted_seconds / planned_seconds × 100")}.</p>
+          <p class="muted">${ui(policy.explanation || "Индекс = взвешенное время приложений / плановое время роли.")}</p>
+          <p class="muted small">Формула: индекс = время с учетом правил / плановое время × 100.</p>
         </div>
         <span class="badge ${statusClass(workforceIndexStatus(policy.index))}">${escapeHtml(workforceIndexTextFromValue(policy.index))}</span>
       </div>
       <div class="index-metrics">
         <div><span class="muted">Роль</span><strong>${escapeHtml(policy.role_label || policy.role || "-")}</strong></div>
         <div><span class="muted">План</span><strong>${escapeHtml(humanSeconds(policy.planned_seconds))}</strong></div>
-        <div><span class="muted">App time</span><strong>${escapeHtml(humanSeconds(policy.app_seconds))}</strong></div>
-        <div><span class="muted">Weighted</span><strong>${escapeHtml(humanSeconds(policy.weighted_seconds))}</strong></div>
+        <div><span class="muted">Время приложений</span><strong>${escapeHtml(humanSeconds(policy.app_seconds))}</strong></div>
+        <div><span class="muted">С учетом правил</span><strong>${escapeHtml(humanSeconds(policy.weighted_seconds))}</strong></div>
       </div>
       <div class="list compact-list app-weight-list">${appRows}</div>
       ${renderPolicyAudit(policy.policy_audit)}
@@ -379,17 +441,17 @@ function renderWorkforceIndexExplanation(policy) {
 function renderPolicyAudit(audit) {
   const items = Array.isArray(audit?.needs_review) ? audit.needs_review.slice(0, 12) : [];
   if (items.length === 0) {
-    return `<div class="audit-note"><strong>Аудит policy</strong><span class="muted">Все top приложения попали под явные правила или данных для аудита нет.</span></div>`;
+    return `<div class="audit-note"><strong>Проверка правил</strong><span class="muted">Ключевые приложения попали под явные правила или данных для проверки нет.</span></div>`;
   }
   return `
     <div class="audit-block">
-      <h4>Аудит policy: default_weight</h4>
+      <h4>Проверка правил: приложения без явного правила</h4>
       <p class="muted small">Эти приложения не нашли явного правила и требуют проверки классификации.</p>
       <div class="list compact-list">${items.map(item => `
         <div class="row compact-row">
           <strong>${escapeHtml(item.application || "-")}</strong>
-          <span class="muted">${escapeHtml(humanSeconds(item.seconds))} · default ${escapeHtml(pctText(item.weight))}</span>
-          <span class="badge status-warn">review</span>
+          <span class="muted">${escapeHtml(humanSeconds(item.seconds))} · вес по умолчанию ${escapeHtml(pctText(item.weight))}</span>
+          <span class="badge status-warn">проверить</span>
         </div>
       `).join("")}</div>
     </div>
@@ -400,12 +462,12 @@ function renderEmployeeIndexDetails(items) {
   if (!items.length) return "";
   return `
     <div class="employee-drilldown">
-      <h4>Drill-down по сотрудникам</h4>
-      <p class="muted small">Это не персональный weighted KPI: per-user индекс сейчас считается по активному времени; app-weight breakdown доступен только на уровне портфеля.</p>
+      <h4>Разбор по сотрудникам</h4>
+      <p class="muted small">Это не персональный взвешенный показатель: индекс сотрудника сейчас считается по активному времени; разбор по весам приложений доступен только на уровне общего среза.</p>
       <div class="list compact-list">${items.map(item => `
         <div class="row employee-index-row">
           <strong>${escapeHtml(item.user || "-")}</strong>
-          <span class="muted">${escapeHtml(item.reason || `${item.formula || "employee_index = active_seconds / planned_seconds × 100"} · active ${humanSeconds(item.active_seconds)} / plan ${humanSeconds(item.planned_seconds)}`)}</span>
+          <span class="muted">${ui(item.reason || `индекс сотрудника = активное время / плановое время × 100 · активно ${humanSeconds(item.active_seconds)} / план ${humanSeconds(item.planned_seconds)}`)}</span>
           <span class="badge ${statusClass(item.status)}">${escapeHtml(workforceIndexTextFromValue(item.index))}</span>
         </div>
       `).join("")}</div>
@@ -432,23 +494,23 @@ function renderOwner(data) {
     <div class="page-head">
       <div>
         <h2 class="section-title">Контроль безопасности</h2>
-        <p class="muted">Приоритеты ИБ: подозрительные подключения, DLP-сигналы, RDP-аномалии и состояние периметра.</p>
+        <p class="muted">Приоритеты ИБ: подозрительные подключения, сигналы по данным, RDP-аномалии и состояние периметра.</p>
       </div>
       <span class="badge ${statusClass(data.summary?.severity)}">${escapeHtml(data.summary?.severity || "INFO")}</span>
     </div>
     <div class="summary-grid">${cards.map(([name, block]) => `
       <article class="card">
         <span class="badge ${statusClass(block.status)}">${escapeHtml(block.status)}</span>
-        <h3>${escapeHtml(label(name))}</h3>
-        <p class="muted">${escapeHtml(block.text)}</p>
+        <h3>${ui(label(name))}</h3>
+        <p class="muted">${ui(block.text)}</p>
       </article>
     `).join("")}</div>
     <section class="card">
       <h3>Риски с приоритетом</h3>
-      <div class="list">${(data.recommendations || []).map(item => `<div class="row"><strong>Рекомендация</strong><span class="muted">${escapeHtml(item)}</span><span></span></div>`).join("")}</div>
+      <div class="list">${(data.recommendations || []).map(item => `<div class="row"><strong>Рекомендация</strong><span class="muted">${ui(item)}</span><span></span></div>`).join("")}</div>
     </section>
     <section class="card">
-      <h3>Дашборды безопасности</h3>
+      <h3>Графики безопасности</h3>
       ${renderLinks(data.links)}
     </section>
   `;
@@ -459,12 +521,12 @@ function renderIncidentsList(items) {
   return `<div class="list">${items.map(item => `
     <div class="row incident-row">
       <div>
-        <strong>${escapeHtml(item.source)}</strong>
-        <div class="muted small">${escapeHtml(item.kind)} · ${escapeHtml(item.id)}</div>
+        <strong>${ui(item.source)}</strong>
+        <div class="muted small">${ui(item.kind)} · ${escapeHtml(item.id)}</div>
       </div>
       <div>
-        <span class="muted">${escapeHtml(item.summary)}</span>
-        ${item.acknowledged ? `<div class="muted small">В работе: ${escapeHtml(item.assigned_to || item.actor || "оператор")} · ${escapeHtml(item.comment || "")}</div>` : ""}
+        <span class="muted">${ui(item.summary)}</span>
+        ${item.acknowledged ? `<div class="muted small">В работе: ${ui(item.assigned_to || item.actor || "оператор")} · ${ui(item.comment || "")}</div>` : ""}
       </div>
       <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status)}</span>
       <div class="actions">
@@ -482,15 +544,15 @@ function isDlpIncident(item) {
 
 function renderDlpIncidentsList(items) {
   const dlpItems = (items || []).filter(isDlpIncident);
-  if (dlpItems.length === 0) return `<p class="muted">Активных DLP/ИБ-инцидентов нет.</p>`;
+  if (dlpItems.length === 0) return `<p class="muted">Активных ИБ-инцидентов по данным нет.</p>`;
   return renderIncidentsList(dlpItems);
 }
 
 function renderDlpEvidence(evidence) {
-  if (!evidence) return `<p class="muted">Данные evidence загружаются.</p>`;
-  if (!evidence.ok) return `<p class="muted">Evidence недоступны: ${escapeHtml(evidence.error || "ошибка чтения")}</p>`;
+  if (!evidence) return `<p class="muted">Материалы проверки загружаются.</p>`;
+  if (!evidence.ok) return `<p class="muted">Материалы недоступны: ${ui(evidence.error || "ошибка чтения")}</p>`;
   const items = evidence.items || [];
-  if (items.length === 0) return `<p class="muted">DLP evidence пока не найдены.</p>`;
+  if (items.length === 0) return `<p class="muted">Материалы по ИБ-инцидентам пока не найдены.</p>`;
   return `<div class="list evidence-list">${items.map(item => `
     <div class="row evidence-row">
       <div>
@@ -499,7 +561,7 @@ function renderDlpEvidence(evidence) {
       </div>
       <div>
         <span class="muted">${escapeHtml(item.message || item.file_path || item.rule_id || item.event_id)}</span>
-        <div class="muted small">${item.source_file ? "Файл: " + escapeHtml(item.source_file) + " · " : ""}${item.screenshot_sha256 ? "SHA-256: " + escapeHtml(item.screenshot_sha256) : escapeHtml(item.blocked_reason || "без скрина")}</div>
+        <div class="muted small">${item.source_file ? "Файл: " + escapeHtml(item.source_file) + " · " : ""}${item.screenshot_sha256 ? "Контрольный хеш: " + escapeHtml(item.screenshot_sha256) : ui(item.blocked_reason || "без скрина")}</div>
       </div>
       <span class="badge ${item.screenshot_available ? "status-ok" : "status-warn"}">${item.screenshot_available ? "СКРИН" : "МЕТА"}</span>
       <div class="actions">
@@ -518,9 +580,9 @@ function renderIncidents(data) {
     <div class="page-head">
       <div>
         <h2 class="section-title">Расследования и доказательная база</h2>
-        <p class="muted">Кто, когда, откуда, куда, связанные хосты, evidence и выгрузка материалов.</p>
+        <p class="muted">Кто, когда, откуда, куда, связанные хосты, материалы и выгрузка для проверки.</p>
       </div>
-      <span class="badge ${statusClass(incidentStatusFromCount((incidents || []).length))}">${escapeHtml((incidents || []).length)} items</span>
+      <span class="badge ${statusClass(incidentStatusFromCount((incidents || []).length))}">${escapeHtml((incidents || []).length)} записей</span>
     </div>
     <div class="grid-2">
       <section class="card">
@@ -528,12 +590,12 @@ function renderIncidents(data) {
         ${renderDlpIncidentsList(incidents)}
       </section>
       <section class="card">
-        <h3>Связанные графики и дашборды</h3>
+        <h3>Связанные графики</h3>
         ${renderDlpLinks(links)}
       </section>
     </div>
     <section class="card evidence-card">
-      <h3>Evidence: скриншоты, хеши, файлы</h3>
+      <h3>Материалы: скриншоты, хеши, файлы</h3>
       ${renderDlpEvidence(evidence)}
     </section>
   `;
@@ -543,9 +605,9 @@ function renderKpiCards(items) {
   return `<div class="summary-grid kpi-grid">${(items || []).map(item => `
     <article class="card kpi-card">
       <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status || "INFO")}</span>
-      <h3>${escapeHtml(item.label)}</h3>
-      <p class="kpi-value">${escapeHtml(item.value)}</p>
-      <p class="muted">${escapeHtml(item.context || "")}</p>
+      <h3>${ui(item.label)}</h3>
+      <p class="kpi-value">${ui(item.value)}</p>
+      <p class="muted">${ui(item.context || "")}</p>
     </article>
   `).join("")}</div>`;
 }
@@ -553,11 +615,11 @@ function renderKpiCards(items) {
 function renderReportSections(sections) {
   return `<div class="grid-2">${(sections || []).map(section => `
     <section class="card report-section">
-      <h3>${escapeHtml(section.title)}</h3>
+      <h3>${ui(section.title)}</h3>
       <div class="list compact-list">${(section.items || []).map(item => `
         <div class="row compact-row">
-          <strong>${escapeHtml(item.label)}</strong>
-          <span class="muted">${escapeHtml(item.value)}</span>
+          <strong>${ui(item.label)}</strong>
+          <span class="muted">${ui(item.value)}</span>
           <span class="badge ${statusClass(item.status)}">${escapeHtml(item.status || "INFO")}</span>
         </div>
       `).join("")}</div>
@@ -575,21 +637,21 @@ function renderUebaRisk(risk) {
     <section class="card ueba-risk-card">
       <div class="section-head">
         <div>
-          <h3>UEBA риск</h3>
-          <p class="muted">${escapeHtml(risk.note || "Read-only risk score без автоматического воздействия.")}</p>
-          <p class="muted small">Формула: ${escapeHtml(risk.formula || "sum(reason_points) capped at 100")}.</p>
-          <p class="muted small">Confidence: ${escapeHtml(confidence)} · sources: ${escapeHtml(sources)} · baseline: ${escapeHtml(risk.baseline_status || "-")} · policy: ${escapeHtml(risk.policy_version || "-")}</p>
-          <p class="muted small">Baseline window: ${escapeHtml(risk.baseline_window_days || "-")} days · available: ${escapeHtml(baselineReady)} · deviation: ${escapeHtml(risk.deviation_score ?? 0)}</p>
+          <h3>Индекс риска</h3>
+          <p class="muted">${ui(risk.note || "Оценка риска без автоматического воздействия.")}</p>
+          <p class="muted small">Формула: сумма факторов риска, максимум 100.</p>
+          <p class="muted small">Достоверность: ${escapeHtml(confidence)} · источники: ${ui(sources)} · обычный профиль: ${ui(risk.baseline_status || "-")} · версия правил: ${ui(risk.policy_version || "-")}</p>
+          <p class="muted small">Окно сравнения: ${escapeHtml(risk.baseline_window_days || "-")} дн. · доступно: ${ui(baselineReady)} · отклонение: ${escapeHtml(risk.deviation_score ?? 0)}</p>
         </div>
         <span class="badge ${statusClass(risk.status)}">${escapeHtml(risk.level || "unknown")} · ${escapeHtml(risk.score ?? 0)}/100</span>
       </div>
       <div class="list compact-list">${reasons.length ? reasons.map(item => `
         <div class="row compact-row">
-          <strong>${escapeHtml(item.label || item.code || "-")}</strong>
-          <span class="muted">${escapeHtml(item.value || "")} · ${escapeHtml(item.recommendation || "")}</span>
+          <strong>${ui(item.label || item.code || "-")}</strong>
+          <span class="muted">${ui(item.value || "")} · ${ui(item.recommendation || "")}</span>
           <span class="badge ${statusClass(item.status || item.severity)}">+${escapeHtml(item.points || 0)}</span>
         </div>
-      `).join("") : `<div class="row compact-row"><strong>Сигналы</strong><span class="muted">Существенных UEBA-сигналов в текущем срезе нет.</span><span class="badge status-ok">OK</span></div>`}</div>
+      `).join("") : `<div class="row compact-row"><strong>Сигналы</strong><span class="muted">Существенных риск-сигналов в текущем срезе нет.</span><span class="badge status-ok">OK</span></div>`}</div>
     </section>
   `;
 }
@@ -608,21 +670,21 @@ function renderReports(data) {
       <section class="card report-hero">
         <span class="badge ${statusClass(data.severity)}">${escapeHtml(data.severity)}</span>
         ${data.anonymized ? `<span class="badge status-warn">обезличено</span>` : ""}
-        <h3>${escapeHtml(data.headline)}</h3>
-        <p class="muted">${escapeHtml(data.period || "")} · обновлено ${escapeHtml(data.generated_at_utc || "")}</p>
+        <h3>${ui(data.headline)}</h3>
+        <p class="muted">${ui(data.period || "")} · обновлено ${escapeHtml(data.generated_at_utc || "")}</p>
       </section>
       <section class="card">
         <h3>Для руководителя</h3>
         <div class="list compact-list">${(data.executive_points || []).map(point => `
-          <div class="row compact-row"><strong>Итог</strong><span class="muted">${escapeHtml(point)}</span><span></span></div>
+          <div class="row compact-row"><strong>Итог</strong><span class="muted">${ui(point)}</span><span></span></div>
         `).join("")}</div>
       </section>
     </div>
     <div class="report-actions">
       <button class="small-button" data-anonymize-report="true">Демо без имен</button>
-      <button class="small-button" data-export-markdown="true">Markdown</button>
+      <button class="small-button" data-export-markdown="true">Текстовый отчет</button>
       <button class="small-button" data-print-report="true">Печать / PDF</button>
-      <a class="small-button" href="${apiBase()}/reports" target="_blank" rel="noopener noreferrer">JSON</a>
+      <a class="small-button" href="${apiBase()}/reports" target="_blank" rel="noopener noreferrer">Скачать данные</a>
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
@@ -631,8 +693,8 @@ function renderReports(data) {
     <h3 class="section-title">Срезы отчета</h3>
     ${renderReportSections(data.sections)}
     <section class="card markdown-card">
-      <h3>Markdown для отчета</h3>
-      <pre>${escapeHtml(data.markdown || "")}</pre>
+      <h3>Текст для отчета</h3>
+      <pre>${ui(data.markdown || "")}</pre>
     </section>
   `;
 }
@@ -730,10 +792,10 @@ async function verifyReadinessBundle(button) {
   };
   const status = document.getElementById("readinessVerifyStatus");
   if (status) {
-    status.textContent = `Проверено: checksum ${verify.checksum_verified ? "OK" : "FAIL"} · signature ${verify.signature_verified ? "OK" : "FAIL"}`;
+    status.textContent = `Проверено: контрольная сумма ${verify.checksum_verified ? "OK" : "FAIL"} · подпись ${verify.signature_verified ? "OK" : "FAIL"}`;
   }
   button.disabled = false;
-  button.textContent = "Проверить bundle";
+  button.textContent = "Проверить пакет";
 }
 
 async function anonymizeReport(button) {
@@ -744,7 +806,7 @@ async function anonymizeReport(button) {
 
 async function exportMarkdown() {
   const data = state.reports || await loadJson("/reports");
-  const markdown = data.markdown || "";
+  const markdown = displayText(data.markdown || "");
   const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
