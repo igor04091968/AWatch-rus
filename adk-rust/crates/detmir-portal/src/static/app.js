@@ -807,6 +807,7 @@ function renderOperator(data, report) {
     ${renderPeriodBanner(report)}
     ${renderExecutiveMetrics(report, incidents)}
     ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
+    ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1413,6 +1414,40 @@ function renderAgentQuality(quality, explain) {
   `;
 }
 
+function renderAgentQualityHistory(history, summary) {
+  const items = Array.isArray(history) ? history : [];
+  const s = summary || {};
+  const unstableDays = Number(s.warning_days || 0) + Number(s.degraded_days || 0) + Number(s.unknown_days || 0);
+  const status = items.length === 0 ? "UNKNOWN" : (Number(s.ok_days || 0) >= 5 ? "OK" : "WARNING");
+  return `
+    <section class="card agent-quality-history-card">
+      <div class="section-head">
+        <div>
+          <h3>Стабильность агента за 7 дней</h3>
+          <p class="muted">Показывает, можно ли доверять недельному KPI, а не только текущему срезу.</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      <div class="quality-decision">
+        <div><span class="muted">OK дней</span><strong>${escapeHtml(s.ok_days ?? 0)}</strong></div>
+        <div><span class="muted">Проблемных дней</span><strong>${escapeHtml(unstableDays)}</strong></div>
+        <div><span class="muted">KPI принят</span><strong>${escapeHtml(s.kpi_accepted_pct ?? 0)}%</strong></div>
+      </div>
+      ${Number(s.ok_days || 0) < 5 ? `<div class="quality-warning">KPI требует валидации: нестабильный сбор данных агента.</div>` : ""}
+      <details class="quality-details">
+        <summary>История по дням</summary>
+        <div class="list compact-list">${items.length ? items.map(item => `
+          <div class="row compact-row">
+            <strong>${escapeHtml(item.date || "-")}</strong>
+            <span class="muted">source=${ui(item.source || "unknown")} · KPI=${item.kpi_accepted ? "да" : "нет"}${item.collector_error ? ` · ${ui(item.collector_error)}` : ""}</span>
+            <span class="badge ${statusClass(item.status)}">${ui(item.status || "UNKNOWN")}</span>
+          </div>
+        `).join("") : `<div class="row compact-row"><strong>История</strong><span class="muted">История качества агента за период отсутствует.</span><span class="badge status-unknown">UNKNOWN</span></div>`}</div>
+      </details>
+    </section>
+  `;
+}
+
 function renderReports(data) {
   data = periodReport(data);
   return `
@@ -1448,6 +1483,7 @@ function renderReports(data) {
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
     ${renderAgentQuality(data.agent_quality, data.agent_quality_explain)}
+    ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>

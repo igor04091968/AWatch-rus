@@ -507,7 +507,8 @@ h1 {
   line-height: 1.35;
 }
 
-.agent-quality-card {
+.agent-quality-card,
+.agent-quality-history-card {
   margin: 12px 0 16px;
 }
 
