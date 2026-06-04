@@ -23,9 +23,9 @@ async function postJson(path, payload) {
 
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
-  if (s === "ok" || s === "true" || s === "low") return "status-ok";
-  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale" || s === "medium") return "status-warn";
-  if (s === "degraded" || s === "high") return "status-degraded";
+  if (s === "ok" || s === "true" || s === "low" || s === "false_positive") return "status-ok";
+  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale" || s === "medium" || s === "in_review" || s === "postponed") return "status-warn";
+  if (s === "degraded" || s === "high" || s === "confirmed") return "status-degraded";
   if (s === "fail" || s === "false" || s === "error" || s === "critical" || s === "missing") return "status-fail";
   return "status-unknown";
 }
@@ -1735,8 +1735,10 @@ function renderRiskIncidentCandidates(items) {
               <th>Подразделение</th>
               <th>Узел</th>
               <th>Риск</th>
+              <th>Проверка</th>
               <th>Причина</th>
               <th>Рекомендация</th>
+              <th>Действие</th>
             </tr>
           </thead>
           <tbody>
@@ -1746,8 +1748,10 @@ function renderRiskIncidentCandidates(items) {
                 <td>${ui(item.department || "-")}<br><span class="muted small">${ui(item.owner || "ответственный не указан")}</span></td>
                 <td>${ui(item.hostname || "-")}<br><span class="muted small">${ui(candidateSeenText(item))}</span></td>
                 <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
+                <td>${renderCandidateReview(item)}</td>
                 <td>${ui(candidateReasonText(item))}</td>
                 <td>${ui(item.recommendation || "Назначить ответственную ручную проверку.")}</td>
+                <td>${renderCandidateReviewActions(item)}</td>
               </tr>
             `).join("") : `
               <tr>
@@ -1755,8 +1759,10 @@ function renderRiskIncidentCandidates(items) {
                 <td>Нет кандидатов</td>
                 <td>-</td>
                 <td><span class="badge status-ok">OK</span></td>
+                <td><span class="badge status-unknown">NEW</span></td>
                 <td>очередь проверки пуста</td>
                 <td>Действий не требуется.</td>
+                <td>-</td>
               </tr>
             `}
           </tbody>
@@ -1765,6 +1771,37 @@ function renderRiskIncidentCandidates(items) {
       ${rows.length ? `<p class="muted small">Показаны кандидаты для проверки, а не автоматически подтвержденные инциденты.</p>` : ""}
     </section>
   `;
+}
+
+function renderCandidateReview(item) {
+  const review = item?.incident_review || {};
+  const status = review.status || "NEW";
+  const comment = review.comment || "комментария нет";
+  const reviewer = review.reviewer || "проверяющий не указан";
+  const updated = review.updated_at || "не обновлялось";
+  return `<span class="badge ${statusClass(status)}">${ui(reviewStatusText(status))}</span><br><span class="muted small">${ui(reviewer)} · ${ui(updated)}</span><br><span class="muted small">${ui(comment)}</span>`;
+}
+
+function renderCandidateReviewActions(item) {
+  const id = item?.id || "";
+  const actions = [
+    ["IN_REVIEW", "В проверку"],
+    ["CONFIRMED", "Подтвердить"],
+    ["FALSE_POSITIVE", "Ложный"],
+    ["POSTPONED", "Отложить"],
+  ];
+  return `<div class="button-row compact-actions">${actions.map(([status, label]) => `
+    <button class="small-button" data-review-status="${escapeHtml(status)}" data-candidate-id="${escapeHtml(id)}">${ui(label)}</button>
+  `).join("")}</div>`;
+}
+
+function reviewStatusText(status) {
+  const value = String(status || "NEW").toUpperCase();
+  if (value === "IN_REVIEW") return "В проверке";
+  if (value === "CONFIRMED") return "Подтвержден";
+  if (value === "FALSE_POSITIVE") return "Ложный";
+  if (value === "POSTPONED") return "Отложен";
+  return "Новый";
 }
 
 function candidateReasonText(item) {
@@ -1995,6 +2032,12 @@ document.addEventListener("click", event => {
 });
 
 document.addEventListener("click", event => {
+  const button = event.target.closest("[data-review-status]");
+  if (!button) return;
+  candidateReviewAction(button).catch(showError);
+});
+
+document.addEventListener("click", event => {
   const button = event.target.closest("[data-print-report]");
   if (!button) return;
   window.print();
@@ -2087,6 +2130,23 @@ async function incidentAction(button) {
   }
   button.disabled = true;
   await postJson("/incidents/action", payload);
+  await refresh();
+}
+
+async function candidateReviewAction(button) {
+  const candidateId = button.dataset.candidateId;
+  const status = button.dataset.reviewStatus;
+  const reviewer = window.prompt("Проверяющий", "");
+  if (reviewer === null || reviewer.trim() === "") return;
+  const comment = window.prompt("Комментарий к проверке", "");
+  if (comment === null) return;
+  button.disabled = true;
+  await postJson("/incident-review", {
+    candidate_id: candidateId,
+    status,
+    reviewer,
+    comment,
+  });
   await refresh();
 }
 

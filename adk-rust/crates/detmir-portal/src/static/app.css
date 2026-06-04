@@ -881,6 +881,12 @@ h1 {
   justify-content: flex-end;
 }
 
+.compact-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(92px, 1fr));
+  gap: 6px;
+}
+
 .small-button {
   min-height: 32px;
   padding: 6px 8px;
