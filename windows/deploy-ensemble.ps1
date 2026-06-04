@@ -178,6 +178,7 @@ $report = [ordered]@{
         afkEnabled = $AfkEnabled
         windowEnabled = $WindowEnabled
         fileOpsEnabled = $FileOpsEnabled
+        worktimeSessionEnabled = $true
     }
     hardeningApplied = (-not $SkipHardening)
 }

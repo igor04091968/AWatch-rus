@@ -11,3 +11,8 @@ enable_workforce_activity = true
 spool_dir = "/var/lib/awatch-agent/spool"
 timeout_seconds = 10
 retry_attempts = 3
+
+# Optional ActivityWatch compatibility output.
+# Enables Rust replacement for the PowerShell worktime-session collector path.
+aw_api_base = "http://awatch.local:5600/api/0"
+aw_worktime_enabled = false

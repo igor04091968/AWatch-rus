@@ -81,6 +81,7 @@ while ($true) {
         if ($collectors) {
             if ($collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { $startFileOps = [bool]$collectors.fileOpsEnabled }
             if ($collectors.PSObject.Properties.Name -contains 'emailEnabled')   { $startEmail   = [bool]$collectors.emailEnabled }
+            if ($collectors.PSObject.Properties.Name -contains 'worktimeSessionEnabled') { $startWorktime = [bool]$collectors.worktimeSessionEnabled }
         }
         if ($isSession0) {
             $startBrowser = $false

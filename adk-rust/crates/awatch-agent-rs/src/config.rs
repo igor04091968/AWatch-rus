@@ -16,6 +16,8 @@ pub struct AgentConfig {
     pub spool_dir: PathBuf,
     pub timeout_seconds: u64,
     pub retry_attempts: u32,
+    pub aw_api_base: Option<String>,
+    pub aw_worktime_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +51,8 @@ impl Default for AgentConfig {
             spool_dir: default_spool_dir(),
             timeout_seconds: 10,
             retry_attempts: 3,
+            aw_api_base: None,
+            aw_worktime_enabled: false,
         }
     }
 }
@@ -103,6 +107,10 @@ impl AgentConfig {
                 "spool_dir" => config.spool_dir = PathBuf::from(value),
                 "timeout_seconds" => config.timeout_seconds = value.parse().unwrap_or(10),
                 "retry_attempts" => config.retry_attempts = value.parse().unwrap_or(3),
+                "aw_api_base" => config.aw_api_base = Some(value.trim_end_matches('/').to_string()),
+                "aw_worktime_enabled" => {
+                    config.aw_worktime_enabled = parse_bool(value, false);
+                }
                 _ => {}
             }
         }
@@ -131,6 +139,8 @@ api_key = "change-me"
 collect_interval_seconds = 30
 role = "firewall"
 enable_processes = false
+aw_api_base = "http://awatch.local:5600/api/0"
+aw_worktime_enabled = true
 spool_dir = "/tmp/awatch-spool"
 "#,
         )
@@ -138,6 +148,11 @@ spool_dir = "/tmp/awatch-spool"
         assert_eq!(config.role, AgentRole::Firewall);
         assert_eq!(config.collect_interval_seconds, 30);
         assert!(!config.enable_processes);
+        assert!(config.aw_worktime_enabled);
+        assert_eq!(
+            config.aw_api_base.as_deref(),
+            Some("http://awatch.local:5600/api/0")
+        );
         assert_eq!(config.spool_dir, PathBuf::from("/tmp/awatch-spool"));
     }
 }

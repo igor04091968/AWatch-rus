@@ -10,7 +10,7 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::Parser;
 use config::{AgentConfig, AgentRole, default_config_path};
-use transport::{TelemetryTransport, spool_health};
+use transport::{AwWorktimePublisher, TelemetryTransport, spool_health};
 
 #[derive(Debug, Parser)]
 #[command(about = "AWatch-rus Rust telemetry agent")]
@@ -26,6 +26,12 @@ struct Cli {
 
     #[arg(long, env = "AWATCH_AGENT_ROLE")]
     role: Option<String>,
+
+    #[arg(long, env = "AWATCH_AGENT_AW_API_BASE")]
+    aw_api_base: Option<String>,
+
+    #[arg(long, env = "AWATCH_AGENT_AW_WORKTIME_ENABLED")]
+    aw_worktime_enabled: Option<bool>,
 
     #[arg(long)]
     once: bool,
@@ -63,6 +69,12 @@ fn run() -> Result<i32> {
     if let Some(role) = cli.role {
         config.role = AgentRole::parse(&role);
     }
+    if let Some(aw_api_base) = cli.aw_api_base {
+        config.aw_api_base = Some(aw_api_base.trim_end_matches('/').to_string());
+    }
+    if let Some(enabled) = cli.aw_worktime_enabled {
+        config.aw_worktime_enabled = enabled;
+    }
     if cli.spool_health {
         println!(
             "{}",
@@ -72,6 +84,7 @@ fn run() -> Result<i32> {
     }
 
     let transport = TelemetryTransport::new(&config);
+    let aw_worktime = AwWorktimePublisher::new(&config);
     if cli.flush_spool {
         let flushed = transport.flush_spool()?;
         println!("{}", serde_json::json!({"ok": true, "flushed": flushed}));
@@ -85,6 +98,13 @@ fn run() -> Result<i32> {
             println!("{}", serde_json::to_string_pretty(&record)?);
         } else if let Err(err) = transport.send_or_spool(&record) {
             eprintln!("{err:#}");
+        }
+        if !cli.print_json {
+            if let Some(publisher) = aw_worktime.as_ref() {
+                if let Err(err) = publisher.publish(&record) {
+                    eprintln!("{err:#}");
+                }
+            }
         }
         if cli.once {
             break;

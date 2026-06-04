@@ -94,6 +94,7 @@ $config = [pscustomobject]@{
         windowEnabled = $false
         fileOpsEnabled = $true
         emailEnabled = $true
+        worktimeSessionEnabled = $true
     }
     logging = [pscustomobject]@{
         localAgentLogsEnabled = $true

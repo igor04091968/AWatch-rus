@@ -488,9 +488,10 @@ function Invoke-GuardCycle {
 
     $worktimeAge = $bucketChecks["aw-worktime-sessions_$hostname"].ageSeconds
     $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
-    $sessionCollectorRunning = Test-ActivityWatchCollectorRunningGlobal -ScriptPath $sessionCollectorScript
+    $worktimeSessionEnabled = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeSessionEnabled') { [bool]$config.collectors.worktimeSessionEnabled } else { $true }
+    $sessionCollectorRunning = $worktimeSessionEnabled -and (Test-ActivityWatchCollectorRunningGlobal -ScriptPath $sessionCollectorScript)
     $headlessKey = 'headless:worktime-session'
-    $needsHeadlessAction = (-not $sessionCollectorRunning -or $null -eq $worktimeAge -or [int]$worktimeAge -gt $HeadlessMaxAgeSeconds)
+    $needsHeadlessAction = $worktimeSessionEnabled -and (-not $sessionCollectorRunning -or $null -eq $worktimeAge -or [int]$worktimeAge -gt $HeadlessMaxAgeSeconds)
     if ($needsHeadlessAction) {
         $key = $headlessKey
         $allowed = Test-ActionAllowed -Runtime $Runtime -Key $key -CooldownSeconds $ActionCooldownSeconds -WindowSeconds $RestartWindowSeconds -MaxCount $MaxRestarts

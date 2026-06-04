@@ -995,6 +995,7 @@ function New-ActivityWatchDeploymentConfig {
             windowEnabled = $WindowEnabled
             fileOpsEnabled = $FileOpsEnabled
             emailEnabled = $false
+            worktimeSessionEnabled = $true
         }
         logging = [pscustomobject]@{
             localAgentLogsEnabled = $LocalAgentLogsEnabled
@@ -2033,7 +2034,10 @@ function Invoke-ActivityWatchRecoveryLoop {
                 $sessionRecords = Get-ActivityWatchSessionRecords
                 $stateRoot = [string]$config.paths.stateRoot
                 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
-                Start-ActivityWatchCollectorScriptGlobalIfNeeded -ScriptPath $sessionCollectorScript -ConfigPath $ConfigPath
+                $worktimeSessionEnabled = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeSessionEnabled') { [bool]$config.collectors.worktimeSessionEnabled } else { $true }
+                if ($worktimeSessionEnabled) {
+                    Start-ActivityWatchCollectorScriptGlobalIfNeeded -ScriptPath $sessionCollectorScript -ConfigPath $ConfigPath
+                }
 
                 $configuredLiveTasksStarted = $false
                 foreach ($taskDef in $taskDefs) {

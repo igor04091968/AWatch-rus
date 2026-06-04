@@ -9,7 +9,7 @@ use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderValue};
 
 use crate::config::AgentConfig;
-use crate::telemetry::TelemetryRecord;
+use crate::telemetry::{SessionInfo, TelemetryRecord};
 
 #[derive(Debug, Clone)]
 pub struct TelemetryTransport {
@@ -94,6 +94,147 @@ impl TelemetryTransport {
     pub fn flush_spool(&self) -> Result<usize> {
         flush_spool_dir(&self.spool_dir, |record| self.send(record))
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct AwWorktimePublisher {
+    aw_api_base: String,
+    timeout: Duration,
+}
+
+impl AwWorktimePublisher {
+    pub fn new(config: &AgentConfig) -> Option<Self> {
+        if !config.aw_worktime_enabled {
+            return None;
+        }
+        let aw_api_base = config
+            .aw_api_base
+            .as_ref()?
+            .trim_end_matches('/')
+            .to_string();
+        if aw_api_base.is_empty() {
+            return None;
+        }
+        Some(Self {
+            aw_api_base,
+            timeout: Duration::from_secs(config.timeout_seconds),
+        })
+    }
+
+    pub fn publish(&self, record: &TelemetryRecord) -> Result<usize> {
+        let client = Client::builder()
+            .timeout(self.timeout)
+            .build()
+            .context("build ActivityWatch HTTP client")?;
+        let bucket_id = format!(
+            "aw-worktime-sessions_{}",
+            sanitize_bucket_part(&record.hostname)
+        );
+        ensure_aw_bucket(
+            &client,
+            &self.aw_api_base,
+            &bucket_id,
+            "aw-worktime-session-collector",
+            "aw.worktime.session",
+            &record.hostname,
+        )?;
+        let sessions = if record.active_sessions.is_empty() {
+            vec![SessionInfo {
+                session_id: "0".to_string(),
+                username: record.username.clone(),
+                session_type: "local".to_string(),
+                remote_addr: None,
+                started_at: None,
+                active: true,
+            }]
+        } else {
+            record.active_sessions.clone()
+        };
+        let mut sent = 0;
+        let sample_seconds = 60_i64;
+        for session in sessions {
+            let payload = serde_json::json!({
+                "timestamp": record.timestamp,
+                "duration": sample_seconds,
+                "data": {
+                    "username": session.username,
+                    "userId": format!("{}\\{}", record.hostname, session.username),
+                    "sessionId": session_id_number(&session),
+                    "sessionName": session.session_type,
+                    "state": if session.active { "Active" } else { "Disconnected" },
+                    "active": session.active,
+                    "sampleSeconds": sample_seconds,
+                    "pollSeconds": sample_seconds,
+                    "hostname": record.hostname,
+                    "source": "awatch-agent-rs"
+                }
+            });
+            client
+                .post(format!(
+                    "{}/buckets/{}/heartbeat?pulsetime=180",
+                    self.aw_api_base, bucket_id
+                ))
+                .json(&payload)
+                .send()
+                .and_then(|response| response.error_for_status())
+                .context("publish ActivityWatch worktime heartbeat")?;
+            sent += 1;
+        }
+        Ok(sent)
+    }
+}
+
+fn ensure_aw_bucket(
+    client: &Client,
+    aw_api_base: &str,
+    bucket_id: &str,
+    client_name: &str,
+    bucket_type: &str,
+    hostname: &str,
+) -> Result<()> {
+    let bucket_url = format!("{}/buckets/{}", aw_api_base, bucket_id);
+    if client
+        .get(&bucket_url)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .is_ok()
+    {
+        return Ok(());
+    }
+    let body = serde_json::json!({
+        "client": client_name,
+        "type": bucket_type,
+        "hostname": hostname,
+    });
+    client
+        .post(&bucket_url)
+        .json(&body)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .context("create ActivityWatch worktime bucket")?;
+    Ok(())
+}
+
+fn session_id_number(session: &SessionInfo) -> i64 {
+    session
+        .session_id
+        .split(|ch: char| !ch.is_ascii_digit())
+        .find(|part| !part.is_empty())
+        .and_then(|part| part.parse::<i64>().ok())
+        .unwrap_or(0)
+}
+
+fn sanitize_bucket_part(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 pub fn flush_spool_dir<F>(spool_dir: &Path, mut sender: F) -> Result<usize>
@@ -201,5 +342,18 @@ mod tests {
         assert_eq!(flushed, 1);
         assert_eq!(seen, 1);
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn session_id_number_extracts_numeric_id() {
+        let session = SessionInfo {
+            session_id: "rdp-12-user".to_string(),
+            username: "user".to_string(),
+            session_type: "rdp".to_string(),
+            remote_addr: None,
+            started_at: None,
+            active: true,
+        };
+        assert_eq!(session_id_number(&session), 12);
     }
 }

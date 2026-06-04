@@ -1,5 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
+use std::process::Command;
 
 use crate::collectors::common::{
     agent_id, command_output, current_session, domain, hostname, role_security_events, username,
@@ -37,16 +38,25 @@ impl TelemetryCollector for WindowsCollector {
     }
 
     fn collect_sessions(&self) -> Result<SessionSnapshot> {
-        let mut active = vec![current_session("local")];
-        let mut rdp = Vec::new();
+        let mut active = windows_query_user_sessions();
+        if active.is_empty() {
+            active.push(current_session("local"));
+        }
+        let mut rdp = active
+            .iter()
+            .filter(|session| session.session_type == "rdp")
+            .cloned()
+            .collect::<Vec<_>>();
         if std::env::var("SESSIONNAME")
             .unwrap_or_default()
             .to_ascii_lowercase()
             .contains("rdp")
         {
             let session = current_session("rdp");
-            rdp.push(session.clone());
-            active.push(session);
+            if !rdp.iter().any(|item| item.username == session.username) {
+                rdp.push(session.clone());
+                active.push(session);
+            }
         }
         Ok(SessionSnapshot {
             active_sessions: active,
@@ -103,6 +113,198 @@ fn windows_version() -> String {
     command_output("cmd", &["/C", "ver"])
         .or_else(|| std::env::var("OS").ok())
         .unwrap_or_else(|| "Windows".to_string())
+}
+
+fn windows_query_user_sessions() -> Vec<crate::telemetry::SessionInfo> {
+    let native = windows_wts_sessions();
+    if !native.is_empty() {
+        return native;
+    }
+    let raw = command_output_utf16le("cmd", &["/U", "/C", "query user"])
+        .or_else(|| command_output_utf16le("cmd", &["/U", "/C", "quser"]))
+        .or_else(|| command_output_lossy_combined("cmd", &["/C", "query user"]))
+        .or_else(|| command_output_lossy_combined("cmd", &["/C", "quser"]))
+        .unwrap_or_default();
+    raw.lines()
+        .skip(1)
+        .filter_map(parse_query_user_line)
+        .collect()
+}
+
+#[cfg(windows)]
+fn windows_wts_sessions() -> Vec<crate::telemetry::SessionInfo> {
+    use std::ptr;
+    use windows_sys::Win32::System::RemoteDesktop::{
+        WTS_CURRENT_SERVER_HANDLE, WTS_SESSION_INFOW, WTSActive, WTSEnumerateSessionsW,
+        WTSFreeMemory, WTSUserName,
+    };
+
+    let mut sessions_ptr: *mut WTS_SESSION_INFOW = ptr::null_mut();
+    let mut count = 0_u32;
+    let ok = unsafe {
+        WTSEnumerateSessionsW(
+            WTS_CURRENT_SERVER_HANDLE,
+            0,
+            1,
+            &mut sessions_ptr,
+            &mut count,
+        )
+    };
+    if ok == 0 || sessions_ptr.is_null() || count == 0 {
+        return Vec::new();
+    }
+
+    let sessions =
+        unsafe { std::slice::from_raw_parts(sessions_ptr, usize::try_from(count).unwrap_or(0)) };
+    let mut items = Vec::new();
+    for session in sessions {
+        let username = wts_session_string(session.SessionId, WTSUserName);
+        if username.trim().is_empty() {
+            continue;
+        }
+        let station = unsafe { wide_nul_to_string(session.pWinStationName) };
+        let state = session.State;
+        let session_type = if station.to_ascii_lowercase().contains("rdp") {
+            "rdp"
+        } else {
+            "local"
+        };
+        items.push(crate::telemetry::SessionInfo {
+            session_id: session.SessionId.to_string(),
+            username,
+            session_type: session_type.to_string(),
+            remote_addr: None,
+            started_at: None,
+            active: state == WTSActive,
+        });
+    }
+    unsafe {
+        WTSFreeMemory(sessions_ptr.cast());
+    }
+    items
+}
+
+#[cfg(not(windows))]
+fn windows_wts_sessions() -> Vec<crate::telemetry::SessionInfo> {
+    Vec::new()
+}
+
+#[cfg(windows)]
+fn wts_session_string(session_id: u32, class: i32) -> String {
+    use std::ptr;
+    use windows_sys::Win32::System::RemoteDesktop::{
+        WTS_CURRENT_SERVER_HANDLE, WTSFreeMemory, WTSQuerySessionInformationW,
+    };
+
+    let mut buffer = ptr::null_mut();
+    let mut bytes = 0_u32;
+    let ok = unsafe {
+        WTSQuerySessionInformationW(
+            WTS_CURRENT_SERVER_HANDLE,
+            session_id,
+            class,
+            &mut buffer,
+            &mut bytes,
+        )
+    };
+    if ok == 0 || buffer.is_null() || bytes == 0 {
+        return String::new();
+    }
+    let len = usize::try_from(bytes / 2).unwrap_or(0);
+    let value = unsafe {
+        let slice = std::slice::from_raw_parts(buffer, len);
+        String::from_utf16_lossy(slice)
+            .trim_matches('\0')
+            .trim()
+            .to_string()
+    };
+    unsafe {
+        WTSFreeMemory(buffer.cast());
+    }
+    value
+}
+
+#[cfg(windows)]
+unsafe fn wide_nul_to_string(ptr: *const u16) -> String {
+    if ptr.is_null() {
+        return String::new();
+    }
+    let mut len = 0;
+    while unsafe { *ptr.add(len) } != 0 {
+        len += 1;
+    }
+    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    String::from_utf16_lossy(slice)
+}
+
+fn command_output_utf16le(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let mut bytes = output.stdout;
+    bytes.extend_from_slice(&output.stderr);
+    if bytes.is_empty() {
+        return None;
+    }
+    let mut words = Vec::new();
+    for chunk in bytes.chunks_exact(2) {
+        words.push(u16::from_le_bytes([chunk[0], chunk[1]]));
+    }
+    String::from_utf16(&words)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn command_output_lossy_combined(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let mut bytes = output.stdout;
+    bytes.extend_from_slice(&output.stderr);
+    Some(String::from_utf8_lossy(&bytes).trim().to_string()).filter(|value| !value.is_empty())
+}
+
+fn parse_query_user_line(line: &str) -> Option<crate::telemetry::SessionInfo> {
+    let cleaned = line.trim().trim_start_matches('>').trim();
+    if cleaned.is_empty() {
+        return None;
+    }
+    let parts = cleaned.split_whitespace().collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return None;
+    }
+    let username = parts.first()?.to_string();
+    let (session_name, session_id, state) = if parts.get(1)?.chars().all(|ch| ch.is_ascii_digit()) {
+        ("".to_string(), *parts.get(1)?, *parts.get(2)?)
+    } else {
+        (
+            parts.get(1)?.to_string(),
+            *parts.get(2)?,
+            *parts.get(3).unwrap_or(&"Unknown"),
+        )
+    };
+    let active = session_state_active(state);
+    let session_type = if session_name.to_ascii_lowercase().contains("rdp") {
+        "rdp"
+    } else {
+        "local"
+    };
+    Some(crate::telemetry::SessionInfo {
+        session_id: session_id.to_string(),
+        username,
+        session_type: session_type.to_string(),
+        remote_addr: None,
+        started_at: None,
+        active,
+    })
+}
+
+fn session_state_active(state: &str) -> bool {
+    let lower = state.to_lowercase();
+    lower.contains("active") || lower.contains("актив")
 }
 
 fn windows_memory() -> (u64, u64) {
@@ -221,4 +423,33 @@ fn split_host_port(value: &str) -> Option<(String, u16)> {
         host.trim_matches(['[', ']']).to_string(),
         port.parse().ok()?,
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_query_user_line_with_rdp_session() {
+        let session =
+            parse_query_user_line(" user1                 rdp-tcp#5           3  Active").unwrap();
+        assert_eq!(session.username, "user1");
+        assert_eq!(session.session_id, "3");
+        assert_eq!(session.session_type, "rdp");
+        assert!(session.active);
+    }
+
+    #[test]
+    fn parses_query_user_line_without_session_name() {
+        let session = parse_query_user_line(" user2                 4  Disc").unwrap();
+        assert_eq!(session.username, "user2");
+        assert_eq!(session.session_id, "4");
+        assert_eq!(session.session_type, "local");
+        assert!(!session.active);
+    }
+
+    #[test]
+    fn detects_russian_active_state() {
+        assert!(session_state_active("Активно"));
+    }
 }
