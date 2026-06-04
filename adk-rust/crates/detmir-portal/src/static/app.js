@@ -182,8 +182,10 @@ function periodConfig(period = state.period) {
 
 function periodFromSelectValue(value) {
   const text = String(value || "").toLowerCase();
-  if (text.includes("нед")) return "week";
-  if (text.includes("мес")) return "month";
+  if (text === "week") return "week";
+  if (text === "month") return "month";
+  if (text.includes("нед") || text.includes("7")) return "week";
+  if (text.includes("мес") || text.includes("30")) return "month";
   return "today";
 }
 
@@ -288,35 +290,113 @@ function renderDailyDetailNotice() {
   `;
 }
 
-function metricCard(labelText, value, status, context) {
+function metricCard(labelText, value, status, context, trend) {
+  const trendText = trend || context || "";
+  const trendClass = statusClass(status).replace("status-", "");
   return `
     <article class="metric-card">
       <span class="badge ${statusClass(status)}">${escapeHtml(status || "INFO")}</span>
-      <h3>${ui(labelText)}</h3>
-      <p class="metric-value">${ui(value ?? "Нет данных")}</p>
-      <p class="muted">${ui(context || "")}</p>
+      <span class="kpi-label">${ui(labelText)}</span>
+      <strong class="metric-value">${ui(value ?? "Нет данных")}</strong>
+      <span class="kpi-trend ${trendClass}">${ui(trendText)}</span>
     </article>
   `;
 }
 
 function renderExecutiveMetrics(report, incidents) {
   const activity = findKpi(report, "Индекс активности");
+  const activeTime = findKpi(report, "Активное время");
   const employees = findKpi(report, "Сотрудники");
   const risk = findKpi(report, "UEBA риск");
   const open = findKpi(report, "Открытые вопросы");
-  const departments = findKpi(report, "Подразделения");
-  const evidence = findKpi(report, "Evidence");
   const openCount = Array.isArray(incidents) ? incidents.filter(item => !item.acknowledged).length : 0;
+  const anomalies = Array.isArray(report?.workforce?.insights) ? report.workforce.insights.filter(item => item.status !== "OK").length : 0;
   return `
     <section class="executive-grid" aria-label="Управленческая сводка">
-      ${metricCard("Индекс активности за день", activity?.value, activity?.status, activity?.context || "расчет: активное время / плановое время")}
-      ${metricCard("Активные сотрудники", employees?.value, employees?.status, employees?.context)}
-      ${metricCard("Отклонения от нормы", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "вопросы, требующие реакции")}
-      ${metricCard("Подразделения с просадкой", departments?.value, departments?.status, departments?.context || "сравнение текущего дня")}
-      ${metricCard("Риски ИБ", risk?.value, risk?.status, risk?.context || "оценка по правилам")}
-      ${metricCard("Новые инциденты", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "не взятые в работу")}
-      ${metricCard("Готовность отчета", periodReadinessText(report), report?.period_view?.status || (report?.operator_ok ? "OK" : report?.severity), "день / неделя / месяц")}
-      ${metricCard("Доказательная база", evidence?.value, evidence?.status, evidence?.context)}
+      ${metricCard("Активность", activity?.value, activity?.status, activity?.context || "к выбранному периоду")}
+      ${metricCard("Полезное время", activeTime?.value || "нет данных", activeTime?.status || "UNKNOWN", "на сотрудника")}
+      ${metricCard("Сотрудников онлайн", employees?.value, employees?.status, employees?.context || "в текущем срезе")}
+      ${metricCard("Риск-индекс", risk?.value, risk?.status, risk?.context || "низкий / средний / высокий")}
+      ${metricCard("Аномалии", anomalies, anomalies ? "WARN" : "OK", "требуют проверки")}
+      ${metricCard("Инциденты ИБ", open?.value ?? openCount, open?.status || incidentStatusFromCount(openCount), "за выбранный период")}
+    </section>
+  `;
+}
+
+function statusRiskLabel(status) {
+  const value = String(status || "INFO").toUpperCase();
+  if (value === "FAIL") return "high";
+  if (value === "WARN") return "medium";
+  if (value === "OK") return "low";
+  return "info";
+}
+
+function trendArrow(status) {
+  const value = String(status || "INFO").toUpperCase();
+  if (value === "OK") return "→";
+  if (value === "WARN") return "↓";
+  if (value === "FAIL") return "↓";
+  return "→";
+}
+
+function renderDepartmentTable(report) {
+  const items = (report?.workforce?.department_comparison || []).slice(0, 8);
+  if (!items.length) return `<p class="muted">Подразделения пока не рассчитаны.</p>`;
+  return `
+    <table class="data-table">
+      <thead><tr><th>Подразделение</th><th>Активность</th><th>Тренд</th><th>Риск</th></tr></thead>
+      <tbody>${items.map(item => `
+        <tr>
+          <td><strong>${ui(item.label)}</strong></td>
+          <td>${ui(item.value || "-")}</td>
+          <td>${escapeHtml(trendArrow(item.status))}</td>
+          <td><span class="badge ${statusClass(item.status)}">${ui(statusRiskLabel(item.status))}</span></td>
+        </tr>
+      `).join("")}</tbody>
+    </table>
+  `;
+}
+
+function renderAnomalies(report) {
+  const insights = Array.isArray(report?.workforce?.insights) ? report.workforce.insights : [];
+  const items = insights.filter(item => item.status !== "OK").slice(0, 8);
+  if (!items.length) return `<p class="muted">Существенных аномалий за выбранный период нет.</p>`;
+  return `<ul class="rank-list anomaly-list">${items.map(item => `
+    <li>
+      <span class="badge ${statusClass(item.status)}">${ui(statusRiskLabel(item.status))}</span>
+      <span>${ui(item.label || item.title || "Аномалия")}</span>
+      <strong>${ui(item.value || item.subject || "")}</strong>
+    </li>
+  `).join("")}</ul>`;
+}
+
+function renderTopRisks(report) {
+  const reasons = Array.isArray(report?.ueba_risk?.reasons) ? report.ueba_risk.reasons : [];
+  if (!reasons.length) return `<p class="muted">Существенных риск-сигналов нет.</p>`;
+  return `<ol class="rank-list">${reasons.slice(0, 8).map((item, index) => `
+    <li>
+      <strong>${index + 1}</strong>
+      <span>${ui(item.label || item.code || "Риск")}</span>
+      <span class="badge ${statusClass(item.status || item.severity)}">+${escapeHtml(item.points || 0)}</span>
+    </li>
+  `).join("")}</ol>`;
+}
+
+function renderOverviewAnalytics(report) {
+  return `
+    <section class="analytics-grid">
+      <article class="analytics-panel">
+        <h3>Подразделения сегодня</h3>
+        ${renderDepartmentTable(report)}
+      </article>
+      <article class="analytics-panel">
+        <h3>Аномалии</h3>
+        ${renderAnomalies(report)}
+      </article>
+      <article class="analytics-panel">
+        <h3>Топ рисков</h3>
+        ${renderTopRisks(report)}
+      </article>
     </section>
   `;
 }
@@ -423,6 +503,7 @@ function renderOperator(data, report) {
     </div>
     ${renderPeriodBanner(report)}
     ${renderExecutiveMetrics(report, incidents)}
+    ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
       ${renderSectionItems(workforce, "Срез по работе сотрудников пока не сформирован.")}
@@ -925,6 +1006,36 @@ function renderReports(data) {
   `;
 }
 
+function renderSettings() {
+  return `
+    <div class="page-head">
+      <div>
+        <h2 class="section-title">Настройки</h2>
+        <p class="muted">Параметры отображения портала и границы интерпретации данных.</p>
+      </div>
+      <span class="badge status-ok">только чтение</span>
+    </div>
+    <div class="grid-2">
+      <section class="card">
+        <h3>Периоды</h3>
+        <div class="list compact-list">
+          <div class="row compact-row"><strong>Сегодня</strong><span class="muted">текущий дневной срез</span><span class="badge status-ok">готово</span></div>
+          <div class="row compact-row"><strong>7 дней</strong><span class="muted">сводка по накопленной дневной истории</span><span class="badge status-warn">зависит от истории</span></div>
+          <div class="row compact-row"><strong>30 дней</strong><span class="muted">месячная управленческая интерпретация</span><span class="badge status-warn">зависит от истории</span></div>
+        </div>
+      </section>
+      <section class="card">
+        <h3>Модули продукта</h3>
+        <div class="list compact-list">
+          <div class="row compact-row"><strong>Workforce</strong><span class="muted">активность, рабочее время, подразделения, сотрудники</span><span class="badge status-ok">активно</span></div>
+          <div class="row compact-row"><strong>UEBA</strong><span class="muted">правила риска, аномалии, обычный профиль</span><span class="badge status-warn">v1</span></div>
+          <div class="row compact-row"><strong>DLP-lite</strong><span class="muted">события данных, материалы проверки, расследования</span><span class="badge status-warn">read-only</span></div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 async function refresh() {
   if (!state.links) state.links = await loadJson("/links");
   const summary = await loadJson("/summary");
@@ -977,6 +1088,9 @@ async function refresh() {
     content.innerHTML = renderReports(data);
     updateFilters(data);
   }
+  if (state.tab === "settings") {
+    content.innerHTML = renderSettings();
+  }
 }
 
 function setTab(tab) {
@@ -1005,6 +1119,12 @@ document.getElementById("periodFilter")?.addEventListener("change", event => {
   state.period = periodFromSelectValue(event.target.value);
   document.getElementById("content").innerHTML = `<p class="muted">Обновление периода...</p>`;
   refresh().catch(showError);
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-open-reports]");
+  if (!button) return;
+  setTab("reports");
 });
 
 document.addEventListener("click", event => {

@@ -7,58 +7,62 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <div class="brand">
-        <p class="eyebrow">AWatch-rus</p>
-        <h1>Активность / Риски / Расследования</h1>
-        <p class="lead">Рабочий кабинет руководителя, ИБ и расследователя</p>
+  <div class="app-layout">
+    <aside class="sidebar" aria-label="Основная навигация">
+      <div class="sidebar-brand">
+        <strong>AWatch-rus</strong>
+        <span>Workforce-first</span>
       </div>
-      <div class="topbar-side" aria-label="Параметры отчета">
-        <div class="control-strip">
-          <label>
-            <span>Период</span>
-            <select id="periodFilter">
-              <option>Сегодня</option>
-              <option>Неделя</option>
-              <option>Месяц</option>
-            </select>
-          </label>
-          <label>
-            <span>Подразделение</span>
-            <select id="departmentFilter">
-              <option>Все</option>
-            </select>
-          </label>
-          <label>
-            <span>Ответственный</span>
-            <select id="ownerFilter">
-              <option>Все</option>
-            </select>
-          </label>
-        </div>
-        <div class="header-actions">
-          <button class="small-button" data-export-markdown="true">Текстовый отчет</button>
-          <button class="small-button" data-print-report="true">Печать / PDF</button>
-          <div id="globalStatus" class="status-pill status-unknown">Загрузка</div>
-        </div>
-      </div>
-    </header>
+      <nav class="tabs">
+        <button class="tab is-active" data-tab="operator">Обзор</button>
+        <button class="tab" data-tab="employees">Сотрудники</button>
+        <button class="tab" data-tab="departments">Подразделения</button>
+        <button class="tab" data-tab="owner">Риски</button>
+        <button class="tab" data-tab="incidents">Расследования</button>
+        <button class="tab" data-tab="perimeter">Сетевой периметр</button>
+        <button class="tab" data-tab="reports">Отчеты</button>
+        <button class="tab" data-tab="settings">Настройки</button>
+      </nav>
+    </aside>
 
-    <nav class="tabs" aria-label="Разделы портала">
-      <button class="tab is-active" data-tab="operator">Пульс организации</button>
-      <button class="tab" data-tab="manager">Рабочее время</button>
-      <button class="tab" data-tab="departments">Подразделения</button>
-      <button class="tab" data-tab="employees">Сотрудники</button>
-      <button class="tab" data-tab="owner">Риски</button>
-      <button class="tab" data-tab="incidents">Расследования</button>
-      <button class="tab" data-tab="perimeter">Сетевой периметр</button>
-      <button class="tab" data-tab="reports">Отчеты</button>
-    </nav>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <p class="eyebrow">AWatch-rus</p>
+          <h1>Пульс организации</h1>
+          <p class="lead">Workforce, UEBA и события безопасности за выбранный период</p>
+        </div>
+        <div class="topbar-side" aria-label="Параметры отчета">
+          <div class="control-strip">
+            <label>
+              <span>Период</span>
+              <select id="periodFilter">
+                <option value="today">Сегодня</option>
+                <option value="week">7 дней</option>
+                <option value="month">30 дней</option>
+              </select>
+            </label>
+            <label>
+              <span>Подразделение</span>
+              <select id="departmentFilter">
+                <option>Все</option>
+              </select>
+            </label>
+          </div>
+          <div class="header-actions">
+            <button class="small-button primary" data-open-reports="true">Сформировать отчет</button>
+            <button class="small-button" data-export-markdown="true">Markdown</button>
+            <button class="small-button" data-print-report="true">PDF</button>
+            <a class="small-button" href="/portal/api/reports" target="_blank" rel="noopener noreferrer">JSON</a>
+            <div id="globalStatus" class="status-pill status-unknown">Загрузка</div>
+          </div>
+        </div>
+      </header>
 
-    <section id="summary" class="summary-grid"></section>
-    <section id="content" class="content-panel" aria-live="polite"></section>
-  </main>
+      <section id="content" class="content-panel" aria-live="polite"></section>
+      <section id="summary" class="summary-grid service-summary"></section>
+    </main>
+  </div>
   <script src="app.js"></script>
 </body>
 </html>
