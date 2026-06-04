@@ -59,6 +59,19 @@
         </div>
       </header>
 
+      <section id="loadingStatus" class="loading-status loading-status-unknown" aria-live="polite">
+        <div class="loading-status-head">
+          <div>
+            <strong id="loadingStateText">LOADING</strong>
+            <span id="loadingStageText">Инициализация портала</span>
+          </div>
+          <span id="loadingUpdatedText">последнее обновление: -</span>
+        </div>
+        <div class="loading-progress" aria-hidden="true">
+          <div id="loadingProgressBar" style="width: 0%"></div>
+        </div>
+      </section>
+
       <section id="content" class="content-panel" aria-live="polite"></section>
       <section id="summary" class="summary-grid service-summary"></section>
     </main>

@@ -1,4 +1,18 @@
-const state = { tab: "operator", period: "today", links: null, readiness: null, reports: null, pendingScrollSelector: null };
+const state = {
+  tab: "operator",
+  period: "today",
+  links: null,
+  readiness: null,
+  reports: null,
+  pendingScrollSelector: null,
+  load: {
+    status: "LOADING",
+    stage: "Инициализация портала",
+    progress: 0,
+    lastUpdatedAt: null,
+    lastError: null,
+  },
+};
 
 function apiBase() {
   const path = window.location.pathname;
@@ -23,8 +37,8 @@ async function postJson(path, payload) {
 
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
-  if (s === "ok" || s === "true" || s === "normal" || s === "low" || s === "false_positive" || s === "resolved") return "status-ok";
-  if (s === "warn" || s === "warning" || s === "attention" || s === "fallback" || s === "stale" || s === "medium" || s === "in_review" || s === "postponed" || s === "open" || s === "in_progress") return "status-warn";
+  if (s === "ok" || s === "ready" || s === "true" || s === "normal" || s === "low" || s === "false_positive" || s === "resolved") return "status-ok";
+  if (s === "loading" || s === "warn" || s === "warning" || s === "attention" || s === "fallback" || s === "stale" || s === "medium" || s === "in_review" || s === "postponed" || s === "open" || s === "in_progress") return "status-warn";
   if (s === "degraded" || s === "high" || s === "high_risk" || s === "confirmed" || s === "rejected" || s === "archived") return "status-degraded";
   if (s === "fail" || s === "false" || s === "error" || s === "critical" || s === "missing") return "status-fail";
   return "status-unknown";
@@ -163,6 +177,144 @@ function label(name) {
     work: "Работа сотрудников",
     security: "Безопасность"
   }[name] || name;
+}
+
+function setLoadStatus(status, stage, progress, options = {}) {
+  state.load.status = status;
+  state.load.stage = stage || state.load.stage || "Обновление данных";
+  state.load.progress = Math.max(0, Math.min(100, Number(progress) || 0));
+  if (status === "READY" || status === "EMPTY") {
+    state.load.lastUpdatedAt = new Date().toISOString();
+    state.load.lastError = null;
+  }
+  if (status === "ERROR" || status === "STALE") {
+    state.load.lastError = options.error || state.load.lastError || null;
+  }
+  renderLoadStatus();
+}
+
+function renderLoadStatus() {
+  const box = document.getElementById("loadingStatus");
+  if (!box) return;
+  const status = state.load.status || "UNKNOWN";
+  const stage = state.load.stage || "Состояние неизвестно";
+  const progress = Math.max(0, Math.min(100, Number(state.load.progress) || 0));
+  const stateText = document.getElementById("loadingStateText");
+  const stageText = document.getElementById("loadingStageText");
+  const updatedText = document.getElementById("loadingUpdatedText");
+  const bar = document.getElementById("loadingProgressBar");
+  box.className = `loading-status loading-status-${status.toLowerCase()}`;
+  if (stateText) stateText.textContent = status;
+  if (stageText) stageText.textContent = stage;
+  if (updatedText) updatedText.textContent = `последнее обновление: ${formatLoadTime(state.load.lastUpdatedAt)}`;
+  if (bar) bar.style.width = `${progress}%`;
+}
+
+function formatLoadTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function renderLoadingContent(stage = "Данные загружаются") {
+  return `
+    <div class="loading-shell" data-loading-state="LOADING">
+      <div class="loading-message">
+        <strong>Данные загружаются</strong>
+        <p class="muted small">${ui(stage)}</p>
+      </div>
+      <section class="skeleton-grid" aria-label="Загрузка основных показателей">
+        ${Array.from({ length: 6 }).map(() => `
+          <article class="skeleton-card">
+            <span class="skeleton-line short"></span>
+            <span class="skeleton-line medium"></span>
+            <span class="skeleton-line long"></span>
+          </article>
+        `).join("")}
+      </section>
+      <section class="grid-2">
+        <article class="skeleton-panel">
+          <span class="skeleton-line medium"></span>
+          <span class="skeleton-line long"></span>
+          <span class="skeleton-line long"></span>
+          <span class="skeleton-line medium"></span>
+        </article>
+        <article class="skeleton-panel">
+          <span class="skeleton-line short"></span>
+          <span class="skeleton-line long"></span>
+          <span class="skeleton-line medium"></span>
+          <span class="skeleton-line long"></span>
+        </article>
+      </section>
+    </div>
+  `;
+}
+
+function renderEmptyState(stage = "Данных за выбранный период нет") {
+  return `
+    <section class="empty-state" data-loading-state="EMPTY">
+      <span class="badge status-unknown">EMPTY</span>
+      <h3>Данных пока нет</h3>
+      <p class="muted">${ui(stage)}</p>
+    </section>
+  `;
+}
+
+function renderErrorState(error) {
+  const message = error?.message || error?.stack || String(error || "Неизвестная ошибка");
+  return `
+    <section class="error-state" data-loading-state="ERROR">
+      <span class="badge status-fail">ERROR</span>
+      <h3>Ошибка загрузки данных</h3>
+      <p class="muted">Портал не получил актуальные данные. Подробности ниже.</p>
+      <pre>${escapeHtml(message)}</pre>
+    </section>
+  `;
+}
+
+function staleBanner(error) {
+  const message = error?.message || String(error || "ошибка обновления");
+  return `
+    <div class="stale-banner" data-loading-state="STALE">
+      <span class="badge status-warn">STALE</span>
+      <strong>Показаны ранее загруженные данные.</strong>
+      <p class="muted small">Последнее обновление: ${escapeHtml(formatLoadTime(state.load.lastUpdatedAt))}. Новая загрузка не завершилась: ${escapeHtml(message)}</p>
+    </div>
+  `;
+}
+
+function hasTabData(tab, payload) {
+  if (!payload) return false;
+  if (tab === "operator") {
+    const report = payload.report || {};
+    return (Array.isArray(report.kpis) && report.kpis.length > 0)
+      || (Array.isArray(report.executive_points) && report.executive_points.length > 0)
+      || (Array.isArray(payload.data?.workforce) && payload.data.workforce.length > 0);
+  }
+  if (tab === "employees") {
+    return Array.isArray(payload.data?.workforce) && payload.data.workforce.length > 0;
+  }
+  if (tab === "departments") {
+    return Array.isArray(payload.data?.workforce?.department_comparison)
+      && payload.data.workforce.department_comparison.length > 0;
+  }
+  if (tab === "owner" || tab === "perimeter") {
+    return Boolean(payload.data && Object.keys(payload.data).length > 0);
+  }
+  if (tab === "incidents") {
+    return (Array.isArray(payload.data?.incidents) && payload.data.incidents.length > 0)
+      || (Array.isArray(payload.data?.reports?.risk_incident_candidates) && payload.data.reports.risk_incident_candidates.length > 0)
+      || (Array.isArray(payload.data?.cases?.cases) && payload.data.cases.cases.length > 0);
+  }
+  if (tab === "reports" || tab === "settings") return Boolean(payload.data && Object.keys(payload.data).length > 0);
+  return true;
 }
 
 function findKpi(report, needle) {
@@ -2237,40 +2389,68 @@ function renderSettings(report) {
   `;
 }
 
-async function refresh() {
-  if (!state.links) state.links = await loadJson("/links");
-  const summary = await loadJson("/summary");
-  state.readiness = {
-    bundle: await loadJson("/readiness/bundle").catch(error => ({ ok: false, error: error.message })),
-    verify: state.readiness?.verify || null
-  };
-  renderSummary(summary, state.readiness);
+async function refresh(options = {}) {
   const content = document.getElementById("content");
+  const background = Boolean(options.background);
+  const stage = options.stage || "Загрузка данных портала";
+  try {
+    setLoadStatus("LOADING", stage, background ? 35 : 8);
+    if (!background && content) content.innerHTML = renderLoadingContent(stage);
+    if (!state.links) {
+      setLoadStatus("LOADING", "Загрузка ссылок портала", 18);
+      state.links = await loadJson("/links");
+    }
+    setLoadStatus("LOADING", "Загрузка общей сводки", 32);
+    const summary = await loadJson("/summary");
+    setLoadStatus("LOADING", "Проверка готовности системы", 44);
+    state.readiness = {
+      bundle: await loadJson("/readiness/bundle").catch(error => ({ ok: false, error: error.message })),
+      verify: state.readiness?.verify || null
+    };
+    renderSummary(summary, state.readiness);
+    setLoadStatus("LOADING", tabLoadingStage(state.tab), 62);
+    const tabResult = await loadCurrentTab();
+    if (!hasTabData(state.tab, tabResult)) {
+      setLoadStatus("EMPTY", "Данных за выбранный период нет", 100);
+      if (content) {
+        content.innerHTML = `${renderEmptyState("Источники ответили, но полезные записи для текущего раздела пока не найдены.")}${tabResult.html || ""}`;
+      }
+      return;
+    }
+    if (content) content.innerHTML = tabResult.html;
+    setLoadStatus("READY", "Данные загружены", 100);
+    consumePendingScroll();
+  } catch (error) {
+    showError(error);
+  }
+}
+
+async function loadCurrentTab() {
   if (state.tab === "operator") {
     const data = await loadJson("/operator");
     state.reports = await loadJson("/reports").catch(() => state.reports);
-    content.innerHTML = renderOperator(data, state.reports);
     updateFilters(state.reports);
+    return { data, report: state.reports, html: renderOperator(data, state.reports) };
   }
   if (state.tab === "manager") {
     const data = await loadJson("/manager");
     const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
-    content.innerHTML = renderManager(data, policyExplain);
+    return { data, policyExplain, html: renderManager(data, policyExplain) };
   }
   if (state.tab === "departments") {
     const data = await loadJson("/reports");
     state.reports = data;
-    content.innerHTML = renderDepartments(data);
     updateFilters(data);
+    return { data, html: renderDepartments(data) };
   }
   if (state.tab === "employees") {
     const data = await loadJson("/manager");
     const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
-    content.innerHTML = renderEmployees(data, policyExplain);
+    return { data, policyExplain, html: renderEmployees(data, policyExplain) };
   }
   if (state.tab === "owner") {
     const data = await loadJson("/owner");
-    content.innerHTML = renderOwner(data);
+    return { data, html: renderOwner(data) };
   }
   if (state.tab === "incidents") {
     const data = await loadJson("/incidents");
@@ -2278,27 +2458,40 @@ async function refresh() {
     const reports = await loadJson("/reports").catch(() => state.reports || {});
     const cases = await loadJson("/cases").catch(error => ({ ok: false, error: error.message, cases: [] }));
     state.reports = reports;
-    content.innerHTML = renderIncidents({ incidents: data, evidence, reports, cases });
+    return { data: { incidents: data, evidence, reports, cases }, html: renderIncidents({ incidents: data, evidence, reports, cases }) };
   }
   if (state.tab === "perimeter") {
     const data = await loadJson("/owner");
     const reports = await loadJson("/reports").catch(() => state.reports);
     state.reports = reports;
-    content.innerHTML = renderPerimeter(data, reports);
+    return { data, report: reports, html: renderPerimeter(data, reports) };
   }
   if (state.tab === "reports") {
     const data = await loadJson("/reports");
     state.reports = data;
-    content.innerHTML = renderReports(data);
     updateFilters(data);
+    return { data, html: renderReports(data) };
   }
   if (state.tab === "settings") {
     const data = await loadJson("/reports").catch(() => state.reports || {});
     state.reports = data;
-    content.innerHTML = renderSettings(data);
     updateFilters(data);
+    return { data, html: renderSettings(data) };
   }
-  consumePendingScroll();
+  return { data: {}, html: renderEmptyState("Раздел не найден.") };
+}
+
+function tabLoadingStage(tab) {
+  return {
+    operator: "Загрузка связанной картины риска",
+    employees: "Загрузка карточек сотрудников",
+    departments: "Загрузка подразделений",
+    owner: "Загрузка рисков",
+    incidents: "Загрузка расследований",
+    perimeter: "Загрузка сетевого периметра",
+    reports: "Формирование отчетов",
+    settings: "Загрузка параметров расчета",
+  }[tab] || "Загрузка раздела";
 }
 
 function setTab(tab) {
@@ -2307,8 +2500,7 @@ function setTab(tab) {
   document.querySelectorAll(".tab").forEach(btn => {
     btn.classList.toggle("is-active", btn.dataset.tab === tab);
   });
-  document.getElementById("content").innerHTML = `<p class="muted">Загрузка...</p>`;
-  refresh().catch(showError);
+  refresh({ stage: tabLoadingStage(tab) });
 }
 
 function applySecurityMode(tab) {
@@ -2326,7 +2518,22 @@ function consumePendingScroll() {
 }
 
 function showError(error) {
-  document.getElementById("content").innerHTML = `<pre>${escapeHtml(error.stack || error.message || error)}</pre>`;
+  const hasPreviousData = Boolean(state.load.lastUpdatedAt);
+  setLoadStatus(
+    hasPreviousData ? "STALE" : "ERROR",
+    hasPreviousData ? "Не удалось обновить данные" : "Ошибка загрузки данных",
+    hasPreviousData ? 100 : 0,
+    { error: error?.message || String(error) },
+  );
+  const content = document.getElementById("content");
+  if (!content) return;
+  if (hasPreviousData) {
+    if (!content.querySelector("[data-loading-state='STALE']")) {
+      content.insertAdjacentHTML("afterbegin", staleBanner(error));
+    }
+    return;
+  }
+  content.innerHTML = renderErrorState(error);
 }
 
 document.querySelectorAll(".tab").forEach(btn => {
@@ -2335,8 +2542,7 @@ document.querySelectorAll(".tab").forEach(btn => {
 
 document.getElementById("periodFilter")?.addEventListener("change", event => {
   state.period = periodFromSelectValue(event.target.value);
-  document.getElementById("content").innerHTML = `<p class="muted">Обновление периода...</p>`;
-  refresh().catch(showError);
+  refresh({ stage: "Обновление периода отчета" });
 });
 
 document.addEventListener("click", event => {
@@ -2482,7 +2688,7 @@ async function incidentAction(button) {
   }
   button.disabled = true;
   await postJson("/incidents/action", payload);
-  await refresh();
+  await refresh({ stage: "Обновление статуса инцидента" });
 }
 
 async function candidateReviewAction(button) {
@@ -2499,7 +2705,7 @@ async function candidateReviewAction(button) {
     reviewer,
     comment,
   });
-  await refresh();
+  await refresh({ stage: "Обновление проверки кандидата" });
 }
 
 async function createCaseAction(button) {
@@ -2518,7 +2724,7 @@ async function createCaseAction(button) {
     summary,
   });
   state.tab = "incidents";
-  await refresh();
+  await refresh({ stage: "Создание дела и обновление расследований" });
 }
 
 async function caseStatusAction(button) {
@@ -2531,9 +2737,10 @@ async function caseStatusAction(button) {
     status,
     decision,
   });
-  await refresh();
+  await refresh({ stage: "Обновление статуса дела" });
 }
 
 applySecurityMode(state.tab);
-refresh().catch(showError);
-setInterval(() => refresh().catch(showError), 60000);
+renderLoadStatus();
+refresh({ stage: "Первичная загрузка портала" });
+setInterval(() => refresh({ background: true, stage: "Фоновое обновление данных" }), 60000);

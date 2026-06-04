@@ -104,6 +104,18 @@ async function main() {
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout });
     await page.waitForSelector(".tab", { timeout });
+    await page.waitForFunction(
+      () => document.querySelector("#loadingStateText")?.textContent === "READY",
+      null,
+      { timeout },
+    );
+    checks.push({
+      name: "loading_refresh_status_ready",
+      ok:
+        (await page.locator("#loadingStatus").count()) === 1
+        && (await page.locator("#loadingStageText").innerText({ timeout })).includes("Данные загружены")
+        && !(await page.locator("body").innerText({ timeout })).includes("Данные загружаются"),
+    });
     for (const item of expectedTabs) {
       await page.click(`button[data-tab="${item.tab}"]`, { timeout });
       await page.waitForFunction(
