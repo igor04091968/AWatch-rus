@@ -329,6 +329,29 @@ struct BusinessRiskHistorySummary {
     new_high_risk: usize,
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct RiskIncidentCandidate {
+    id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    department: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    owner: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    hostname: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    risk_level: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    evidence: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    first_seen_utc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_seen_utc: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recommendation: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -742,6 +765,7 @@ struct ReportMarkdownContext<'a> {
     business_risk: &'a [BusinessRiskItem],
     business_risk_history: &'a [BusinessRiskHistoryItem],
     business_risk_history_summary: &'a BusinessRiskHistorySummary,
+    risk_incident_candidates: &'a [RiskIncidentCandidate],
 }
 
 fn main() {
@@ -1958,6 +1982,8 @@ fn build_reports(
     let business_risk = build_business_risk(snapshot, &department_items);
     let business_risk_history = build_business_risk_history(snapshot);
     let business_risk_history_summary = summarize_business_risk_history(&business_risk_history);
+    let risk_incident_candidates =
+        build_risk_incident_candidates(snapshot, &business_risk, &business_risk_history);
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
     let workforce_policy_explain =
@@ -2040,6 +2066,14 @@ fn build_reports(
             "Подразделение {department} сохраняет высокий риск несколько дней подряд."
         ));
     }
+    for candidate in risk_incident_candidates.iter().take(3) {
+        executive_points.push(format!(
+            "Кандидат в инцидент {}: {} — {}",
+            candidate.id,
+            candidate.risk_level.as_deref().unwrap_or("UNKNOWN"),
+            candidate.reason.as_deref().unwrap_or("требуется проверка")
+        ));
+    }
     let recommendations = owner_recommendations(snapshot, &summary);
     let workforce_summary = ReportWorkforceSummary {
         departments_count: department_items.len(),
@@ -2060,6 +2094,7 @@ fn build_reports(
             business_risk: &business_risk,
             business_risk_history: &business_risk_history,
             business_risk_history_summary: &business_risk_history_summary,
+            risk_incident_candidates: &risk_incident_candidates,
         },
     );
     json!({
@@ -2150,6 +2185,7 @@ fn build_reports(
         "business_risk": business_risk,
         "business_risk_history": business_risk_history,
         "business_risk_history_summary": business_risk_history_summary,
+        "risk_incident_candidates": risk_incident_candidates,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -2530,6 +2566,225 @@ fn stable_high_risk_departments(history: &[BusinessRiskHistoryItem], limit: usiz
     departments.sort();
     departments.truncate(limit);
     departments
+}
+
+fn build_risk_incident_candidates(
+    snapshot: &Snapshot,
+    risks: &[BusinessRiskItem],
+    history: &[BusinessRiskHistoryItem],
+) -> Vec<RiskIncidentCandidate> {
+    let mut candidates = Vec::new();
+    let problem_nodes_by_host = snapshot
+        .agent_coverage_sla
+        .problem_nodes
+        .iter()
+        .map(|node| (node.hostname.clone(), node))
+        .collect::<BTreeMap<_, _>>();
+
+    candidates.extend(stable_high_risk_candidates(history));
+    candidates.extend(low_trust_risk_candidates(risks, snapshot));
+    candidates.extend(agent_quality_candidates(snapshot, &problem_nodes_by_host));
+    candidates.extend(agent_coverage_candidates(snapshot));
+
+    candidates.sort_by(|left, right| {
+        risk_incident_candidate_rank(right)
+            .cmp(&risk_incident_candidate_rank(left))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+    let mut seen = BTreeSet::new();
+    candidates
+        .into_iter()
+        .filter(|item| seen.insert(item.id.clone()))
+        .collect()
+}
+
+fn stable_high_risk_candidates(history: &[BusinessRiskHistoryItem]) -> Vec<RiskIncidentCandidate> {
+    let mut by_department = BTreeMap::<String, Vec<&BusinessRiskHistoryItem>>::new();
+    for item in history {
+        by_department
+            .entry(item.department.clone())
+            .or_default()
+            .push(item);
+    }
+    by_department
+        .into_iter()
+        .filter_map(|(department, mut items)| {
+            items.sort_by(|left, right| left.date.cmp(&right.date));
+            let streak = latest_high_risk_streak(&items);
+            if streak < 3 {
+                return None;
+            }
+            let streak_items = items.iter().rev().take(streak).collect::<Vec<_>>();
+            let first = streak_items.last()?.date.clone();
+            let last = streak_items.first()?.date.clone();
+            let latest = items.last()?;
+            Some(RiskIncidentCandidate {
+                id: risk_candidate_id("stable-high-risk", &department, latest.risk_level.as_str()),
+                department: Some(department),
+                owner: None,
+                hostname: None,
+                risk_level: Some(latest.risk_level.clone()),
+                reason: Some("подразделение 3+ дня HIGH/CRITICAL".to_string()),
+                evidence: vec![
+                    format!("risk_streak_days={streak}"),
+                    format!("latest_activity_score={}%", latest.activity_score),
+                    format!("latest_reasons={}", risk_reasons_text(&latest.reasons)),
+                ],
+                first_seen_utc: Some(date_to_utc_start(&first)),
+                last_seen_utc: Some(date_to_utc_end(&last)),
+                recommendation: Some(
+                    "Открыть управленческую проверку причин устойчивого высокого риска."
+                        .to_string(),
+                ),
+            })
+        })
+        .collect()
+}
+
+fn low_trust_risk_candidates(
+    risks: &[BusinessRiskItem],
+    snapshot: &Snapshot,
+) -> Vec<RiskIncidentCandidate> {
+    risks
+        .iter()
+        .filter(|item| item.trust_score < 50)
+        .map(|item| RiskIncidentCandidate {
+            id: risk_candidate_id("low-trust", &item.department, &item.risk_level),
+            department: Some(item.department.clone()),
+            owner: None,
+            hostname: None,
+            risk_level: Some(item.risk_level.clone()),
+            reason: Some("trust_score < 50".to_string()),
+            evidence: vec![
+                format!("trust_score={}%", item.trust_score),
+                format!("activity_score={}%", item.activity_score),
+                format!("reasons={}", risk_reasons_text(&item.reasons)),
+            ],
+            first_seen_utc: Some(snapshot.generated_at_utc.clone()),
+            last_seen_utc: Some(snapshot.generated_at_utc.clone()),
+            recommendation: Some(item.recommendation.clone()),
+        })
+        .collect()
+}
+
+fn agent_quality_candidates(
+    snapshot: &Snapshot,
+    problem_nodes_by_host: &BTreeMap<String, &AgentCoverageProblemNode>,
+) -> Vec<RiskIncidentCandidate> {
+    let mut items = Vec::new();
+    for node in &snapshot.agent_quality_nodes {
+        let coverage = problem_nodes_by_host.get(&node.hostname).copied();
+        if !node.kpi_accepted {
+            items.push(RiskIncidentCandidate {
+                id: risk_candidate_id("kpi-not-accepted", &node.hostname, &node.status),
+                department: coverage.map(|item| item.department.clone()),
+                owner: coverage.map(|item| item.owner.clone()),
+                hostname: Some(node.hostname.clone()),
+                risk_level: Some(agent_quality_candidate_level(node)),
+                reason: Some("KPI не принят".to_string()),
+                evidence: vec![
+                    format!("agent_status={}", node.status),
+                    format!("collector_source={}", node.source),
+                    format!("sessions_total={}", node.sessions_total),
+                    format!("rdp_sessions={}", node.rdp_sessions),
+                ],
+                first_seen_utc: Some(node.last_seen_utc.clone()),
+                last_seen_utc: Some(node.last_seen_utc.clone()),
+                recommendation: Some(node.recommendation.clone()),
+            });
+        }
+        if let Some(error) = &node.collector_error {
+            items.push(RiskIncidentCandidate {
+                id: risk_candidate_id("collector-error", &node.hostname, error),
+                department: coverage.map(|item| item.department.clone()),
+                owner: coverage.map(|item| item.owner.clone()),
+                hostname: Some(node.hostname.clone()),
+                risk_level: Some("HIGH".to_string()),
+                reason: Some("collector_error".to_string()),
+                evidence: vec![
+                    format!("collector_error={error}"),
+                    format!("collector_source={}", node.source),
+                    format!("agent_status={}", node.status),
+                ],
+                first_seen_utc: Some(node.last_seen_utc.clone()),
+                last_seen_utc: Some(node.last_seen_utc.clone()),
+                recommendation: Some(
+                    "Проверить журнал агента и восстановить основной сбор.".to_string(),
+                ),
+            });
+        }
+    }
+    items
+}
+
+fn agent_coverage_candidates(snapshot: &Snapshot) -> Vec<RiskIncidentCandidate> {
+    snapshot
+        .agent_coverage_sla
+        .problem_nodes
+        .iter()
+        .filter(|node| matches!(node.status.as_str(), "MISSING" | "STALE"))
+        .map(|node| RiskIncidentCandidate {
+            id: risk_candidate_id("coverage-node", &node.hostname, &node.status),
+            department: Some(node.department.clone()),
+            owner: Some(node.owner.clone()),
+            hostname: Some(node.hostname.clone()),
+            risk_level: Some(if node.status == "MISSING" {
+                "HIGH".to_string()
+            } else {
+                "MEDIUM".to_string()
+            }),
+            reason: Some(format!("{} node", node.status)),
+            evidence: vec![
+                format!("coverage_status={}", node.status),
+                format!("last_seen_utc={}", node.last_seen_utc),
+                format!("sla_status={}", snapshot.agent_coverage_sla.sla_status),
+            ],
+            first_seen_utc: Some(node.last_seen_utc.clone()),
+            last_seen_utc: Some(snapshot.generated_at_utc.clone()),
+            recommendation: Some(node.recommendation.clone()),
+        })
+        .collect()
+}
+
+fn agent_quality_candidate_level(node: &AgentQualityNodeItem) -> String {
+    match node.status.as_str() {
+        "DEGRADED" => "HIGH",
+        "WARNING" => "MEDIUM",
+        "UNKNOWN" => "MEDIUM",
+        _ if !node.kpi_accepted => "MEDIUM",
+        _ => "LOW",
+    }
+    .to_string()
+}
+
+fn risk_incident_candidate_rank(item: &RiskIncidentCandidate) -> u8 {
+    business_risk_rank(item.risk_level.as_deref().unwrap_or("UNKNOWN"))
+}
+
+fn risk_candidate_id(kind: &str, primary: &str, reason: &str) -> String {
+    incident_id("risk-candidate", kind, &format!("{primary}:{reason}"))
+}
+
+fn risk_reasons_text(reasons: &[String]) -> String {
+    if reasons.is_empty() {
+        "нет существенных причин".to_string()
+    } else {
+        reasons.join("; ")
+    }
+}
+
+fn date_to_utc_start(date: &str) -> String {
+    if date.contains('T') {
+        return date.to_string();
+    }
+    format!("{date}T00:00:00Z")
+}
+
+fn date_to_utc_end(date: &str) -> String {
+    if date.contains('T') {
+        return date.to_string();
+    }
+    format!("{date}T23:59:59Z")
 }
 
 fn latest_high_risk_streak(items: &[&BusinessRiskHistoryItem]) -> usize {
@@ -4040,6 +4295,7 @@ fn render_report_markdown(
         context.business_risk_history,
         context.business_risk_history_summary,
     );
+    append_risk_incident_candidates_markdown(&mut text, context.risk_incident_candidates);
     append_ueba_risk_markdown(&mut text, context.ueba_risk);
     append_workforce_policy_markdown(&mut text, context.workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
@@ -4257,6 +4513,43 @@ fn append_business_risk_history_markdown(
             item.trust_score,
             item.activity_score,
             reasons
+        ));
+    }
+}
+
+fn append_risk_incident_candidates_markdown(
+    text: &mut String,
+    candidates: &[RiskIncidentCandidate],
+) {
+    text.push_str("\n## Кандидаты в инциденты\n\n");
+    if candidates.is_empty() {
+        text.push_str("- Кандидаты для ручной проверки не найдены.\n");
+        return;
+    }
+    text.push_str("- Важно: кандидаты не являются автоматически созданными инцидентами; требуется ручная проверка.\n");
+    for item in candidates.iter().take(10) {
+        let evidence = if item.evidence.is_empty() {
+            "нет evidence".to_string()
+        } else {
+            item.evidence.join("; ")
+        };
+        text.push_str(&format!(
+            "- {}: department={}, owner={}, host={}, level={}, reason={}, first_seen={}, last_seen={}\n",
+            item.id,
+            item.department.as_deref().unwrap_or("-"),
+            item.owner.as_deref().unwrap_or("-"),
+            item.hostname.as_deref().unwrap_or("-"),
+            item.risk_level.as_deref().unwrap_or("UNKNOWN"),
+            item.reason.as_deref().unwrap_or("требуется проверка"),
+            item.first_seen_utc.as_deref().unwrap_or("-"),
+            item.last_seen_utc.as_deref().unwrap_or("-")
+        ));
+        text.push_str(&format!("  - evidence: {evidence}\n"));
+        text.push_str(&format!(
+            "  - рекомендация: {}\n",
+            item.recommendation
+                .as_deref()
+                .unwrap_or("Назначить ответственную ручную проверку.")
         ));
     }
 }
@@ -6723,6 +7016,17 @@ mod tests {
             stable_high_risk_departments(&history, 3),
             vec!["Продажи".to_string()]
         );
+        let stable_candidates = stable_high_risk_candidates(&history);
+        assert_eq!(stable_candidates.len(), 1);
+        assert_eq!(stable_candidates[0].department.as_deref(), Some("Продажи"));
+        assert_eq!(stable_candidates[0].risk_level.as_deref(), Some("CRITICAL"));
+        assert!(
+            stable_candidates[0]
+                .reason
+                .as_deref()
+                .unwrap()
+                .contains("3+ дня")
+        );
     }
 
     #[test]
@@ -7225,6 +7529,26 @@ mod tests {
             report["business_risk_history_summary"]["stable_high_risk"],
             0
         );
+        assert!(report["risk_incident_candidates"].is_array());
+        assert_eq!(
+            report["risk_incident_candidates"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(
+            report["risk_incident_candidates"][0]["hostname"],
+            "HOST-EXAMPLE-DEGRADED"
+        );
+        assert_eq!(
+            report["risk_incident_candidates"][0]["reason"],
+            "KPI не принят"
+        );
+        assert!(
+            report["risk_incident_candidates"][0]["evidence"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item.as_str().unwrap().contains("collector_source"))
+        );
         assert!(
             report["executive_points"]
                 .as_array()
@@ -7238,6 +7562,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|item| item.as_str().unwrap().contains("причина:"))
+        );
+        assert!(
+            report["executive_points"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item.as_str().unwrap().contains("Кандидат в инцидент"))
         );
         assert!(
             report["markdown"]
@@ -7262,6 +7593,12 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("## Динамика бизнес-рисков")
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Кандидаты в инциденты")
         );
         assert!(report["markdown"].as_str().unwrap().contains("причины:"));
         assert!(

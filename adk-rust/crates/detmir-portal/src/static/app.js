@@ -831,6 +831,7 @@ function renderOperator(data, report) {
     ${renderAgentCoverageSla(report?.agent_coverage_sla)}
     ${renderBusinessRisk(report?.business_risk)}
     ${renderBusinessRiskTimeline(report?.business_risk_history, report?.business_risk_history_summary)}
+    ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1714,6 +1715,71 @@ function renderBusinessRiskTimeline(history, summary) {
   `;
 }
 
+function renderRiskIncidentCandidates(items) {
+  const rows = Array.isArray(items) ? items.slice(0, 10) : [];
+  const worst = rows[0]?.risk_level || "UNKNOWN";
+  return `
+    <section class="card risk-candidates-card">
+      <div class="section-head">
+        <div>
+          <h3>Кандидаты в инциденты</h3>
+          <p class="muted">Read-only очередь ручной проверки. Реальные инциденты автоматически не создаются.</p>
+        </div>
+        <span class="badge ${statusClass(worst)}">${ui(worst)}</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Подразделение</th>
+              <th>Узел</th>
+              <th>Риск</th>
+              <th>Причина</th>
+              <th>Рекомендация</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr>
+                <td><code>${ui(item.id || "-")}</code></td>
+                <td>${ui(item.department || "-")}<br><span class="muted small">${ui(item.owner || "ответственный не указан")}</span></td>
+                <td>${ui(item.hostname || "-")}<br><span class="muted small">${ui(candidateSeenText(item))}</span></td>
+                <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
+                <td>${ui(candidateReasonText(item))}</td>
+                <td>${ui(item.recommendation || "Назначить ответственную ручную проверку.")}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>-</td>
+                <td>Нет кандидатов</td>
+                <td>-</td>
+                <td><span class="badge status-ok">OK</span></td>
+                <td>очередь проверки пуста</td>
+                <td>Действий не требуется.</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+      ${rows.length ? `<p class="muted small">Показаны кандидаты для проверки, а не автоматически подтвержденные инциденты.</p>` : ""}
+    </section>
+  `;
+}
+
+function candidateReasonText(item) {
+  const evidence = Array.isArray(item?.evidence) && item.evidence.length
+    ? ` Evidence: ${item.evidence.join("; ")}`
+    : "";
+  return `${item?.reason || "требуется проверка"}.${evidence}`;
+}
+
+function candidateSeenText(item) {
+  const first = item?.first_seen_utc || "-";
+  const last = item?.last_seen_utc || "-";
+  return `первое: ${first}; последнее: ${last}`;
+}
+
 function businessTrendText(value) {
   const trend = String(value || "UNKNOWN").toUpperCase();
   if (trend === "FALLING") return "падает";
@@ -1762,6 +1828,7 @@ function renderReports(data) {
     ${renderAgentCoverageSla(data.agent_coverage_sla)}
     ${renderBusinessRisk(data.business_risk)}
     ${renderBusinessRiskTimeline(data.business_risk_history, data.business_risk_history_summary)}
+    ${renderRiskIncidentCandidates(data.risk_incident_candidates)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>
