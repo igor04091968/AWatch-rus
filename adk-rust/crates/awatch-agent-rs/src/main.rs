@@ -101,7 +101,7 @@ fn run() -> Result<i32> {
         }
         if !cli.print_json {
             if let Some(publisher) = aw_worktime.as_ref() {
-                if let Err(err) = publisher.publish(&record) {
+                if let Err(err) = publisher.publish_or_spool(&record) {
                     eprintln!("{err:#}");
                 }
             }

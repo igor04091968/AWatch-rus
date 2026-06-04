@@ -82,6 +82,12 @@ while ($true) {
             if ($collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { $startFileOps = [bool]$collectors.fileOpsEnabled }
             if ($collectors.PSObject.Properties.Name -contains 'emailEnabled')   { $startEmail   = [bool]$collectors.emailEnabled }
             if ($collectors.PSObject.Properties.Name -contains 'worktimeSessionEnabled') { $startWorktime = [bool]$collectors.worktimeSessionEnabled }
+            $worktimeSessionMode = if ($collectors.PSObject.Properties.Name -contains 'worktimeSessionMode') { [string]$collectors.worktimeSessionMode } else { 'powershell_primary' }
+            $worktimeLegacyFallbackEnabled = if ($collectors.PSObject.Properties.Name -contains 'worktimeLegacyFallbackEnabled') { [bool]$collectors.worktimeLegacyFallbackEnabled } else { $true }
+            if ($worktimeSessionMode -ieq 'rust_primary') {
+                $rustAgentRunning = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'awatch-agent-rs.exe' }).Count -gt 0
+                $startWorktime = $worktimeLegacyFallbackEnabled -and (-not $rustAgentRunning)
+            }
         }
         if ($isSession0) {
             $startBrowser = $false

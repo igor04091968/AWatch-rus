@@ -996,6 +996,8 @@ function New-ActivityWatchDeploymentConfig {
             fileOpsEnabled = $FileOpsEnabled
             emailEnabled = $false
             worktimeSessionEnabled = $true
+            worktimeSessionMode = 'powershell_primary'
+            worktimeLegacyFallbackEnabled = $true
         }
         logging = [pscustomobject]@{
             localAgentLogsEnabled = $LocalAgentLogsEnabled
@@ -2035,7 +2037,11 @@ function Invoke-ActivityWatchRecoveryLoop {
                 $stateRoot = [string]$config.paths.stateRoot
                 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
                 $worktimeSessionEnabled = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeSessionEnabled') { [bool]$config.collectors.worktimeSessionEnabled } else { $true }
-                if ($worktimeSessionEnabled) {
+                $worktimeSessionMode = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeSessionMode') { [string]$config.collectors.worktimeSessionMode } else { 'powershell_primary' }
+                $worktimeLegacyFallbackEnabled = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeLegacyFallbackEnabled') { [bool]$config.collectors.worktimeLegacyFallbackEnabled } else { $true }
+                $rustAgentRunning = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'awatch-agent-rs.exe' }).Count -gt 0
+                $allowPowerShellWorktime = $worktimeSessionEnabled -and ($worktimeSessionMode -ine 'rust_primary' -or ($worktimeLegacyFallbackEnabled -and -not $rustAgentRunning))
+                if ($allowPowerShellWorktime) {
                     Start-ActivityWatchCollectorScriptGlobalIfNeeded -ScriptPath $sessionCollectorScript -ConfigPath $ConfigPath
                 }
 

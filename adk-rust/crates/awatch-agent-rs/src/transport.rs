@@ -99,7 +99,9 @@ impl TelemetryTransport {
 #[derive(Debug, Clone)]
 pub struct AwWorktimePublisher {
     aw_api_base: String,
+    spool_dir: PathBuf,
     timeout: Duration,
+    retry_attempts: u32,
 }
 
 impl AwWorktimePublisher {
@@ -117,8 +119,23 @@ impl AwWorktimePublisher {
         }
         Some(Self {
             aw_api_base,
+            spool_dir: config.spool_dir.join("aw-worktime"),
             timeout: Duration::from_secs(config.timeout_seconds),
+            retry_attempts: config.retry_attempts,
         })
+    }
+
+    pub fn publish_or_spool(&self, record: &TelemetryRecord) -> Result<()> {
+        if let Err(err) = self.flush_spool() {
+            eprintln!("ActivityWatch worktime spool flush failed: {err:#}");
+        }
+        match self.publish(record) {
+            Ok(_) => Ok(()),
+            Err(err) => {
+                self.spool(record)?;
+                Err(err)
+            }
+        }
     }
 
     pub fn publish(&self, record: &TelemetryRecord) -> Result<usize> {
@@ -143,6 +160,7 @@ impl AwWorktimePublisher {
                 session_id: "0".to_string(),
                 username: record.username.clone(),
                 session_type: "local".to_string(),
+                session_source: Some("local_fallback".to_string()),
                 remote_addr: None,
                 started_at: None,
                 active: true,
@@ -161,26 +179,51 @@ impl AwWorktimePublisher {
                     "userId": format!("{}\\{}", record.hostname, session.username),
                     "sessionId": session_id_number(&session),
                     "sessionName": session.session_type,
+                    "sessionSource": session.session_source,
                     "state": if session.active { "Active" } else { "Disconnected" },
                     "active": session.active,
                     "sampleSeconds": sample_seconds,
                     "pollSeconds": sample_seconds,
                     "hostname": record.hostname,
-                    "source": "awatch-agent-rs"
+                    "source": "awatch-agent-rs",
+                    "collectorSource": record.diagnostics.collector_source,
+                    "sessionsCollectedTotal": record.diagnostics.sessions_collected_total,
+                    "rdpSessionsTotal": record.diagnostics.rdp_sessions_total,
+                    "activeSessionsTotal": record.diagnostics.active_sessions_total,
+                    "collectorError": record.diagnostics.collector_error,
                 }
             });
-            client
-                .post(format!(
+            post_json_with_retry(
+                &client,
+                &format!(
                     "{}/buckets/{}/heartbeat?pulsetime=180",
                     self.aw_api_base, bucket_id
-                ))
-                .json(&payload)
-                .send()
-                .and_then(|response| response.error_for_status())
-                .context("publish ActivityWatch worktime heartbeat")?;
+                ),
+                &payload,
+                self.retry_attempts,
+            )
+            .context("publish ActivityWatch worktime heartbeat")?;
             sent += 1;
         }
         Ok(sent)
+    }
+
+    pub fn spool(&self, record: &TelemetryRecord) -> Result<PathBuf> {
+        fs::create_dir_all(&self.spool_dir)
+            .with_context(|| format!("create worktime spool {}", self.spool_dir.display()))?;
+        let file_name = format!(
+            "{}-{}.json",
+            record.timestamp.format("%Y%m%dT%H%M%S%.3fZ"),
+            sanitize_file_part(&record.agent_id)
+        );
+        let path = self.spool_dir.join(file_name);
+        fs::write(&path, serde_json::to_vec(record)?)
+            .with_context(|| format!("write worktime spool {}", path.display()))?;
+        Ok(path)
+    }
+
+    pub fn flush_spool(&self) -> Result<usize> {
+        flush_spool_dir(&self.spool_dir, |record| self.publish(record).map(|_| ()))
     }
 }
 
@@ -206,13 +249,40 @@ fn ensure_aw_bucket(
         "type": bucket_type,
         "hostname": hostname,
     });
-    client
-        .post(&bucket_url)
-        .json(&body)
-        .send()
-        .and_then(|response| response.error_for_status())
+    post_json_with_retry(client, &bucket_url, &body, 3)
         .context("create ActivityWatch worktime bucket")?;
     Ok(())
+}
+
+fn post_json_with_retry(
+    client: &Client,
+    url: &str,
+    payload: &serde_json::Value,
+    retry_attempts: u32,
+) -> Result<()> {
+    let mut last_error = None;
+    for attempt in 0..retry_attempts.max(1) {
+        let result = client
+            .post(url)
+            .json(payload)
+            .send()
+            .and_then(|response| response.error_for_status())
+            .map(|_| ());
+        match result {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                last_error = Some(err);
+                let backoff = Duration::from_millis(250 * u64::from(attempt + 1));
+                thread::sleep(backoff);
+            }
+        }
+    }
+    Err(anyhow!(
+        "HTTP POST failed: {}",
+        last_error
+            .map(|err| err.to_string())
+            .unwrap_or_else(|| "unknown error".to_string())
+    ))
 }
 
 fn session_id_number(session: &SessionInfo) -> i64 {
@@ -295,7 +365,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::telemetry::{TelemetryRecord, empty_workforce_activity};
+    use crate::telemetry::{TelemetryRecord, diagnostics_for_sessions, empty_workforce_activity};
 
     fn record() -> TelemetryRecord {
         TelemetryRecord {
@@ -319,6 +389,7 @@ mod tests {
             network_connections: Vec::new(),
             workforce_activity: empty_workforce_activity(),
             security_events: Vec::new(),
+            diagnostics: diagnostics_for_sessions(&[], &[], "test", None),
             collector_version: "test".to_string(),
         }
     }
@@ -350,10 +421,31 @@ mod tests {
             session_id: "rdp-12-user".to_string(),
             username: "user".to_string(),
             session_type: "rdp".to_string(),
+            session_source: Some("wts_api".to_string()),
             remote_addr: None,
             started_at: None,
             active: true,
         };
         assert_eq!(session_id_number(&session), 12);
+    }
+
+    #[test]
+    fn worktime_publisher_is_disabled_by_default() {
+        assert!(AwWorktimePublisher::new(&AgentConfig::default()).is_none());
+    }
+
+    #[test]
+    fn worktime_publisher_spools_to_separate_dir() {
+        let dir = tempdir().unwrap();
+        let config = AgentConfig {
+            aw_api_base: Some("http://127.0.0.1:9/api/0".to_string()),
+            aw_worktime_enabled: true,
+            spool_dir: dir.path().to_path_buf(),
+            ..AgentConfig::default()
+        };
+        let publisher = AwWorktimePublisher::new(&config).unwrap();
+        let path = publisher.spool(&record()).unwrap();
+        assert!(path.starts_with(dir.path().join("aw-worktime")));
+        assert!(path.is_file());
     }
 }

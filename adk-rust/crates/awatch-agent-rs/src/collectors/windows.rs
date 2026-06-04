@@ -8,8 +8,8 @@ use crate::collectors::common::{
 use crate::config::AgentRole;
 use crate::telemetry::{
     IdentityInfo, NetworkConnectionInfo, NetworkSnapshot, ProcessInfo, ResourceInfo,
-    SecurityEventInfo, SessionSnapshot, TelemetryCollector, WorkforceActivityInfo,
-    empty_workforce_activity,
+    SecurityEventInfo, SessionSnapshot, TelemetryCollector, WorkforceActivityInfo, dedupe_sessions,
+    diagnostics_for_sessions, empty_workforce_activity,
 };
 
 #[derive(Debug, Clone)]
@@ -38,10 +38,27 @@ impl TelemetryCollector for WindowsCollector {
     }
 
     fn collect_sessions(&self) -> Result<SessionSnapshot> {
-        let mut active = windows_query_user_sessions();
-        if active.is_empty() {
-            active.push(current_session("local"));
+        let host = hostname();
+        let mut collection = windows_query_user_sessions();
+        if collection.sessions.is_empty()
+            && std::env::var("SESSIONNAME")
+                .unwrap_or_default()
+                .to_ascii_lowercase()
+                .contains("rdp")
+        {
+            let mut session = current_session("rdp");
+            session.session_source = Some("env_sessionname_fallback".to_string());
+            collection.sessions.push(session);
+            collection.source = "env_sessionname_fallback".to_string();
         }
+        if collection.sessions.is_empty() {
+            let mut session = current_session("local");
+            session.session_source = Some("local_fallback".to_string());
+            collection.sessions.push(session);
+            collection.source = "local_fallback".to_string();
+            collection.error = Some("WTS API and quser did not return sessions".to_string());
+        }
+        let mut active = dedupe_sessions(&host, collection.sessions);
         let mut rdp = active
             .iter()
             .filter(|session| session.session_type == "rdp")
@@ -52,16 +69,26 @@ impl TelemetryCollector for WindowsCollector {
             .to_ascii_lowercase()
             .contains("rdp")
         {
-            let session = current_session("rdp");
-            if !rdp.iter().any(|item| item.username == session.username) {
-                rdp.push(session.clone());
-                active.push(session);
-            }
+            let mut merged = active.clone();
+            merged.push(with_session_source(
+                current_session("rdp"),
+                "env_sessionname_fallback",
+            ));
+            active = dedupe_sessions(&host, merged);
+            rdp = active
+                .iter()
+                .filter(|session| session.session_type == "rdp")
+                .cloned()
+                .collect::<Vec<_>>();
         }
+        rdp = dedupe_sessions(&host, rdp);
+        let diagnostics =
+            diagnostics_for_sessions(&active, &rdp, collection.source, collection.error);
         Ok(SessionSnapshot {
             active_sessions: active,
             rdp_sessions: rdp,
             ssh_sessions: Vec::new(),
+            diagnostics,
         })
     }
 
@@ -115,19 +142,65 @@ fn windows_version() -> String {
         .unwrap_or_else(|| "Windows".to_string())
 }
 
-fn windows_query_user_sessions() -> Vec<crate::telemetry::SessionInfo> {
+#[derive(Debug)]
+struct SessionCollection {
+    sessions: Vec<crate::telemetry::SessionInfo>,
+    source: String,
+    error: Option<String>,
+}
+
+fn with_session_source(
+    mut session: crate::telemetry::SessionInfo,
+    source: &str,
+) -> crate::telemetry::SessionInfo {
+    session.session_source = Some(source.to_string());
+    session
+}
+
+fn windows_query_user_sessions() -> SessionCollection {
     let native = windows_wts_sessions();
     if !native.is_empty() {
-        return native;
+        return SessionCollection {
+            sessions: native,
+            source: "wts_api".to_string(),
+            error: None,
+        };
     }
-    let raw = command_output_utf16le("cmd", &["/U", "/C", "query user"])
+    if let Some(raw) = command_output_utf16le("cmd", &["/U", "/C", "query user"])
         .or_else(|| command_output_utf16le("cmd", &["/U", "/C", "quser"]))
-        .or_else(|| command_output_lossy_combined("cmd", &["/C", "query user"]))
+    {
+        let sessions = parse_query_user_sessions(&raw, "quser_utf16");
+        if !sessions.is_empty() {
+            return SessionCollection {
+                sessions,
+                source: "quser_utf16".to_string(),
+                error: None,
+            };
+        }
+    }
+    if let Some(raw) = command_output_lossy_combined("cmd", &["/C", "query user"])
         .or_else(|| command_output_lossy_combined("cmd", &["/C", "quser"]))
-        .unwrap_or_default();
+    {
+        let sessions = parse_query_user_sessions(&raw, "quser_lossy");
+        if !sessions.is_empty() {
+            return SessionCollection {
+                sessions,
+                source: "quser_lossy".to_string(),
+                error: None,
+            };
+        }
+    }
+    SessionCollection {
+        sessions: Vec::new(),
+        source: "local_fallback".to_string(),
+        error: Some("WTS API and quser returned no sessions".to_string()),
+    }
+}
+
+fn parse_query_user_sessions(raw: &str, source: &str) -> Vec<crate::telemetry::SessionInfo> {
     raw.lines()
         .skip(1)
-        .filter_map(parse_query_user_line)
+        .filter_map(|line| parse_query_user_line(line, source))
         .collect()
 }
 
@@ -173,6 +246,7 @@ fn windows_wts_sessions() -> Vec<crate::telemetry::SessionInfo> {
             session_id: session.SessionId.to_string(),
             username,
             session_type: session_type.to_string(),
+            session_source: Some("wts_api".to_string()),
             remote_addr: None,
             started_at: None,
             active: state == WTSActive,
@@ -267,7 +341,7 @@ fn command_output_lossy_combined(program: &str, args: &[&str]) -> Option<String>
     Some(String::from_utf8_lossy(&bytes).trim().to_string()).filter(|value| !value.is_empty())
 }
 
-fn parse_query_user_line(line: &str) -> Option<crate::telemetry::SessionInfo> {
+fn parse_query_user_line(line: &str, source: &str) -> Option<crate::telemetry::SessionInfo> {
     let cleaned = line.trim().trim_start_matches('>').trim();
     if cleaned.is_empty() {
         return None;
@@ -296,6 +370,7 @@ fn parse_query_user_line(line: &str) -> Option<crate::telemetry::SessionInfo> {
         session_id: session_id.to_string(),
         username,
         session_type: session_type.to_string(),
+        session_source: Some(source.to_string()),
         remote_addr: None,
         started_at: None,
         active,
@@ -431,20 +506,26 @@ mod tests {
 
     #[test]
     fn parses_query_user_line_with_rdp_session() {
-        let session =
-            parse_query_user_line(" user1                 rdp-tcp#5           3  Active").unwrap();
+        let session = parse_query_user_line(
+            " user1                 rdp-tcp#5           3  Active",
+            "quser_utf16",
+        )
+        .unwrap();
         assert_eq!(session.username, "user1");
         assert_eq!(session.session_id, "3");
         assert_eq!(session.session_type, "rdp");
+        assert_eq!(session.session_source.as_deref(), Some("quser_utf16"));
         assert!(session.active);
     }
 
     #[test]
     fn parses_query_user_line_without_session_name() {
-        let session = parse_query_user_line(" user2                 4  Disc").unwrap();
+        let session =
+            parse_query_user_line(" user2                 4  Disc", "quser_lossy").unwrap();
         assert_eq!(session.username, "user2");
         assert_eq!(session.session_id, "4");
         assert_eq!(session.session_type, "local");
+        assert_eq!(session.session_source.as_deref(), Some("quser_lossy"));
         assert!(!session.active);
     }
 

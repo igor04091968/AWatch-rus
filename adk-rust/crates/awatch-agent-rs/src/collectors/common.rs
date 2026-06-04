@@ -63,6 +63,7 @@ pub fn current_session(session_type: &str) -> SessionInfo {
         session_id: format!("{}-{}", session_type, username()),
         username: username(),
         session_type: session_type.to_string(),
+        session_source: Some("env_sessionname_fallback".to_string()),
         remote_addr: std::env::var("SSH_CLIENT")
             .ok()
             .and_then(|value| value.split_whitespace().next().map(str::to_string)),

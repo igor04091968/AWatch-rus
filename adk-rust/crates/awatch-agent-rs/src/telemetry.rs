@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 pub const COLLECTOR_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -26,6 +27,7 @@ pub struct TelemetryRecord {
     pub network_connections: Vec<NetworkConnectionInfo>,
     pub workforce_activity: WorkforceActivityInfo,
     pub security_events: Vec<SecurityEventInfo>,
+    pub diagnostics: AgentDiagnostics,
     pub collector_version: String,
 }
 
@@ -53,9 +55,21 @@ pub struct SessionInfo {
     pub session_id: String,
     pub username: String,
     pub session_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_source: Option<String>,
     pub remote_addr: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub active: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct AgentDiagnostics {
+    pub sessions_collected_total: usize,
+    pub rdp_sessions_total: usize,
+    pub active_sessions_total: usize,
+    pub collector_source: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub collector_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -117,6 +131,7 @@ pub struct SessionSnapshot {
     pub active_sessions: Vec<SessionInfo>,
     pub rdp_sessions: Vec<SessionInfo>,
     pub ssh_sessions: Vec<SessionInfo>,
+    pub diagnostics: AgentDiagnostics,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -160,9 +175,41 @@ pub trait TelemetryCollector {
             network_connections: network.connections,
             workforce_activity: self.collect_workforce_activity()?,
             security_events: self.collect_security_events()?,
+            diagnostics: sessions.diagnostics,
             collector_version: COLLECTOR_VERSION.to_string(),
         })
     }
+}
+
+pub fn diagnostics_for_sessions(
+    active_sessions: &[SessionInfo],
+    rdp_sessions: &[SessionInfo],
+    collector_source: impl Into<String>,
+    collector_error: Option<String>,
+) -> AgentDiagnostics {
+    AgentDiagnostics {
+        sessions_collected_total: active_sessions.len(),
+        rdp_sessions_total: rdp_sessions.len(),
+        active_sessions_total: active_sessions
+            .iter()
+            .filter(|session| session.active)
+            .count(),
+        collector_source: collector_source.into(),
+        collector_error,
+    }
+}
+
+pub fn dedupe_sessions(hostname: &str, sessions: Vec<SessionInfo>) -> Vec<SessionInfo> {
+    let mut seen = BTreeSet::new();
+    sessions
+        .into_iter()
+        .filter(|session| {
+            seen.insert(format!(
+                "{}\u{1f}{}\u{1f}{}\u{1f}{}",
+                hostname, session.username, session.session_id, session.session_type
+            ))
+        })
+        .collect()
 }
 
 pub fn empty_workforce_activity() -> WorkforceActivityInfo {
@@ -204,11 +251,28 @@ mod tests {
             network_connections: Vec::new(),
             workforce_activity: empty_workforce_activity(),
             security_events: Vec::new(),
+            diagnostics: diagnostics_for_sessions(&[], &[], "test", None),
             collector_version: COLLECTOR_VERSION.to_string(),
         };
         let value = serde_json::to_value(record).unwrap();
         assert_eq!(value["agent_id"], "agent-1");
         assert!(value.get("network_connections").unwrap().is_array());
         assert!(value.get("workforce_activity").is_some());
+        assert_eq!(value["diagnostics"]["collector_source"], "test");
+    }
+
+    #[test]
+    fn deduplicates_sessions_by_host_user_id_and_type() {
+        let session = SessionInfo {
+            session_id: "2".to_string(),
+            username: "user".to_string(),
+            session_type: "rdp".to_string(),
+            session_source: Some("wts_api".to_string()),
+            remote_addr: None,
+            started_at: None,
+            active: true,
+        };
+        let deduped = dedupe_sessions("HOST-EXAMPLE", vec![session.clone(), session]);
+        assert_eq!(deduped.len(), 1);
     }
 }

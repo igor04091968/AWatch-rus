@@ -489,9 +489,15 @@ function Invoke-GuardCycle {
     $worktimeAge = $bucketChecks["aw-worktime-sessions_$hostname"].ageSeconds
     $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
     $worktimeSessionEnabled = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeSessionEnabled') { [bool]$config.collectors.worktimeSessionEnabled } else { $true }
-    $sessionCollectorRunning = $worktimeSessionEnabled -and (Test-ActivityWatchCollectorRunningGlobal -ScriptPath $sessionCollectorScript)
+    $worktimeSessionMode = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeSessionMode') { [string]$config.collectors.worktimeSessionMode } else { 'powershell_primary' }
+    $worktimeLegacyFallbackEnabled = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'worktimeLegacyFallbackEnabled') { [bool]$config.collectors.worktimeLegacyFallbackEnabled } else { $true }
+    $rustAgentRunning = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'awatch-agent-rs.exe' }).Count -gt 0
+    $rustPrimary = $worktimeSessionMode -ieq 'rust_primary'
+    $rustWorktimeStale = ($null -eq $worktimeAge -or [int]$worktimeAge -gt $HeadlessMaxAgeSeconds)
+    $allowPowerShellWorktime = $worktimeSessionEnabled -and (-not $rustPrimary -or ($worktimeLegacyFallbackEnabled -and (-not $rustAgentRunning -or $rustWorktimeStale)))
+    $sessionCollectorRunning = $allowPowerShellWorktime -and (Test-ActivityWatchCollectorRunningGlobal -ScriptPath $sessionCollectorScript)
     $headlessKey = 'headless:worktime-session'
-    $needsHeadlessAction = $worktimeSessionEnabled -and (-not $sessionCollectorRunning -or $null -eq $worktimeAge -or [int]$worktimeAge -gt $HeadlessMaxAgeSeconds)
+    $needsHeadlessAction = $allowPowerShellWorktime -and (-not $sessionCollectorRunning -or $rustWorktimeStale)
     if ($needsHeadlessAction) {
         $key = $headlessKey
         $allowed = Test-ActionAllowed -Runtime $Runtime -Key $key -CooldownSeconds $ActionCooldownSeconds -WindowSeconds $RestartWindowSeconds -MaxCount $MaxRestarts

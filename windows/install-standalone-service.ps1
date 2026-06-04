@@ -95,6 +95,8 @@ $config = [pscustomobject]@{
         fileOpsEnabled = $true
         emailEnabled = $true
         worktimeSessionEnabled = $true
+        worktimeSessionMode = 'powershell_primary'
+        worktimeLegacyFallbackEnabled = $true
     }
     logging = [pscustomobject]@{
         localAgentLogsEnabled = $true

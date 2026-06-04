@@ -179,6 +179,8 @@ $report = [ordered]@{
         windowEnabled = $WindowEnabled
         fileOpsEnabled = $FileOpsEnabled
         worktimeSessionEnabled = $true
+        worktimeSessionMode = 'powershell_primary'
+        worktimeLegacyFallbackEnabled = $true
     }
     hardeningApplied = (-not $SkipHardening)
 }

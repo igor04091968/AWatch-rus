@@ -12,7 +12,7 @@ use crate::config::AgentRole;
 use crate::telemetry::{
     IdentityInfo, NetworkConnectionInfo, NetworkInterfaceInfo, NetworkSnapshot, ProcessInfo,
     ResourceInfo, SecurityEventInfo, SessionSnapshot, TelemetryCollector, WorkforceActivityInfo,
-    empty_workforce_activity,
+    dedupe_sessions, diagnostics_for_sessions, empty_workforce_activity,
 };
 
 #[derive(Debug, Clone)]
@@ -49,10 +49,15 @@ impl TelemetryCollector for LinuxCollector {
             ssh.push(session.clone());
             active.push(session);
         }
+        let host = hostname();
+        let active = dedupe_sessions(&host, active);
+        let ssh = dedupe_sessions(&host, ssh);
+        let diagnostics = diagnostics_for_sessions(&active, &[], "env_sessionname_fallback", None);
         Ok(SessionSnapshot {
             active_sessions: active,
             rdp_sessions: Vec::new(),
             ssh_sessions: ssh,
+            diagnostics,
         })
     }
 
