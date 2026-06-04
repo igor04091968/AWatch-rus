@@ -23,9 +23,9 @@ async function postJson(path, payload) {
 
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
-  if (s === "ok" || s === "true" || s === "low" || s === "false_positive" || s === "resolved") return "status-ok";
-  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale" || s === "medium" || s === "in_review" || s === "postponed" || s === "open" || s === "in_progress") return "status-warn";
-  if (s === "degraded" || s === "high" || s === "confirmed" || s === "rejected" || s === "archived") return "status-degraded";
+  if (s === "ok" || s === "true" || s === "normal" || s === "low" || s === "false_positive" || s === "resolved") return "status-ok";
+  if (s === "warn" || s === "warning" || s === "attention" || s === "fallback" || s === "stale" || s === "medium" || s === "in_review" || s === "postponed" || s === "open" || s === "in_progress") return "status-warn";
+  if (s === "degraded" || s === "high" || s === "high_risk" || s === "confirmed" || s === "rejected" || s === "archived") return "status-degraded";
   if (s === "fail" || s === "false" || s === "error" || s === "critical" || s === "missing") return "status-fail";
   return "status-unknown";
 }
@@ -319,6 +319,7 @@ function renderExecutiveDashboard(report) {
   const highRisk = Array.isArray(dashboard.high_risk_departments) ? dashboard.high_risk_departments : [];
   const candidates = Array.isArray(dashboard.critical_candidates) ? dashboard.critical_candidates : [];
   const summary = dashboard.summary || {};
+  const narrativeStatus = summary.risk_narrative_status || executiveDashboardStatus(dashboard);
   return `
     <section class="card executive-dashboard-card">
       <div class="section-head">
@@ -326,7 +327,11 @@ function renderExecutiveDashboard(report) {
           <h3>Сводка руководителя</h3>
           <p class="muted">Что происходит в организации прямо сейчас: доверие к KPI, покрытие, риски, дела и готовность расследований.</p>
         </div>
-        <span class="badge ${statusClass(executiveDashboardStatus(dashboard))}">${ui(dashboard.forensics_readiness || "UNKNOWN")}</span>
+        <span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span>
+      </div>
+      <div class="list compact-list executive-summary-list">
+        <div class="row compact-row"><strong>Главная причина риска</strong><span class="muted">${ui(summary.main_risk_cause || "связанный риск не выражен")}</span><span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span></div>
+        <div class="row compact-row"><strong>Подтверждающие слои</strong><span class="muted">Trust KPI · Agent Coverage · Business Risk · Risk Heatmap · Security Correlation · Incident Candidates · Cases</span><span></span></div>
       </div>
       <div class="quality-grid">
         <div><span class="muted">Trust KPI</span><strong>${ui(optionalPercent(dashboard.trust_kpi_score))}</strong></div>
@@ -337,13 +342,10 @@ function renderExecutiveDashboard(report) {
         <div><span class="muted">Закрыто за 30 дней</span><strong>${ui(dashboard.resolved_cases_30d ?? 0)}</strong></div>
       </div>
       <div class="list compact-list executive-summary-list">
-        <div class="row compact-row"><strong>Главная причина риска</strong><span class="muted">${ui(summary.main_risk_cause || "связанный риск не выражен")}</span><span></span></div>
         <div class="row compact-row"><strong>Главный риск</strong><span class="muted">${ui(summary.main_risk || "нет данных")}</span><span></span></div>
         <div class="row compact-row"><strong>Главное улучшение</strong><span class="muted">${ui(summary.main_improvement || "нет данных")}</span><span></span></div>
         <div class="row compact-row"><strong>Пробел в данных</strong><span class="muted">${ui(summary.main_data_gap || "нет данных")}</span><span></span></div>
       </div>
-      ${highRisk.length ? `<p class="muted small">Риск-подразделения: ${ui(highRisk.slice(0, 5).map(item => `${item.department} (${item.risk_level})`).join("; "))}</p>` : ""}
-      ${candidates.length ? `<p class="muted small">Кандидаты для проверки: ${ui(candidates.slice(0, 5).map(item => `${item.id} (${item.risk_level})`).join("; "))}</p>` : ""}
     </section>
   `;
 }
@@ -1838,7 +1840,9 @@ function renderRiskLayerLinks(links) {
 
 function riskLayerTarget(target) {
   const value = String(target || "");
+  if (value === "risk_heatmap") return { tab: "operator", selector: ".risk-heatmap-card" };
   if (value === "business_risk") return { tab: "operator", selector: "#business-risk-section" };
+  if (value === "security_correlation") return { tab: "operator", selector: ".security-correlation-card" };
   if (value === "incident_candidates") return { tab: "operator", selector: "#risk-candidates-section" };
   if (value === "cases") return { tab: "incidents", selector: "#cases-section" };
   if (value === "agent_coverage") return { tab: "operator", selector: "#agent-coverage-section" };

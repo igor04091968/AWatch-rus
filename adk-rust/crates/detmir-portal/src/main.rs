@@ -517,11 +517,13 @@ struct ExecutiveCandidateSummary {
 
 #[derive(Clone, Debug, Serialize)]
 struct ExecutiveDashboardSummary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    risk_narrative_status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    main_risk_cause: Option<String>,
     main_risk: String,
     main_improvement: String,
     main_data_gap: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    main_risk_cause: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -2378,7 +2380,24 @@ fn build_reports(
     } else {
         "Контур DetMir требует технической проверки"
     };
-    let mut executive_points = vec![
+    let mut executive_points = Vec::new();
+    executive_points.push(format!(
+        "Главный управленческий вывод: {}",
+        executive_dashboard
+            .summary
+            .main_risk_cause
+            .as_deref()
+            .unwrap_or("связанный риск не выражен")
+    ));
+    executive_points.push(format!(
+        "Статус связанной картины риска: {}",
+        executive_dashboard
+            .summary
+            .risk_narrative_status
+            .as_deref()
+            .unwrap_or("NORMAL")
+    ));
+    executive_points.extend([
         format!("Сбор данных: {}. {}", collection.status, collection.text),
         format!(
             "Достоверность данных агента: {}. {}",
@@ -2401,7 +2420,7 @@ fn build_reports(
             "Открытые вопросы: {}, в работе: {}",
             metrics.open_incidents, metrics.acknowledged_incidents
         ),
-    ];
+    ]);
     if agent_quality_history_summary.ok_days < 5 {
         executive_points.push("KPI требует валидации: нестабильный сбор данных агента".to_string());
     }
@@ -2421,46 +2440,11 @@ fn build_reports(
         ),
         _ => {}
     }
-    for item in business_risk.iter().take(3) {
-        if item.risk_level != "LOW" {
-            let reason = item
-                .reasons
-                .first()
-                .cloned()
-                .unwrap_or_else(|| "требуется управленческая проверка".to_string());
-            executive_points.push(format!(
-                "Подразделение {}: {} — причина: {}",
-                item.department, item.risk_level, reason
-            ));
-        }
-    }
     for department in stable_high_risk_departments(&business_risk_history, 3) {
         executive_points.push(format!(
             "Подразделение {department} сохраняет высокий риск несколько дней подряд."
         ));
     }
-    for candidate in risk_incident_candidates.iter().take(3) {
-        executive_points.push(format!(
-            "Кандидат в инцидент {}: {} — {}",
-            candidate.id,
-            candidate.risk_level.as_deref().unwrap_or("UNKNOWN"),
-            candidate.reason.as_deref().unwrap_or("требуется проверка")
-        ));
-    }
-    for item in risk_heatmap
-        .iter()
-        .filter(|item| !matches!(item.heat_level.as_str(), "LOW" | "UNKNOWN"))
-        .take(3)
-    {
-        executive_points.push(format!(
-            "Связанная картина риска: {}",
-            linked_risk_statement(item)
-        ));
-    }
-    executive_points.push(format!(
-        "Главный риск: {}",
-        executive_dashboard.summary.main_risk
-    ));
     executive_points.push(format!(
         "Главное улучшение: {}",
         executive_dashboard.summary.main_improvement
@@ -3060,6 +3044,7 @@ fn build_risk_heatmap(
                 critical_candidates,
             );
             let links = risk_narrative_links(
+                &heat_level,
                 trust_kpi_score,
                 activity_score,
                 agent_coverage_pct,
@@ -3068,6 +3053,7 @@ fn build_risk_heatmap(
                 critical_candidates,
             );
             let summary = risk_heatmap_summary(
+                &heat_level,
                 trust_kpi_score,
                 activity_score,
                 agent_coverage_pct,
@@ -3256,6 +3242,7 @@ fn heatmap_rank(level: &str) -> u8 {
 }
 
 fn risk_narrative_links(
+    heat_level: &str,
     trust_kpi_score: Option<u8>,
     activity_score: Option<u8>,
     agent_coverage_pct: Option<u8>,
@@ -3279,6 +3266,16 @@ fn risk_narrative_links(
             summary: format!("уровень {}", business_risk_level.unwrap_or("UNKNOWN")),
         },
         RiskNarrativeLink {
+            target: "risk_heatmap".to_string(),
+            label: "Карта риска".to_string(),
+            summary: format!("итоговый статус карты: {heat_level}"),
+        },
+        RiskNarrativeLink {
+            target: "security_correlation".to_string(),
+            label: "Корреляция".to_string(),
+            summary: "связь Workforce и Security по подразделению".to_string(),
+        },
+        RiskNarrativeLink {
             target: "incident_candidates".to_string(),
             label: "Кандидаты".to_string(),
             summary: format!("кандидатов высокого риска: {critical_candidates}"),
@@ -3297,6 +3294,7 @@ fn risk_narrative_links(
 }
 
 fn risk_heatmap_summary(
+    heat_level: &str,
     trust_kpi_score: Option<u8>,
     activity_score: Option<u8>,
     agent_coverage_pct: Option<u8>,
@@ -3305,10 +3303,11 @@ fn risk_heatmap_summary(
     critical_candidates: usize,
 ) -> String {
     format!(
-        "Trust {} → Coverage {} → Business Risk {} → Candidates {} → Cases {} → {}",
+        "Trust {} → Coverage {} → Business Risk {} → Risk Heatmap {} → Security Correlation → Candidates {} → Cases {} → {}",
         optional_score_text(trust_kpi_score),
         optional_score_text(agent_coverage_pct),
         business_risk_level.unwrap_or("UNKNOWN"),
+        heat_level,
         critical_candidates,
         open_cases,
         risk_narrative_conclusion(
@@ -3357,21 +3356,6 @@ fn risk_narrative_conclusion(
     } else {
         format!("риск связан из-за {}", reasons.join(", "))
     }
-}
-
-fn linked_risk_statement(item: &RiskHeatmapItem) -> String {
-    format!(
-        "В подразделении {} {}.",
-        item.department,
-        risk_narrative_conclusion(
-            item.trust_kpi_score,
-            item.activity_score,
-            item.agent_coverage_pct,
-            item.business_risk_level.as_deref(),
-            item.open_cases.unwrap_or(0),
-            item.critical_candidates.unwrap_or(0),
-        )
-    )
 }
 
 fn build_security_correlation(heatmap: &[RiskHeatmapItem]) -> Vec<SecurityCorrelationItem> {
@@ -3526,6 +3510,16 @@ fn build_executive_dashboard(
     let resolved_cases_30d = resolved_cases_30d(inputs.cases);
     let forensics_readiness = forensics_readiness(snapshot, inputs.candidates, inputs.evidence);
     let summary = ExecutiveDashboardSummary {
+        risk_narrative_status: Some(risk_narrative_status(
+            inputs.risk_heatmap,
+            inputs.security_correlation,
+            &forensics_readiness,
+        )),
+        main_risk_cause: executive_main_risk_cause(
+            inputs.risk_heatmap,
+            inputs.security_correlation,
+            &forensics_readiness,
+        ),
         main_risk: executive_main_risk(
             &high_risk_departments,
             &critical_candidates,
@@ -3537,11 +3531,6 @@ fn build_executive_dashboard(
             &critical_candidates,
         ),
         main_data_gap: executive_main_data_gap(snapshot, inputs.agent_quality_explain),
-        main_risk_cause: executive_main_risk_cause(
-            inputs.risk_heatmap,
-            inputs.security_correlation,
-            &forensics_readiness,
-        ),
     };
     ExecutiveDashboard {
         trust_kpi_score,
@@ -3673,6 +3662,35 @@ fn executive_main_data_gap(
     "критичных пробелов в данных не выявлено".to_string()
 }
 
+fn risk_narrative_status(
+    risk_heatmap: &[RiskHeatmapItem],
+    security_correlation: &[SecurityCorrelationItem],
+    forensics_readiness: &str,
+) -> String {
+    let worst_heat_rank = risk_heatmap
+        .iter()
+        .map(|item| heatmap_rank(item.heat_level.as_str()))
+        .max()
+        .unwrap_or_else(|| heatmap_rank("UNKNOWN"));
+    let max_correlation = security_correlation
+        .iter()
+        .map(|item| item.correlation_score)
+        .max()
+        .unwrap_or(0);
+    if worst_heat_rank >= heatmap_rank("CRITICAL") || max_correlation >= 85 {
+        "CRITICAL".to_string()
+    } else if worst_heat_rank >= heatmap_rank("HIGH") || max_correlation >= 60 {
+        "HIGH_RISK".to_string()
+    } else if worst_heat_rank >= heatmap_rank("MEDIUM")
+        || max_correlation > 0
+        || !matches!(forensics_readiness, "READY" | "OBSERVE")
+    {
+        "ATTENTION".to_string()
+    } else {
+        "NORMAL".to_string()
+    }
+}
+
 fn executive_main_risk_cause(
     risk_heatmap: &[RiskHeatmapItem],
     security_correlation: &[SecurityCorrelationItem],
@@ -3684,19 +3702,45 @@ fn executive_main_risk_cause(
     let correlation = security_correlation
         .iter()
         .find(|item| item.department == top.department);
-    let mut statement = linked_risk_statement(top);
-    if let Some(item) = correlation.filter(|item| item.correlation_score > 0) {
-        statement.push_str(&format!(
-            " Корреляция Workforce/Security: {}/100, {}.",
-            item.correlation_score, item.correlation_reason
-        ));
-    }
+    let mut statement = risk_narrative_statement(top, correlation);
     if !matches!(forensics_readiness, "READY") {
         statement.push_str(&format!(
             " Готовность Forensics: {forensics_readiness}, доказательная база требует проверки."
         ));
     }
     Some(statement)
+}
+
+fn risk_narrative_statement(
+    item: &RiskHeatmapItem,
+    correlation: Option<&SecurityCorrelationItem>,
+) -> String {
+    let correlation_score = correlation
+        .map(|value| format!("{}/100", value.correlation_score))
+        .unwrap_or_else(|| "0/100".to_string());
+    let correlation_reason = correlation
+        .map(|value| format!(" Причина корреляции: {}.", value.correlation_reason))
+        .unwrap_or_default();
+    format!(
+        "В подразделении {} связаны слои: Trust KPI {}, Agent Coverage {}, Business Risk {}, Risk Heatmap {}, Security Correlation {}, Incident Candidates {}, Cases {}. {}.{}",
+        item.department,
+        optional_score_text(item.trust_kpi_score),
+        optional_score_text(item.agent_coverage_pct),
+        item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+        item.heat_level,
+        correlation_score,
+        item.critical_candidates.unwrap_or(0),
+        item.open_cases.unwrap_or(0),
+        risk_narrative_conclusion(
+            item.trust_kpi_score,
+            item.activity_score,
+            item.agent_coverage_pct,
+            item.business_risk_level.as_deref(),
+            item.open_cases.unwrap_or(0),
+            item.critical_candidates.unwrap_or(0),
+        ),
+        correlation_reason
+    )
 }
 
 fn build_investigation_pack(
@@ -5652,6 +5696,11 @@ fn render_report_markdown(
         text.push_str(&format!("- {item}\n"));
     }
     append_executive_dashboard_markdown(&mut text, context.executive_dashboard);
+    append_linked_risk_narrative_markdown(
+        &mut text,
+        context.risk_heatmap,
+        context.security_correlation,
+    );
     append_agent_quality_markdown(&mut text, &snapshot.agent_quality);
     append_agent_quality_history_markdown(
         &mut text,
@@ -5672,11 +5721,6 @@ fn render_report_markdown(
     );
     append_risk_heatmap_markdown(&mut text, context.risk_heatmap);
     append_security_correlation_markdown(&mut text, context.security_correlation);
-    append_linked_risk_narrative_markdown(
-        &mut text,
-        context.risk_heatmap,
-        context.security_correlation,
-    );
     append_risk_incident_candidates_markdown(&mut text, context.risk_incident_candidates);
     append_incident_review_markdown(&mut text, context.risk_incident_candidates);
     append_incident_review_audit_markdown(
@@ -5692,6 +5736,23 @@ fn render_report_markdown(
 
 fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveDashboard) {
     text.push_str("\n## Сводка руководителя\n\n");
+    text.push_str(&format!(
+        "- Статус связанной картины риска: {}\n",
+        dashboard
+            .summary
+            .risk_narrative_status
+            .as_deref()
+            .unwrap_or("NORMAL")
+    ));
+    text.push_str(&format!(
+        "- Главная причина риска: {}\n",
+        dashboard
+            .summary
+            .main_risk_cause
+            .as_deref()
+            .unwrap_or("связанный риск не выражен")
+    ));
+    text.push_str("- Подтверждающие слои: Trust KPI, Agent Coverage, Business Risk, Risk Heatmap, Security Correlation, Incident Candidates, Cases\n");
     text.push_str(&format!(
         "- Trust KPI: {}\n",
         dashboard
@@ -5736,14 +5797,6 @@ fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveD
             .forensics_readiness
             .as_deref()
             .unwrap_or("UNKNOWN")
-    ));
-    text.push_str(&format!(
-        "- Главная причина риска: {}\n",
-        dashboard
-            .summary
-            .main_risk_cause
-            .as_deref()
-            .unwrap_or("связанный риск не выражен")
     ));
     text.push_str(&format!(
         "- Главный риск: {}\n",
@@ -6043,14 +6096,15 @@ fn append_linked_risk_narrative_markdown(
             .map(|value| format!("{}/100", value.correlation_score))
             .unwrap_or_else(|| "0/100".to_string());
         text.push_str(&format!(
-            "- {} → Trust {} → Coverage {} → Business Risk {} → Candidates {} → Cases {} → Correlation {} → {}\n",
+            "- {} → Trust KPI {} → Agent Coverage {} → Business Risk {} → Risk Heatmap {} → Security Correlation {} → Incident Candidates {} → Cases {} → {}\n",
             item.department,
             optional_score_text(item.trust_kpi_score),
             optional_score_text(item.agent_coverage_pct),
             item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
+            item.heat_level,
+            correlation_text,
             item.critical_candidates.unwrap_or(0),
             item.open_cases.unwrap_or(0),
-            correlation_text,
             item.summary.as_deref().unwrap_or("вывод не сформирован")
         ));
         if let Some(value) = correlation.and_then(|value| value.explanation.as_deref()) {
@@ -9755,6 +9809,27 @@ mod tests {
                 .unwrap()
                 .contains("В подразделении")
         );
+        assert_eq!(
+            report["executive_dashboard"]["summary"]["risk_narrative_status"],
+            "HIGH_RISK"
+        );
+        let main_risk_cause = report["executive_dashboard"]["summary"]["main_risk_cause"]
+            .as_str()
+            .unwrap();
+        for layer in [
+            "Trust KPI",
+            "Agent Coverage",
+            "Risk Heatmap",
+            "Business Risk",
+            "Security Correlation",
+            "Incident Candidates",
+            "Cases",
+        ] {
+            assert!(
+                main_risk_cause.contains(layer),
+                "main_risk_cause must mention {layer}"
+            );
+        }
         assert_eq!(report["business_risk"].as_array().unwrap().len(), 1);
         assert_eq!(report["business_risk"][0]["department"], "Бухгалтерия");
         assert_eq!(report["business_risk"][0]["risk_level"], "MEDIUM");
@@ -9787,11 +9862,31 @@ mod tests {
         assert_eq!(report["risk_heatmap"][0]["trust_kpi_score"], 50);
         assert_eq!(report["risk_heatmap"][0]["activity_score"], 50);
         assert!(report["risk_heatmap"][0]["links"].is_array());
+        let heatmap_link_targets = report["risk_heatmap"][0]["links"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|item| item["target"].as_str())
+            .collect::<Vec<_>>();
+        for target in [
+            "risk_heatmap",
+            "trust_kpi",
+            "agent_coverage",
+            "business_risk",
+            "security_correlation",
+            "incident_candidates",
+            "cases",
+        ] {
+            assert!(
+                heatmap_link_targets.contains(&target),
+                "risk heatmap links must include {target}"
+            );
+        }
         assert!(
             report["risk_heatmap"][0]["summary"]
                 .as_str()
                 .unwrap()
-                .contains("Trust")
+                .contains("Security Correlation")
         );
         assert!(report["security_correlation"].is_array());
         assert_eq!(
@@ -9967,21 +10062,21 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|item| item.as_str().unwrap().contains("причина:"))
+                .next()
+                .unwrap()
+                .as_str()
+                .unwrap()
+                .contains("Главный управленческий вывод")
         );
         assert!(
             report["executive_points"]
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|item| item.as_str().unwrap().contains("Связанная картина риска"))
-        );
-        assert!(
-            report["executive_points"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(|item| item.as_str().unwrap().contains("Кандидат в инцидент"))
+                .any(|item| item
+                    .as_str()
+                    .unwrap()
+                    .contains("Статус связанной картины риска"))
         );
         assert!(
             report["markdown"]
@@ -10006,6 +10101,11 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("## Связанная картина риска")
+        );
+        let markdown = report["markdown"].as_str().unwrap();
+        assert!(
+            markdown.find("## Связанная картина риска").unwrap()
+                < markdown.find("## Достоверность данных").unwrap()
         );
         assert!(
             report["markdown"]

@@ -1,8 +1,13 @@
 # Business Risk
 
-`Business Risk` - управленческий слой AWatch-rus / DetMir, который показывает
-не просто активность сотрудников, а зоны организационного риска по
-подразделениям.
+`Business Risk` - расчетный слой AWatch-rus / DetMir, который показывает не
+просто активность сотрудников, а зоны организационного риска по подразделениям.
+
+Над ним расположен основной управленческий слой `Risk Narrative`: единая
+связанная картина риска для руководителя. Он не создает новых сущностей и не
+добавляет workflow, а связывает уже рассчитанные слои в один вывод:
+`Trust KPI → Agent Coverage → Business Risk → Risk Heatmap → Security
+Correlation → Incident Candidates → Cases`.
 
 ## Назначение
 
@@ -14,8 +19,9 @@
 - где есть падение тренда;
 - где проблемные рабочие места портят доверие к отчету.
 
-Business Risk не является автоматическим обвинением сотрудников или
-подразделений. Это read-only приоритизация управленческой проверки.
+Business Risk и Risk Narrative не являются автоматическим обвинением
+сотрудников или подразделений. Это read-only приоритизация управленческой
+проверки.
 
 ## API
 
@@ -62,9 +68,11 @@ Business Risk не является автоматическим обвинен�
 - `summary.main_risk` - главный риск текущего среза;
 - `summary.main_improvement` - главное подтвержденное улучшение;
 - `summary.main_data_gap` - главный пробел в данных.
+- `summary.risk_narrative_status` - optional единый статус связанной картины
+  риска: `NORMAL`, `ATTENTION`, `HIGH_RISK` или `CRITICAL`;
 - `summary.main_risk_cause` - optional связанная причина риска:
-  Trust KPI, coverage, Business Risk, candidates, cases и готовность
-  Forensics.
+  Trust KPI, Agent Coverage, Risk Heatmap, Business Risk, Security
+  Correlation, Incident Candidates, Cases и готовность Forensics.
 
 `risk_heatmap`:
 
@@ -79,9 +87,11 @@ Business Risk не является автоматическим обвинен�
 - `heat_level` - итоговая зона карты: `LOW`, `MEDIUM`, `HIGH`,
   `CRITICAL` или `UNKNOWN`.
 - `links` - optional read-only переходы к уже существующим слоям портала:
-  Trust KPI, Business Risk, кандидаты, дела и покрытие агентов.
+  Trust KPI, Agent Coverage, Business Risk, Risk Heatmap, Security
+  Correlation, Incident Candidates и Cases.
 - `summary` - optional связанная строка
-  `Trust → Coverage → Business Risk → Candidates → Cases → вывод`.
+  `Trust → Coverage → Business Risk → Risk Heatmap → Security Correlation →
+  Candidates → Cases → вывод`.
 
 `security_correlation`:
 
@@ -336,13 +346,19 @@ POST /api/cases/{case_id}/status
 
 ## Markdown
 
-Оперативный отчет содержит раздел:
+Оперативный отчет содержит раздел `Связанная картина риска` сразу после
+`Сводка руководителя`, до технических деталей. Это главный управленческий
+вывод: что происходит, почему это риск и какие слои это подтверждают.
+
+Оперативный отчет содержит разделы:
 
 ```text
 ## Сводка руководителя
+## Связанная картина риска
+## Достоверность данных
+## SLA покрытия агентов
 ## Карта рисков подразделений
 ## Корреляция Workforce ↔ Security
-## Связанная картина риска
 ## Риски подразделений
 ## Динамика бизнес-рисков
 ## Кандидаты в инциденты
@@ -354,13 +370,18 @@ POST /api/cases/{case_id}/status
 
 ## Executive Summary
 
-Executive summary показывает до 3 наиболее рискованных подразделений, если
-их уровень риска выше `LOW`.
+Executive summary сначала показывает связанный управленческий вывод по Risk
+Narrative, а затем только поддерживающие технические пункты. Отдельные строки
+по Business Risk и кандидатам не дублируют главный вывод, если эти причины уже
+вошли в narrative.
 
 Формат:
 
 ```text
-Подразделение Бухгалтерия: HIGH — причина: низкий Trust KPI
+Главный управленческий вывод: В подразделении Бухгалтерия связаны слои:
+Trust KPI 50%, Agent Coverage 80%, Risk Heatmap HIGH, Business Risk MEDIUM,
+Security Correlation 40/100, Incident Candidates 1, Cases 0. риск связан из-за
+слабого Trust KPI, падения активности, слабого покрытия агентов.
 ```
 
 Если подразделение 3+ дня подряд находится в `HIGH` или `CRITICAL`,
