@@ -61,6 +61,24 @@ function expectedSecurityEventsText(mode) {
   return "";
 }
 
+function forbiddenExecutiveTerms(text) {
+  const forbidden = [
+    "Trust KPI",
+    "Business Risk",
+    "Risk Narrative",
+    "Security Events",
+    "Incident Candidate",
+    "Coverage SLA",
+    "ERROR",
+    "EMPTY",
+    "STALE",
+    "SECURITY_EVENTS_BACKEND",
+    "CLICKHOUSE_*",
+    "ClickHouse",
+  ];
+  return forbidden.filter((term) => containsText(text, term));
+}
+
 function assertStaticTabHandlers() {
   const index = fs.readFileSync(path.join(root, "adk-rust/crates/detmir-portal/src/static/index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "adk-rust/crates/detmir-portal/src/static/app.js"), "utf8");
@@ -203,6 +221,12 @@ async function main() {
           ok: requiredExecutive.every((marker) => containsText(readyBodyText, marker)),
           required: requiredExecutive,
         });
+        const forbiddenExecutive = forbiddenExecutiveTerms(readyBodyText);
+        checks.push({
+          name: "executive_view_no_technical_terms",
+          ok: forbiddenExecutive.length === 0,
+          forbidden: forbiddenExecutive,
+        });
         const cardHeadings = await page.$$eval("#content section.card h3, #content h3.section-title", (nodes) =>
           nodes.map((node) => node.textContent.trim()),
         );
@@ -238,7 +262,8 @@ async function main() {
             !expectedSecurityText
             || (containsText(readyBodyText, expectedSecurityText)
               && !containsText(readyBodyText, "SECURITY_EVENTS_BACKEND")
-              && !containsText(readyBodyText, "CLICKHOUSE_*")),
+              && !containsText(readyBodyText, "CLICKHOUSE_*")
+              && !containsText(readyBodyText, "ClickHouse")),
           mode: securityMode,
           expected_text: expectedSecurityText,
         });

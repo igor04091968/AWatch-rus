@@ -2549,6 +2549,19 @@ fn security_events_summary_text(summary: &SecurityEventsSummary) -> String {
     )
 }
 
+fn security_events_executive_text(summary: &SecurityEventsSummary) -> String {
+    if summary.backend == "disabled" || summary.status == "disabled" {
+        return "Источник событий безопасности отключён.".to_string();
+    }
+    if summary.fallback_used {
+        return "События безопасности временно недоступны.".to_string();
+    }
+    format!(
+        "События безопасности доступны: событий за 24 часа {}.",
+        summary.events_24h
+    )
+}
+
 fn security_events_block(summary: &SecurityEventsSummary) -> SummaryBlock {
     SummaryBlock {
         status: security_events_summary_status(summary),
@@ -2844,7 +2857,7 @@ fn build_reports(
     ));
     executive_points.push(format!(
         "События безопасности за 24 часа: {}",
-        security_events_summary_text(&security_events_summary)
+        security_events_executive_text(&security_events_summary)
     ));
     executive_points.extend([
         format!("Сбор данных: {}. {}", collection.status, collection.text),
@@ -10174,6 +10187,15 @@ mod tests {
             error: None,
         };
         assert!(security_events_summary_text(&available).contains("События безопасности доступны"));
+        assert_eq!(
+            security_events_executive_text(&disabled),
+            "Источник событий безопасности отключён."
+        );
+        assert_eq!(
+            security_events_executive_text(&fallback),
+            "События безопасности временно недоступны."
+        );
+        assert!(!security_events_executive_text(&disabled).contains("ClickHouse"));
     }
 
     #[test]
@@ -10733,6 +10755,9 @@ mod tests {
                     .unwrap()
                     .contains("Статус связанной картины риска"))
         );
+        let executive_points_text = report["executive_points"].to_string();
+        assert!(!executive_points_text.contains("ClickHouse"));
+        assert!(!executive_points_text.contains("SECURITY_EVENTS_BACKEND"));
         assert!(
             report["markdown"]
                 .as_str()

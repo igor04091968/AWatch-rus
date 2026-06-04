@@ -2174,7 +2174,7 @@ function renderSecurityEventsSummary(summary, options = {}) {
     : fallback
       ? "События безопасности временно недоступны"
       : "События безопасности доступны";
-  const localModeText = disabled ? "Используется локальный режим без ClickHouse" : "";
+  const localModeText = disabled ? "Локальный режим" : "";
   const title = options.compact
     ? "События безопасности"
     : "События безопасности за 24 часа";
