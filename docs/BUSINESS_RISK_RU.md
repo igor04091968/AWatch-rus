@@ -40,6 +40,8 @@ Business Risk не является автоматическим обвинен�
   рискам, кандидатам, делам и готовности расследований;
 - `risk_heatmap` - карта рисков подразделений по Trust KPI, активности,
   покрытию агентов, открытым делам и кандидатам в инциденты;
+- `security_correlation` - аналитическая связка Workforce и Security:
+  активность, Trust KPI, Business Risk, кандидаты и открытые дела;
 - `business_risk_history` - timeline риска по подразделениям;
 - `business_risk_history_summary` - сводка динамики.
 - `risk_incident_candidates` - read-only кандидаты для ручной проверки.
@@ -73,6 +75,19 @@ Business Risk не является автоматическим обвинен�
 - `critical_candidates` - кандидаты `HIGH`/`CRITICAL`;
 - `heat_level` - итоговая зона карты: `LOW`, `MEDIUM`, `HIGH`,
   `CRITICAL` или `UNKNOWN`.
+
+`security_correlation`:
+
+- `department` - подразделение;
+- `trust_kpi_score` - доверие к KPI активности, если доступно;
+- `activity_score` - индекс активности подразделения, если доступен;
+- `business_risk_level` - уровень Business Risk;
+- `critical_candidates` - число кандидатов `HIGH`/`CRITICAL`;
+- `open_cases` - открытые дела по подразделению;
+- `correlation_score` - сила связки Workforce и Security от 0 до 100;
+- `correlation_reason` - человеко-понятное объяснение связи, например
+  `низкий Trust KPI + высокий риск` или
+  `снижение активности + рост кандидатов`.
 
 Элемент `business_risk_history`:
 
@@ -317,6 +332,7 @@ POST /api/cases/{case_id}/status
 ```text
 ## Сводка руководителя
 ## Карта рисков подразделений
+## Корреляция Workforce ↔ Security
 ## Риски подразделений
 ## Динамика бизнес-рисков
 ## Кандидаты в инциденты

@@ -877,6 +877,7 @@ function renderOperator(data, report) {
     ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(report?.agent_coverage_sla)}
     ${renderRiskHeatmap(report?.risk_heatmap)}
+    ${renderSecurityCorrelation(report?.security_correlation)}
     ${renderBusinessRisk(report?.business_risk)}
     ${renderBusinessRiskTimeline(report?.business_risk_history, report?.business_risk_history_summary)}
     ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
@@ -1827,6 +1828,61 @@ function riskPercentText(value) {
   return Number.isFinite(number) ? `${Math.round(number)}%` : "UNKNOWN";
 }
 
+function renderSecurityCorrelation(items) {
+  const rows = Array.isArray(items) ? items.slice(0, 10) : [];
+  const score = Number(rows[0]?.correlation_score || 0);
+  const status = score >= 80 ? "CRITICAL" : score >= 60 ? "HIGH" : score >= 35 ? "MEDIUM" : rows.length ? "LOW" : "UNKNOWN";
+  return `
+    <section class="card security-correlation-card">
+      <div class="section-head">
+        <div>
+          <h3>Корреляция Workforce и Security</h3>
+          <p class="muted">Связь между падением активности, доверием к KPI, кандидатами в инциденты и открытыми делами. Инциденты автоматически не создаются.</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Подразделение</th>
+              <th>Trust KPI</th>
+              <th>Активность</th>
+              <th>Бизнес-риск</th>
+              <th>Security</th>
+              <th>Корреляция</th>
+              <th>Причина</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr>
+                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td>${ui(riskPercentText(item.trust_kpi_score))}</td>
+                <td>${ui(riskPercentText(item.activity_score))}</td>
+                <td><span class="badge ${statusClass(item.business_risk_level)}">${ui(item.business_risk_level || "UNKNOWN")}</span></td>
+                <td>кандидаты ${ui(item.critical_candidates ?? 0)} · дела ${ui(item.open_cases ?? 0)}</td>
+                <td><strong>${ui(Number(item.correlation_score || 0))}/100</strong></td>
+                <td>${ui(item.correlation_reason || "связь не выражена")}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>Нет данных</td>
+                <td>UNKNOWN</td>
+                <td>UNKNOWN</td>
+                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>кандидаты 0 · дела 0</td>
+                <td>0/100</td>
+                <td>недостаточно данных по подразделениям</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function businessRiskReasons(item) {
   const reasons = Array.isArray(item?.reasons) && item.reasons.length
     ? item.reasons.join("; ")
@@ -2077,6 +2133,7 @@ function renderReports(data) {
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
     ${renderAgentCoverageSla(data.agent_coverage_sla)}
     ${renderRiskHeatmap(data.risk_heatmap)}
+    ${renderSecurityCorrelation(data.security_correlation)}
     ${renderBusinessRisk(data.business_risk)}
     ${renderBusinessRiskTimeline(data.business_risk_history, data.business_risk_history_summary)}
     ${renderRiskIncidentCandidates(data.risk_incident_candidates)}
