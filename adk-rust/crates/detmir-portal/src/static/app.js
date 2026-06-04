@@ -806,7 +806,7 @@ function renderOperator(data, report) {
     </div>
     ${renderPeriodBanner(report)}
     ${renderExecutiveMetrics(report, incidents)}
-    ${renderAgentQuality(report?.agent_quality)}
+    ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1336,28 +1336,79 @@ function renderUebaRisk(risk) {
   `;
 }
 
-function renderAgentQuality(quality) {
+function fallbackAgentQualityExplain(quality) {
   const q = quality || {};
-  const status = q.quality_status || "unknown";
   const source = q.collector_source || "unknown";
-  const warn = ["fallback", "degraded", "error"].includes(String(status).toLowerCase());
+  const hasError = Boolean(q.collector_error);
+  if (source === "wts_api" && !hasError) {
+    return {
+      status: "OK",
+      title: "Данные агента подтверждают KPI",
+      summary: "Сессии собраны основным способом через Windows WTS API; индекс активности можно использовать как рабочий управленческий KPI.",
+      recommendation: "Использовать отчет как подтвержденный оперативный срез.",
+      kpi_accepted: true
+    };
+  }
+  if (source === "local_fallback") {
+    return {
+      status: "DEGRADED",
+      title: "Диагностический режим агента",
+      summary: "Диагностический режим, данные не засчитываются в KPI.",
+      recommendation: "Проверить доступность WTS API и права запуска агента.",
+      kpi_accepted: false
+    };
+  }
+  if (hasError) {
+    return {
+      status: "DEGRADED",
+      title: "Достоверность данных снижена",
+      summary: `Коллектор передал ошибку: ${q.collector_error}`,
+      recommendation: "Восстановить основной путь WTS API перед использованием отчета как доказательной базы.",
+      kpi_accepted: false
+    };
+  }
+  return {
+    status: "UNKNOWN",
+    title: "Достоверность данных неизвестна",
+    summary: "Агент не передал диагностику качества данных.",
+    recommendation: "Обновить Rust agent до версии с diagnostics и проверить telemetry.jsonl.",
+    kpi_accepted: false
+  };
+}
+
+function renderAgentQuality(quality, explain) {
+  const q = quality || {};
+  const e = explain || fallbackAgentQualityExplain(q);
+  const status = e.status || q.quality_status || "UNKNOWN";
+  const source = q.collector_source || "unknown";
+  const warn = ["warning", "fallback", "degraded", "error"].includes(String(status).toLowerCase());
+  const accepted = Boolean(e.kpi_accepted);
   return `
     <section class="card agent-quality-card">
       <div class="section-head">
         <div>
-          <h3>Качество данных агента</h3>
-          <p class="muted">Доверие к источнику, который подтверждает активность и RDP-сессии.</p>
+          <h3>Достоверность данных агента</h3>
+          <p class="muted">${ui(e.title || "Оценка доверия к данным агента")}</p>
         </div>
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
-      ${warn ? `<div class="quality-warning">Внимание. Данные активности собраны не основным способом. Точность определения активности и RDP-сессий может быть снижена.</div>` : ""}
-      <div class="quality-grid">
+      <p class="quality-summary">${ui(e.summary || "")}</p>
+      <div class="quality-decision">
+        <div><span class="muted">Принято в KPI</span><strong>${accepted ? "да" : "нет"}</strong></div>
         <div><span class="muted">Источник</span><strong>${ui(source)}</strong></div>
-        <div><span class="muted">Сессий собрано</span><strong>${escapeHtml(q.sessions_collected_total ?? 0)}</strong></div>
-        <div><span class="muted">Активных сессий</span><strong>${escapeHtml(q.active_sessions_total ?? 0)}</strong></div>
-        <div><span class="muted">RDP-сессий</span><strong>${escapeHtml(q.rdp_sessions_total ?? 0)}</strong></div>
       </div>
-      ${q.collector_error ? `<p class="quality-error">Ошибка коллектора: ${ui(q.collector_error)}</p>` : ""}
+      ${warn ? `<div class="quality-warning">Внимание. Данные активности собраны не основным способом. Точность определения активности и RDP-сессий может быть снижена.</div>` : ""}
+      <p class="muted">${ui(e.recommendation || "")}</p>
+      <details class="quality-details">
+        <summary>Технические детали</summary>
+        <div class="quality-grid">
+          <div><span class="muted">Источник коллектора</span><strong>${ui(source)}</strong></div>
+          <div><span class="muted">Всего сессий</span><strong>${escapeHtml(q.sessions_collected_total ?? 0)}</strong></div>
+          <div><span class="muted">Активных сессий</span><strong>${escapeHtml(q.active_sessions_total ?? 0)}</strong></div>
+          <div><span class="muted">RDP-сессий</span><strong>${escapeHtml(q.rdp_sessions_total ?? 0)}</strong></div>
+          <div><span class="muted">Ошибка коллектора</span><strong>${q.collector_error ? ui(q.collector_error) : "нет"}</strong></div>
+        </div>
+      </details>
     </section>
   `;
 }
@@ -1396,7 +1447,7 @@ function renderReports(data) {
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
-    ${renderAgentQuality(data.agent_quality)}
+    ${renderAgentQuality(data.agent_quality, data.agent_quality_explain)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>

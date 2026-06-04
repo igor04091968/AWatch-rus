@@ -189,6 +189,15 @@ impl Default for AgentQuality {
     }
 }
 
+#[derive(Clone, Debug, Serialize)]
+struct AgentQualityExplain {
+    status: String,
+    title: String,
+    summary: String,
+    recommendation: String,
+    kpi_accepted: bool,
+}
+
 #[derive(Debug, Serialize)]
 struct HealthResponse {
     ok: bool,
@@ -1046,6 +1055,54 @@ fn critical_collector_error(error: &str) -> bool {
     .any(|needle| lower.contains(needle))
 }
 
+fn agent_quality_explain(quality: &AgentQuality) -> AgentQualityExplain {
+    let source = quality.collector_source.as_str();
+    let has_error = quality.collector_error.is_some();
+    if source == "wts_api" && !has_error {
+        return AgentQualityExplain {
+            status: "OK".to_string(),
+            title: "Данные агента подтверждают KPI".to_string(),
+            summary: "Сессии собраны основным способом через Windows WTS API; индекс активности можно использовать как рабочий управленческий KPI.".to_string(),
+            recommendation: "Использовать отчет как подтвержденный оперативный срез. Для расследований сверять с первичными событиями ActivityWatch.".to_string(),
+            kpi_accepted: true,
+        };
+    }
+    if source == "local_fallback" {
+        return AgentQualityExplain {
+            status: "DEGRADED".to_string(),
+            title: "Диагностический режим агента".to_string(),
+            summary: "Диагностический режим, данные не засчитываются в KPI.".to_string(),
+            recommendation: "Проверить доступность WTS API, права запуска агента и состояние Rust Scheduled Task. Не использовать этот срез как доказательство активности.".to_string(),
+            kpi_accepted: false,
+        };
+    }
+    if let Some(error) = &quality.collector_error {
+        return AgentQualityExplain {
+            status: "DEGRADED".to_string(),
+            title: "Достоверность данных снижена".to_string(),
+            summary: format!("Коллектор передал ошибку: {error}"),
+            recommendation: "Проверить журнал агента, источник сбора сессий и восстановить основной путь WTS API перед использованием отчета как доказательной базы.".to_string(),
+            kpi_accepted: false,
+        };
+    }
+    match source {
+        "quser_utf16" | "quser_lossy" | "env_sessionname_fallback" => AgentQualityExplain {
+            status: "WARNING".to_string(),
+            title: "Данные собраны резервным способом".to_string(),
+            summary: "Активность собрана не основным WTS API. KPI можно использовать как оперативный ориентир, но доказательная точность ниже.".to_string(),
+            recommendation: "Проверить, почему WTS API недоступен, и вернуть агент на основной источник сбора.".to_string(),
+            kpi_accepted: true,
+        },
+        _ => AgentQualityExplain {
+            status: "UNKNOWN".to_string(),
+            title: "Достоверность данных неизвестна".to_string(),
+            summary: "Агент не передал диагностику качества данных.".to_string(),
+            recommendation: "Обновить Rust agent до версии с diagnostics и проверить поступление telemetry.jsonl.".to_string(),
+            kpi_accepted: false,
+        },
+    }
+}
+
 fn command_json_source(name: &str, command: &str, timeout: Duration) -> SourceStatus {
     match run_shell(command, timeout) {
         Ok((stdout, stderr, success)) => {
@@ -1369,6 +1426,7 @@ fn build_reports(
     let grafana = grafana_block(snapshot);
     let collection = collection_block(snapshot.detmir_check.payload.as_ref());
     let agent_quality = snapshot.agent_quality.clone();
+    let agent_quality_explain = agent_quality_explain(&agent_quality);
     let worktime = worktime_block(snapshot);
     let one_c = one_c_block(snapshot);
     let dlp_block_value = dlp_block(snapshot);
@@ -1398,8 +1456,8 @@ fn build_reports(
     let executive_points = vec![
         format!("Сбор данных: {}. {}", collection.status, collection.text),
         format!(
-            "Качество данных агента: {} через {}",
-            agent_quality.quality_status, agent_quality.collector_source
+            "Достоверность данных агента: {}. {}",
+            agent_quality_explain.status, agent_quality_explain.summary
         ),
         format!(
             "Работа сегодня: сотрудников={}, активное время={}",
@@ -1446,6 +1504,7 @@ fn build_reports(
         "kpis": [
             report_kpi("UEBA риск", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("risk score")),
             report_kpi("Качество данных агента", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
+            report_kpi("Достоверность данных", agent_quality_explain.status.clone(), agent_quality_explain.status.clone(), &agent_quality_explain.title),
             report_kpi("Индекс активности", workforce_index_text(metrics.workforce_index), workforce_index_status(metrics.workforce_index), "proxy: активное время / плановое рабочее время"),
             weighted_activity_kpi_from_policy(&workforce_policy_explain),
             report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
@@ -1463,6 +1522,7 @@ fn build_reports(
                     report_item("DetMir status", snapshot.detmir_status.status.clone(), snapshot.detmir_status.summary.clone()),
                     report_item("Сбор данных", collection.status.clone(), collection.text.clone()),
                     report_item("Качество данных агента", agent_quality.quality_status.clone(), format!("source={}, sessions={}, active={}, rdp={}", agent_quality.collector_source, agent_quality.sessions_collected_total, agent_quality.active_sessions_total, agent_quality.rdp_sessions_total)),
+                    report_item("Достоверность данных", agent_quality_explain.status.clone(), format!("KPI accepted={}, {}", agent_quality_explain.kpi_accepted, agent_quality_explain.recommendation)),
                     report_item("Grafana", grafana.status.clone(), grafana.text.clone()),
                     report_item("1C analytics", one_c.status.clone(), one_c.text.clone())
                 ]
@@ -1512,6 +1572,7 @@ fn build_reports(
         "ueba_risk": ueba_risk,
         "ueba_baseline": ueba_baseline,
         "agent_quality": agent_quality,
+        "agent_quality_explain": agent_quality_explain,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -2954,10 +3015,34 @@ fn render_report_markdown(
     for item in recommendations {
         text.push_str(&format!("- {item}\n"));
     }
+    append_agent_quality_markdown(&mut text, &snapshot.agent_quality);
     append_ueba_risk_markdown(&mut text, ueba_risk);
     append_workforce_policy_markdown(&mut text, workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
     text
+}
+
+fn append_agent_quality_markdown(text: &mut String, quality: &AgentQuality) {
+    let explain = agent_quality_explain(quality);
+    text.push_str("\n## Достоверность данных\n\n");
+    text.push_str(&format!("- Источник: {}\n", quality.collector_source));
+    text.push_str(&format!("- Статус: {}\n", explain.status));
+    text.push_str(&format!(
+        "- Принято в KPI: {}\n",
+        if explain.kpi_accepted {
+            "да"
+        } else {
+            "нет"
+        }
+    ));
+    text.push_str(&format!(
+        "- Сессии: всего={}, активные={}, RDP={}\n",
+        quality.sessions_collected_total, quality.active_sessions_total, quality.rdp_sessions_total
+    ));
+    if let Some(error) = &quality.collector_error {
+        text.push_str(&format!("- Ошибка коллектора: {error}\n"));
+    }
+    text.push_str(&format!("- Рекомендация: {}\n", explain.recommendation));
 }
 
 fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
@@ -4835,6 +4920,10 @@ mod tests {
         assert_eq!(quality.quality_status, "unknown");
         assert_eq!(quality.collector_source, "unknown");
         assert_eq!(quality.sessions_collected_total, 0);
+        let explain = agent_quality_explain(&quality);
+        assert_eq!(explain.status, "UNKNOWN");
+        assert!(!explain.kpi_accepted);
+        assert!(explain.summary.contains("не передал диагностику"));
     }
 
     #[test]
@@ -4854,6 +4943,54 @@ mod tests {
         assert_eq!(quality.sessions_collected_total, 3);
         assert_eq!(quality.active_sessions_total, 2);
         assert_eq!(quality.rdp_sessions_total, 2);
+        let explain = agent_quality_explain(&quality);
+        assert_eq!(explain.status, "OK");
+        assert!(explain.kpi_accepted);
+        assert!(explain.summary.contains("WTS API"));
+    }
+
+    #[test]
+    fn agent_quality_local_fallback_is_degraded_and_not_accepted_for_kpi() {
+        let quality = agent_quality_from_record(&json!({
+            "diagnostics": {
+                "collector_source": "local_fallback",
+                "sessions_collected_total": 1,
+                "active_sessions_total": 1,
+                "rdp_sessions_total": 0
+            }
+        }));
+        assert_eq!(quality.quality_status, "degraded");
+        let explain = agent_quality_explain(&quality);
+        assert_eq!(explain.status, "DEGRADED");
+        assert!(!explain.kpi_accepted);
+        assert_eq!(
+            explain.summary,
+            "Диагностический режим, данные не засчитываются в KPI."
+        );
+    }
+
+    #[test]
+    fn agent_quality_collector_error_is_visible_in_explain_and_markdown() {
+        let quality = agent_quality_from_record(&json!({
+            "diagnostics": {
+                "collector_source": "wts_api",
+                "collector_error": "temporary WTS failure",
+                "sessions_collected_total": 0,
+                "active_sessions_total": 0,
+                "rdp_sessions_total": 0
+            }
+        }));
+        assert_eq!(quality.quality_status, "degraded");
+        let explain = agent_quality_explain(&quality);
+        assert_eq!(explain.status, "DEGRADED");
+        assert!(!explain.kpi_accepted);
+        assert!(explain.summary.contains("temporary WTS failure"));
+
+        let mut markdown = String::new();
+        append_agent_quality_markdown(&mut markdown, &quality);
+        assert!(markdown.contains("## Достоверность данных"));
+        assert!(markdown.contains("Принято в KPI: нет"));
+        assert!(markdown.contains("Ошибка коллектора: temporary WTS failure"));
     }
 
     #[test]

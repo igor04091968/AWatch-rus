@@ -511,6 +511,28 @@ h1 {
   margin: 12px 0 16px;
 }
 
+.quality-summary {
+  margin: 10px 0;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.quality-decision {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.quality-decision > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
 .quality-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -548,6 +570,16 @@ h1 {
   color: var(--fail);
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.quality-details {
+  margin-top: 10px;
+}
+
+.quality-details summary {
+  cursor: pointer;
+  color: var(--link);
+  font-weight: 800;
 }
 
 .heatmap-table td {
