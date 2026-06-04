@@ -22,4 +22,5 @@ tempfile.workspace = true
 
 [features]
 default = []
+asm-lowlevel = []
 legacy-powershell = []

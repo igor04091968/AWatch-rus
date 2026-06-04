@@ -1,5 +1,6 @@
 mod collectors;
 mod config;
+pub mod lowlevel;
 mod telemetry;
 mod transport;
 
