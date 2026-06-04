@@ -1916,7 +1916,7 @@ fn agent_coverage_sla_from_expected(
                 expected,
                 &node.last_seen_utc,
                 "DEGRADED",
-                "Телеметрия свежая, но источник не подтверждает KPI. Вернуть основной сбор WTS API.",
+                "Телеметрия свежая, но источник не подтверждает показатели. Вернуть основной сбор Windows.",
             ));
         }
     }
@@ -2055,8 +2055,8 @@ fn agent_quality_explain(quality: &AgentQuality) -> AgentQualityExplain {
     if source == "wts_api" && !has_error {
         return AgentQualityExplain {
             status: "OK".to_string(),
-            title: "Данные агента подтверждают KPI".to_string(),
-            summary: "Сессии собраны основным способом через Windows WTS API; индекс активности можно использовать как рабочий управленческий KPI.".to_string(),
+            title: "Данные агента подтверждают показатели".to_string(),
+            summary: "Сессии собраны основным способом Windows; индекс активности можно использовать как рабочий управленческий показатель.".to_string(),
             recommendation: "Использовать отчет как подтвержденный оперативный срез. Для расследований сверять с первичными событиями ActivityWatch.".to_string(),
             kpi_accepted: true,
         };
@@ -2065,8 +2065,8 @@ fn agent_quality_explain(quality: &AgentQuality) -> AgentQualityExplain {
         return AgentQualityExplain {
             status: "DEGRADED".to_string(),
             title: "Диагностический режим агента".to_string(),
-            summary: "Диагностический режим, данные не засчитываются в KPI.".to_string(),
-            recommendation: "Проверить доступность WTS API, права запуска агента и состояние Rust Scheduled Task. Не использовать этот срез как доказательство активности.".to_string(),
+            summary: "Диагностический режим, данные не засчитываются в показатели активности.".to_string(),
+            recommendation: "Проверить доступность основного источника Windows, права запуска агента и состояние задания агента. Не использовать этот срез как доказательство активности.".to_string(),
             kpi_accepted: false,
         };
     }
@@ -2075,7 +2075,7 @@ fn agent_quality_explain(quality: &AgentQuality) -> AgentQualityExplain {
             status: "DEGRADED".to_string(),
             title: "Достоверность данных снижена".to_string(),
             summary: format!("Коллектор передал ошибку: {error}"),
-            recommendation: "Проверить журнал агента, источник сбора сессий и восстановить основной путь WTS API перед использованием отчета как доказательной базы.".to_string(),
+            recommendation: "Проверить журнал агента, источник сбора сессий и восстановить основной способ Windows перед использованием отчета как доказательной базы.".to_string(),
             kpi_accepted: false,
         };
     }
@@ -2083,8 +2083,8 @@ fn agent_quality_explain(quality: &AgentQuality) -> AgentQualityExplain {
         "quser_utf16" | "quser_lossy" | "env_sessionname_fallback" => AgentQualityExplain {
             status: "WARNING".to_string(),
             title: "Данные собраны резервным способом".to_string(),
-            summary: "Активность собрана не основным WTS API. KPI можно использовать как оперативный ориентир, но доказательная точность ниже.".to_string(),
-            recommendation: "Проверить, почему WTS API недоступен, и вернуть агент на основной источник сбора.".to_string(),
+            summary: "Активность собрана резервным способом. Показатели можно использовать как оперативный ориентир, но доказательная точность ниже.".to_string(),
+            recommendation: "Проверить, почему основной источник Windows недоступен, и вернуть агент на основной источник сбора.".to_string(),
             kpi_accepted: true,
         },
         _ => AgentQualityExplain {
@@ -2513,7 +2513,7 @@ fn build_reports(
             human_duration(metrics.active_seconds)
         ),
         format!(
-            "DLP/ИБ: ok={}, warn={}, fail={}, evidence={}, screenshots={}",
+            "Проверки безопасности: ok={}, warn={}, fail={}, материалы={}, скриншоты={}",
             metrics.dlp_ok,
             metrics.dlp_warn,
             metrics.dlp_fail,
@@ -2526,21 +2526,25 @@ fn build_reports(
         ),
     ]);
     if agent_quality_history_summary.ok_days < 5 {
-        executive_points.push("KPI требует валидации: нестабильный сбор данных агента".to_string());
+        executive_points
+            .push("Показатели требуют проверки: нестабильный сбор данных агента".to_string());
     }
     if agent_quality_nodes_summary.total_nodes > 0
         && agent_quality_nodes_summary.accepted_kpi_nodes_pct < 80
     {
-        executive_points
-            .push("KPI требует проверки: менее 80% узлов дают подтвержденные данные".to_string());
+        executive_points.push(
+            "Показатели требуют проверки: менее 80% рабочих мест дают подтвержденные данные"
+                .to_string(),
+        );
     }
     match agent_coverage_sla.sla_status.as_str() {
         "CRITICAL" => executive_points.push(
-            "Покрытие агентов критически недостаточно: KPI не может считаться репрезентативным"
+            "Полнота данных критически недостаточна: показатели нельзя считать репрезентативными"
                 .to_string(),
         ),
         "WARNING" => executive_points.push(
-            "KPI требует проверки: часть рабочих мест не присылает свежую телеметрию".to_string(),
+            "Показатели требуют проверки: часть рабочих мест не присылает свежую телеметрию"
+                .to_string(),
         ),
         _ => {}
     }
@@ -2594,8 +2598,8 @@ fn build_reports(
         "executive_points": executive_points,
         "executive_dashboard": executive_dashboard,
         "kpis": [
-            report_kpi("UEBA риск", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("risk score")),
-            report_kpi("Качество данных агента", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
+            report_kpi("Оценка риска", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("оценка риска")),
+            report_kpi("Качество данных", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
             report_kpi("Достоверность данных", agent_quality_explain.status.clone(), agent_quality_explain.status.clone(), &agent_quality_explain.title),
             report_kpi("Индекс активности", workforce_index_text(metrics.workforce_index), workforce_index_status(metrics.workforce_index), "proxy: активное время / плановое рабочее время"),
             weighted_activity_kpi_from_policy(&workforce_policy_explain),
@@ -2603,9 +2607,9 @@ fn build_reports(
             report_kpi("Активное время", human_duration(metrics.active_seconds), worktime.status.clone(), "сумма active_seconds"),
             report_kpi("Приложения", metrics.apps_count.to_string(), worktime.status.clone(), "true active applications"),
             report_kpi("Подразделения", department_items.len().to_string(), snapshot.worktime_management.status.clone(), "сравнение групп за текущий день"),
-            report_kpi("DLP WARN/FAIL", format!("{}/{}", metrics.dlp_warn, metrics.dlp_fail), dlp_block_value.status.clone(), "технические сигналы DLP"),
-            report_kpi("Evidence", format!("{}/{}", metrics.evidence_screenshots, metrics.evidence_total), evidence_status(inputs.evidence), "скриншоты / все evidence items"),
-            report_kpi("Открытые вопросы", metrics.open_incidents.to_string(), incident_status(metrics.open_incidents), "не взятые в работу items")
+            report_kpi("Сигналы проверки", format!("{}/{}", metrics.dlp_warn, metrics.dlp_fail), dlp_block_value.status.clone(), "технические сигналы безопасности"),
+            report_kpi("Материалы проверки", format!("{}/{}", metrics.evidence_screenshots, metrics.evidence_total), evidence_status(inputs.evidence), "скриншоты / все материалы"),
+            report_kpi("Открытые вопросы", metrics.open_incidents.to_string(), incident_status(metrics.open_incidents), "не взятые в работу записи")
         ],
         "sections": [
             {
@@ -2613,8 +2617,8 @@ fn build_reports(
                 "items": [
                     report_item("DetMir status", snapshot.detmir_status.status.clone(), snapshot.detmir_status.summary.clone()),
                     report_item("Сбор данных", collection.status.clone(), collection.text.clone()),
-                    report_item("Качество данных агента", agent_quality.quality_status.clone(), format!("source={}, sessions={}, active={}, rdp={}", agent_quality.collector_source, agent_quality.sessions_collected_total, agent_quality.active_sessions_total, agent_quality.rdp_sessions_total)),
-                    report_item("Достоверность данных", agent_quality_explain.status.clone(), format!("KPI accepted={}, {}", agent_quality_explain.kpi_accepted, agent_quality_explain.recommendation)),
+                    report_item("Качество данных", agent_quality.quality_status.clone(), format!("источник={}, сессии={}, активные={}, удаленные={}", agent_quality.collector_source, agent_quality.sessions_collected_total, agent_quality.active_sessions_total, agent_quality.rdp_sessions_total)),
+                    report_item("Достоверность показателей", agent_quality_explain.status.clone(), format!("участвует в показателях={}, {}", agent_quality_explain.kpi_accepted, agent_quality_explain.recommendation)),
                     report_item("Grafana", grafana.status.clone(), grafana.text.clone()),
                     report_item("1C analytics", one_c.status.clone(), one_c.text.clone())
                 ]
@@ -2624,19 +2628,19 @@ fn build_reports(
                 "items": [
                     report_item("Индекс активности", workforce_index_status(metrics.workforce_index), workforce_index_text(metrics.workforce_index)),
                     weighted_activity_item_from_policy(&workforce_policy_explain, workforce_policy_path),
-                    report_item("Worktime", worktime.status.clone(), worktime.text.clone()),
-                    report_item("Management report", snapshot.worktime_management.status.clone(), snapshot.worktime_management.summary.clone()),
+                    report_item("Рабочее время", worktime.status.clone(), worktime.text.clone()),
+                    report_item("Сводка руководителя", snapshot.worktime_management.status.clone(), snapshot.worktime_management.summary.clone()),
                     report_item("Активное время", worktime.status.clone(), human_duration(metrics.active_seconds)),
                     report_item("Приложения", worktime.status.clone(), metrics.apps_count.to_string()),
                     report_item("Отчет", "OK", "готов к передаче руководителю")
                 ]
             },
             {
-                "title": "Выводы Workforce",
+                "title": "Выводы по активности",
                 "items": insight_items.clone()
             },
             {
-                "title": "UEBA риск",
+                "title": "Оценка риска",
                 "items": ueba_risk.get("reasons").and_then(Value::as_array).cloned().unwrap_or_default()
             },
             {
@@ -2648,10 +2652,10 @@ fn build_reports(
                 "items": owner_items.clone()
             },
             {
-                "title": "ИБ и evidence",
+                "title": "Безопасность и материалы проверки",
                 "items": [
-                    report_item("DLP", dlp_block_value.status.clone(), dlp_block_value.text.clone()),
-                    report_item("Evidence metadata", evidence_status(inputs.evidence), format!("items={}", metrics.evidence_total)),
+                    report_item("Проверки безопасности", dlp_block_value.status.clone(), dlp_block_value.text.clone()),
+                    report_item("Материалы проверки", evidence_status(inputs.evidence), format!("записей={}", metrics.evidence_total)),
                     report_item("Скриншоты", evidence_status(inputs.evidence), format!("available={}", metrics.evidence_screenshots)),
                     report_item("Формулировка", "OK", "derived detections/cases, не сертифицированная СЗИ")
                 ]
@@ -2825,10 +2829,10 @@ fn business_risk_assessment(
     let mut reasons = Vec::new();
     if trust_score < 50 {
         score += 40;
-        reasons.push("низкий Trust KPI".to_string());
+        reasons.push("низкая достоверность показателей".to_string());
     } else if trust_score < 75 {
         score += 25;
-        reasons.push("низкий Trust KPI".to_string());
+        reasons.push("низкая достоверность показателей".to_string());
     } else if trust_score < 90 {
         score += 10;
     }
@@ -2890,7 +2894,7 @@ fn business_risk_recommendation(
             .to_string();
     }
     if trust_score < 75 || problem_nodes_count > 0 {
-        return "Проверить качество данных агентов, fallback-источники и подтверждение KPI по рабочим местам."
+        return "Проверить качество данных агентов, резервные источники и подтверждение показателей по рабочим местам."
             .to_string();
     }
     if activity_score < 60 || trend_delta.is_some_and(|value| value <= -5.0) {
@@ -3329,16 +3333,16 @@ fn risk_narrative_links(
     vec![
         RiskNarrativeLink {
             target: "trust_kpi".to_string(),
-            label: "Trust KPI".to_string(),
+            label: "Достоверность показателей".to_string(),
             summary: format!(
-                "Trust KPI {}, активность {}",
+                "достоверность {}, активность {}",
                 optional_score_text(trust_kpi_score),
                 optional_score_text(activity_score)
             ),
         },
         RiskNarrativeLink {
             target: "business_risk".to_string(),
-            label: "Business Risk".to_string(),
+            label: "Риски подразделений".to_string(),
             summary: format!("уровень {}", business_risk_level.unwrap_or("UNKNOWN")),
         },
         RiskNarrativeLink {
@@ -3348,22 +3352,22 @@ fn risk_narrative_links(
         },
         RiskNarrativeLink {
             target: "security_correlation".to_string(),
-            label: "Корреляция".to_string(),
-            summary: "связь Workforce и Security по подразделению".to_string(),
+            label: "Связь рисков и активности".to_string(),
+            summary: "связь активности и рисков по подразделению".to_string(),
         },
         RiskNarrativeLink {
             target: "incident_candidates".to_string(),
-            label: "Кандидаты".to_string(),
-            summary: format!("кандидатов высокого риска: {critical_candidates}"),
+            label: "Требует проверки".to_string(),
+            summary: format!("записей высокого риска: {critical_candidates}"),
         },
         RiskNarrativeLink {
             target: "cases".to_string(),
-            label: "Дела".to_string(),
-            summary: format!("открытых дел: {open_cases}"),
+            label: "Расследования".to_string(),
+            summary: format!("активных расследований: {open_cases}"),
         },
         RiskNarrativeLink {
             target: "agent_coverage".to_string(),
-            label: "Покрытие агентов".to_string(),
+            label: "Полнота данных".to_string(),
             summary: format!("покрытие {}", optional_score_text(agent_coverage_pct)),
         },
     ]
@@ -3379,7 +3383,7 @@ fn risk_heatmap_summary(
     critical_candidates: usize,
 ) -> String {
     format!(
-        "Trust {} → Coverage {} → Business Risk {} → Risk Heatmap {} → Security Correlation → Candidates {} → Cases {} → {}",
+        "Достоверность {} → полнота данных {} → риск подразделения {} → карта рисков {} → связь рисков и активности → требует проверки {} → расследования {} → {}",
         optional_score_text(trust_kpi_score),
         optional_score_text(agent_coverage_pct),
         business_risk_level.unwrap_or("UNKNOWN"),
@@ -3407,22 +3411,22 @@ fn risk_narrative_conclusion(
 ) -> String {
     let mut reasons = Vec::new();
     if trust_kpi_score.is_some_and(|value| value < 75) {
-        reasons.push("слабого Trust KPI");
+        reasons.push("низкой достоверности показателей");
     }
     if activity_score.is_some_and(|value| value < 60) {
         reasons.push("падения активности");
     }
     if agent_coverage_pct.is_some_and(|value| value < 90) || agent_coverage_pct.is_none() {
-        reasons.push("слабого покрытия агентов");
+        reasons.push("неполных данных по рабочим местам");
     }
     if matches!(
         business_risk_level.unwrap_or("UNKNOWN"),
         "HIGH" | "CRITICAL" | "MEDIUM"
     ) {
-        reasons.push("повышенного Business Risk");
+        reasons.push("повышенного риска подразделения");
     }
     if critical_candidates > 0 {
-        reasons.push("критичных кандидатов");
+        reasons.push("записей, которые срочно нужно проверить");
     }
     if open_cases > 0 {
         reasons.push("открытых расследований");
@@ -3469,7 +3473,7 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
         _ => {}
     }
     if matches!(business_level, "HIGH" | "CRITICAL") && trust.is_some_and(|value| value < 75) {
-        reasons.push("низкий Trust KPI + высокий риск".to_string());
+        reasons.push("низкая достоверность показателей + высокий риск".to_string());
     }
     if let Some(value) = trust {
         if value < 50 {
@@ -3486,17 +3490,17 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
         }
     }
     if activity.is_some_and(|value| value < 60) && critical_candidates > 0 {
-        reasons.push("снижение активности + рост кандидатов".to_string());
+        reasons.push("снижение активности + рост записей на проверку".to_string());
     }
     if let Some(value) = item.agent_coverage_pct {
         if value < 75 {
             score += 25;
-            reasons.push("большое количество отсутствующих агентов".to_string());
+            reasons.push("много рабочих мест без свежих данных".to_string());
         } else if value < 90 {
             score += 10;
         }
     } else if business_level != "UNKNOWN" {
-        reasons.push("покрытие агентов не подтверждено".to_string());
+        reasons.push("полнота данных не подтверждена".to_string());
     }
     if critical_candidates > 0 {
         score += (critical_candidates as u64).saturating_mul(20).min(35);
@@ -3506,7 +3510,7 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
         reasons.push("рост открытых расследований".to_string());
     }
     if reasons.is_empty() {
-        reasons.push("прямая связка Workforce и Security не выражена".to_string());
+        reasons.push("прямая связь активности и рисков не выражена".to_string());
     }
     SecurityCorrelationItem {
         department: item.department.clone(),
@@ -3523,7 +3527,7 @@ fn security_correlation_item(item: &RiskHeatmapItem) -> SecurityCorrelationItem 
 
 fn security_correlation_explanation(item: &RiskHeatmapItem, reasons: &[String]) -> String {
     format!(
-        "Связаны слои: Trust KPI {}, активность {}, Business Risk {}, кандидаты {}, дела {}. Причина: {}. Для руководителя это означает, что управленческую просадку нужно проверять вместе с качеством данных и очередью ИБ-проверок.",
+        "Связаны слои: достоверность показателей {}, активность {}, риск подразделения {}, требует проверки {}, расследования {}. Причина: {}. Для руководителя это означает, что управленческую просадку нужно проверять вместе с качеством данных и очередью ручной проверки.",
         optional_score_text(item.trust_kpi_score),
         optional_score_text(item.activity_score),
         item.business_risk_level.as_deref().unwrap_or("UNKNOWN"),
@@ -3677,7 +3681,7 @@ fn executive_main_risk(
     sla: &AgentCoverageSla,
 ) -> String {
     if sla.sla_status == "CRITICAL" {
-        return "покрытие агентов критически недостаточно, KPI нерепрезентативен".to_string();
+        return "полнота данных критически недостаточна, показатели нерепрезентативны".to_string();
     }
     if let Some(item) = high_risk_departments.first() {
         let reason = item
@@ -3692,7 +3696,7 @@ fn executive_main_risk(
     }
     if let Some(item) = critical_candidates.first() {
         return format!(
-            "кандидат {}: {} — {}",
+            "требует проверки {}: {} — {}",
             item.id, item.risk_level, item.reason
         );
     }
@@ -3714,7 +3718,7 @@ fn executive_main_improvement(
         );
     }
     if critical_candidates.is_empty() {
-        return "нет критичных кандидатов в инциденты".to_string();
+        return "нет критичных записей для проверки".to_string();
     }
     "улучшение пока не подтверждено накопленной историей".to_string()
 }
@@ -3724,11 +3728,11 @@ fn executive_main_data_gap(
     agent_quality_explain: &AgentQualityExplain,
 ) -> String {
     if snapshot.agent_coverage_sla.expected_nodes == 0 {
-        return "не настроен список ожидаемых рабочих мест для SLA покрытия".to_string();
+        return "не настроен список ожидаемых рабочих мест для контроля полноты данных".to_string();
     }
     if snapshot.agent_coverage_sla.coverage_pct < 90 {
         return format!(
-            "покрытие агентов {}%, часть рабочих мест не подтверждает KPI",
+            "полнота данных {}%, часть рабочих мест не подтверждает показатели",
             snapshot.agent_coverage_sla.coverage_pct
         );
     }
@@ -3781,7 +3785,7 @@ fn executive_main_risk_cause(
     let mut statement = risk_narrative_statement(top, correlation);
     if !matches!(forensics_readiness, "READY") {
         statement.push_str(&format!(
-            " Готовность Forensics: {forensics_readiness}, доказательная база требует проверки."
+            " Готовность к расследованию: {forensics_readiness}, материалы требуют проверки."
         ));
     }
     Some(statement)
@@ -3798,7 +3802,7 @@ fn risk_narrative_statement(
         .map(|value| format!(" Причина корреляции: {}.", value.correlation_reason))
         .unwrap_or_default();
     format!(
-        "В подразделении {} связаны слои: Trust KPI {}, Agent Coverage {}, Business Risk {}, Risk Heatmap {}, Security Correlation {}, Incident Candidates {}, Cases {}. {}.{}",
+        "В подразделении {} связаны слои: достоверность показателей {}, полнота данных {}, риск подразделения {}, карта рисков {}, связь рисков и активности {}, требует проверки {}, расследования {}. {}.{}",
         item.department,
         optional_score_text(item.trust_kpi_score),
         optional_score_text(item.agent_coverage_pct),
@@ -3983,7 +3987,7 @@ fn render_investigation_pack_markdown(pack: &InvestigationPack) -> String {
     }
     text.push_str("\n## Доказательства\n\n");
     if pack.evidence.is_empty() {
-        text.push_str("- Evidence отсутствует, требуется ручная проверка первичных источников.\n");
+        text.push_str("- Материалы отсутствуют, требуется ручная проверка первичных источников.\n");
     } else {
         for item in &pack.evidence {
             text.push_str(&format!("- {item}\n"));
@@ -4004,11 +4008,11 @@ fn render_investigation_pack_markdown(pack: &InvestigationPack) -> String {
             ));
         }
     }
-    text.push_str("\n## Снимок доверия к KPI\n\n");
+    text.push_str("\n## Снимок достоверности показателей\n\n");
     append_json_markdown(&mut text, &pack.trust_kpi_snapshot);
-    text.push_str("\n## Качество данных агента\n\n");
+    text.push_str("\n## Качество данных\n\n");
     append_json_markdown(&mut text, &pack.agent_quality_snapshot);
-    text.push_str("\n## Бизнес-риск\n\n");
+    text.push_str("\n## Риск подразделения\n\n");
     append_json_markdown(&mut text, &pack.business_risk_snapshot);
     text.push_str("\n## Вывод\n\n");
     text.push_str("- Пакет является экспортом кандидата для ручной проверки.\n");
@@ -4193,7 +4197,7 @@ fn agent_quality_candidates(
                 first_seen_utc: Some(node.last_seen_utc.clone()),
                 last_seen_utc: Some(node.last_seen_utc.clone()),
                 recommendation: Some(
-                    "Проверить журнал агента и восстановить основной сбор.".to_string(),
+                    "Проверить журнал агента и восстановить основной сбор Windows.".to_string(),
                 ),
                 incident_review: IncidentReviewState::default(),
                 incident_review_audit: Vec::new(),
@@ -4408,10 +4412,10 @@ fn workforce_insight_items(snapshot: &Snapshot) -> Vec<Value> {
                 .map(|item| {
                     let title = display_text_opt(
                         item.get("title").and_then(Value::as_str),
-                        "Вывод Workforce",
+                        "Вывод по активности",
                     );
                     let subject =
-                        display_name_opt(item.get("subject").and_then(Value::as_str), "Workforce");
+                        display_name_opt(item.get("subject").and_then(Value::as_str), "Активность");
                     let severity = item
                         .get("severity")
                         .and_then(Value::as_str)
@@ -5039,22 +5043,22 @@ fn build_ueba_risk(
         push_risk_reason(
             &mut reasons,
             &mut score,
-            ("dlp_fail", "DLP FAIL", "dlp"),
+            ("dlp_fail", "Критичный сигнал проверки", "dlp"),
             "FAIL",
             risk_weight(&policy, "dlp_fail", 35),
             format!("fail={}", metrics.dlp_fail),
-            "Проверить DLP/case queue и evidence.",
+            "Проверить очередь ручной проверки и материалы.",
         );
     }
     if metrics.dlp_warn > 0 {
         push_risk_reason(
             &mut reasons,
             &mut score,
-            ("dlp_warn", "DLP WARN", "dlp"),
+            ("dlp_warn", "Предупреждение проверки", "dlp"),
             "WARN",
             risk_weight(&policy, "dlp_warn", 20),
             format!("warn={}", metrics.dlp_warn),
-            "Разобрать предупреждения DLP и подтвердить/отклонить события.",
+            "Разобрать предупреждения проверки и подтвердить/отклонить события.",
         );
     }
     if metrics.open_incidents > 0 {
@@ -5077,7 +5081,7 @@ fn build_ueba_risk(
         let label = item
             .get("label")
             .and_then(Value::as_str)
-            .unwrap_or("Workforce");
+            .unwrap_or("Активность");
         let value = item.get("value").and_then(Value::as_str).unwrap_or("");
         let text = format!("{label} {value}").to_lowercase();
         let (code, title, points) = if text.contains("ноч")
@@ -5099,7 +5103,7 @@ fn build_ueba_risk(
         {
             ("workforce_drop", "Отклонение активности", 15)
         } else {
-            ("workforce_anomaly", "Workforce anomaly", 10)
+            ("workforce_anomaly", "Отклонение активности", 10)
         };
         push_risk_reason(
             &mut reasons,
@@ -5228,7 +5232,7 @@ fn build_ueba_risk(
         "policy_error": policy_error,
         "calculated_from": calculated_from,
         "reasons": reasons,
-        "note": "UEBA-compatible rule-based risk scoring v1: read-only мониторинг и приоритизация проверки, без автоматического воздействия на сеть."
+        "note": "Оценка риска по правилам v1: мониторинг только для чтения и приоритизация проверки, без автоматического воздействия на сеть."
     })
 }
 
@@ -5505,7 +5509,7 @@ fn employee_index_details(
                 "planned_seconds": planned_seconds,
                 "planned_hhmm": human_duration(planned_seconds),
                 "last_activity": row.get("last_activity").and_then(Value::as_str).unwrap_or(""),
-                "scope_note": "Это не персональный weighted KPI: per-user app-weight attribution пока отсутствует в worktime payload; веса приложений доступны на уровне портфеля.",
+                "scope_note": "Это не персональный взвешенный показатель: персональный разбор по весам приложений пока отсутствует в данных рабочего времени; веса приложений доступны на уровне портфеля.",
                 "anonymized": anonymize
             })
         })
@@ -5713,7 +5717,7 @@ fn render_report_markdown(
         context.security_correlation,
     );
     append_executive_dashboard_markdown(&mut text, context.executive_dashboard);
-    text.push_str("## KPI\n\n");
+    text.push_str("## Ключевые показатели\n\n");
     text.push_str(&format!("- Общий статус: {}\n", summary.severity));
     text.push_str(&format!(
         "- Готовность для оператора: {}\n",
@@ -5732,7 +5736,7 @@ fn render_report_markdown(
         snapshot.agent_quality.quality_status, snapshot.agent_quality.collector_source
     ));
     text.push_str(&format!(
-        "- Сессии агента: всего={}, активные={}, RDP={}\n",
+        "- Сессии агента: всего={}, активные={}, удаленные={}\n",
         snapshot.agent_quality.sessions_collected_total,
         snapshot.agent_quality.active_sessions_total,
         snapshot.agent_quality.rdp_sessions_total
@@ -5754,7 +5758,7 @@ fn render_report_markdown(
         context.workforce.departments_count, context.workforce.owners_count
     ));
     text.push_str(&format!(
-        "- Автоматические выводы Workforce: {}\n",
+        "- Автоматические выводы по активности: {}\n",
         context.workforce.insights_count
     ));
     text.push_str(&format!(
@@ -5762,11 +5766,11 @@ fn render_report_markdown(
         context.workforce.trend_status
     ));
     text.push_str(&format!(
-        "- DLP технические сигналы: ok={}, warn={}, fail={}\n",
+        "- Сигналы проверки безопасности: ok={}, warn={}, fail={}\n",
         metrics.dlp_ok, metrics.dlp_warn, metrics.dlp_fail
     ));
     text.push_str(&format!(
-        "- Evidence: items={}, screenshots={}\n",
+        "- Материалы проверки: записи={}, скриншоты={}\n",
         metrics.evidence_total, metrics.evidence_screenshots
     ));
     text.push_str(&format!(
@@ -5806,14 +5810,14 @@ fn render_report_markdown(
     );
     append_ueba_risk_markdown(&mut text, context.ueba_risk);
     append_workforce_policy_markdown(&mut text, context.workforce_policy);
-    text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
+    text.push_str("\nПримечание: сигналы проверки и расследования являются расчетными выводами и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
     text
 }
 
 fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveDashboard) {
     text.push_str("\n## Сводка руководителя\n\n");
     text.push_str(&format!(
-        "- Статус связанной картины риска: {}\n",
+        "- Статус главного вывода: {}\n",
         dashboard
             .summary
             .risk_narrative_status
@@ -5828,16 +5832,16 @@ fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveD
             .as_deref()
             .unwrap_or("связанный риск не выражен")
     ));
-    text.push_str("- Подтверждающие слои: Trust KPI, Agent Coverage, Business Risk, Risk Heatmap, Security Correlation, Incident Candidates, Cases\n");
+    text.push_str("- Подтверждающие слои: достоверность показателей, полнота данных, риски подразделений, карта рисков, связь рисков и активности, требует проверки, расследования\n");
     text.push_str(&format!(
-        "- Trust KPI: {}\n",
+        "- Достоверность показателей: {}\n",
         dashboard
             .trust_kpi_score
             .map(|value| format!("{value}%"))
             .unwrap_or_else(|| "нет данных".to_string())
     ));
     text.push_str(&format!(
-        "- Покрытие агентов: {}\n",
+        "- Полнота данных: {}\n",
         dashboard
             .agent_coverage_pct
             .map(|value| format!("{value}%"))
@@ -5852,7 +5856,7 @@ fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveD
             .unwrap_or(0)
     ));
     text.push_str(&format!(
-        "- Кандидаты в инциденты: {}\n",
+        "- Срочно проверить: {}\n",
         dashboard
             .critical_candidates
             .as_ref()
@@ -5860,15 +5864,15 @@ fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveD
             .unwrap_or(0)
     ));
     text.push_str(&format!(
-        "- Открытые дела: {}\n",
+        "- Активные расследования: {}\n",
         dashboard.open_cases.unwrap_or(0)
     ));
     text.push_str(&format!(
-        "- Закрытые дела за 30 дней: {}\n",
+        "- Завершенные расследования за 30 дней: {}\n",
         dashboard.resolved_cases_30d.unwrap_or(0)
     ));
     text.push_str(&format!(
-        "- Готовность расследований: {}\n",
+        "- Готовность к расследованию: {}\n",
         dashboard
             .forensics_readiness
             .as_deref()
@@ -5890,11 +5894,11 @@ fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveD
 
 fn append_agent_quality_markdown(text: &mut String, quality: &AgentQuality) {
     let explain = agent_quality_explain(quality);
-    text.push_str("\n## Достоверность данных\n\n");
+    text.push_str("\n## Качество данных\n\n");
     text.push_str(&format!("- Источник: {}\n", quality.collector_source));
     text.push_str(&format!("- Статус: {}\n", explain.status));
     text.push_str(&format!(
-        "- Принято в KPI: {}\n",
+        "- Участвует в показателях: {}\n",
         if explain.kpi_accepted {
             "да"
         } else {
@@ -5902,7 +5906,7 @@ fn append_agent_quality_markdown(text: &mut String, quality: &AgentQuality) {
         }
     ));
     text.push_str(&format!(
-        "- Сессии: всего={}, активные={}, RDP={}\n",
+        "- Сессии: всего={}, активные={}, удаленные={}\n",
         quality.sessions_collected_total, quality.active_sessions_total, quality.rdp_sessions_total
     ));
     if let Some(error) = &quality.collector_error {
@@ -5924,7 +5928,7 @@ fn append_agent_quality_history_markdown(
         summary.warning_days + summary.degraded_days + summary.unknown_days
     ));
     text.push_str(&format!(
-        "- KPI принят: {}% дней\n",
+        "- Показатели подтверждены: {}% дней\n",
         summary.kpi_accepted_pct
     ));
     if history.is_empty() {
@@ -5938,7 +5942,7 @@ fn append_agent_quality_history_markdown(
             .map(|value| format!(", error={value}"))
             .unwrap_or_default();
         text.push_str(&format!(
-            "- {}: status={}, source={}, KPI={}{}\n",
+            "- {}: status={}, source={}, показатели={}{}\n",
             item.date,
             item.status,
             item.source,
@@ -5953,7 +5957,7 @@ fn append_agent_quality_nodes_markdown(
     nodes: &[AgentQualityNodeItem],
     summary: &AgentQualityNodesSummary,
 ) {
-    text.push_str("\n## Качество данных по узлам\n\n");
+    text.push_str("\n## Качество данных по рабочим местам\n\n");
     text.push_str(&format!("- Всего узлов: {}\n", summary.total_nodes));
     text.push_str(&format!("- OK узлов: {}\n", summary.ok_nodes));
     text.push_str(&format!(
@@ -5962,7 +5966,7 @@ fn append_agent_quality_nodes_markdown(
     ));
     text.push_str(&format!("- UNKNOWN узлов: {}\n", summary.unknown_nodes));
     text.push_str(&format!(
-        "- Узлов, принятых в KPI: {}%\n",
+        "- Рабочих мест с подтвержденными показателями: {}%\n",
         summary.accepted_kpi_nodes_pct
     ));
     if nodes.is_empty() {
@@ -5983,7 +5987,7 @@ fn append_agent_quality_nodes_markdown(
             .map(|value| format!(", error={value}"))
             .unwrap_or_default();
         text.push_str(&format!(
-            "- {}: status={}, source={}, last_seen={}, sessions={}, rdp={}, KPI={}{}; рекомендация: {}\n",
+            "- {}: status={}, source={}, last_seen={}, sessions={}, удаленные={}, показатели={}{}; рекомендация: {}\n",
             item.hostname,
             item.status,
             item.source,
@@ -6005,8 +6009,8 @@ fn append_agent_quality_nodes_markdown(
 }
 
 fn append_agent_coverage_sla_markdown(text: &mut String, sla: &AgentCoverageSla) {
-    text.push_str("\n## SLA покрытия агентов\n\n");
-    text.push_str(&format!("- Статус SLA: {}\n", sla.sla_status));
+    text.push_str("\n## Полнота данных\n\n");
+    text.push_str(&format!("- Статус полноты данных: {}\n", sla.sla_status));
     text.push_str(&format!("- Ожидается узлов: {}\n", sla.expected_nodes));
     text.push_str(&format!(
         "- Прислали подтвержденные данные за 24 часа: {}\n",
@@ -6014,7 +6018,10 @@ fn append_agent_coverage_sla_markdown(text: &mut String, sla: &AgentCoverageSla)
     ));
     text.push_str(&format!("- Устаревшие узлы: {}\n", sla.stale_nodes));
     text.push_str(&format!("- Отсутствующие узлы: {}\n", sla.missing_nodes));
-    text.push_str(&format!("- Покрытие KPI: {}%\n", sla.coverage_pct));
+    text.push_str(&format!(
+        "- Полнота подтвержденных показателей: {}%\n",
+        sla.coverage_pct
+    ));
     text.push_str(&format!("- Свежесть телеметрии: {}%\n", sla.freshness_pct));
     if sla.expected_nodes == 0 {
         text.push_str("- Список ожидаемых рабочих мест не настроен.\n");
@@ -6050,7 +6057,7 @@ fn append_business_risk_markdown(text: &mut String, risks: &[BusinessRiskItem]) 
             item.reasons.join("; ")
         };
         text.push_str(&format!(
-            "- {}: level={}, trust={}%, activity={}%, trend={}, problem_nodes={}, missing={}, stale={}\n",
+            "- {}: уровень={}, доверие={}%, активность={}%, тренд={}, проблемные_рабочие_места={}, отсутствуют={}, устарели={}\n",
             item.department,
             item.risk_level,
             item.trust_score,
@@ -6092,7 +6099,7 @@ fn append_business_risk_history_markdown(
             item.reasons.join("; ")
         };
         text.push_str(&format!(
-            "- {} · {}: level={}, trust={}%, activity={}%, причины: {}\n",
+            "- {} · {}: уровень={}, доверие={}%, активность={}%, причины: {}\n",
             item.date,
             item.department,
             item.risk_level,
@@ -6104,7 +6111,7 @@ fn append_business_risk_history_markdown(
 }
 
 fn append_risk_heatmap_markdown(text: &mut String, items: &[RiskHeatmapItem]) {
-    text.push_str("\n## Карта рисков подразделений\n\n");
+    text.push_str("\n## Карта рисков\n\n");
     if items.is_empty() {
         text.push_str(
             "- Карта рисков пока не рассчитана: недостаточно данных по подразделениям.\n",
@@ -6113,7 +6120,7 @@ fn append_risk_heatmap_markdown(text: &mut String, items: &[RiskHeatmapItem]) {
     }
     for item in items.iter().take(10) {
         text.push_str(&format!(
-            "- {}: heat={}, Trust={}, activity={}, coverage={}, business_risk={}, open_cases={}, critical_candidates={}\n",
+            "- {}: уровень={}, достоверность={}, активность={}, полнота={}, риск_подразделения={}, активные_расследования={}, срочно_проверить={}\n",
             item.department,
             item.heat_level,
             optional_score_text(item.trust_kpi_score),
@@ -6127,15 +6134,15 @@ fn append_risk_heatmap_markdown(text: &mut String, items: &[RiskHeatmapItem]) {
 }
 
 fn append_security_correlation_markdown(text: &mut String, items: &[SecurityCorrelationItem]) {
-    text.push_str("\n## Корреляция Workforce ↔ Security\n\n");
+    text.push_str("\n## Связь рисков и активности\n\n");
     if items.is_empty() {
-        text.push_str("- Корреляция пока не рассчитана: недостаточно данных по подразделениям.\n");
+        text.push_str("- Связь рисков и активности пока не рассчитана: недостаточно данных по подразделениям.\n");
         return;
     }
     text.push_str("- Примечание: это аналитическая связка признаков, она не создает инциденты автоматически.\n");
     for item in items.iter().take(10) {
         text.push_str(&format!(
-            "- {}: score={}/100, Trust={}, activity={}, business_risk={}, critical_candidates={}, open_cases={}\n",
+            "- {}: уровень_взаимосвязи={}/100, достоверность={}, активность={}, риск_подразделения={}, срочно_проверить={}, активные_расследования={}\n",
             item.department,
             item.correlation_score,
             optional_score_text(item.trust_kpi_score),
@@ -6153,11 +6160,9 @@ fn append_linked_risk_narrative_markdown(
     heatmap: &[RiskHeatmapItem],
     correlations: &[SecurityCorrelationItem],
 ) {
-    text.push_str("\n## Связанная картина риска\n\n");
+    text.push_str("\n## Главный вывод\n\n");
     if heatmap.is_empty() {
-        text.push_str(
-            "- Связанная картина риска пока не сформирована: нет данных по подразделениям.\n",
-        );
+        text.push_str("- Главный вывод пока не сформирован: нет данных по подразделениям.\n");
         return;
     }
     let correlations_by_department = correlations
@@ -6172,7 +6177,7 @@ fn append_linked_risk_narrative_markdown(
             .map(|value| format!("{}/100", value.correlation_score))
             .unwrap_or_else(|| "0/100".to_string());
         text.push_str(&format!(
-            "- {} → Trust KPI {} → Agent Coverage {} → Business Risk {} → Risk Heatmap {} → Security Correlation {} → Incident Candidates {} → Cases {} → {}\n",
+            "- {} → достоверность {} → полнота данных {} → риск подразделения {} → карта рисков {} → связь рисков и активности {} → требует проверки {} → расследования {} → {}\n",
             item.department,
             optional_score_text(item.trust_kpi_score),
             optional_score_text(item.agent_coverage_pct),
@@ -6193,20 +6198,20 @@ fn append_risk_incident_candidates_markdown(
     text: &mut String,
     candidates: &[RiskIncidentCandidate],
 ) {
-    text.push_str("\n## Кандидаты в инциденты\n\n");
+    text.push_str("\n## Требует проверки\n\n");
     if candidates.is_empty() {
-        text.push_str("- Кандидаты для ручной проверки не найдены.\n");
+        text.push_str("- Записи для ручной проверки не найдены.\n");
         return;
     }
-    text.push_str("- Важно: кандидаты не являются автоматически созданными инцидентами; требуется ручная проверка.\n");
+    text.push_str("- Важно: эти записи не являются автоматически созданными инцидентами; требуется ручная проверка.\n");
     for item in candidates.iter().take(10) {
         let evidence = if item.evidence.is_empty() {
-            "нет evidence".to_string()
+            "нет материалов".to_string()
         } else {
             item.evidence.join("; ")
         };
         text.push_str(&format!(
-            "- {}: department={}, owner={}, host={}, level={}, reason={}, first_seen={}, last_seen={}\n",
+            "- {}: подразделение={}, ответственный={}, узел={}, уровень={}, причина={}, первое_обнаружение={}, последнее_обнаружение={}\n",
             item.id,
             item.department.as_deref().unwrap_or("-"),
             item.owner.as_deref().unwrap_or("-"),
@@ -6216,7 +6221,7 @@ fn append_risk_incident_candidates_markdown(
             item.first_seen_utc.as_deref().unwrap_or("-"),
             item.last_seen_utc.as_deref().unwrap_or("-")
         ));
-        text.push_str(&format!("  - evidence: {evidence}\n"));
+        text.push_str(&format!("  - материалы: {evidence}\n"));
         text.push_str(&format!(
             "  - рекомендация: {}\n",
             item.recommendation
@@ -6292,44 +6297,44 @@ fn append_incident_review_audit_markdown(
 }
 
 fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
-    text.push_str("\n## UEBA риск\n\n");
+    text.push_str("\n## Оценка риска\n\n");
     text.push_str(&format!(
-        "- Score: {}/100\n",
+        "- Оценка: {}/100\n",
         risk.get("score").and_then(Value::as_u64).unwrap_or(0)
     ));
     text.push_str(&format!(
-        "- Level: {}\n",
+        "- Уровень: {}\n",
         risk.get("level")
             .and_then(Value::as_str)
             .unwrap_or("unknown")
     ));
     text.push_str(&format!(
-        "- Formula: {}\n",
+        "- Формула: {}\n",
         risk.get("formula")
             .and_then(Value::as_str)
             .unwrap_or("sum(reason_points) capped at 100")
     ));
     text.push_str(&format!(
-        "- Confidence: {:.0}%\n",
+        "- Достоверность: {:.0}%\n",
         risk.get("confidence")
             .and_then(Value::as_f64)
             .unwrap_or(0.0)
             * 100.0
     ));
     text.push_str(&format!(
-        "- Baseline: {}\n",
+        "- Обычный профиль: {}\n",
         risk.get("baseline_status")
             .and_then(Value::as_str)
             .unwrap_or("unknown")
     ));
     text.push_str(&format!(
-        "- Baseline window: {} days\n",
+        "- Окно обычного профиля: {} дней\n",
         risk.get("baseline_window_days")
             .and_then(Value::as_i64)
             .unwrap_or(default_ueba_baseline_window_days())
     ));
     text.push_str(&format!(
-        "- Baseline available: user={}, department={}\n",
+        "- Обычный профиль доступен: сотрудник={}, подразделение={}\n",
         risk.get("user_baseline_available")
             .and_then(Value::as_bool)
             .unwrap_or(false),
@@ -6338,19 +6343,19 @@ fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
             .unwrap_or(false)
     ));
     text.push_str(&format!(
-        "- Deviation score: {}\n",
+        "- Оценка отклонения: {}\n",
         risk.get("deviation_score")
             .and_then(Value::as_u64)
             .unwrap_or(0)
     ));
     text.push_str(&format!(
-        "- Policy version: {}\n",
+        "- Версия правил: {}\n",
         risk.get("policy_version")
             .and_then(Value::as_str)
             .unwrap_or("unknown")
     ));
     if let Some(note) = risk.get("note").and_then(Value::as_str) {
-        text.push_str(&format!("- Note: {note}\n"));
+        text.push_str(&format!("- Примечание: {note}\n"));
     }
     text.push_str("\n### Причины риска\n\n");
     let reasons = risk
@@ -6359,12 +6364,12 @@ fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
         .cloned()
         .unwrap_or_default();
     if reasons.is_empty() {
-        text.push_str("- Существенных UEBA-сигналов в текущем срезе нет.\n");
+        text.push_str("- Существенных сигналов риска в текущем срезе нет.\n");
         return;
     }
     for item in reasons.iter().take(12) {
         text.push_str(&format!(
-            "- {}: +{} points, {}, evidence: {}\n",
+            "- {}: +{} баллов, {}, материал: {}\n",
             item.get("label").and_then(Value::as_str).unwrap_or("-"),
             item.get("points").and_then(Value::as_u64).unwrap_or(0),
             item.get("severity")
@@ -6373,7 +6378,7 @@ fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
             item.get("value").and_then(Value::as_str).unwrap_or("-")
         ));
         if let Some(recommendation) = item.get("recommendation").and_then(Value::as_str) {
-            text.push_str(&format!("  - recommendation: {recommendation}\n"));
+            text.push_str(&format!("  - рекомендация: {recommendation}\n"));
         }
     }
 }
@@ -6381,7 +6386,7 @@ fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
 fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
     if policy.get("configured").and_then(Value::as_bool) != Some(true) {
         text.push_str("\n## Почему такой индекс\n\n");
-        text.push_str("- Role/application policy не настроена.\n");
+        text.push_str("- Правила ролей и приложений не настроены.\n");
         return;
     }
     text.push_str("\n## Почему такой индекс\n\n");
@@ -6412,7 +6417,7 @@ fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
         )
     ));
     text.push_str(&format!(
-        "- План/App/Weighted: {}/{}/{}\n",
+        "- План/приложения/с учетом правил: {}/{}/{}\n",
         human_duration(
             policy
                 .get("planned_seconds")
@@ -6467,7 +6472,7 @@ fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
         .cloned()
         .unwrap_or_default();
     if !default_items.is_empty() {
-        text.push_str("\n### Аудит policy: default_weight\n\n");
+        text.push_str("\n### Проверка правил: вес по умолчанию\n\n");
         for item in default_items.iter().take(12) {
             text.push_str(&format!(
                 "- {}: raw {}, default weight {:.0}%\n",
@@ -6485,13 +6490,13 @@ fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
         .cloned()
         .unwrap_or_default();
     if !employee_items.is_empty() {
-        text.push_str("\n### Drill-down по сотрудникам\n\n");
+        text.push_str("\n### Разбор по сотрудникам\n\n");
         text.push_str(
-            "Важно: это не персональный weighted KPI; персональный app-weight breakdown пока недоступен в worktime payload.\n\n",
+            "Важно: это не персональный взвешенный показатель; персональный разбор по весам приложений пока недоступен в данных рабочего времени.\n\n",
         );
         for item in employee_items.iter().take(12) {
             text.push_str(&format!(
-                "- {}: {}%, active {}, plan {}, formula `{}`\n",
+                "- {}: {}%, активность {}, план {}, формула `{}`\n",
                 item.get("user").and_then(Value::as_str).unwrap_or("-"),
                 item.get("index").and_then(Value::as_i64).unwrap_or(0),
                 human_duration(
@@ -6507,7 +6512,7 @@ fn append_workforce_policy_markdown(text: &mut String, policy: &Value) {
                 item.get("formula").and_then(Value::as_str).unwrap_or("-")
             ));
             if let Some(reason) = item.get("reason").and_then(Value::as_str) {
-                text.push_str(&format!("  - reason: {reason}\n"));
+                text.push_str(&format!("  - причина: {reason}\n"));
             }
         }
     }
@@ -6688,7 +6693,7 @@ fn build_incidents(snapshot: &Snapshot, state: &IncidentStateFile) -> Vec<Incide
                 if fail > 0 { "FAIL" } else { "WARN" },
                 "dlp",
                 "dlp_counts",
-                &format!("DLP requires review: warn={warn}, fail={fail}"),
+                &format!("Проверки требуют разбора: warn={warn}, fail={fail}"),
                 &snapshot.generated_at_utc,
                 "/portal/incidents",
                 state,
@@ -8742,7 +8747,7 @@ mod tests {
         let explain = agent_quality_explain(&quality);
         assert_eq!(explain.status, "OK");
         assert!(explain.kpi_accepted);
-        assert!(explain.summary.contains("WTS API"));
+        assert!(explain.summary.contains("основным способом Windows"));
     }
 
     #[test]
@@ -8761,7 +8766,7 @@ mod tests {
         assert!(!explain.kpi_accepted);
         assert_eq!(
             explain.summary,
-            "Диагностический режим, данные не засчитываются в KPI."
+            "Диагностический режим, данные не засчитываются в показатели активности."
         );
     }
 
@@ -8784,8 +8789,8 @@ mod tests {
 
         let mut markdown = String::new();
         append_agent_quality_markdown(&mut markdown, &quality);
-        assert!(markdown.contains("## Достоверность данных"));
-        assert!(markdown.contains("Принято в KPI: нет"));
+        assert!(markdown.contains("## Качество данных"));
+        assert!(markdown.contains("Участвует в показателях: нет"));
         assert!(markdown.contains("Ошибка коллектора: temporary WTS failure"));
     }
 
@@ -9016,7 +9021,11 @@ mod tests {
         let summary = summarize_agent_quality_nodes(&nodes);
         assert_eq!(nodes[0].status, "DEGRADED");
         assert!(!nodes[0].kpi_accepted);
-        assert!(nodes[0].recommendation.contains("WTS API"));
+        assert!(
+            nodes[0]
+                .recommendation
+                .contains("основного источника Windows")
+        );
         assert_eq!(summary.accepted_kpi_nodes_pct, 0);
     }
 
@@ -9290,7 +9299,7 @@ mod tests {
                 risk_level: "CRITICAL".to_string(),
                 trust_score: 40,
                 activity_score: 30,
-                reasons: vec!["низкий Trust KPI".to_string()],
+                reasons: vec!["низкая достоверность показателей".to_string()],
             },
             BusinessRiskHistoryItem {
                 date: "2026-06-01".to_string(),
@@ -9857,7 +9866,7 @@ mod tests {
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("derived detections/cases")
+                .contains("расчетными выводами")
         );
         assert!(report["kpis"].as_array().unwrap().len() >= 6);
         assert_eq!(report["ueba_risk"]["score"], 0);
@@ -9883,7 +9892,7 @@ mod tests {
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("## UEBA риск")
+                .contains("## Оценка риска")
         );
         assert_eq!(report["workforce_policy"]["configured"], false);
         assert_eq!(report["workforce"]["trend_status"], "daily_only");
@@ -9926,13 +9935,13 @@ mod tests {
             .as_str()
             .unwrap();
         for layer in [
-            "Trust KPI",
-            "Agent Coverage",
-            "Risk Heatmap",
-            "Business Risk",
-            "Security Correlation",
-            "Incident Candidates",
-            "Cases",
+            "достоверность показателей",
+            "полнота данных",
+            "карта рисков",
+            "риск подразделения",
+            "связь рисков и активности",
+            "требует проверки",
+            "расследования",
         ] {
             assert!(
                 main_risk_cause.contains(layer),
@@ -9995,7 +10004,7 @@ mod tests {
             report["risk_heatmap"][0]["summary"]
                 .as_str()
                 .unwrap()
-                .contains("Security Correlation")
+                .contains("связь рисков и активности")
         );
         assert!(report["security_correlation"].is_array());
         assert_eq!(
@@ -10007,7 +10016,7 @@ mod tests {
             report["security_correlation"][0]["correlation_reason"]
                 .as_str()
                 .unwrap()
-                .contains("покрытие агентов")
+                .contains("полнота данных")
         );
         assert!(
             report["security_correlation"][0]["explanation"]
@@ -10164,7 +10173,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|item| item.as_str().unwrap().contains("менее 80% узлов"))
+                .any(|item| item.as_str().unwrap().contains("менее 80% рабочих мест"))
         );
         assert!(
             report["executive_points"]
@@ -10197,43 +10206,44 @@ mod tests {
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("## Карта рисков подразделений")
+                .contains("## Карта рисков")
         );
         assert!(
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("## Корреляция Workforce ↔ Security")
+                .contains("## Связь рисков и активности")
         );
         assert!(
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("## Связанная картина риска")
+                .contains("## Главный вывод")
         );
         let markdown = report["markdown"].as_str().unwrap();
         assert!(
-            markdown.find("## Связанная картина риска").unwrap() < markdown.find("## KPI").unwrap()
+            markdown.find("## Главный вывод").unwrap()
+                < markdown.find("## Ключевые показатели").unwrap()
         );
         assert!(
-            markdown.find("## Связанная картина риска").unwrap()
+            markdown.find("## Главный вывод").unwrap()
                 < markdown.find("## Сводка руководителя").unwrap()
         );
         assert!(
-            markdown.find("## Связанная картина риска").unwrap()
-                < markdown.find("## Достоверность данных").unwrap()
+            markdown.find("## Главный вывод").unwrap()
+                < markdown.find("## Качество данных").unwrap()
         );
         assert!(
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("## Качество данных по узлам")
+                .contains("## Качество данных по рабочим местам")
         );
         assert!(
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("## SLA покрытия агентов")
+                .contains("## Полнота данных")
         );
         assert!(
             report["markdown"]
@@ -10251,7 +10261,7 @@ mod tests {
             report["markdown"]
                 .as_str()
                 .unwrap()
-                .contains("## Кандидаты в инциденты")
+                .contains("## Требует проверки")
         );
         assert!(
             report["markdown"]
@@ -10680,7 +10690,7 @@ confidence:
             explain["employee_details"][0]["scope_note"]
                 .as_str()
                 .unwrap()
-                .contains("не персональный weighted KPI")
+                .contains("не персональный взвешенный показатель")
         );
         assert!(explain["app_details"][0].get("matched_rule").is_some());
         assert!(explain["app_details"][0].get("weight").is_some());

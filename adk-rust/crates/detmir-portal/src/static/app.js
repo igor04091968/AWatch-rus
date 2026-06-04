@@ -54,10 +54,28 @@ function escapeHtml(value) {
 
 function displayText(value) {
   return String(value ?? "")
+    .replaceAll("Risk Narrative", "Главный вывод")
+    .replaceAll("Risk Heatmap", "Карта рисков")
+    .replaceAll("Business Risk", "Риски подразделений")
+    .replaceAll("Security Correlation", "Связь рисков и активности")
+    .replaceAll("Incident Candidates", "Требует проверки")
+    .replaceAll("Incident Candidate", "Требует проверки")
+    .replaceAll("Critical Candidates", "Срочно проверить")
+    .replaceAll("Open Cases", "Активные расследования")
+    .replaceAll("Agent Coverage", "Полнота данных")
+    .replaceAll("Coverage SLA", "Полнота данных")
+    .replaceAll("Agent Quality", "Качество данных")
+    .replaceAll("Trust Score", "Уровень доверия")
+    .replaceAll("Trust KPI", "Достоверность показателей")
+    .replaceAll("Correlation Score", "Уровень взаимосвязи")
+    .replaceAll("Forensics Readiness", "Готовность к расследованию")
+    .replaceAll("Executive Dashboard", "Сводка руководителя")
+    .replaceAll("Executive Summary", "Краткий вывод")
+    .replaceAll("Cases", "Расследования")
     .replaceAll("Workforce", "Работа сотрудников")
     .replaceAll("workforce", "работа сотрудников")
     .replaceAll("Security", "Безопасность")
-    .replaceAll("Forensics", "Расследования")
+    .replaceAll("Forensics", "Материалы расследования")
     .replaceAll("UEBA риск", "Индекс риска")
     .replaceAll("UEBA", "оценка риска")
     .replaceAll("DLP/ИБ", "ИБ")
@@ -88,6 +106,7 @@ function displayText(value) {
     .replaceAll("Management report", "Сводка руководителя")
     .replaceAll("Drill-down", "Разбор")
     .replaceAll("KPI", "показатель")
+    .replaceAll("SLA", "полнота данных")
     .replaceAll("items", "записи")
     .replaceAll("medium risk", "средний риск")
     .replaceAll("low risk", "низкий риск")
@@ -102,6 +121,11 @@ function displayText(value) {
     .replaceAll("dept:", "подразделение:")
     .replace(/\byes\b/g, "да")
     .replace(/\bno\b/g, "нет")
+    .replace(/\bsource\b/g, "источник")
+    .replace(/\bunknown\b/g, "неизвестно")
+    .replace(/\baccepted\b/g, "принято")
+    .replace(/\bopen_cases\b/g, "активные расследования")
+    .replace(/\bcritical_candidates\b/g, "срочно проверить")
     .replaceAll("daily", "день")
     .replaceAll("weekly", "неделя")
     .replaceAll("monthly", "месяц")
@@ -112,6 +136,10 @@ function displayText(value) {
 
 function ui(value) {
   return escapeHtml(displayText(value));
+}
+
+function tooltip(value) {
+  return `title="${ui(value)}"`;
 }
 
 function renderSummary(summary, readiness) {
@@ -475,17 +503,17 @@ function renderExecutiveDashboard(report) {
     <section class="card executive-dashboard-card">
       <div class="section-head">
         <div>
-          <h3>Сводка руководителя</h3>
-          <p class="muted">Что происходит в организации прямо сейчас: доверие к KPI, покрытие, риски, дела и готовность расследований.</p>
+          <h3 ${tooltip("Главная сводка для руководителя: что происходит в организации прямо сейчас.")}>Сводка руководителя</h3>
+          <p class="muted">Что происходит в организации прямо сейчас: достоверность показателей, полнота данных, риски, активные расследования и готовность к расследованию.</p>
         </div>
         <span class="badge ${statusClass(executiveDashboardStatus(dashboard))}">${ui(dashboard.forensics_readiness || "UNKNOWN")}</span>
       </div>
       <div class="quality-grid">
-        <div><span class="muted">Trust KPI</span><strong>${ui(optionalPercent(dashboard.trust_kpi_score))}</strong></div>
-        <div><span class="muted">Покрытие агентов</span><strong>${ui(optionalPercent(dashboard.agent_coverage_pct))}</strong></div>
+        <div ${tooltip("Можно ли доверять рассчитанным показателям активности.")}><span class="muted">Достоверность показателей</span><strong>${ui(optionalPercent(dashboard.trust_kpi_score))}</strong></div>
+        <div ${tooltip("Какая часть рабочих мест прислала свежие подтвержденные данные.")}><span class="muted">Полнота данных</span><strong>${ui(optionalPercent(dashboard.agent_coverage_pct))}</strong></div>
         <div><span class="muted">Высокий риск</span><strong>${ui(highRisk.length)}</strong></div>
-        <div><span class="muted">Кандидаты</span><strong>${ui(candidates.length)}</strong></div>
-        <div><span class="muted">Открытые дела</span><strong>${ui(dashboard.open_cases ?? 0)}</strong></div>
+        <div ${tooltip("Сколько записей нужно срочно проверить вручную.")}><span class="muted">Срочно проверить</span><strong>${ui(candidates.length)}</strong></div>
+        <div ${tooltip("Сколько расследований сейчас в работе.")}><span class="muted">Активные расследования</span><strong>${ui(dashboard.open_cases ?? 0)}</strong></div>
         <div><span class="muted">Закрыто за 30 дней</span><strong>${ui(dashboard.resolved_cases_30d ?? 0)}</strong></div>
       </div>
       <div class="list compact-list executive-summary-list">
@@ -505,14 +533,14 @@ function renderRiskNarrative(report) {
     <section class="card risk-narrative-card">
       <div class="section-head">
         <div>
-          <h3>Связанная картина риска</h3>
+          <h3 ${tooltip("Главный управленческий вывод: что случилось, почему это риск и чем это подтверждается.")}>Главный вывод</h3>
           <p class="muted">Главный управленческий вывод: что происходит, почему это риск и какие слои это подтверждают.</p>
         </div>
         <span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span>
       </div>
       <div class="list compact-list executive-summary-list">
         <div class="row compact-row"><strong>Главная причина риска</strong><span class="muted">${ui(summary.main_risk_cause || "связанный риск не выражен")}</span><span class="badge ${statusClass(narrativeStatus)}">${ui(narrativeStatus)}</span></div>
-        <div class="row compact-row"><strong>Подтверждающие слои</strong><span class="muted">Trust KPI · Agent Coverage · Business Risk · Risk Heatmap · Security Correlation · Incident Candidates · Cases</span><span></span></div>
+        <div class="row compact-row"><strong>Подтверждающие слои</strong><span class="muted">Достоверность показателей · Полнота данных · Риски подразделений · Карта рисков · Связь рисков и активности · Требует проверки · Расследования</span><span></span></div>
       </div>
     </section>
   `;
@@ -898,7 +926,7 @@ function renderDepartmentLeaderCard(report) {
       <div class="section-head">
         <div>
           <h3>Карточка руководителя подразделения</h3>
-          <p class="muted">Read-only срез для поручения разбора ответственному.</p>
+          <p class="muted">Срез только для чтения, чтобы поручить разбор ответственному.</p>
         </div>
         <span class="badge ${statusClass(row.status)}">${ui(row.risk)}</span>
       </div>
@@ -1418,7 +1446,7 @@ function renderDlpEvidence(evidence) {
         <span class="muted">${escapeHtml(item.message || item.file_path || item.rule_id || item.event_id)}</span>
         <div class="muted small">${item.source_file ? "Файл: " + escapeHtml(item.source_file) + " · " : ""}${item.screenshot_sha256 ? "Контрольный хеш: " + escapeHtml(item.screenshot_sha256) : ui(item.blocked_reason || "без скрина")}</div>
       </div>
-      <span class="badge ${item.screenshot_available ? "status-ok" : "status-warn"}">${item.screenshot_available ? "СКРИН" : "МЕТА"}</span>
+      <span class="badge ${item.screenshot_available ? "status-ok" : "status-warn"}">${item.screenshot_available ? "скриншот" : "метаданные"}</span>
       <div class="actions">
         ${item.preview_url ? `<a class="small-button" href="${escapeHtml(item.preview_url)}" target="_blank" rel="noopener noreferrer">Открыть</a>` : ""}
         ${item.download_url ? `<a class="small-button" href="${escapeHtml(item.download_url)}" target="_blank" rel="noopener noreferrer">Скачать</a>` : ""}
@@ -1440,7 +1468,7 @@ function buildAutoInvestigation(report) {
   const summary = risk.label || risk.code || risky?.reason || "Система сформировала риск-сигнал для ручной проверки";
   return {
     incident_id: `auto-${String(department).toLowerCase().replace(/[^a-zа-я0-9]+/gi, "-").replace(/^-|-$/g, "") || "risk"}`,
-    risk_id: risk.code || risk.label || "workforce-ueba-risk",
+    risk_id: risk.code || risk.label || "risk-check",
     department,
     owner,
     activity_index: risky?.activityText || "нет данных",
@@ -1448,18 +1476,18 @@ function buildAutoInvestigation(report) {
     status,
     summary,
     why_it_is_risk: risky?.reason || risk.value || "риск может указывать на просадку активности, отклонение от нормы или событие безопасности",
-    what_to_check: risky?.check || risk.recommendation || "проверить первичные события ActivityWatch, RDP/1C активность, процессы и сетевые сигналы",
+    what_to_check: risky?.check || risk.recommendation || "проверить первичные события ActivityWatch, удаленный доступ, активность в 1С, процессы и сетевые сигналы",
     recommended_actions: [
       "назначить ответственного за ручную проверку",
       "сопоставить риск с журналами активности и бизнес-задачей",
       "зафиксировать вывод в отчете по инциденту"
     ],
     evidence: [
-      "RDP activity: проверяется по событиям рабочего времени",
-      "process activity: проверяется по процессам и приложениям",
-      "network activity: проверяется по сетевым сигналам",
-      "proxy activity: подключается как внешний источник",
-      "pfSense events: учитываются при наличии интеграционного слоя"
+      "удаленные сеансы: проверяются по событиям рабочего времени",
+      "процессы: проверяются по приложениям",
+      "сеть: проверяется по сетевым сигналам",
+      "внешний шлюз: подключается как дополнительный источник",
+      "периметр: учитывается при наличии интеграционного слоя"
     ],
     generated_at: generated
   };
@@ -1477,20 +1505,20 @@ function renderAutoInvestigationCard(report) {
         <span class="badge ${statusClass(card.status)}">${ui(card.status)}</span>
       </div>
       <div class="investigation-grid">
-        <div><span class="muted">incident_id</span><strong>${ui(card.incident_id)}</strong></div>
-        <div><span class="muted">risk_id</span><strong>${ui(card.risk_id)}</strong></div>
-        <div><span class="muted">department</span><strong>${ui(card.department)}</strong></div>
-        <div><span class="muted">owner</span><strong>${ui(card.owner)}</strong></div>
-        <div><span class="muted">activity_index</span><strong>${ui(card.activity_index)}</strong></div>
-        <div><span class="muted">deviation</span><strong>${ui(card.deviation)}</strong></div>
-        <div><span class="muted">generated_at</span><strong>${ui(card.generated_at)}</strong></div>
+        <div><span class="muted">Номер</span><strong>${ui(card.incident_id)}</strong></div>
+        <div><span class="muted">Риск</span><strong>${ui(card.risk_id)}</strong></div>
+        <div><span class="muted">Подразделение</span><strong>${ui(card.department)}</strong></div>
+        <div><span class="muted">Ответственный</span><strong>${ui(card.owner)}</strong></div>
+        <div><span class="muted">Индекс активности</span><strong>${ui(card.activity_index)}</strong></div>
+        <div><span class="muted">Отклонение</span><strong>${ui(card.deviation)}</strong></div>
+        <div><span class="muted">Сформировано</span><strong>${ui(card.generated_at)}</strong></div>
       </div>
       <div class="list compact-list">
-        <div class="row compact-row"><strong>summary</strong><span class="muted">${ui(card.summary)}</span><span></span></div>
-        <div class="row compact-row"><strong>why_it_is_risk</strong><span class="muted">${ui(card.why_it_is_risk)}</span><span></span></div>
-        <div class="row compact-row"><strong>what_to_check</strong><span class="muted">${ui(card.what_to_check)}</span><span></span></div>
-        <div class="row compact-row"><strong>recommended_actions</strong><span class="muted">${ui(card.recommended_actions.join("; "))}</span><span></span></div>
-        <div class="row compact-row"><strong>evidence</strong><span class="muted">${ui(card.evidence.join("; "))}</span><span></span></div>
+        <div class="row compact-row"><strong>Краткое описание</strong><span class="muted">${ui(card.summary)}</span><span></span></div>
+        <div class="row compact-row"><strong>Почему это риск</strong><span class="muted">${ui(card.why_it_is_risk)}</span><span></span></div>
+        <div class="row compact-row"><strong>Что проверить</strong><span class="muted">${ui(card.what_to_check)}</span><span></span></div>
+        <div class="row compact-row"><strong>Рекомендуемые действия</strong><span class="muted">${ui(card.recommended_actions.join("; "))}</span><span></span></div>
+        <div class="row compact-row"><strong>Материалы расследования</strong><span class="muted">${ui(card.evidence.join("; "))}</span><span></span></div>
       </div>
     </section>
   `;
@@ -1664,8 +1692,8 @@ function fallbackAgentQualityExplain(quality) {
   if (source === "wts_api" && !hasError) {
     return {
       status: "OK",
-      title: "Данные агента подтверждают KPI",
-      summary: "Сессии собраны основным способом через Windows WTS API; индекс активности можно использовать как рабочий управленческий KPI.",
+      title: "Данные агента подтверждают показатели",
+      summary: "Сессии собраны основным способом Windows; индекс активности можно использовать как рабочий управленческий показатель.",
       recommendation: "Использовать отчет как подтвержденный оперативный срез.",
       kpi_accepted: true
     };
@@ -1674,7 +1702,7 @@ function fallbackAgentQualityExplain(quality) {
     return {
       status: "DEGRADED",
       title: "Диагностический режим агента",
-      summary: "Диагностический режим, данные не засчитываются в KPI.",
+      summary: "Диагностический режим, данные не засчитываются в показатели активности.",
       recommendation: "Проверить доступность WTS API и права запуска агента.",
       kpi_accepted: false
     };
@@ -1684,7 +1712,7 @@ function fallbackAgentQualityExplain(quality) {
       status: "DEGRADED",
       title: "Достоверность данных снижена",
       summary: `Коллектор передал ошибку: ${q.collector_error}`,
-      recommendation: "Восстановить основной путь WTS API перед использованием отчета как доказательной базы.",
+      recommendation: "Восстановить основной способ сбора Windows перед использованием отчета как доказательной базы.",
       kpi_accepted: false
     };
   }
@@ -1708,17 +1736,17 @@ function renderAgentQuality(quality, explain) {
     <section class="card agent-quality-card" id="trust-kpi-section">
       <div class="section-head">
         <div>
-          <h3>Достоверность данных агента</h3>
+          <h3 ${tooltip("Показывает, можно ли использовать данные агента для управленческих показателей.")}>Качество данных</h3>
           <p class="muted">${ui(e.title || "Оценка доверия к данным агента")}</p>
         </div>
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
       <p class="quality-summary">${ui(e.summary || "")}</p>
       <div class="quality-decision">
-        <div><span class="muted">Принято в KPI</span><strong>${accepted ? "да" : "нет"}</strong></div>
+        <div><span class="muted">Участвует в показателях</span><strong>${accepted ? "да" : "нет"}</strong></div>
         <div><span class="muted">Источник</span><strong>${ui(source)}</strong></div>
       </div>
-      ${warn ? `<div class="quality-warning">Внимание. Данные активности собраны не основным способом. Точность определения активности и RDP-сессий может быть снижена.</div>` : ""}
+      ${warn ? `<div class="quality-warning">Внимание. Данные активности собраны не основным способом. Точность определения активности и удаленных сеансов может быть снижена.</div>` : ""}
       <p class="muted">${ui(e.recommendation || "")}</p>
       <details class="quality-details">
         <summary>Технические детали</summary>
@@ -1726,7 +1754,7 @@ function renderAgentQuality(quality, explain) {
           <div><span class="muted">Источник коллектора</span><strong>${ui(source)}</strong></div>
           <div><span class="muted">Всего сессий</span><strong>${escapeHtml(q.sessions_collected_total ?? 0)}</strong></div>
           <div><span class="muted">Активных сессий</span><strong>${escapeHtml(q.active_sessions_total ?? 0)}</strong></div>
-          <div><span class="muted">RDP-сессий</span><strong>${escapeHtml(q.rdp_sessions_total ?? 0)}</strong></div>
+          <div><span class="muted">Удаленных сеансов</span><strong>${escapeHtml(q.rdp_sessions_total ?? 0)}</strong></div>
           <div><span class="muted">Ошибка коллектора</span><strong>${q.collector_error ? ui(q.collector_error) : "нет"}</strong></div>
         </div>
       </details>
@@ -1744,22 +1772,22 @@ function renderAgentQualityHistory(history, summary) {
       <div class="section-head">
         <div>
           <h3>Стабильность агента за 7 дней</h3>
-          <p class="muted">Показывает, можно ли доверять недельному KPI, а не только текущему срезу.</p>
+          <p class="muted">Показывает, можно ли доверять недельным показателям, а не только текущему срезу.</p>
         </div>
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
       <div class="quality-decision">
         <div><span class="muted">OK дней</span><strong>${escapeHtml(s.ok_days ?? 0)}</strong></div>
         <div><span class="muted">Проблемных дней</span><strong>${escapeHtml(unstableDays)}</strong></div>
-        <div><span class="muted">KPI принят</span><strong>${escapeHtml(s.kpi_accepted_pct ?? 0)}%</strong></div>
+        <div><span class="muted">Показатели подтверждены</span><strong>${escapeHtml(s.kpi_accepted_pct ?? 0)}%</strong></div>
       </div>
-      ${Number(s.ok_days || 0) < 5 ? `<div class="quality-warning">KPI требует валидации: нестабильный сбор данных агента.</div>` : ""}
+      ${Number(s.ok_days || 0) < 5 ? `<div class="quality-warning">Показатели требуют проверки: нестабильный сбор данных агента.</div>` : ""}
       <details class="quality-details">
         <summary>История по дням</summary>
         <div class="list compact-list">${items.length ? items.map(item => `
           <div class="row compact-row">
             <strong>${escapeHtml(item.date || "-")}</strong>
-            <span class="muted">source=${ui(item.source || "unknown")} · KPI=${item.kpi_accepted ? "да" : "нет"}${item.collector_error ? ` · ${ui(item.collector_error)}` : ""}</span>
+            <span class="muted">источник=${ui(item.source || "unknown")} · показатели=${item.kpi_accepted ? "да" : "нет"}${item.collector_error ? ` · ${ui(item.collector_error)}` : ""}</span>
             <span class="badge ${statusClass(item.status)}">${ui(item.status || "UNKNOWN")}</span>
           </div>
         `).join("") : `<div class="row compact-row"><strong>История</strong><span class="muted">История качества агента за период отсутствует.</span><span class="badge status-unknown">UNKNOWN</span></div>`}</div>
@@ -1781,7 +1809,7 @@ function renderAgentQualityNodes(nodes, summary) {
       <div class="section-head">
         <div>
           <h3>Качество данных по рабочим местам</h3>
-          <p class="muted">Какие узлы подтверждают KPI, а какие снижают доверие к управленческой аналитике.</p>
+          <p class="muted">Какие рабочие места подтверждают показатели, а какие снижают доверие к управленческой аналитике.</p>
         </div>
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
@@ -1789,9 +1817,9 @@ function renderAgentQualityNodes(nodes, summary) {
         <div><span class="muted">Всего узлов</span><strong>${escapeHtml(s.total_nodes ?? 0)}</strong></div>
         <div><span class="muted">OK</span><strong>${escapeHtml(s.ok_nodes ?? 0)}</strong></div>
         <div><span class="muted">Проблемных</span><strong>${escapeHtml(Number(s.degraded_nodes || 0) + Number(s.unknown_nodes || 0))}</strong></div>
-        <div><span class="muted">KPI принят</span><strong>${escapeHtml(s.accepted_kpi_nodes_pct ?? 0)}%</strong></div>
+        <div><span class="muted">Показатели подтверждены</span><strong>${escapeHtml(s.accepted_kpi_nodes_pct ?? 0)}%</strong></div>
       </div>
-      ${Number(s.total_nodes || 0) > 0 && Number(s.accepted_kpi_nodes_pct || 0) < 80 ? `<div class="quality-warning">KPI требует проверки: менее 80% узлов дают подтвержденные данные.</div>` : ""}
+      ${Number(s.total_nodes || 0) > 0 && Number(s.accepted_kpi_nodes_pct || 0) < 80 ? `<div class="quality-warning">Показатели требуют проверки: менее 80% рабочих мест дают подтвержденные данные.</div>` : ""}
       <div class="table-scroll">
         <table class="data-table">
           <thead>
@@ -1800,7 +1828,7 @@ function renderAgentQualityNodes(nodes, summary) {
               <th>Статус</th>
               <th>Источник</th>
               <th>Последняя телеметрия</th>
-              <th>KPI</th>
+              <th>Показатели</th>
               <th>Рекомендация</th>
             </tr>
           </thead>
@@ -1840,8 +1868,8 @@ function renderAgentCoverageSla(sla) {
     <section class="card agent-coverage-card" id="agent-coverage-section">
       <div class="section-head">
         <div>
-          <h3>Покрытие агентов</h3>
-          <p class="muted">Показывает, насколько KPI репрезентативен по всему парку рабочих мест.</p>
+          <h3 ${tooltip("Показывает, какая часть рабочих мест присылает свежие данные.")}>Полнота данных</h3>
+          <p class="muted">Показывает, насколько показатели репрезентативны по всему парку рабочих мест.</p>
         </div>
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
@@ -1853,8 +1881,8 @@ function renderAgentCoverageSla(sla) {
         <div><span class="muted">Покрытие</span><strong>${escapeHtml(s.coverage_pct ?? 0)}%</strong></div>
         <div><span class="muted">Свежесть</span><strong>${escapeHtml(s.freshness_pct ?? 0)}%</strong></div>
       </div>
-      ${status === "CRITICAL" ? `<div class="quality-warning">Покрытие агентов критически недостаточно: KPI не может считаться репрезентативным.</div>` : ""}
-      ${status === "WARNING" ? `<div class="quality-warning">KPI требует проверки: часть рабочих мест не присылает свежую телеметрию.</div>` : ""}
+      ${status === "CRITICAL" ? `<div class="quality-warning">Полнота данных критически недостаточна: показатели нельзя считать репрезентативными.</div>` : ""}
+      ${status === "WARNING" ? `<div class="quality-warning">Показатели требуют проверки: часть рабочих мест не присылает свежую телеметрию.</div>` : ""}
       ${status === "UNKNOWN" ? `<p class="muted">Список ожидаемых рабочих мест не настроен.</p>` : ""}
       <div class="table-scroll">
         <table class="data-table">
@@ -1904,7 +1932,7 @@ function renderBusinessRisk(items) {
       <div class="section-head">
         <div>
           <h3>Риски подразделений</h3>
-          <p class="muted">Организационные зоны риска по доверию к KPI, активности, тренду и проблемным узлам.</p>
+          <p class="muted">Организационные зоны риска по достоверности показателей, активности, тренду и проблемным рабочим местам.</p>
         </div>
         <span class="badge ${statusClass(worst)}">${ui(worst)}</span>
       </div>
@@ -1948,8 +1976,8 @@ function renderRiskHeatmap(items) {
     <section class="card risk-heatmap-card">
       <div class="section-head">
         <div>
-          <h3>Карта рисков подразделений</h3>
-          <p class="muted">Где одновременно слабый Trust KPI, низкая активность, плохое покрытие агентов, кандидаты и открытые дела.</p>
+          <h3 ${tooltip("Таблица показывает подразделения, где одновременно есть несколько признаков риска.")}>Карта рисков</h3>
+          <p class="muted">Где одновременно снижена достоверность показателей, низкая активность, неполные данные, записи на проверку и активные расследования.</p>
         </div>
         <span class="badge ${statusClass(worst)}">${ui(worst)}</span>
       </div>
@@ -1958,11 +1986,11 @@ function renderRiskHeatmap(items) {
           <thead>
             <tr>
               <th>Подразделение</th>
-              <th>Trust KPI</th>
+              <th>Достоверность</th>
               <th>Активность</th>
               <th>Покрытие</th>
               <th>Риск</th>
-              <th>Дела</th>
+              <th>Расследования</th>
               <th>Связи</th>
             </tr>
           </thead>
@@ -1975,7 +2003,7 @@ function renderRiskHeatmap(items) {
                 <td>${ui(riskPercentText(item.agent_coverage_pct))}</td>
                 <td>
                   <span class="badge ${statusClass(item.heat_level)}">${ui(item.heat_level || "UNKNOWN")}</span><br>
-                  <span class="muted small">${ui(item.business_risk_level || "UNKNOWN")} · кандидаты ${ui(item.critical_candidates ?? 0)}</span>
+                  <span class="muted small">${ui(item.business_risk_level || "UNKNOWN")} · проверить ${ui(item.critical_candidates ?? 0)}</span>
                 </td>
                 <td>${ui(item.open_cases ?? 0)}</td>
                 <td>${renderRiskLayerLinks(item.links)}</td>
@@ -2031,8 +2059,8 @@ function renderSecurityCorrelation(items) {
     <section class="card security-correlation-card">
       <div class="section-head">
         <div>
-          <h3>Корреляция Workforce и Security</h3>
-          <p class="muted">Связь между падением активности, доверием к KPI, кандидатами в инциденты и открытыми делами. Инциденты автоматически не создаются.</p>
+          <h3 ${tooltip("Показывает, где проблемы активности совпадают с рисками проверки.")}>Связь рисков и активности</h3>
+          <p class="muted">Связь между падением активности, достоверностью показателей, записями на проверку и активными расследованиями. Инциденты автоматически не создаются.</p>
         </div>
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
@@ -2041,11 +2069,11 @@ function renderSecurityCorrelation(items) {
           <thead>
             <tr>
               <th>Подразделение</th>
-              <th>Trust KPI</th>
+              <th>Достоверность</th>
               <th>Активность</th>
-              <th>Бизнес-риск</th>
-              <th>Security</th>
-              <th>Корреляция</th>
+              <th>Риск подразделения</th>
+              <th>Проверки</th>
+              <th>Взаимосвязь</th>
               <th>Причина</th>
             </tr>
           </thead>
@@ -2056,7 +2084,7 @@ function renderSecurityCorrelation(items) {
                 <td>${ui(riskPercentText(item.trust_kpi_score))}</td>
                 <td>${ui(riskPercentText(item.activity_score))}</td>
                 <td><span class="badge ${statusClass(item.business_risk_level)}">${ui(item.business_risk_level || "UNKNOWN")}</span></td>
-                <td>кандидаты ${ui(item.critical_candidates ?? 0)} · дела ${ui(item.open_cases ?? 0)}</td>
+                <td>проверить ${ui(item.critical_candidates ?? 0)} · расследования ${ui(item.open_cases ?? 0)}</td>
                 <td><strong>${ui(Number(item.correlation_score || 0))}/100</strong></td>
                 <td>${ui(item.explanation || item.correlation_reason || "связь не выражена")}</td>
               </tr>
@@ -2066,7 +2094,7 @@ function renderSecurityCorrelation(items) {
                 <td>UNKNOWN</td>
                 <td>UNKNOWN</td>
                 <td><span class="badge status-unknown">UNKNOWN</span></td>
-                <td>кандидаты 0 · дела 0</td>
+                <td>проверить 0 · расследования 0</td>
                 <td>0/100</td>
                 <td>недостаточно данных по подразделениям</td>
               </tr>
@@ -2082,7 +2110,7 @@ function businessRiskReasons(item) {
   const reasons = Array.isArray(item?.reasons) && item.reasons.length
     ? item.reasons.join("; ")
     : "существенных причин не найдено";
-  return `${reasons}. Trust ${item?.trust_score ?? 0}%, активность ${item?.activity_score ?? 0}%, тренд ${businessTrendText(item?.trend)}, проблемных узлов ${item?.problem_nodes_count ?? 0}`;
+  return `${reasons}. Доверие ${item?.trust_score ?? 0}%, активность ${item?.activity_score ?? 0}%, тренд ${businessTrendText(item?.trend)}, проблемных рабочих мест ${item?.problem_nodes_count ?? 0}`;
 }
 
 function renderBusinessRiskTimeline(history, summary) {
@@ -2102,7 +2130,7 @@ function renderBusinessRiskTimeline(history, summary) {
       <div class="section-head">
         <div>
           <h3>Динамика рисков</h3>
-          <p class="muted">Как менялся бизнес-риск подразделений по накопленной daily history.</p>
+          <p class="muted">Как менялись риски подразделений по накопленной ежедневной истории.</p>
         </div>
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
@@ -2155,8 +2183,8 @@ function renderRiskIncidentCandidates(items) {
     <section class="card risk-candidates-card" id="risk-candidates-section">
       <div class="section-head">
         <div>
-          <h3>Кандидаты в инциденты</h3>
-          <p class="muted">Read-only очередь ручной проверки. Реальные инциденты автоматически не создаются.</p>
+          <h3 ${tooltip("Очередь ситуаций, которые нужно проверить вручную перед созданием расследования.")}>Требует проверки</h3>
+          <p class="muted">Очередь ручной проверки. Реальные инциденты автоматически не создаются.</p>
         </div>
         <span class="badge ${statusClass(worst)}">${ui(worst)}</span>
       </div>
@@ -2164,7 +2192,7 @@ function renderRiskIncidentCandidates(items) {
         <table class="data-table">
           <thead>
             <tr>
-              <th>ID</th>
+              <th>Номер</th>
               <th>Подразделение</th>
               <th>Узел</th>
               <th>Риск</th>
@@ -2201,7 +2229,7 @@ function renderRiskIncidentCandidates(items) {
           </tbody>
         </table>
       </div>
-      ${rows.length ? `<p class="muted small">Показаны кандидаты для проверки, а не автоматически подтвержденные инциденты.</p>` : ""}
+      ${rows.length ? `<p class="muted small">Показаны записи для проверки, а не автоматически подтвержденные инциденты.</p>` : ""}
     </section>
   `;
 }
@@ -2269,7 +2297,7 @@ function reviewStatusText(status) {
 
 function candidateReasonText(item) {
   const evidence = Array.isArray(item?.evidence) && item.evidence.length
-    ? ` Evidence: ${item.evidence.join("; ")}`
+    ? ` Материалы: ${item.evidence.join("; ")}`
     : "";
   return `${item?.reason || "требуется проверка"}.${evidence}`;
 }
@@ -2362,7 +2390,7 @@ function settingRows(report) {
     ["Рабочий день", `${workdayHours} ч`, `роль: ${policy.role_label || activeRole.label || policy.default_role || "default"}`],
     ["Порог WARN", ">= 15 баллов", "любой ненормальный риск попадает в очередь проверки"],
     ["Порог FAIL", ">= 70 баллов", "высокий риск требует приоритетного разбора"],
-    ["Источник правил", policy.configured ? basename(policy.path) : "встроенные правила", risk.policy_configured ? `UEBA policy: ${basename(risk.policy_path)}` : "UEBA policy: встроенная модель"],
+    ["Источник правил", policy.configured ? basename(policy.path) : "встроенные правила", risk.policy_configured ? `правила оценки риска: ${basename(risk.policy_path)}` : "правила оценки риска: встроенная модель"],
     ["Дата последнего пересчета", report?.generated_at_utc || "-", `версия политики: ${risk.policy_version || "ueba-rule-v1"}`],
   ];
 }
@@ -2373,7 +2401,7 @@ function renderSettings(report) {
     <div class="page-head">
       <div>
         <h2 class="section-title">Настройки</h2>
-        <p class="muted">Read-only параметры расчета и границы интерпретации данных.</p>
+        <p class="muted">Параметры расчета и границы интерпретации данных. Экран открыт только для чтения.</p>
       </div>
       <span class="badge status-ok">только чтение</span>
     </div>

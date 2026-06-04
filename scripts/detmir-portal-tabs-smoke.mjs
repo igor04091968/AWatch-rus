@@ -136,20 +136,20 @@ async function main() {
         );
         const readyBodyText = await page.locator("#content").innerText({ timeout });
         const requiredExecutive = [
-          "Связанная картина риска",
+          "Главный вывод",
           "Сотрудников в работе",
           "Средний индекс активности",
           "Главная причина риска",
           "Подтверждающие слои",
-          "Достоверность данных агента",
+          "Качество данных",
           "Стабильность агента за 7 дней",
           "Качество данных по рабочим местам",
-          "Покрытие агентов",
-          "Карта рисков подразделений",
-          "Корреляция Workforce и Security",
+          "Полнота данных",
+          "Карта рисков",
+          "Связь рисков и активности",
           "Риски подразделений",
           "Динамика рисков",
-          "Кандидаты в инциденты",
+          "Требует проверки",
           "ТОП-5 лучших подразделений",
           "ТОП-5 проблемных подразделений",
           "Требует внимания",
@@ -161,11 +161,14 @@ async function main() {
           ok: requiredExecutive.every((marker) => containsText(readyBodyText, marker)),
           required: requiredExecutive,
         });
-        const riskNarrativeIndex = readyBodyText.indexOf("Связанная картина риска");
-        const executiveIndex = readyBodyText.indexOf("Сводка руководителя");
-        const trustIndex = readyBodyText.indexOf("Достоверность данных агента");
-        const businessRiskIndex = readyBodyText.indexOf("Риски подразделений");
-        const candidatesIndex = readyBodyText.indexOf("Кандидаты в инциденты");
+        const cardHeadings = await page.$$eval("#content section.card h3, #content h3.section-title", (nodes) =>
+          nodes.map((node) => node.textContent.trim()),
+        );
+        const riskNarrativeIndex = cardHeadings.indexOf("Главный вывод");
+        const executiveIndex = cardHeadings.indexOf("Сводка руководителя");
+        const trustIndex = cardHeadings.indexOf("Качество данных");
+        const businessRiskIndex = cardHeadings.indexOf("Риски подразделений");
+        const candidatesIndex = cardHeadings.indexOf("Требует проверки");
         checks.push({
           name: "management_block_order",
           ok:
@@ -175,11 +178,11 @@ async function main() {
             businessRiskIndex > trustIndex &&
             candidatesIndex > businessRiskIndex,
           order: [
-            "Связанная картина риска",
+            "Главный вывод",
             "Сводка руководителя",
-            "Достоверность данных агента",
+            "Качество данных",
             "Риски подразделений",
-            "Кандидаты в инциденты",
+            "Требует проверки",
           ],
         });
       }
@@ -219,9 +222,9 @@ async function main() {
         name: "risk_open_investigation_readonly_navigation",
         ok: activeTab.trim() === "Расследования"
           && containsText(incidentText, "Расследование сформировано автоматически")
-          && containsText(incidentText, "incident_id")
-          && containsText(incidentText, "risk_id")
-          && containsText(incidentText, "evidence"),
+          && containsText(incidentText, "Номер")
+          && containsText(incidentText, "Риск")
+          && containsText(incidentText, "Материалы расследования"),
         buttons: investigationButtons,
       });
     } else {
