@@ -1,4 +1,4 @@
-const state = { tab: "operator", period: "today", links: null, readiness: null, reports: null };
+const state = { tab: "operator", period: "today", links: null, readiness: null, reports: null, pendingScrollSelector: null };
 
 function apiBase() {
   const path = window.location.pathname;
@@ -337,6 +337,7 @@ function renderExecutiveDashboard(report) {
         <div><span class="muted">Закрыто за 30 дней</span><strong>${ui(dashboard.resolved_cases_30d ?? 0)}</strong></div>
       </div>
       <div class="list compact-list executive-summary-list">
+        <div class="row compact-row"><strong>Главная причина риска</strong><span class="muted">${ui(summary.main_risk_cause || "связанный риск не выражен")}</span><span></span></div>
         <div class="row compact-row"><strong>Главный риск</strong><span class="muted">${ui(summary.main_risk || "нет данных")}</span><span></span></div>
         <div class="row compact-row"><strong>Главное улучшение</strong><span class="muted">${ui(summary.main_improvement || "нет данных")}</span><span></span></div>
         <div class="row compact-row"><strong>Пробел в данных</strong><span class="muted">${ui(summary.main_data_gap || "нет данных")}</span><span></span></div>
@@ -1360,7 +1361,7 @@ function renderIncidents(data) {
 function renderCases(cases) {
   const rows = Array.isArray(cases) ? cases.slice(0, 20) : [];
   return `
-    <section class="card cases-card">
+    <section class="card cases-card" id="cases-section">
       <div class="section-head">
         <div>
           <h3>Дела</h3>
@@ -1533,7 +1534,7 @@ function renderAgentQuality(quality, explain) {
   const warn = ["warning", "fallback", "degraded", "error"].includes(String(status).toLowerCase());
   const accepted = Boolean(e.kpi_accepted);
   return `
-    <section class="card agent-quality-card">
+    <section class="card agent-quality-card" id="trust-kpi-section">
       <div class="section-head">
         <div>
           <h3>Достоверность данных агента</h3>
@@ -1665,7 +1666,7 @@ function renderAgentCoverageSla(sla) {
   const rows = Array.isArray(s.problem_nodes) ? s.problem_nodes.slice(0, 10) : [];
   const status = s.sla_status || "UNKNOWN";
   return `
-    <section class="card agent-coverage-card">
+    <section class="card agent-coverage-card" id="agent-coverage-section">
       <div class="section-head">
         <div>
           <h3>Покрытие агентов</h3>
@@ -1728,7 +1729,7 @@ function renderBusinessRisk(items) {
   const rows = Array.isArray(items) ? items.slice(0, 10) : [];
   const worst = rows[0]?.risk_level || "UNKNOWN";
   return `
-    <section class="card business-risk-card">
+    <section class="card business-risk-card" id="business-risk-section">
       <div class="section-head">
         <div>
           <h3>Риски подразделений</h3>
@@ -1791,6 +1792,7 @@ function renderRiskHeatmap(items) {
               <th>Покрытие</th>
               <th>Риск</th>
               <th>Дела</th>
+              <th>Связи</th>
             </tr>
           </thead>
           <tbody>
@@ -1805,6 +1807,7 @@ function renderRiskHeatmap(items) {
                   <span class="muted small">${ui(item.business_risk_level || "UNKNOWN")} · кандидаты ${ui(item.critical_candidates ?? 0)}</span>
                 </td>
                 <td>${ui(item.open_cases ?? 0)}</td>
+                <td>${renderRiskLayerLinks(item.links)}</td>
               </tr>
             `).join("") : `
               <tr>
@@ -1814,6 +1817,7 @@ function renderRiskHeatmap(items) {
                 <td>UNKNOWN</td>
                 <td><span class="badge status-unknown">UNKNOWN</span></td>
                 <td>0</td>
+                <td>-</td>
               </tr>
             `}
           </tbody>
@@ -1821,6 +1825,24 @@ function renderRiskHeatmap(items) {
       </div>
     </section>
   `;
+}
+
+function renderRiskLayerLinks(links) {
+  const items = Array.isArray(links) ? links : [];
+  if (!items.length) return "-";
+  return `<div class="button-row compact-actions">${items.map(link => {
+    const target = riskLayerTarget(link.target);
+    return `<button class="small-button" data-risk-layer-tab="${ui(target.tab)}" data-risk-layer-selector="${ui(target.selector)}" title="${ui(link.summary || link.label || "")}">${ui(link.label || link.target || "слой")}</button>`;
+  }).join("")}</div>`;
+}
+
+function riskLayerTarget(target) {
+  const value = String(target || "");
+  if (value === "business_risk") return { tab: "operator", selector: "#business-risk-section" };
+  if (value === "incident_candidates") return { tab: "operator", selector: "#risk-candidates-section" };
+  if (value === "cases") return { tab: "incidents", selector: "#cases-section" };
+  if (value === "agent_coverage") return { tab: "operator", selector: "#agent-coverage-section" };
+  return { tab: "operator", selector: "#trust-kpi-section" };
 }
 
 function riskPercentText(value) {
@@ -1863,7 +1885,7 @@ function renderSecurityCorrelation(items) {
                 <td><span class="badge ${statusClass(item.business_risk_level)}">${ui(item.business_risk_level || "UNKNOWN")}</span></td>
                 <td>кандидаты ${ui(item.critical_candidates ?? 0)} · дела ${ui(item.open_cases ?? 0)}</td>
                 <td><strong>${ui(Number(item.correlation_score || 0))}/100</strong></td>
-                <td>${ui(item.correlation_reason || "связь не выражена")}</td>
+                <td>${ui(item.explanation || item.correlation_reason || "связь не выражена")}</td>
               </tr>
             `).join("") : `
               <tr>
@@ -1957,7 +1979,7 @@ function renderRiskIncidentCandidates(items) {
   const rows = Array.isArray(items) ? items.slice(0, 10) : [];
   const worst = rows[0]?.risk_level || "UNKNOWN";
   return `
-    <section class="card risk-candidates-card">
+    <section class="card risk-candidates-card" id="risk-candidates-section">
       <div class="section-head">
         <div>
           <h3>Кандидаты в инциденты</h3>
@@ -2254,6 +2276,7 @@ async function refresh() {
     content.innerHTML = renderSettings(data);
     updateFilters(data);
   }
+  consumePendingScroll();
 }
 
 function setTab(tab) {
@@ -2268,6 +2291,16 @@ function setTab(tab) {
 
 function applySecurityMode(tab) {
   document.body.classList.toggle("security-mode", tab === "owner" || tab === "incidents" || tab === "perimeter");
+}
+
+function consumePendingScroll() {
+  const selector = state.pendingScrollSelector;
+  if (!selector) return;
+  state.pendingScrollSelector = null;
+  window.setTimeout(() => {
+    const target = document.querySelector(selector);
+    if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 0);
 }
 
 function showError(error) {
@@ -2295,6 +2328,19 @@ document.addEventListener("click", event => {
   if (!button) return;
   state.investigationRequested = true;
   setTab("incidents");
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-risk-layer-tab]");
+  if (!button) return;
+  const selector = button.dataset.riskLayerSelector || "";
+  state.pendingScrollSelector = selector;
+  const tab = button.dataset.riskLayerTab || state.tab;
+  if (tab === state.tab) {
+    consumePendingScroll();
+  } else {
+    setTab(tab);
+  }
 });
 
 document.addEventListener("click", event => {

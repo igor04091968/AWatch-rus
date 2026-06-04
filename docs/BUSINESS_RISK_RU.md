@@ -62,6 +62,9 @@ Business Risk не является автоматическим обвинен�
 - `summary.main_risk` - главный риск текущего среза;
 - `summary.main_improvement` - главное подтвержденное улучшение;
 - `summary.main_data_gap` - главный пробел в данных.
+- `summary.main_risk_cause` - optional связанная причина риска:
+  Trust KPI, coverage, Business Risk, candidates, cases и готовность
+  Forensics.
 
 `risk_heatmap`:
 
@@ -75,6 +78,10 @@ Business Risk не является автоматическим обвинен�
 - `critical_candidates` - кандидаты `HIGH`/`CRITICAL`;
 - `heat_level` - итоговая зона карты: `LOW`, `MEDIUM`, `HIGH`,
   `CRITICAL` или `UNKNOWN`.
+- `links` - optional read-only переходы к уже существующим слоям портала:
+  Trust KPI, Business Risk, кандидаты, дела и покрытие агентов.
+- `summary` - optional связанная строка
+  `Trust → Coverage → Business Risk → Candidates → Cases → вывод`.
 
 `security_correlation`:
 
@@ -88,6 +95,8 @@ Business Risk не является автоматическим обвинен�
 - `correlation_reason` - человеко-понятное объяснение связи, например
   `низкий Trust KPI + высокий риск` или
   `снижение активности + рост кандидатов`.
+- `explanation` - optional управленческое объяснение: какие слои связаны,
+  почему корреляция высокая и что это значит для руководителя.
 
 Элемент `business_risk_history`:
 
@@ -333,6 +342,7 @@ POST /api/cases/{case_id}/status
 ## Сводка руководителя
 ## Карта рисков подразделений
 ## Корреляция Workforce ↔ Security
+## Связанная картина риска
 ## Риски подразделений
 ## Динамика бизнес-рисков
 ## Кандидаты в инциденты
