@@ -134,6 +134,63 @@ agent и проверить поступление telemetry JSONL. Если и�
 Главная страница не перегружается: показывается сводка и таблица максимум из
 10 проблемных узлов. Источник `local_fallback` никогда не подтверждает KPI.
 
+## SLA покрытия агентов
+
+Портал показывает карточку `Покрытие агентов`. Она отвечает на вопрос,
+насколько текущий `Индекс активности` репрезентативен по всему парку рабочих
+мест.
+
+Источник ожидаемого состава парка задается JSON-файлом:
+
+- CLI/env: `--expected-nodes-path` или `DETMIR_PORTAL_EXPECTED_NODES_PATH`;
+- default: `config/expected_nodes.json`;
+- публичный пример: `config/expected_nodes.example.json`.
+
+Формат:
+
+```json
+{
+  "nodes": [
+    {
+      "hostname": "HOST-EXAMPLE-001",
+      "department": "Бухгалтерия",
+      "owner": "OWNER-EXAMPLE",
+      "criticality": "normal"
+    }
+  ]
+}
+```
+
+`GET /api/reports` отдает `agent_coverage_sla`:
+
+- `expected_nodes` - сколько рабочих мест ожидается по конфигу;
+- `reporting_nodes_24h` - сколько узлов прислали свежую за 24 часа
+  телеметрию, принятую в KPI;
+- `stale_nodes` - узлы есть в telemetry, но последняя запись старше 24 часов;
+- `missing_nodes` - узлы из expected list не найдены в telemetry;
+- `coverage_pct` - процент узлов, подтверждающих KPI;
+- `freshness_pct` - процент узлов со свежей telemetry независимо от качества
+  источника;
+- `sla_status` - `OK`, `WARNING`, `CRITICAL` или `UNKNOWN`;
+- `problem_nodes` - максимум выводится в UI по 10 проблемным узлам.
+
+Правила SLA:
+
+- `coverage_pct >= 90%` - `OK`;
+- `75-89%` - `WARNING`;
+- `<75%` - `CRITICAL`;
+- если expected list отсутствует или пустой - `UNKNOWN`.
+
+Если статус `CRITICAL`, executive summary показывает:
+`Покрытие агентов критически недостаточно: KPI не может считаться репрезентативным`.
+
+Если статус `WARNING`, executive summary показывает:
+`KPI требует проверки: часть рабочих мест не присылает свежую телеметрию`.
+
+Источник `local_fallback` может повышать `freshness_pct`, если телеметрия
+свежая, но не повышает `coverage_pct` и не засчитывается как подтвержденный
+KPI.
+
 ## Risk -> Investigation
 
 Кнопка `Открыть расследование` переводит пользователя в read-only карточку.

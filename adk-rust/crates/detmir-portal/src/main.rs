@@ -152,6 +152,13 @@ struct Cli {
         env = "DETMIR_PORTAL_TELEMETRY_STORE_PATH"
     )]
     telemetry_store_path: PathBuf,
+
+    #[arg(
+        long,
+        default_value = "config/expected_nodes.json",
+        env = "DETMIR_PORTAL_EXPECTED_NODES_PATH"
+    )]
+    expected_nodes_path: PathBuf,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -240,6 +247,54 @@ struct AgentQualityNodesSummary {
     degraded_nodes: usize,
     unknown_nodes: usize,
     accepted_kpi_nodes_pct: u8,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+struct ExpectedNode {
+    hostname: String,
+    #[serde(default)]
+    department: String,
+    #[serde(default)]
+    owner: String,
+    #[serde(default)]
+    criticality: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AgentCoverageProblemNode {
+    hostname: String,
+    department: String,
+    owner: String,
+    last_seen_utc: String,
+    status: String,
+    recommendation: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct AgentCoverageSla {
+    expected_nodes: usize,
+    reporting_nodes_24h: usize,
+    stale_nodes: usize,
+    missing_nodes: usize,
+    coverage_pct: u8,
+    freshness_pct: u8,
+    sla_status: String,
+    problem_nodes: Vec<AgentCoverageProblemNode>,
+}
+
+impl Default for AgentCoverageSla {
+    fn default() -> Self {
+        Self {
+            expected_nodes: 0,
+            reporting_nodes_24h: 0,
+            stale_nodes: 0,
+            missing_nodes: 0,
+            coverage_pct: 0,
+            freshness_pct: 0,
+            sla_status: "UNKNOWN".to_string(),
+            problem_nodes: Vec::new(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -484,6 +539,7 @@ struct Snapshot {
     agent_quality_history_summary: AgentQualityHistorySummary,
     agent_quality_nodes: Vec<AgentQualityNodeItem>,
     agent_quality_nodes_summary: AgentQualityNodesSummary,
+    agent_coverage_sla: AgentCoverageSla,
 }
 
 #[derive(Debug)]
@@ -995,6 +1051,8 @@ fn build_snapshot(args: &Cli) -> Snapshot {
     let agent_quality_history_summary = summarize_agent_quality_history(&agent_quality_history);
     let agent_quality_nodes = load_agent_quality_nodes(&args.telemetry_store_path, 7);
     let agent_quality_nodes_summary = summarize_agent_quality_nodes(&agent_quality_nodes);
+    let agent_coverage_sla =
+        build_agent_coverage_sla(&args.expected_nodes_path, &agent_quality_nodes, Utc::now());
     Snapshot {
         generated_at_utc: now(),
         detmir_status: command_json_source("detmir_status", &args.status_cmd, timeout),
@@ -1026,6 +1084,7 @@ fn build_snapshot(args: &Cli) -> Snapshot {
         agent_quality_history_summary,
         agent_quality_nodes,
         agent_quality_nodes_summary,
+        agent_coverage_sla,
     }
 }
 
@@ -1241,6 +1300,168 @@ fn summarize_agent_quality_nodes(nodes: &[AgentQualityNodeItem]) -> AgentQuality
         degraded_nodes,
         unknown_nodes,
         accepted_kpi_nodes_pct,
+    }
+}
+
+fn build_agent_coverage_sla(
+    expected_nodes_path: &Path,
+    nodes: &[AgentQualityNodeItem],
+    now_utc: chrono::DateTime<Utc>,
+) -> AgentCoverageSla {
+    let expected_nodes = load_expected_nodes(expected_nodes_path);
+    agent_coverage_sla_from_expected(&expected_nodes, nodes, now_utc)
+}
+
+fn load_expected_nodes(path: &Path) -> Vec<ExpectedNode> {
+    let Ok(text) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    if let Ok(nodes) = serde_json::from_str::<Vec<ExpectedNode>>(&text) {
+        return sanitize_expected_nodes(nodes);
+    }
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return Vec::new();
+    };
+    let nodes = value
+        .get("nodes")
+        .cloned()
+        .and_then(|nodes| serde_json::from_value::<Vec<ExpectedNode>>(nodes).ok())
+        .unwrap_or_default();
+    sanitize_expected_nodes(nodes)
+}
+
+fn sanitize_expected_nodes(nodes: Vec<ExpectedNode>) -> Vec<ExpectedNode> {
+    let mut by_hostname = BTreeMap::new();
+    for node in nodes {
+        let hostname = node.hostname.trim();
+        if hostname.is_empty() {
+            continue;
+        }
+        by_hostname.insert(
+            hostname.to_string(),
+            ExpectedNode {
+                hostname: hostname.to_string(),
+                department: node.department.trim().to_string(),
+                owner: node.owner.trim().to_string(),
+                criticality: node.criticality.trim().to_string(),
+            },
+        );
+    }
+    by_hostname.into_values().collect()
+}
+
+fn agent_coverage_sla_from_expected(
+    expected_nodes: &[ExpectedNode],
+    nodes: &[AgentQualityNodeItem],
+    now_utc: chrono::DateTime<Utc>,
+) -> AgentCoverageSla {
+    let expected_count = expected_nodes.len();
+    if expected_count == 0 {
+        return AgentCoverageSla::default();
+    }
+    let by_hostname = nodes
+        .iter()
+        .map(|node| (node.hostname.as_str(), node))
+        .collect::<BTreeMap<_, _>>();
+    let mut reporting_nodes_24h = 0usize;
+    let mut fresh_nodes = 0usize;
+    let mut stale_nodes = 0usize;
+    let mut missing_nodes = 0usize;
+    let mut problem_nodes = Vec::new();
+    for expected in expected_nodes {
+        let Some(node) = by_hostname.get(expected.hostname.as_str()) else {
+            missing_nodes += 1;
+            problem_nodes.push(agent_coverage_problem_node(
+                expected,
+                "-",
+                "MISSING",
+                "Проверить установку и запуск Rust agent на рабочем месте.",
+            ));
+            continue;
+        };
+        let fresh = agent_node_seen_within_24h(&node.last_seen_utc, now_utc);
+        if fresh {
+            fresh_nodes += 1;
+        } else {
+            stale_nodes += 1;
+            problem_nodes.push(agent_coverage_problem_node(
+                expected,
+                &node.last_seen_utc,
+                "STALE",
+                "Проверить связь агента с сервером и очередь отправки telemetry.",
+            ));
+            continue;
+        }
+        if node.kpi_accepted {
+            reporting_nodes_24h += 1;
+        } else {
+            problem_nodes.push(agent_coverage_problem_node(
+                expected,
+                &node.last_seen_utc,
+                "DEGRADED",
+                "Телеметрия свежая, но источник не подтверждает KPI. Вернуть основной сбор WTS API.",
+            ));
+        }
+    }
+    problem_nodes.sort_by(|left, right| {
+        coverage_problem_rank(&left.status)
+            .cmp(&coverage_problem_rank(&right.status))
+            .then_with(|| left.hostname.cmp(&right.hostname))
+    });
+    let coverage_pct = ((reporting_nodes_24h * 100) / expected_count) as u8;
+    let freshness_pct = ((fresh_nodes * 100) / expected_count) as u8;
+    AgentCoverageSla {
+        expected_nodes: expected_count,
+        reporting_nodes_24h,
+        stale_nodes,
+        missing_nodes,
+        coverage_pct,
+        freshness_pct,
+        sla_status: agent_coverage_sla_status(coverage_pct).to_string(),
+        problem_nodes,
+    }
+}
+
+fn agent_node_seen_within_24h(last_seen_utc: &str, now_utc: chrono::DateTime<Utc>) -> bool {
+    let Ok(last_seen) = chrono::DateTime::parse_from_rfc3339(last_seen_utc) else {
+        return false;
+    };
+    let last_seen = last_seen.with_timezone(&Utc);
+    last_seen <= now_utc && now_utc - last_seen <= chrono::Duration::hours(24)
+}
+
+fn agent_coverage_problem_node(
+    expected: &ExpectedNode,
+    last_seen_utc: &str,
+    status: &str,
+    recommendation: &str,
+) -> AgentCoverageProblemNode {
+    AgentCoverageProblemNode {
+        hostname: expected.hostname.clone(),
+        department: expected.department.clone(),
+        owner: expected.owner.clone(),
+        last_seen_utc: last_seen_utc.to_string(),
+        status: status.to_string(),
+        recommendation: recommendation.to_string(),
+    }
+}
+
+fn coverage_problem_rank(status: &str) -> u8 {
+    match status {
+        "MISSING" => 0,
+        "STALE" => 1,
+        "DEGRADED" => 2,
+        _ => 3,
+    }
+}
+
+fn agent_coverage_sla_status(coverage_pct: u8) -> &'static str {
+    if coverage_pct >= 90 {
+        "OK"
+    } else if coverage_pct >= 75 {
+        "WARNING"
+    } else {
+        "CRITICAL"
     }
 }
 
@@ -1687,6 +1908,7 @@ fn build_reports(
     let agent_quality_history_summary = snapshot.agent_quality_history_summary.clone();
     let agent_quality_nodes = snapshot.agent_quality_nodes.clone();
     let agent_quality_nodes_summary = snapshot.agent_quality_nodes_summary.clone();
+    let agent_coverage_sla = snapshot.agent_coverage_sla.clone();
     let worktime = worktime_block(snapshot);
     let one_c = one_c_block(snapshot);
     let dlp_block_value = dlp_block(snapshot);
@@ -1745,6 +1967,16 @@ fn build_reports(
     {
         executive_points
             .push("KPI требует проверки: менее 80% узлов дают подтвержденные данные".to_string());
+    }
+    match agent_coverage_sla.sla_status.as_str() {
+        "CRITICAL" => executive_points.push(
+            "Покрытие агентов критически недостаточно: KPI не может считаться репрезентативным"
+                .to_string(),
+        ),
+        "WARNING" => executive_points.push(
+            "KPI требует проверки: часть рабочих мест не присылает свежую телеметрию".to_string(),
+        ),
+        _ => {}
     }
     let recommendations = owner_recommendations(snapshot, &summary);
     let workforce_summary = ReportWorkforceSummary {
@@ -1846,6 +2078,7 @@ fn build_reports(
         "agent_quality_history_summary": agent_quality_history_summary,
         "agent_quality_nodes": agent_quality_nodes,
         "agent_quality_nodes_summary": agent_quality_nodes_summary,
+        "agent_coverage_sla": agent_coverage_sla,
         "workforce_policy": workforce_policy_explain,
         "workforce": {
             "department_comparison": department_items,
@@ -3299,6 +3532,7 @@ fn render_report_markdown(
         &snapshot.agent_quality_nodes,
         &snapshot.agent_quality_nodes_summary,
     );
+    append_agent_coverage_sla_markdown(&mut text, &snapshot.agent_coverage_sla);
     append_ueba_risk_markdown(&mut text, ueba_risk);
     append_workforce_policy_markdown(&mut text, workforce_policy);
     text.push_str("\nПримечание: DLP/case показатели являются derived detections/cases и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
@@ -3418,6 +3652,39 @@ fn append_agent_quality_nodes_markdown(
     }
     if displayed == 0 {
         text.push_str("- Проблемных рабочих мест не найдено.\n");
+    }
+}
+
+fn append_agent_coverage_sla_markdown(text: &mut String, sla: &AgentCoverageSla) {
+    text.push_str("\n## SLA покрытия агентов\n\n");
+    text.push_str(&format!("- Статус SLA: {}\n", sla.sla_status));
+    text.push_str(&format!("- Ожидается узлов: {}\n", sla.expected_nodes));
+    text.push_str(&format!(
+        "- Прислали подтвержденные данные за 24 часа: {}\n",
+        sla.reporting_nodes_24h
+    ));
+    text.push_str(&format!("- Устаревшие узлы: {}\n", sla.stale_nodes));
+    text.push_str(&format!("- Отсутствующие узлы: {}\n", sla.missing_nodes));
+    text.push_str(&format!("- Покрытие KPI: {}%\n", sla.coverage_pct));
+    text.push_str(&format!("- Свежесть телеметрии: {}%\n", sla.freshness_pct));
+    if sla.expected_nodes == 0 {
+        text.push_str("- Список ожидаемых рабочих мест не настроен.\n");
+        return;
+    }
+    if sla.problem_nodes.is_empty() {
+        text.push_str("- Проблемных узлов не найдено.\n");
+        return;
+    }
+    for item in sla.problem_nodes.iter().take(10) {
+        text.push_str(&format!(
+            "- {}: department={}, owner={}, last_seen={}, status={}; рекомендация: {}\n",
+            item.hostname,
+            item.department,
+            item.owner,
+            item.last_seen_utc,
+            item.status,
+            item.recommendation
+        ));
     }
 }
 
@@ -5620,6 +5887,174 @@ mod tests {
         assert_eq!(summary.unknown_nodes, 2);
     }
 
+    fn fixed_sla_now() -> chrono::DateTime<Utc> {
+        chrono::DateTime::parse_from_rfc3339("2026-06-04T12:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc)
+    }
+
+    fn expected_node(hostname: &str) -> ExpectedNode {
+        ExpectedNode {
+            hostname: hostname.to_string(),
+            department: "Подразделение".to_string(),
+            owner: "Ответственный".to_string(),
+            criticality: "normal".to_string(),
+        }
+    }
+
+    fn quality_node(
+        hostname: &str,
+        last_seen_utc: &str,
+        status: &str,
+        kpi_accepted: bool,
+    ) -> AgentQualityNodeItem {
+        AgentQualityNodeItem {
+            hostname: hostname.to_string(),
+            last_seen_utc: last_seen_utc.to_string(),
+            source: if kpi_accepted {
+                "wts_api".to_string()
+            } else {
+                "local_fallback".to_string()
+            },
+            status: status.to_string(),
+            kpi_accepted,
+            sessions_total: 2,
+            rdp_sessions: 1,
+            collector_error: None,
+            recommendation: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn agent_coverage_sla_is_unknown_without_expected_nodes() {
+        let dir = tempfile::tempdir().unwrap();
+        let sla = build_agent_coverage_sla(
+            &dir.path().join("missing-expected-nodes.json"),
+            &[quality_node(
+                "HOST-EXAMPLE-1",
+                "2026-06-04T11:00:00Z",
+                "OK",
+                true,
+            )],
+            fixed_sla_now(),
+        );
+        assert_eq!(sla.sla_status, "UNKNOWN");
+        assert_eq!(sla.expected_nodes, 0);
+        assert_eq!(sla.coverage_pct, 0);
+    }
+
+    #[test]
+    fn agent_coverage_sla_counts_full_coverage() {
+        let expected = vec![
+            expected_node("HOST-EXAMPLE-1"),
+            expected_node("HOST-EXAMPLE-2"),
+        ];
+        let nodes = vec![
+            quality_node("HOST-EXAMPLE-1", "2026-06-04T11:00:00Z", "OK", true),
+            quality_node("HOST-EXAMPLE-2", "2026-06-04T10:00:00Z", "OK", true),
+        ];
+        let sla = agent_coverage_sla_from_expected(&expected, &nodes, fixed_sla_now());
+        assert_eq!(sla.sla_status, "OK");
+        assert_eq!(sla.reporting_nodes_24h, 2);
+        assert_eq!(sla.coverage_pct, 100);
+        assert_eq!(sla.freshness_pct, 100);
+        assert!(sla.problem_nodes.is_empty());
+    }
+
+    #[test]
+    fn agent_coverage_sla_warns_at_eighty_percent() {
+        let expected = (1..=5)
+            .map(|index| expected_node(&format!("HOST-EXAMPLE-{index}")))
+            .collect::<Vec<_>>();
+        let nodes = (1..=4)
+            .map(|index| {
+                quality_node(
+                    &format!("HOST-EXAMPLE-{index}"),
+                    "2026-06-04T11:00:00Z",
+                    "OK",
+                    true,
+                )
+            })
+            .collect::<Vec<_>>();
+        let sla = agent_coverage_sla_from_expected(&expected, &nodes, fixed_sla_now());
+        assert_eq!(sla.sla_status, "WARNING");
+        assert_eq!(sla.coverage_pct, 80);
+        assert_eq!(sla.missing_nodes, 1);
+        assert_eq!(sla.problem_nodes[0].status, "MISSING");
+    }
+
+    #[test]
+    fn agent_coverage_sla_is_critical_at_sixty_percent() {
+        let expected = (1..=5)
+            .map(|index| expected_node(&format!("HOST-EXAMPLE-{index}")))
+            .collect::<Vec<_>>();
+        let nodes = (1..=3)
+            .map(|index| {
+                quality_node(
+                    &format!("HOST-EXAMPLE-{index}"),
+                    "2026-06-04T11:00:00Z",
+                    "OK",
+                    true,
+                )
+            })
+            .collect::<Vec<_>>();
+        let sla = agent_coverage_sla_from_expected(&expected, &nodes, fixed_sla_now());
+        assert_eq!(sla.sla_status, "CRITICAL");
+        assert_eq!(sla.coverage_pct, 60);
+        assert_eq!(sla.missing_nodes, 2);
+    }
+
+    #[test]
+    fn agent_coverage_sla_reports_stale_nodes() {
+        let expected = vec![
+            expected_node("HOST-EXAMPLE-1"),
+            expected_node("HOST-EXAMPLE-2"),
+        ];
+        let nodes = vec![
+            quality_node("HOST-EXAMPLE-1", "2026-06-04T11:00:00Z", "OK", true),
+            quality_node("HOST-EXAMPLE-2", "2026-06-03T10:00:00Z", "OK", true),
+        ];
+        let sla = agent_coverage_sla_from_expected(&expected, &nodes, fixed_sla_now());
+        assert_eq!(sla.stale_nodes, 1);
+        assert_eq!(sla.missing_nodes, 0);
+        assert_eq!(sla.coverage_pct, 50);
+        assert!(sla.problem_nodes.iter().any(|item| item.status == "STALE"));
+    }
+
+    #[test]
+    fn agent_coverage_sla_reports_missing_nodes() {
+        let expected = vec![
+            expected_node("HOST-EXAMPLE-1"),
+            expected_node("HOST-EXAMPLE-2"),
+        ];
+        let nodes = vec![quality_node(
+            "HOST-EXAMPLE-1",
+            "2026-06-04T11:00:00Z",
+            "OK",
+            true,
+        )];
+        let sla = agent_coverage_sla_from_expected(&expected, &nodes, fixed_sla_now());
+        assert_eq!(sla.missing_nodes, 1);
+        assert_eq!(sla.problem_nodes[0].hostname, "HOST-EXAMPLE-2");
+        assert_eq!(sla.problem_nodes[0].status, "MISSING");
+    }
+
+    #[test]
+    fn agent_coverage_sla_excludes_local_fallback_from_confirmed_kpi() {
+        let expected = vec![expected_node("HOST-EXAMPLE-1")];
+        let nodes = vec![quality_node(
+            "HOST-EXAMPLE-1",
+            "2026-06-04T11:00:00Z",
+            "DEGRADED",
+            false,
+        )];
+        let sla = agent_coverage_sla_from_expected(&expected, &nodes, fixed_sla_now());
+        assert_eq!(sla.freshness_pct, 100);
+        assert_eq!(sla.coverage_pct, 0);
+        assert_eq!(sla.reporting_nodes_24h, 0);
+        assert_eq!(sla.problem_nodes[0].status, "DEGRADED");
+    }
+
     #[test]
     fn incident_id_is_stable() {
         assert_eq!(
@@ -5713,6 +6148,7 @@ mod tests {
             evidence_upload_token: None,
             telemetry_api_key: "test-key".to_string(),
             telemetry_store_path: dir.path().join("telemetry.jsonl"),
+            expected_nodes_path: dir.path().join("expected_nodes.json"),
         };
         let found = resolve_screenshot_file(&args, &None, &Some(digest.clone()))
             .unwrap()
@@ -5778,6 +6214,7 @@ mod tests {
             evidence_upload_token: None,
             telemetry_api_key: "test-key".to_string(),
             telemetry_store_path: dir.path().join("telemetry/telemetry.jsonl"),
+            expected_nodes_path: dir.path().join("expected_nodes.json"),
         };
         let payload = json!({
             "agent_id": "agent-1",
@@ -5974,6 +6411,7 @@ mod tests {
                 unknown_nodes: 0,
                 accepted_kpi_nodes_pct: 50,
             },
+            agent_coverage_sla: AgentCoverageSla::default(),
         };
         let evidence = DlpEvidenceResponse {
             ok: true,
@@ -6065,6 +6503,7 @@ mod tests {
             report["agent_quality_nodes_summary"]["accepted_kpi_nodes_pct"],
             50
         );
+        assert_eq!(report["agent_coverage_sla"]["sla_status"], "UNKNOWN");
         assert!(
             report["executive_points"]
                 .as_array()
@@ -6077,6 +6516,12 @@ mod tests {
                 .as_str()
                 .unwrap()
                 .contains("## Качество данных по узлам")
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## SLA покрытия агентов")
         );
         assert!(
             report["markdown"]
@@ -6163,6 +6608,7 @@ confidence:
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
             agent_quality_nodes: Vec::new(),
             agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
+            agent_coverage_sla: AgentCoverageSla::default(),
         };
         let metrics = ReportMetrics {
             users_count: 1,
@@ -6270,6 +6716,7 @@ confidence:
                 agent_quality_history_summary: AgentQualityHistorySummary::default(),
                 agent_quality_nodes: Vec::new(),
                 agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
+                agent_coverage_sla: AgentCoverageSla::default(),
             }
         }
 
@@ -6362,6 +6809,7 @@ confidence:
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
             agent_quality_nodes: Vec::new(),
             agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
+            agent_coverage_sla: AgentCoverageSla::default(),
         };
         let policy = WorkforcePolicy {
             default_role: "accountant".to_string(),
@@ -6465,6 +6913,7 @@ confidence:
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
             agent_quality_nodes: Vec::new(),
             agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
+            agent_coverage_sla: AgentCoverageSla::default(),
         };
         let explain = build_workforce_policy_explain(&snapshot, &policy_path, false);
         assert_eq!(explain["configured"], true);

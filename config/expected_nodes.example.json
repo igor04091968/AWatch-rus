@@ -1,0 +1,16 @@
+{
+  "nodes": [
+    {
+      "hostname": "HOST-EXAMPLE-001",
+      "department": "Бухгалтерия",
+      "owner": "OWNER-EXAMPLE",
+      "criticality": "normal"
+    },
+    {
+      "hostname": "HOST-EXAMPLE-002",
+      "department": "Продажи",
+      "owner": "OWNER-EXAMPLE",
+      "criticality": "critical"
+    }
+  ]
+}

@@ -24,9 +24,9 @@ async function postJson(path, payload) {
 function statusClass(status) {
   const s = String(status || "UNKNOWN").toLowerCase();
   if (s === "ok" || s === "true") return "status-ok";
-  if (s === "warn" || s === "warning" || s === "fallback") return "status-warn";
+  if (s === "warn" || s === "warning" || s === "fallback" || s === "stale") return "status-warn";
   if (s === "degraded") return "status-degraded";
-  if (s === "fail" || s === "false" || s === "error") return "status-fail";
+  if (s === "fail" || s === "false" || s === "error" || s === "critical" || s === "missing") return "status-fail";
   return "status-unknown";
 }
 
@@ -828,6 +828,7 @@ function renderOperator(data, report) {
     ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
     ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
     ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
+    ${renderAgentCoverageSla(report?.agent_coverage_sla)}
     ${renderOverviewAnalytics(report)}
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
@@ -1532,6 +1533,70 @@ function renderAgentQualityNodes(nodes, summary) {
   `;
 }
 
+function renderAgentCoverageSla(sla) {
+  const s = sla || {};
+  const rows = Array.isArray(s.problem_nodes) ? s.problem_nodes.slice(0, 10) : [];
+  const status = s.sla_status || "UNKNOWN";
+  return `
+    <section class="card agent-coverage-card">
+      <div class="section-head">
+        <div>
+          <h3>Покрытие агентов</h3>
+          <p class="muted">Показывает, насколько KPI репрезентативен по всему парку рабочих мест.</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      <div class="quality-decision">
+        <div><span class="muted">Ожидается узлов</span><strong>${escapeHtml(s.expected_nodes ?? 0)}</strong></div>
+        <div><span class="muted">Данные за 24 часа</span><strong>${escapeHtml(s.reporting_nodes_24h ?? 0)}</strong></div>
+        <div><span class="muted">Устаревшие</span><strong>${escapeHtml(s.stale_nodes ?? 0)}</strong></div>
+        <div><span class="muted">Отсутствующие</span><strong>${escapeHtml(s.missing_nodes ?? 0)}</strong></div>
+        <div><span class="muted">Покрытие</span><strong>${escapeHtml(s.coverage_pct ?? 0)}%</strong></div>
+        <div><span class="muted">Свежесть</span><strong>${escapeHtml(s.freshness_pct ?? 0)}%</strong></div>
+      </div>
+      ${status === "CRITICAL" ? `<div class="quality-warning">Покрытие агентов критически недостаточно: KPI не может считаться репрезентативным.</div>` : ""}
+      ${status === "WARNING" ? `<div class="quality-warning">KPI требует проверки: часть рабочих мест не присылает свежую телеметрию.</div>` : ""}
+      ${status === "UNKNOWN" ? `<p class="muted">Список ожидаемых рабочих мест не настроен.</p>` : ""}
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Узел</th>
+              <th>Подразделение</th>
+              <th>Ответственный</th>
+              <th>Последняя телеметрия</th>
+              <th>Статус</th>
+              <th>Рекомендация</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(item => `
+              <tr>
+                <td>${ui(item.hostname || "unknown")}</td>
+                <td>${ui(item.department || "-")}</td>
+                <td>${ui(item.owner || "-")}</td>
+                <td>${escapeHtml(item.last_seen_utc || "-")}</td>
+                <td><span class="badge ${statusClass(item.status)}">${ui(item.status || "UNKNOWN")}</span></td>
+                <td>${ui(item.recommendation || "")}</td>
+              </tr>
+            `).join("") : `
+              <tr>
+                <td>${Number(s.expected_nodes || 0) === 0 ? "Нет списка" : "Проблем нет"}</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td><span class="badge ${statusClass(status)}">${ui(status)}</span></td>
+                <td>${Number(s.expected_nodes || 0) === 0 ? "Настроить expected_nodes.json." : "Действий не требуется."}</td>
+              </tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+      ${Array.isArray(s.problem_nodes) && s.problem_nodes.length > 10 ? `<p class="muted small">Показаны первые 10 проблемных узлов из ${escapeHtml(s.problem_nodes.length)}.</p>` : ""}
+    </section>
+  `;
+}
+
 function renderReports(data) {
   data = periodReport(data);
   return `
@@ -1569,6 +1634,7 @@ function renderReports(data) {
     ${renderAgentQuality(data.agent_quality, data.agent_quality_explain)}
     ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
+    ${renderAgentCoverageSla(data.agent_coverage_sla)}
     ${renderUebaRisk(data.ueba_risk)}
     ${renderWorkforceIndexExplanation(data.workforce_policy)}
     <h3 class="section-title">Срезы отчета</h3>

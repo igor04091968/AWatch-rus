@@ -116,6 +116,11 @@ aw_worktime_enabled = true
 Источник `local_fallback` в этой сводке помечается как диагностический и не
 подтверждает KPI узла.
 
+На основе `agent_quality_nodes` портал также считает `agent_coverage_sla`:
+покрытие ожидаемого парка рабочих мест по файлу expected nodes. Свежий
+`local_fallback` может подтверждать наличие телеметрии, но не подтверждает KPI
+узла и снижает `coverage_pct`.
+
 ## PowerShell Legacy Fallback
 
 В `deployment-config.json` используется блок:
