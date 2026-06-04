@@ -1615,28 +1615,25 @@ function renderBusinessRisk(items) {
           <thead>
             <tr>
               <th>Подразделение</th>
-              <th>Trust KPI</th>
-              <th>Активность</th>
-              <th>Тренд</th>
               <th>Риск</th>
+              <th>Причины</th>
+              <th>Рекомендация</th>
             </tr>
           </thead>
           <tbody>
             ${rows.length ? rows.map(item => `
               <tr>
                 <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
-                <td>${escapeHtml(item.trust_score ?? 0)}%</td>
-                <td>${escapeHtml(item.activity_score ?? 0)}%</td>
-                <td>${ui(businessTrendText(item.trend))}</td>
                 <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
+                <td>${ui(businessRiskReasons(item))}</td>
+                <td>${ui(item.recommendation || "Проверить первичные данные подразделения.")}</td>
               </tr>
             `).join("") : `
               <tr>
                 <td>Нет данных</td>
-                <td>-</td>
-                <td>-</td>
-                <td>нет данных</td>
                 <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>нет данных</td>
+                <td>Дождаться расчета подразделений.</td>
               </tr>
             `}
           </tbody>
@@ -1644,6 +1641,13 @@ function renderBusinessRisk(items) {
       </div>
     </section>
   `;
+}
+
+function businessRiskReasons(item) {
+  const reasons = Array.isArray(item?.reasons) && item.reasons.length
+    ? item.reasons.join("; ")
+    : "существенных причин не найдено";
+  return `${reasons}. Trust ${item?.trust_score ?? 0}%, активность ${item?.activity_score ?? 0}%, тренд ${businessTrendText(item?.trend)}, проблемных узлов ${item?.problem_nodes_count ?? 0}`;
 }
 
 function businessTrendText(value) {

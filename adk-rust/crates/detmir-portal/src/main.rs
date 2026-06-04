@@ -304,6 +304,11 @@ struct BusinessRiskItem {
     activity_score: u8,
     trend: String,
     risk_level: String,
+    reasons: Vec<String>,
+    recommendation: String,
+    problem_nodes_count: usize,
+    missing_nodes_count: usize,
+    stale_nodes_count: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -1990,9 +1995,14 @@ fn build_reports(
     }
     for item in business_risk.iter().take(3) {
         if item.risk_level != "LOW" {
+            let reason = item
+                .reasons
+                .first()
+                .cloned()
+                .unwrap_or_else(|| "требуется управленческая проверка".to_string());
             executive_points.push(format!(
-                "Риск подразделения {}: {} (trust={}%, activity={}%, trend={})",
-                item.department, item.risk_level, item.trust_score, item.activity_score, item.trend
+                "Подразделение {}: {} — причина: {}",
+                item.department, item.risk_level, reason
             ));
         }
     }
@@ -2197,7 +2207,7 @@ fn business_risk_item(
     let activity_score = activity.unwrap_or(0);
     let trend_delta = department_trend_delta(snapshot, department);
     let trend = business_risk_trend_label(trend_delta);
-    let problem_nodes = snapshot
+    let department_problem_nodes = snapshot
         .agent_coverage_sla
         .problem_nodes
         .iter()
@@ -2209,40 +2219,101 @@ fn business_risk_item(
             };
             node_department == department
         })
+        .collect::<Vec<_>>();
+    let problem_nodes_count = department_problem_nodes.len();
+    let missing_nodes_count = department_problem_nodes
+        .iter()
+        .filter(|node| node.status == "MISSING")
         .count();
-    let trust_score = business_trust_score(snapshot, problem_nodes);
+    let stale_nodes_count = department_problem_nodes
+        .iter()
+        .filter(|node| node.status == "STALE")
+        .count();
+    let trust_score = business_trust_score(snapshot, problem_nodes_count);
     let mut score = 0u64;
+    let mut reasons = Vec::new();
     if trust_score < 50 {
         score += 40;
+        reasons.push("низкий Trust KPI".to_string());
     } else if trust_score < 75 {
         score += 25;
+        reasons.push("низкий Trust KPI".to_string());
     } else if trust_score < 90 {
         score += 10;
     }
     if activity_score < 35 {
         score += 35;
+        reasons.push("низкая активность".to_string());
     } else if activity_score < 60 {
         score += 20;
+        reasons.push("низкая активность".to_string());
     } else if activity_score < 75 {
         score += 10;
     }
     if let Some(delta) = trend_delta {
         if delta <= -20.0 {
             score += 25;
+            reasons.push("падающий тренд".to_string());
         } else if delta <= -5.0 {
             score += 10;
+            reasons.push("падающий тренд".to_string());
         }
     } else if activity.is_none() {
         score += 15;
+        reasons.push("нет свежей телеметрии".to_string());
     }
-    score += (problem_nodes as u64).saturating_mul(15).min(30);
+    if missing_nodes_count > 0 || stale_nodes_count > 0 {
+        reasons.push("нет свежей телеметрии".to_string());
+    }
+    if problem_nodes_count > 0 {
+        reasons.push("много проблемных узлов".to_string());
+    }
+    reasons.sort();
+    reasons.dedup();
+    score += (problem_nodes_count as u64).saturating_mul(15).min(30);
+    let recommendation = business_risk_recommendation(
+        trust_score,
+        activity_score,
+        trend_delta,
+        missing_nodes_count,
+        stale_nodes_count,
+        problem_nodes_count,
+    );
     BusinessRiskItem {
         department: department.to_string(),
         trust_score,
         activity_score,
         trend,
         risk_level: business_risk_level(score).to_string(),
+        reasons,
+        recommendation,
+        problem_nodes_count,
+        missing_nodes_count,
+        stale_nodes_count,
     }
+}
+
+fn business_risk_recommendation(
+    trust_score: u8,
+    activity_score: u8,
+    trend_delta: Option<f64>,
+    missing_nodes_count: usize,
+    stale_nodes_count: usize,
+    problem_nodes_count: usize,
+) -> String {
+    if missing_nodes_count > 0 || stale_nodes_count > 0 {
+        return "Восстановить свежую телеметрию агентов и проверить expected nodes по подразделению."
+            .to_string();
+    }
+    if trust_score < 75 || problem_nodes_count > 0 {
+        return "Проверить качество данных агентов, fallback-источники и подтверждение KPI по рабочим местам."
+            .to_string();
+    }
+    if activity_score < 60 || trend_delta.is_some_and(|value| value <= -5.0) {
+        return "Поручить ответственному сверить план работ, загрузку сотрудников и причины падения активности."
+            .to_string();
+    }
+    "Держать подразделение под наблюдением; срочных действий не требуется.".to_string()
 }
 
 fn first_percent_score(text: &str) -> Option<u8> {
@@ -3896,10 +3967,24 @@ fn append_business_risk_markdown(text: &mut String, risks: &[BusinessRiskItem]) 
         return;
     }
     for item in risks.iter().take(10) {
+        let reasons = if item.reasons.is_empty() {
+            "нет существенных причин".to_string()
+        } else {
+            item.reasons.join("; ")
+        };
         text.push_str(&format!(
-            "- {}: level={}, trust={}%, activity={}%, trend={}\n",
-            item.department, item.risk_level, item.trust_score, item.activity_score, item.trend
+            "- {}: level={}, trust={}%, activity={}%, trend={}, problem_nodes={}, missing={}, stale={}\n",
+            item.department,
+            item.risk_level,
+            item.trust_score,
+            item.activity_score,
+            item.trend,
+            item.problem_nodes_count,
+            item.missing_nodes_count,
+            item.stale_nodes_count
         ));
+        text.push_str(&format!("  - причины: {reasons}\n"));
+        text.push_str(&format!("  - рекомендация: {}\n", item.recommendation));
     }
 }
 
@@ -6736,6 +6821,23 @@ mod tests {
         assert_eq!(report["business_risk"].as_array().unwrap().len(), 1);
         assert_eq!(report["business_risk"][0]["department"], "Бухгалтерия");
         assert_eq!(report["business_risk"][0]["risk_level"], "MEDIUM");
+        assert!(report["business_risk"][0]["reasons"].is_array());
+        assert!(
+            report["business_risk"][0]["reasons"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item.as_str() == Some("низкая активность"))
+        );
+        assert!(
+            report["business_risk"][0]["recommendation"]
+                .as_str()
+                .unwrap()
+                .contains("Проверить")
+        );
+        assert_eq!(report["business_risk"][0]["problem_nodes_count"], 0);
+        assert_eq!(report["business_risk"][0]["missing_nodes_count"], 0);
+        assert_eq!(report["business_risk"][0]["stale_nodes_count"], 0);
         assert!(
             report["executive_points"]
                 .as_array()
@@ -6748,7 +6850,7 @@ mod tests {
                 .as_array()
                 .unwrap()
                 .iter()
-                .any(|item| item.as_str().unwrap().contains("Риск подразделения"))
+                .any(|item| item.as_str().unwrap().contains("причина:"))
         );
         assert!(
             report["markdown"]
@@ -6768,6 +6870,7 @@ mod tests {
                 .unwrap()
                 .contains("## Риски подразделений")
         );
+        assert!(report["markdown"].as_str().unwrap().contains("причины:"));
         assert!(
             report["markdown"]
                 .as_str()
