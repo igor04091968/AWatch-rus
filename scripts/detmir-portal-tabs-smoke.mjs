@@ -59,7 +59,7 @@ function assertStaticTabHandlers() {
 }
 
 const expectedTabs = [
-  { tab: "operator", label: "Обзор", marker: "Управленческая сводка" },
+  { tab: "operator", label: "Обзор", marker: "Представление руководителя" },
   { tab: "employees", label: "Сотрудники", marker: "Карточки сотрудников" },
   { tab: "departments", label: "Подразделения", marker: "Рейтинг подразделений" },
   { tab: "owner", label: "Риски", marker: "Контроль безопасности" },
@@ -68,6 +68,8 @@ const expectedTabs = [
   { tab: "reports", label: "Отчеты", marker: "Срезы отчета" },
   { tab: "settings", label: "Настройки", marker: "Параметры расчета" },
 ];
+
+let smokeStep = "start";
 
 async function main() {
   const staticTabs = assertStaticTabHandlers();
@@ -102,8 +104,11 @@ async function main() {
   const results = [];
   const checks = [];
   try {
+    smokeStep = "open_portal";
     await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+    smokeStep = "wait_tabs";
     await page.waitForSelector(".tab", { timeout });
+    smokeStep = "wait_initial_ready";
     await page.waitForFunction(
       () => document.querySelector("#loadingStateText")?.textContent === "READY",
       null,
@@ -117,6 +122,7 @@ async function main() {
         && !(await page.locator("body").innerText({ timeout })).includes("Данные загружаются"),
     });
     for (const item of expectedTabs) {
+      smokeStep = `tab:${item.tab}`;
       await page.click(`button[data-tab="${item.tab}"]`, { timeout });
       await page.waitForFunction(
         (marker) => document.body && document.body.innerText.includes(marker),
@@ -129,32 +135,18 @@ async function main() {
       const ok = activeTab.trim() === item.label && bodyText.includes(item.marker) && !stillLoading;
       results.push({ tab: item.tab, label: item.label, marker: item.marker, ok });
       if (item.tab === "operator") {
-        await page.waitForFunction(
-          () => document.body && document.body.innerText.includes("Качество данных по рабочим местам"),
-          null,
-          { timeout },
-        );
         const readyBodyText = await page.locator("#content").innerText({ timeout });
         const requiredExecutive = [
           "Главный вывод",
-          "Сотрудников в работе",
-          "Средний индекс активности",
+          "Достоверность показателей",
+          "Полнота данных",
           "Главная причина риска",
           "Подтверждающие слои",
-          "Качество данных",
-          "Стабильность агента за 7 дней",
-          "Качество данных по рабочим местам",
-          "Полнота данных",
           "Карта рисков",
-          "Связь рисков и активности",
           "Риски подразделений",
-          "Динамика рисков",
-          "Требует проверки",
-          "ТОП-5 лучших подразделений",
-          "ТОП-5 проблемных подразделений",
-          "Требует внимания",
-          "Heat Map подразделений",
-          "Карточка руководителя подразделения",
+          "Рабочая активность сотрудников",
+          "Контроль безопасности",
+          "Что требует внимания",
         ];
         checks.push({
           name: "executive_dashboard_layer",
@@ -166,24 +158,69 @@ async function main() {
         );
         const riskNarrativeIndex = cardHeadings.indexOf("Главный вывод");
         const executiveIndex = cardHeadings.indexOf("Сводка руководителя");
-        const trustIndex = cardHeadings.indexOf("Качество данных");
         const businessRiskIndex = cardHeadings.indexOf("Риски подразделений");
-        const candidatesIndex = cardHeadings.indexOf("Требует проверки");
+        const heatmapIndex = cardHeadings.indexOf("Карта рисков");
         checks.push({
           name: "management_block_order",
           ok:
             riskNarrativeIndex >= 0 &&
             executiveIndex > riskNarrativeIndex &&
-            trustIndex > executiveIndex &&
-            businessRiskIndex > trustIndex &&
-            candidatesIndex > businessRiskIndex,
+            businessRiskIndex > executiveIndex &&
+            heatmapIndex > businessRiskIndex,
           order: [
             "Главный вывод",
             "Сводка руководителя",
-            "Качество данных",
             "Риски подразделений",
-            "Требует проверки",
+            "Карта рисков",
           ],
+        });
+        checks.push({
+          name: "role_view_switcher_present",
+          ok:
+            (await page.locator('[data-view-mode="executive"]').count()) === 1
+            && (await page.locator('[data-view-mode="security"]').count()) === 1
+            && (await page.locator('[data-view-mode="operations"]').count()) === 1,
+        });
+
+        smokeStep = "role:security";
+        await page.click('[data-view-mode="security"]', { timeout });
+        await page.waitForFunction(
+          () => document.querySelector("#loadingStateText")?.textContent === "READY"
+            && document.body.innerText.includes("Пакеты расследований"),
+          null,
+          { timeout },
+        );
+        const securityText = await page.locator("#content").innerText({ timeout });
+        checks.push({
+          name: "security_role_view",
+          ok: [
+            "Представление безопасности",
+            "Требует проверки",
+            "Расследования",
+            "Аудит",
+            "Пакеты расследований",
+          ].every((marker) => containsText(securityText, marker)),
+        });
+
+        smokeStep = "role:operations";
+        await page.click('[data-view-mode="operations"]', { timeout });
+        await page.waitForFunction(
+          () => document.querySelector("#loadingStateText")?.textContent === "READY"
+            && document.body.innerText.includes("Телеметрия"),
+          null,
+          { timeout },
+        );
+        const operationsText = await page.locator("#content").innerText({ timeout });
+        checks.push({
+          name: "operations_role_view",
+          ok: [
+            "Представление эксплуатации",
+            "Полнота данных",
+            "Качество данных",
+            "Качество данных по рабочим местам",
+            "Ошибки",
+            "Телеметрия",
+          ].every((marker) => containsText(operationsText, marker)),
         });
       }
       if (item.tab === "settings") {
@@ -202,9 +239,12 @@ async function main() {
         });
       }
     }
+    smokeStep = "security:investigation_navigation";
     await page.click('button[data-tab="operator"]', { timeout });
+    await page.click('[data-view-mode="security"]', { timeout });
     await page.waitForFunction(
-      () => document.body && document.body.innerText.includes("Топ рисков"),
+      () => document.querySelector("#loadingStateText")?.textContent === "READY"
+        && document.body.innerText.includes("Требует проверки"),
       null,
       { timeout },
     );
@@ -255,6 +295,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  process.stdout.write(`${JSON.stringify({ ok: false, error: error.message }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: false, step: smokeStep, error: error.message, stack: error.stack }, null, 2)}\n`);
   process.exitCode = 2;
 });

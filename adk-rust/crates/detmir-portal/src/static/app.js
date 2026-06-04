@@ -1,9 +1,11 @@
 const state = {
   tab: "operator",
+  viewMode: initialViewMode(),
   period: "today",
   links: null,
   readiness: null,
   reports: null,
+  cases: null,
   pendingScrollSelector: null,
   load: {
     status: "LOADING",
@@ -13,6 +15,39 @@ const state = {
     lastError: null,
   },
 };
+
+const VIEW_MODES = {
+  executive: {
+    label: "Руководитель",
+    title: "Роль руководителя",
+    heading: "Представление руководителя",
+    description: "Главный вывод, сводка руководителя, риски подразделений и карта рисков.",
+    stage: "Загрузка представления руководителя",
+  },
+  security: {
+    label: "Безопасность",
+    title: "Роль безопасности",
+    heading: "Представление безопасности",
+    description: "Очередь проверки, расследования, аудит решений и пакеты расследований.",
+    stage: "Загрузка представления безопасности",
+  },
+  operations: {
+    label: "Эксплуатация",
+    title: "Роль эксплуатации",
+    heading: "Представление эксплуатации",
+    description: "Полнота данных, качество сбора, ошибки и телеметрия рабочих мест.",
+    stage: "Загрузка представления эксплуатации",
+  },
+};
+
+function initialViewMode() {
+  try {
+    const stored = window.localStorage?.getItem("detmir.portal.viewMode");
+    return ["executive", "security", "operations"].includes(stored) ? stored : "executive";
+  } catch {
+    return "executive";
+  }
+}
 
 function apiBase() {
   const path = window.location.pathname;
@@ -140,6 +175,36 @@ function ui(value) {
 
 function tooltip(value) {
   return `title="${ui(value)}"`;
+}
+
+function currentViewMode() {
+  return VIEW_MODES[state.viewMode] ? state.viewMode : "executive";
+}
+
+function currentViewMeta() {
+  return VIEW_MODES[currentViewMode()];
+}
+
+function updateViewModeButtons() {
+  document.querySelectorAll("[data-view-mode]").forEach(button => {
+    button.classList.toggle("is-active", button.dataset.viewMode === currentViewMode());
+  });
+}
+
+function setViewMode(mode) {
+  if (!VIEW_MODES[mode]) return;
+  state.viewMode = mode;
+  try {
+    window.localStorage?.setItem("detmir.portal.viewMode", mode);
+  } catch {
+    // View mode is a UI preference only; ignore storage failures.
+  }
+  updateViewModeButtons();
+  if (state.tab !== "operator") {
+    setTab("operator");
+    return;
+  }
+  refresh({ stage: VIEW_MODES[mode].stage });
 }
 
 function renderSummary(summary, readiness) {
@@ -945,7 +1010,7 @@ function renderDepartmentLeaderCard(report) {
   `;
 }
 
-function renderOverviewAnalytics(report) {
+function renderOperatorDetailBands(report) {
   return `
     ${renderDepartmentRanking(report)}
     ${renderAttentionBlock(report)}
@@ -1053,35 +1118,189 @@ function renderSourceList(data) {
   `).join("")}</div>`;
 }
 
-function renderOperator(data, report) {
+function renderOperator(data, report, extras = {}) {
   report = periodReport(report);
   const incidents = Array.isArray(data.incidents) ? data.incidents : [];
-  const workforce = findSection(report, "Работа");
-  const insights = findSection(report, "Выводы Workforce");
-  const security = findSection(report, "ИБ");
-  const actions = findSection(report, "Действия");
+  const meta = currentViewMeta();
   return `
     <div class="page-head">
       <div>
-        <h2 class="section-title">Управленческая сводка</h2>
-        <p class="muted">За 10 секунд: работают ли люди, где просадка, где риск и что требует внимания.</p>
+        <h2 class="section-title">${ui(meta.heading)}</h2>
+        <p class="muted">${ui(meta.description)}</p>
       </div>
-      <span class="badge ${statusClass(report?.severity)}">${escapeHtml(report?.headline || "Оперативный срез")}</span>
+      <span class="badge ${statusClass(report?.severity)}">${ui(meta.label)}</span>
     </div>
     ${renderPeriodBanner(report)}
+    ${renderRoleViewSummary(meta)}
+    ${renderOperatorRoleContent(currentViewMode(), data, report, { ...extras, incidents })}
+  `;
+}
+
+function renderRoleViewSummary(meta) {
+  return `
+    <section class="card role-view-card">
+      <div class="section-head">
+        <div>
+          <h3>${ui(meta.heading)}</h3>
+          <p class="muted">${ui(meta.description)}</p>
+        </div>
+        <span class="badge status-ok">${ui(meta.label)}</span>
+      </div>
+    </section>
+  `;
+}
+
+function renderOperatorRoleContent(mode, data, report, extras = {}) {
+  if (mode === "security") return renderSecurityView(data, report, extras);
+  if (mode === "operations") return renderOperationsView(data, report);
+  return renderExecutiveView(report, extras.incidents || []);
+}
+
+function renderExecutiveView(report, incidents) {
+  return `
     ${renderRiskNarrative(report)}
     ${renderExecutiveDashboard(report)}
-    ${renderExecutiveMetrics(report, incidents)}
-    ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
-    ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
-    ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
-    ${renderAgentCoverageSla(report?.agent_coverage_sla)}
-    ${renderRiskHeatmap(report?.risk_heatmap)}
-    ${renderSecurityCorrelation(report?.security_correlation)}
     ${renderBusinessRisk(report?.business_risk)}
-    ${renderBusinessRiskTimeline(report?.business_risk_history, report?.business_risk_history_summary)}
-    ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
+    ${renderRiskHeatmap(report?.risk_heatmap)}
     ${renderOverviewAnalytics(report)}
+  `;
+}
+
+function renderSecurityView(data, report, extras = {}) {
+  const cases = Array.isArray(extras.cases?.cases) ? extras.cases.cases : [];
+  return `
+    ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
+    ${renderCases(cases)}
+    ${renderIncidentReviewAuditSummary(report)}
+    ${renderInvestigationPacks(report?.risk_incident_candidates)}
+    <section class="dashboard-band security-band">
+      <div class="band-head"><h3>Расследования</h3><span class="muted">ручная проверка, решения и материалы</span></div>
+      ${renderIncidentsList(extras.incidents || data.incidents || [])}
+    </section>
+  `;
+}
+
+function renderOperationsView(data, report) {
+  return `
+    ${renderAgentCoverageSla(report?.agent_coverage_sla)}
+    ${renderAgentQuality(report?.agent_quality, report?.agent_quality_explain)}
+    ${renderOperationsErrors(data, report)}
+    <section class="dashboard-band technical-band">
+      <div class="band-head"><h3>Телеметрия</h3><span class="muted">свежесть, стабильность и источники данных</span></div>
+      ${renderAgentQualityHistory(report?.agent_quality_history, report?.agent_quality_history_summary)}
+      ${renderAgentQualityNodes(report?.agent_quality_nodes, report?.agent_quality_nodes_summary)}
+      ${renderSourceList(data)}
+    </section>
+  `;
+}
+
+function renderOperationsErrors(data, report) {
+  const rows = [];
+  const collectorError = report?.agent_quality?.collector_error;
+  if (collectorError) {
+    rows.push(["Ошибка коллектора", collectorError, report?.agent_quality?.quality_status || "DEGRADED"]);
+  }
+  const problemNodes = Array.isArray(report?.agent_coverage_sla?.problem_nodes)
+    ? report.agent_coverage_sla.problem_nodes
+    : [];
+  for (const node of problemNodes.slice(0, 8)) {
+    rows.push([
+      node.hostname || "unknown",
+      `${node.status || "UNKNOWN"} · ${node.recommendation || "Проверить рабочее место"}`,
+      node.status || "WARNING",
+    ]);
+  }
+  for (const [name, source] of Object.entries(data || {})) {
+    if (!source || typeof source !== "object") continue;
+    const status = source.status || (source.ok === false ? "FAIL" : "");
+    if (!status || ["OK", "READY", "INFO"].includes(String(status).toUpperCase())) continue;
+    rows.push([label(name), source.summary || source.error || "требуется проверка", status]);
+  }
+  return `
+    <section class="card operations-errors-card">
+      <div class="section-head">
+        <div>
+          <h3>Ошибки</h3>
+          <p class="muted">Что мешает достоверному сбору и эксплуатационной готовности.</p>
+        </div>
+        <span class="badge ${statusClass(rows.length ? "WARNING" : "OK")}">${rows.length}</span>
+      </div>
+      <div class="list compact-list">${rows.length ? rows.map(([name, text, status]) => `
+        <div class="row compact-row">
+          <strong>${ui(name)}</strong>
+          <span class="muted">${ui(text)}</span>
+          <span class="badge ${statusClass(status)}">${ui(status)}</span>
+        </div>
+      `).join("") : `
+        <div class="row compact-row">
+          <strong>Критичных ошибок нет</strong>
+          <span class="muted">Портал не видит ошибок коллектора или проблемных рабочих мест в текущем срезе.</span>
+          <span class="badge status-ok">OK</span>
+        </div>
+      `}</div>
+    </section>
+  `;
+}
+
+function renderIncidentReviewAuditSummary(report) {
+  const summary = report?.incident_review_audit_summary || {};
+  const rows = [
+    ["Всего изменений", summary.total_changes ?? 0],
+    ["Подтверждено", summary.confirmed_count ?? 0],
+    ["Ложные срабатывания", summary.false_positive_count ?? 0],
+    ["Отложено", summary.postponed_count ?? 0],
+    ["Последнее изменение", summary.last_change_utc || "-"],
+  ];
+  return `
+    <section class="card incident-audit-card">
+      <div class="section-head">
+        <div>
+          <h3>Аудит</h3>
+          <p class="muted">Кто и когда менял статус записей, требующих проверки.</p>
+        </div>
+        <span class="badge ${statusClass(Number(summary.total_changes || 0) > 0 ? "INFO" : "UNKNOWN")}">${ui(summary.total_changes ?? 0)}</span>
+      </div>
+      <div class="quality-grid">${rows.map(([name, value]) => `
+        <div><span class="muted">${ui(name)}</span><strong>${ui(value)}</strong></div>
+      `).join("")}</div>
+    </section>
+  `;
+}
+
+function renderInvestigationPacks(candidates) {
+  const rows = Array.isArray(candidates) ? candidates.slice(0, 10) : [];
+  return `
+    <section class="card investigation-packs-card">
+      <div class="section-head">
+        <div>
+          <h3>Пакеты расследований</h3>
+          <p class="muted">Выгружаемые материалы по каждой записи для ручной проверки.</p>
+        </div>
+        <span class="badge ${statusClass(rows.length ? "INFO" : "UNKNOWN")}">${rows.length}</span>
+      </div>
+      <div class="list compact-list">${rows.length ? rows.map(item => `
+        <div class="row compact-row">
+          <strong>${ui(item.department || "Без подразделения")}</strong>
+          <span class="muted">${ui(item.reason || "требуется проверка")} · ${ui(item.hostname || "-")}</span>
+          <a class="small-button" href="${apiBase()}/investigation-pack/${encodeURIComponent(item.id || "")}?format=markdown" download>Скачать</a>
+        </div>
+      `).join("") : `
+        <div class="row compact-row">
+          <strong>Пакетов нет</strong>
+          <span class="muted">Нет записей, требующих выгрузки материалов.</span>
+          <span class="badge status-ok">OK</span>
+        </div>
+      `}</div>
+    </section>
+  `;
+}
+
+function renderOverviewAnalytics(report) {
+  const workforce = findSection(report, "Работа");
+  const insights = findSection(report, "Выводы по активности") || findSection(report, "Выводы Workforce");
+  const security = findSection(report, "ИБ");
+  const actions = findSection(report, "Действия");
+  return `
     <section class="dashboard-band">
       <div class="band-head"><h3>Рабочая активность сотрудников</h3><span class="muted">загрузка, простои, перегруз и дисциплина процессов</span></div>
       ${renderSectionItems(workforce, "Срез по работе сотрудников пока не сформирован.")}
@@ -1093,12 +1312,7 @@ function renderOperator(data, report) {
     </section>
     <section class="dashboard-band">
       <div class="band-head"><h3>Что требует внимания</h3><span class="muted">операторские действия и открытые вопросы</span></div>
-      ${renderIncidentsList(incidents)}
       ${renderSectionItems(actions, "Рекомендаций нет.")}
-    </section>
-    <section class="dashboard-band technical-band">
-      <div class="band-head"><h3>Технический статус источников</h3><span class="muted">вторичный слой для оператора</span></div>
-      ${renderSourceList(data)}
     </section>
   `;
 }
@@ -2457,8 +2671,11 @@ async function loadCurrentTab() {
   if (state.tab === "operator") {
     const data = await loadJson("/operator");
     state.reports = await loadJson("/reports").catch(() => state.reports);
+    if (currentViewMode() === "security") {
+      state.cases = await loadJson("/cases").catch(error => ({ ok: false, error: error.message, cases: [] }));
+    }
     updateFilters(state.reports);
-    return { data, report: state.reports, html: renderOperator(data, state.reports) };
+    return { data, report: state.reports, cases: state.cases, html: renderOperator(data, state.reports, { cases: state.cases }) };
   }
   if (state.tab === "manager") {
     const data = await loadJson("/manager");
@@ -2510,8 +2727,8 @@ async function loadCurrentTab() {
 }
 
 function tabLoadingStage(tab) {
+  if (tab === "operator") return currentViewMeta().stage;
   return {
-    operator: "Загрузка связанной картины риска",
     employees: "Загрузка карточек сотрудников",
     departments: "Загрузка подразделений",
     owner: "Загрузка рисков",
@@ -2566,6 +2783,10 @@ function showError(error) {
 
 document.querySelectorAll(".tab").forEach(btn => {
   btn.addEventListener("click", () => setTab(btn.dataset.tab));
+});
+
+document.querySelectorAll("[data-view-mode]").forEach(btn => {
+  btn.addEventListener("click", () => setViewMode(btn.dataset.viewMode));
 });
 
 document.getElementById("periodFilter")?.addEventListener("change", event => {
@@ -2768,6 +2989,7 @@ async function caseStatusAction(button) {
   await refresh({ stage: "Обновление статуса дела" });
 }
 
+updateViewModeButtons();
 applySecurityMode(state.tab);
 renderLoadStatus();
 refresh({ stage: "Первичная загрузка портала" });
