@@ -16,12 +16,6 @@ React/Tauri-интерфейса без переписывания backend-ло�
 - `GET /api/contracts/openapi.json`
 - `GET /api/contracts/typescript.d.ts`
 
-DPD mirror:
-
-- `GET /dpd/api/contracts`
-- `GET /dpd/api/contracts/openapi.json`
-- `GET /dpd/api/contracts/typescript.d.ts`
-
 ## Правила совместимости
 
 - Изменения API должны быть additive.
@@ -56,9 +50,9 @@ DPD mirror:
 
 - HTML-портал не удаляется.
 - Маршрут `/portal/` остаётся стабильным.
-- DPD `/dpd/` остаётся параллельным mirror.
 - Backend-расчёты, JSON-хранилища и workflow не дублируются во frontend.
 - Публичные JSON-поля не переименовываются без новой версии контракта.
+- Dioxus и DPD Portal исключены из архитектурного roadmap проекта.
 
 ## Проверка
 
@@ -66,7 +60,6 @@ DPD mirror:
 curl -sS http://127.0.0.1:8720/api/contracts | jq .
 curl -sS http://127.0.0.1:8720/api/contracts/openapi.json | jq .openapi
 curl -sS http://127.0.0.1:8720/api/contracts/typescript.d.ts | head
-curl -sS http://127.0.0.1:8722/api/contracts | jq .
 ```
 
 Ожидаемый результат:
@@ -75,4 +68,4 @@ curl -sS http://127.0.0.1:8722/api/contracts | jq .
 - `contract_version` заполнен;
 - OpenAPI JSON валиден;
 - TypeScript declarations доступны;
-- DPD отдаёт те же контрактные endpoints через mirror.
+- будущий React/Tauri UI может использовать JSON API без HTML-парсинга.

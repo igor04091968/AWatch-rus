@@ -28,7 +28,6 @@ members = [
     "crates/detmir-grafana-check",
     "crates/detmir-readiness",
     "crates/detmir-portal",
-    "crates/detmir-dpd-portal",
     "crates/aw-slo-monitor",
     "crates/aw-rus-healthd",
     "crates/detmir-check",

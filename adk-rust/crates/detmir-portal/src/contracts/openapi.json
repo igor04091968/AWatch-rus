@@ -9,10 +9,6 @@
     {
       "url": "/api",
       "description": "Gateway-relative API base"
-    },
-    {
-      "url": "/dpd/api",
-      "description": "DPD mirror API base"
     }
   ],
   "tags": [

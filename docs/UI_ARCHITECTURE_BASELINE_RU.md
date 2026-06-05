@@ -10,7 +10,8 @@ Agent: Rust
 Current Portal: Rust server-rendered HTML + HTMX
 Future Enterprise UI: React + TypeScript
 Future Desktop Forensics: Tauri + React + Rust core
-Dioxus: out of scope / не рассматривается
+Dioxus: excluded from roadmap
+DPD Portal: excluded from roadmap
 ```
 
 ## Правила
@@ -21,7 +22,7 @@ Dioxus: out of scope / не рассматривается
 - Будущий React/Tauri UI не должен ломать текущий портал.
 - Agent и backend остаются Rust-first.
 - Новые UI-фреймворки не добавлять без отдельного architecture decision.
-- Dioxus не добавлять и не рассматривать.
+- Dioxus и DPD Portal исключены из архитектурного roadmap проекта.
 - Будущий React/Tauri UI не должен парсить HTML текущего портала как источник
   данных.
 
@@ -31,9 +32,8 @@ Dioxus: out of scope / не рассматривается
 
 1. Укрепить текущий Rust web portal.
 2. Зафиксировать стабильные JSON API-контракты.
-3. Поддерживать DPD `/dpd/` как параллельный mirror для проверки совместимости.
-4. Готовить будущий React/Tauri UI только поверх опубликованных контрактов.
-5. Любые breaking changes проводить только через version bump контракта и
+3. Готовить будущий React/Tauri UI только поверх опубликованных контрактов.
+4. Любые breaking changes проводить только через version bump контракта и
    отдельное architecture decision.
 
 ## Контрактный слой
@@ -43,12 +43,6 @@ Dioxus: out of scope / не рассматривается
 - `/api/contracts`;
 - `/api/contracts/openapi.json`;
 - `/api/contracts/typescript.d.ts`.
-
-DPD mirror endpoints:
-
-- `/dpd/api/contracts`;
-- `/dpd/api/contracts/openapi.json`;
-- `/dpd/api/contracts/typescript.d.ts`.
 
 Правило совместимости: изменения API должны быть additive. Клиенты обязаны
 игнорировать неизвестные поля, корректно обрабатывать отсутствующие optional
