@@ -26,6 +26,8 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 const INDEX_HTML: &str = include_str!("static/index.html");
 const APP_CSS: &str = include_str!("static/app.css");
 const APP_JS: &str = include_str!("static/app.js");
+const API_CONTRACT_OPENAPI: &str = include_str!("contracts/openapi.json");
+const API_CONTRACT_TYPESCRIPT: &str = include_str!("contracts/typescript.d.ts");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
 const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(5);
 const DEFAULT_DEPARTMENT_LABEL: &str = "Без подразделения";
@@ -1293,6 +1295,19 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             "application/javascript; charset=utf-8",
         ),
         "/favicon.ico" => respond_text(request, StatusCode(204), "", "image/x-icon"),
+        "/api/contracts" => respond_json(request, &api_contract_summary()),
+        "/api/contracts/openapi.json" => respond_text(
+            request,
+            StatusCode(200),
+            API_CONTRACT_OPENAPI,
+            "application/json; charset=utf-8",
+        ),
+        "/api/contracts/typescript.d.ts" => respond_text(
+            request,
+            StatusCode(200),
+            API_CONTRACT_TYPESCRIPT,
+            "text/plain; charset=utf-8",
+        ),
         "/api/health" => respond_json(
             request,
             &build_health(&cached_snapshot(args, snapshot_cache)),
@@ -1419,6 +1434,42 @@ fn normalize_path(url: &str) -> String {
     } else {
         path.to_string()
     }
+}
+
+fn api_contract_summary() -> Value {
+    json!({
+        "ok": true,
+        "contract_version": "2026-06-05.v1",
+        "generated_by": "detmir-portal",
+        "api_base": "/api",
+        "compatibility": {
+            "policy": "additive",
+            "existing_html_portal": "unchanged",
+            "unknown_fields": "clients must ignore unknown fields",
+            "nullable_fields": "clients must tolerate null and missing optional fields"
+        },
+        "targets": ["current-html", "future-react", "future-tauri"],
+        "artifacts": {
+            "openapi": "/api/contracts/openapi.json",
+            "typescript": "/api/contracts/typescript.d.ts"
+        },
+        "stable_endpoints": [
+            {"method": "GET", "path": "/api/health", "purpose": "light service health"},
+            {"method": "GET", "path": "/api/contracts", "purpose": "contract index"},
+            {"method": "GET", "path": "/api/contracts/openapi.json", "purpose": "OpenAPI contract"},
+            {"method": "GET", "path": "/api/contracts/typescript.d.ts", "purpose": "TypeScript declarations"},
+            {"method": "GET", "path": "/api/operator", "purpose": "portal overview data"},
+            {"method": "GET", "path": "/api/reports", "purpose": "management report payload"},
+            {"method": "GET", "path": "/api/incidents", "purpose": "incident and DLP evidence summary"},
+            {"method": "GET", "path": "/api/cases", "purpose": "case list"},
+            {"method": "POST", "path": "/api/incident-review", "purpose": "manual candidate review status"},
+            {"method": "POST", "path": "/api/cases", "purpose": "manual case creation"},
+            {"method": "GET", "path": "/api/investigation-pack/{candidate_id}", "purpose": "candidate investigation pack"},
+            {"method": "GET", "path": "/api/dlp/evidence", "purpose": "DLP evidence list"},
+            {"method": "GET", "path": "/api/readiness/latest", "purpose": "latest readiness status"},
+            {"method": "GET", "path": "/api/workforce/policy/explain", "purpose": "workforce policy explanation"}
+        ]
+    })
 }
 
 fn readiness_latest(args: &Cli) -> Value {
@@ -9155,6 +9206,31 @@ mod tests {
             Some("risk-candidate-123")
         );
         assert_eq!(safe_download_stem("risk:candidate/1"), "risk_candidate_1");
+    }
+
+    #[test]
+    fn api_contract_artifacts_are_valid_and_future_ui_ready() {
+        let openapi: Value =
+            serde_json::from_str(API_CONTRACT_OPENAPI).expect("OpenAPI contract must be JSON");
+        assert_eq!(openapi["openapi"], "3.1.0");
+        assert!(openapi["paths"]["/reports"].is_object());
+        assert!(openapi["paths"]["/incident-review"].is_object());
+        assert!(openapi["paths"]["/cases"].is_object());
+        assert!(API_CONTRACT_TYPESCRIPT.contains("export interface DetMirPortalApi"));
+        assert!(API_CONTRACT_TYPESCRIPT.contains("ReportsResponse"));
+        assert!(API_CONTRACT_TYPESCRIPT.contains("IncidentReviewRequest"));
+
+        let summary = api_contract_summary();
+        assert_eq!(summary["ok"], true);
+        assert_eq!(summary["api_base"], "/api");
+        assert_eq!(
+            summary["artifacts"]["openapi"],
+            "/api/contracts/openapi.json"
+        );
+        assert_eq!(
+            summary["artifacts"]["typescript"],
+            "/api/contracts/typescript.d.ts"
+        );
     }
 
     #[test]

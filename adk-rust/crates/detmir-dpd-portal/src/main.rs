@@ -3,7 +3,9 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow};
 use clap::Parser;
 use reqwest::blocking::Client;
-use reqwest::header::{ACCEPT, CONNECTION, CONTENT_DISPOSITION, CONTENT_TYPE, HeaderValue};
+use reqwest::header::{
+    CONNECTION, CONTENT_DISPOSITION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, LOCATION,
+};
 use serde_json::json;
 use tiny_http::{Header, Request, Response, Server, StatusCode};
 
@@ -12,7 +14,7 @@ const APP_CSS: &str = include_str!("static/app.css");
 const APP_JS: &str = include_str!("static/app.js");
 
 #[derive(Clone, Debug, Parser)]
-#[command(about = "DetMir DPD/Dioxus pilot portal")]
+#[command(about = "DetMir DPD parallel portal gateway")]
 struct Cli {
     #[arg(long, default_value = "127.0.0.1:8722", env = "DETMIR_DPD_BIND")]
     bind: String,
@@ -91,8 +93,7 @@ fn handle_request(request: Request, args: &Cli) -> Result<()> {
 fn proxy_to_upstream(mut request: Request, args: &Cli, path: &str) -> Result<()> {
     let method = reqwest::Method::from_bytes(request.method().as_str().as_bytes())
         .map_err(|err| anyhow!("unsupported method {}: {err}", request.method()))?;
-    let content_type = request_header(&request, "Content-Type");
-    let accept = request_header(&request, "Accept");
+    let forwarded_headers = forwarded_request_headers(&request)?;
     let mut body = Vec::new();
     request
         .as_reader()
@@ -110,41 +111,93 @@ fn proxy_to_upstream(mut request: Request, args: &Cli, path: &str) -> Result<()>
         .request(method, &url)
         .header(CONNECTION, HeaderValue::from_static("close"))
         .body(body);
-    if let Some(value) = content_type {
-        upstream = upstream.header(CONTENT_TYPE, value);
-    }
-    if let Some(value) = accept {
-        upstream = upstream.header(ACCEPT, value);
+    for (name, value) in forwarded_headers {
+        upstream = upstream.header(name, value);
     }
 
     let upstream_response = upstream
         .send()
         .with_context(|| format!("proxy upstream {url}"))?;
     let status = StatusCode(upstream_response.status().as_u16());
-    let content_type = upstream_response
-        .headers()
-        .get(CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .map(ToString::to_string);
-    let content_disposition = upstream_response
-        .headers()
-        .get(CONTENT_DISPOSITION)
-        .and_then(|value| value.to_str().ok())
-        .map(ToString::to_string);
+    let response_headers = mirrored_response_headers(upstream_response.headers())?;
     let mut bytes = upstream_response
         .bytes()
         .context("upstream response body")?
         .to_vec();
-    rewrite_mirrored_body(&mut bytes, content_type.as_deref());
-    respond_bytes(request, status, bytes, content_type, content_disposition)
+    let content_type = response_headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case("Content-Type"))
+        .map(|(_, value)| value.as_str());
+    rewrite_mirrored_body(&mut bytes, content_type);
+    respond_bytes(request, status, bytes, response_headers)
 }
 
-fn request_header(request: &Request, name: &'static str) -> Option<String> {
-    request
-        .headers()
-        .iter()
-        .find(|header| header.field.equiv(name))
-        .map(|header| header.value.as_str().to_string())
+fn forwarded_request_headers(request: &Request) -> Result<Vec<(HeaderName, String)>> {
+    let mut headers = Vec::new();
+    for header in request.headers() {
+        let name = header.field.as_str();
+        let lower = name.to_string().to_ascii_lowercase();
+        if is_hop_by_hop_header(&lower) {
+            continue;
+        }
+        if should_forward_header(&lower) {
+            let name = HeaderName::from_bytes(name.as_bytes())
+                .with_context(|| format!("invalid request header name {name}"))?;
+            headers.push((name, header.value.as_str().to_string()));
+        }
+    }
+    Ok(headers)
+}
+
+fn should_forward_header(lower_name: &str) -> bool {
+    matches!(
+        lower_name,
+        "accept"
+            | "accept-language"
+            | "authorization"
+            | "content-type"
+            | "cookie"
+            | "origin"
+            | "referer"
+            | "user-agent"
+            | "x-forwarded-for"
+            | "x-forwarded-host"
+            | "x-forwarded-proto"
+            | "x-gateway-user"
+            | "x-real-ip"
+            | "x-remote-user"
+    )
+}
+
+fn is_hop_by_hop_header(lower_name: &str) -> bool {
+    matches!(
+        lower_name,
+        "connection"
+            | "keep-alive"
+            | "proxy-authenticate"
+            | "proxy-authorization"
+            | "te"
+            | "trailer"
+            | "transfer-encoding"
+            | "upgrade"
+    )
+}
+
+fn mirrored_response_headers(headers: &HeaderMap) -> Result<Vec<(String, String)>> {
+    let mut out = Vec::new();
+    for name in [CONTENT_TYPE, CONTENT_DISPOSITION, LOCATION] {
+        if let Some(value) = headers.get(&name) {
+            let mut value = value
+                .to_str()
+                .with_context(|| format!("invalid upstream {name} header"))?
+                .to_string();
+            if name == LOCATION {
+                value = rewrite_mirrored_text(&value);
+            }
+            out.push((name.as_str().to_string(), value));
+        }
+    }
+    Ok(out)
 }
 
 fn normalize_path_with_query(url: &str) -> String {
@@ -221,8 +274,7 @@ fn respond_bytes(
     request: Request,
     status: StatusCode,
     body: Vec<u8>,
-    content_type: Option<String>,
-    content_disposition: Option<String>,
+    response_headers: Vec<(String, String)>,
 ) -> Result<()> {
     let mut response = Response::from_data(body)
         .with_status_code(status)
@@ -230,16 +282,10 @@ fn respond_bytes(
             Header::from_bytes("Cache-Control", "no-store")
                 .map_err(|_| anyhow!("invalid Cache-Control header"))?,
         );
-    if let Some(value) = content_type {
+    for (name, value) in response_headers {
         response = response.with_header(
-            Header::from_bytes("Content-Type", value)
-                .map_err(|_| anyhow!("invalid upstream Content-Type header"))?,
-        );
-    }
-    if let Some(value) = content_disposition {
-        response = response.with_header(
-            Header::from_bytes("Content-Disposition", value)
-                .map_err(|_| anyhow!("invalid upstream Content-Disposition header"))?,
+            Header::from_bytes(name, value)
+                .map_err(|_| anyhow!("invalid mirrored response header"))?,
         );
     }
     request.respond(response)?;
@@ -259,7 +305,11 @@ fn rewrite_mirrored_body(body: &mut Vec<u8>, content_type: Option<&str>) {
     if !text.contains("/portal") {
         return;
     }
-    *body = text.replace("/portal", "/dpd").into_bytes();
+    *body = rewrite_mirrored_text(text).into_bytes();
+}
+
+fn rewrite_mirrored_text(text: &str) -> String {
+    text.replace("/portal", "/dpd")
 }
 
 #[cfg(test)]
@@ -292,5 +342,25 @@ mod tests {
         assert!(text.contains("/dpd/api/reports"));
         assert!(text.contains("/dpd/api/cases/c1"));
         assert!(!text.contains("/portal/api"));
+    }
+
+    #[test]
+    fn forwards_operator_identity_headers_but_not_hop_by_hop_headers() {
+        assert!(should_forward_header("x-remote-user"));
+        assert!(should_forward_header("x-gateway-user"));
+        assert!(should_forward_header("authorization"));
+        assert!(should_forward_header("cookie"));
+        assert!(!should_forward_header("x-debug-private"));
+        assert!(is_hop_by_hop_header("connection"));
+        assert!(is_hop_by_hop_header("transfer-encoding"));
+        assert!(!is_hop_by_hop_header("x-remote-user"));
+    }
+
+    #[test]
+    fn rewrites_portal_locations_for_dpd_mirror() {
+        assert_eq!(
+            rewrite_mirrored_text("/portal/reports?format=markdown"),
+            "/dpd/reports?format=markdown"
+        );
     }
 }
