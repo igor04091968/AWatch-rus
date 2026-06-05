@@ -1,7 +1,12 @@
 export type ISODateTime = string;
 
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN";
-export type ReviewStatus = "NEW" | "IN_REVIEW" | "CONFIRMED" | "FALSE_POSITIVE" | "POSTPONED";
+export type ReviewStatus =
+  | "NEW"
+  | "IN_REVIEW"
+  | "CONFIRMED"
+  | "FALSE_POSITIVE"
+  | "POSTPONED";
 export type CaseStatus = "OPEN" | "IN_PROGRESS" | "RESOLVED" | "REJECTED" | "ARCHIVED";
 
 export interface JsonObject {
@@ -179,7 +184,10 @@ export interface DetMirPortalApi {
   createCase(request: CreateCaseRequest): Promise<JsonObject>;
   setCaseStatus(caseId: string, request: CaseStatusRequest): Promise<JsonObject>;
   setIncidentReview(request: IncidentReviewRequest): Promise<JsonObject>;
-  getInvestigationPack(candidateId: string, options?: { format?: "json" | "markdown" }): Promise<JsonObject | string>;
+  getInvestigationPack(
+    candidateId: string,
+    options?: { format?: "json" | "markdown" },
+  ): Promise<JsonObject | string>;
   getDlpEvidence(): Promise<JsonObject>;
   getReadinessLatest(): Promise<JsonObject>;
   getReadinessBundle(): Promise<JsonObject>;

@@ -9,28 +9,50 @@
     {
       "url": "/api",
       "description": "Gateway-relative API base"
+    },
+    {
+      "url": "/dpd/api",
+      "description": "DPD mirror API base"
     }
   ],
   "tags": [
-    { "name": "contracts" },
-    { "name": "portal" },
-    { "name": "reports" },
-    { "name": "incidents" },
-    { "name": "cases" },
-    { "name": "readiness" },
-    { "name": "telemetry" }
+    {
+      "name": "contracts"
+    },
+    {
+      "name": "portal"
+    },
+    {
+      "name": "reports"
+    },
+    {
+      "name": "incidents"
+    },
+    {
+      "name": "cases"
+    },
+    {
+      "name": "readiness"
+    },
+    {
+      "name": "telemetry"
+    }
   ],
   "paths": {
     "/contracts": {
       "get": {
-        "tags": ["contracts"],
+        "tags": [
+          "contracts"
+        ],
         "summary": "Contract index",
         "responses": {
           "200": {
             "description": "Contract index",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ContractIndex" }
+                "schema": {
+                  "$ref": "#/components/schemas/ContractIndex"
+                }
               }
             }
           }
@@ -39,14 +61,19 @@
     },
     "/contracts/openapi.json": {
       "get": {
-        "tags": ["contracts"],
+        "tags": [
+          "contracts"
+        ],
         "summary": "OpenAPI document",
         "responses": {
           "200": {
             "description": "OpenAPI 3.1 document",
             "content": {
               "application/json": {
-                "schema": { "type": "object", "additionalProperties": true }
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
               }
             }
           }
@@ -55,14 +82,18 @@
     },
     "/contracts/typescript.d.ts": {
       "get": {
-        "tags": ["contracts"],
+        "tags": [
+          "contracts"
+        ],
         "summary": "TypeScript declarations",
         "responses": {
           "200": {
             "description": "TypeScript declaration file",
             "content": {
               "text/plain": {
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -71,14 +102,18 @@
     },
     "/health": {
       "get": {
-        "tags": ["portal"],
+        "tags": [
+          "portal"
+        ],
         "summary": "Light service health",
         "responses": {
           "200": {
             "description": "Health payload",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -87,14 +122,18 @@
     },
     "/operator": {
       "get": {
-        "tags": ["portal"],
+        "tags": [
+          "portal"
+        ],
         "summary": "Operator overview payload",
         "responses": {
           "200": {
             "description": "Operator payload used by the HTML portal",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -103,14 +142,18 @@
     },
     "/manager": {
       "get": {
-        "tags": ["portal"],
+        "tags": [
+          "portal"
+        ],
         "summary": "Manager payload",
         "responses": {
           "200": {
             "description": "Manager payload",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -119,14 +162,18 @@
     },
     "/owner": {
       "get": {
-        "tags": ["portal"],
+        "tags": [
+          "portal"
+        ],
         "summary": "Owner/security payload",
         "responses": {
           "200": {
             "description": "Owner payload",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -135,14 +182,18 @@
     },
     "/reports": {
       "get": {
-        "tags": ["reports"],
+        "tags": [
+          "reports"
+        ],
         "summary": "Management report payload",
         "parameters": [
           {
             "name": "anonymize",
             "in": "query",
             "required": false,
-            "schema": { "type": "boolean" },
+            "schema": {
+              "type": "boolean"
+            },
             "description": "Return anonymized values when supported"
           }
         ],
@@ -151,7 +202,9 @@
             "description": "Report payload",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/ReportPayload" }
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPayload"
+                }
               }
             }
           }
@@ -160,14 +213,18 @@
     },
     "/workforce/policy/explain": {
       "get": {
-        "tags": ["reports"],
+        "tags": [
+          "reports"
+        ],
         "summary": "Workforce scoring policy explanation",
         "parameters": [
           {
             "name": "anonymize",
             "in": "query",
             "required": false,
-            "schema": { "type": "boolean" }
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -175,7 +232,9 @@
             "description": "Policy explanation",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -184,14 +243,18 @@
     },
     "/incidents": {
       "get": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Incident list and current state",
         "responses": {
           "200": {
             "description": "Incident payload",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -200,13 +263,17 @@
     },
     "/incident-review": {
       "post": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Set manual review status for an incident candidate",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/IncidentReviewRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/IncidentReviewRequest"
+              }
             }
           }
         },
@@ -215,7 +282,9 @@
             "description": "Updated review state",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -224,20 +293,30 @@
     },
     "/investigation-pack/{candidate_id}": {
       "get": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "Export investigation pack for a candidate",
         "parameters": [
           {
             "name": "candidate_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "format",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "enum": ["json", "markdown"] }
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "markdown"
+              ]
+            }
           }
         ],
         "responses": {
@@ -245,10 +324,14 @@
             "description": "Investigation pack",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               },
               "text/markdown": {
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -257,27 +340,35 @@
     },
     "/cases": {
       "get": {
-        "tags": ["cases"],
+        "tags": [
+          "cases"
+        ],
         "summary": "Case list",
         "responses": {
           "200": {
             "description": "Case list",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CaseListResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/CaseListResponse"
+                }
               }
             }
           }
         }
       },
       "post": {
-        "tags": ["cases"],
+        "tags": [
+          "cases"
+        ],
         "summary": "Create a manual case from a confirmed candidate",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CreateCaseRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/CreateCaseRequest"
+              }
             }
           }
         },
@@ -286,7 +377,9 @@
             "description": "Created case",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -295,20 +388,30 @@
     },
     "/cases/{case_id}": {
       "get": {
-        "tags": ["cases"],
+        "tags": [
+          "cases"
+        ],
         "summary": "Case details",
         "parameters": [
           {
             "name": "case_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           },
           {
             "name": "format",
             "in": "query",
             "required": false,
-            "schema": { "type": "string", "enum": ["json", "markdown"] }
+            "schema": {
+              "type": "string",
+              "enum": [
+                "json",
+                "markdown"
+              ]
+            }
           }
         ],
         "responses": {
@@ -316,10 +419,14 @@
             "description": "Case details",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               },
               "text/markdown": {
-                "schema": { "type": "string" }
+                "schema": {
+                  "type": "string"
+                }
               }
             }
           }
@@ -328,21 +435,27 @@
     },
     "/cases/{case_id}/status": {
       "post": {
-        "tags": ["cases"],
+        "tags": [
+          "cases"
+        ],
         "summary": "Set manual case status",
         "parameters": [
           {
             "name": "case_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string" }
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/CaseStatusRequest" }
+              "schema": {
+                "$ref": "#/components/schemas/CaseStatusRequest"
+              }
             }
           }
         },
@@ -351,7 +464,9 @@
             "description": "Updated case",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -360,14 +475,18 @@
     },
     "/dlp/evidence": {
       "get": {
-        "tags": ["incidents"],
+        "tags": [
+          "incidents"
+        ],
         "summary": "DLP evidence list",
         "responses": {
           "200": {
             "description": "Evidence list",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -376,14 +495,18 @@
     },
     "/readiness/latest": {
       "get": {
-        "tags": ["readiness"],
+        "tags": [
+          "readiness"
+        ],
         "summary": "Latest readiness bundle status",
         "responses": {
           "200": {
             "description": "Readiness status",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -392,14 +515,18 @@
     },
     "/readiness/bundle": {
       "get": {
-        "tags": ["readiness"],
+        "tags": [
+          "readiness"
+        ],
         "summary": "Readiness bundle artifact list",
         "responses": {
           "200": {
             "description": "Readiness bundle",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -408,14 +535,18 @@
     },
     "/readiness/verify": {
       "get": {
-        "tags": ["readiness"],
+        "tags": [
+          "readiness"
+        ],
         "summary": "Verify readiness checksums and signature",
         "responses": {
           "200": {
             "description": "Verification result",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -424,14 +555,18 @@
     },
     "/links": {
       "get": {
-        "tags": ["portal"],
+        "tags": [
+          "portal"
+        ],
         "summary": "Gateway-relative portal links",
         "responses": {
           "200": {
             "description": "Link map",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           }
@@ -440,13 +575,17 @@
     },
     "/telemetry": {
       "post": {
-        "tags": ["telemetry"],
+        "tags": [
+          "telemetry"
+        ],
         "summary": "Agent telemetry ingest",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
-              "schema": { "$ref": "#/components/schemas/JsonObject" }
+              "schema": {
+                "$ref": "#/components/schemas/JsonObject"
+              }
             }
           }
         },
@@ -455,7 +594,9 @@
             "description": "Accepted telemetry",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/JsonObject" }
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
               }
             }
           },
@@ -474,107 +615,207 @@
       },
       "ContractIndex": {
         "type": "object",
-        "required": ["ok", "contract_version", "api_base", "artifacts", "stable_endpoints"],
+        "required": [
+          "ok",
+          "contract_version",
+          "api_base",
+          "artifacts",
+          "stable_endpoints"
+        ],
         "properties": {
-          "ok": { "type": "boolean" },
-          "contract_version": { "type": "string" },
-          "generated_by": { "type": "string" },
-          "api_base": { "type": "string" },
-          "compatibility": { "$ref": "#/components/schemas/JsonObject" },
-          "targets": { "type": "array", "items": { "type": "string" } },
-          "artifacts": { "$ref": "#/components/schemas/JsonObject" },
+          "ok": {
+            "type": "boolean"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "generated_by": {
+            "type": "string"
+          },
+          "api_base": {
+            "type": "string"
+          },
+          "compatibility": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "artifacts": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
           "stable_endpoints": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/EndpointDescriptor" }
+            "items": {
+              "$ref": "#/components/schemas/EndpointDescriptor"
+            }
           }
         },
         "additionalProperties": true
       },
       "EndpointDescriptor": {
         "type": "object",
-        "required": ["method", "path"],
+        "required": [
+          "method",
+          "path"
+        ],
         "properties": {
-          "method": { "type": "string" },
-          "path": { "type": "string" },
-          "purpose": { "type": "string" }
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "ReportPayload": {
         "type": "object",
-        "required": ["ok"],
+        "required": [
+          "ok"
+        ],
         "properties": {
-          "ok": { "type": "boolean" },
-          "generated_at_utc": { "type": "string" },
+          "ok": {
+            "type": "boolean"
+          },
+          "generated_at_utc": {
+            "type": "string"
+          },
           "executive_points": {
             "type": "array",
-            "items": { "type": "string" }
+            "items": {
+              "type": "string"
+            }
           },
-          "executive_dashboard": { "$ref": "#/components/schemas/JsonObject" },
-          "risk_narrative": { "$ref": "#/components/schemas/JsonObject" },
-          "agent_quality": { "$ref": "#/components/schemas/JsonObject" },
-          "agent_coverage_sla": { "$ref": "#/components/schemas/JsonObject" },
+          "executive_dashboard": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "risk_narrative": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "agent_quality": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "agent_coverage_sla": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
           "business_risk": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/JsonObject" }
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
           },
           "risk_incident_candidates": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/JsonObject" }
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
           },
           "cases": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/JsonObject" }
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
           }
         },
         "additionalProperties": true
       },
       "IncidentReviewRequest": {
         "type": "object",
-        "required": ["candidate_id", "status"],
+        "required": [
+          "candidate_id",
+          "status"
+        ],
         "properties": {
-          "candidate_id": { "type": "string" },
+          "candidate_id": {
+            "type": "string"
+          },
           "status": {
             "type": "string",
-            "enum": ["NEW", "IN_REVIEW", "CONFIRMED", "FALSE_POSITIVE", "POSTPONED"]
+            "enum": [
+              "NEW",
+              "IN_REVIEW",
+              "CONFIRMED",
+              "FALSE_POSITIVE",
+              "POSTPONED"
+            ]
           },
-          "reviewer": { "type": "string" },
-          "comment": { "type": "string" }
+          "reviewer": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "CreateCaseRequest": {
         "type": "object",
-        "required": ["candidate_id"],
+        "required": [
+          "candidate_id"
+        ],
         "properties": {
-          "candidate_id": { "type": "string" },
-          "title": { "type": "string" },
-          "owner": { "type": "string" },
-          "summary": { "type": "string" },
-          "decision": { "type": "string" }
+          "candidate_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "CaseStatusRequest": {
         "type": "object",
-        "required": ["status"],
+        "required": [
+          "status"
+        ],
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["OPEN", "IN_PROGRESS", "RESOLVED", "REJECTED", "ARCHIVED"]
+            "enum": [
+              "OPEN",
+              "IN_PROGRESS",
+              "RESOLVED",
+              "REJECTED",
+              "ARCHIVED"
+            ]
           },
-          "decision": { "type": "string" }
+          "decision": {
+            "type": "string"
+          }
         },
         "additionalProperties": true
       },
       "CaseListResponse": {
         "type": "object",
-        "required": ["ok", "cases"],
+        "required": [
+          "ok",
+          "cases"
+        ],
         "properties": {
-          "ok": { "type": "boolean" },
+          "ok": {
+            "type": "boolean"
+          },
           "cases": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/JsonObject" }
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
           }
         },
         "additionalProperties": true

@@ -9213,12 +9213,45 @@ mod tests {
         let openapi: Value =
             serde_json::from_str(API_CONTRACT_OPENAPI).expect("OpenAPI contract must be JSON");
         assert_eq!(openapi["openapi"], "3.1.0");
-        assert!(openapi["paths"]["/reports"].is_object());
+        assert!(
+            openapi["info"]["version"]
+                .as_str()
+                .is_some_and(|value| !value.trim().is_empty())
+        );
+        for path in [
+            "/contracts",
+            "/reports",
+            "/incidents",
+            "/cases",
+            "/readiness/latest",
+        ] {
+            assert!(
+                openapi["paths"][path].is_object(),
+                "OpenAPI path missing: {path}"
+            );
+        }
         assert!(openapi["paths"]["/incident-review"].is_object());
-        assert!(openapi["paths"]["/cases"].is_object());
-        assert!(API_CONTRACT_TYPESCRIPT.contains("export interface DetMirPortalApi"));
-        assert!(API_CONTRACT_TYPESCRIPT.contains("ReportsResponse"));
-        assert!(API_CONTRACT_TYPESCRIPT.contains("IncidentReviewRequest"));
+        for required_type in [
+            "ContractIndex",
+            "ReportsResponse",
+            "CaseListResponse",
+            "IncidentReviewRequest",
+            "export interface DetMirPortalApi",
+        ] {
+            assert!(
+                API_CONTRACT_TYPESCRIPT.contains(required_type),
+                "TypeScript declaration missing {required_type}"
+            );
+        }
+        for (idx, _) in API_CONTRACT_TYPESCRIPT.match_indices("Promise") {
+            assert_eq!(
+                API_CONTRACT_TYPESCRIPT[idx + "Promise".len()..]
+                    .chars()
+                    .next(),
+                Some('<'),
+                "TypeScript declarations must not contain bare Promise return types"
+            );
+        }
 
         let summary = api_contract_summary();
         assert_eq!(summary["ok"], true);

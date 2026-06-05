@@ -7,7 +7,7 @@
 ```text
 Backend/API: Rust
 Agent: Rust
-Current Portal: Rust server-rendered HTML + HTMX-ready static UI
+Current Portal: Rust server-rendered HTML + HTMX
 Future Enterprise UI: React + TypeScript
 Future Desktop Forensics: Tauri + React + Rust core
 Dioxus: out of scope / не рассматривается
@@ -15,14 +15,15 @@ Dioxus: out of scope / не рассматривается
 
 ## Правила
 
-- Текущий HTML/HTMX-ready портал остаётся основным pilot/production
-  интерфейсом.
+- Текущий HTML/HTMX портал остаётся основным pilot/production интерфейсом.
 - JSON API является контрактным слоем для будущих UI.
 - Бизнес-логика не должна зависеть от HTML.
 - Будущий React/Tauri UI не должен ломать текущий портал.
 - Agent и backend остаются Rust-first.
 - Новые UI-фреймворки не добавлять без отдельного architecture decision.
 - Dioxus не добавлять и не рассматривать.
+- Будущий React/Tauri UI не должен парсить HTML текущего портала как источник
+  данных.
 
 ## Практическое следствие
 
@@ -32,6 +33,8 @@ Dioxus: out of scope / не рассматривается
 2. Зафиксировать стабильные JSON API-контракты.
 3. Поддерживать DPD `/dpd/` как параллельный mirror для проверки совместимости.
 4. Готовить будущий React/Tauri UI только поверх опубликованных контрактов.
+5. Любые breaking changes проводить только через version bump контракта и
+   отдельное architecture decision.
 
 ## Контрактный слой
 
@@ -48,5 +51,5 @@ DPD mirror endpoints:
 - `/dpd/api/contracts/typescript.d.ts`.
 
 Правило совместимости: изменения API должны быть additive. Клиенты обязаны
-игнорировать неизвестные поля и корректно обрабатывать отсутствующие optional
-поля.
+игнорировать неизвестные поля, корректно обрабатывать отсутствующие optional
+поля и не падать на `null`.
