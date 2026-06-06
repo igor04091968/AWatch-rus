@@ -57,6 +57,15 @@ JSON API, OpenAPI и TypeScript declarations. Dioxus не используетс
 Скриншоты ниже подготовлены на демонстрационных данных: без реальных IP-адресов,
 hostname, логинов, сотрудников, подразделений заказчика и событий безопасности.
 
+Все демонстрационные скриншоты от 2026-06-06 лежат в
+[docs/screenshots/](docs/screenshots/):
+[главный вывод](docs/screenshots/01-executive-overview.png),
+[карта рисков](docs/screenshots/02-risk-heatmap.png),
+[безопасность](docs/screenshots/03-security-view.png),
+[эксплуатация](docs/screenshots/04-operations-view.png),
+[пакет расследования](docs/screenshots/05-investigation-pack.png),
+[итоговый отчет](docs/screenshots/06-markdown-report.png).
+
 ### Главный вывод
 
 ![Главный вывод AWatch-rus](docs/screenshots/01-executive-overview.png)
