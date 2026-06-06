@@ -1,6 +1,6 @@
 # File 1C Analytics
 
-Эта страница фиксирует **production-контур для файловой 1С Detmir**.
+Эта страница фиксирует **production-контур для файловой 1С AWatch-rus**.
 
 ## Что это за контур
 
@@ -66,7 +66,7 @@
 
 ## Главный документ
 
-- [Файловая 1С Detmir: промышленное развёртывание ClickHouse/Grafana контура](../1C_FILE_ANALYTICS_STACK_RU.md)
+- [Файловая 1С AWatch-rus: промышленное развёртывание ClickHouse/Grafana контура](../1C_FILE_ANALYTICS_STACK_RU.md)
 
 ## Связанные документы
 

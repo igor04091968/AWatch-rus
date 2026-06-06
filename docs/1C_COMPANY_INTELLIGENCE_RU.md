@@ -11,7 +11,7 @@
 
 ## Что считается компанией
 
-В file-based Detmir контуре компания = `documents.counterparty`, но это поле
+В file-based AWatch-rus контуре компания = `documents.counterparty`, но это поле
 заполняется **не из бухгалтерских проводок**, а из read-only file-base telemetry.
 
 Сейчас есть два связанных слоя:

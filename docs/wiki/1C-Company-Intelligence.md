@@ -15,6 +15,6 @@
 
 Ключевая граница:
 
-- `counterparty` в file-based Detmir контуре по-прежнему telemetry-derived;
+- `counterparty` в file-based AWatch-rus контуре по-прежнему telemetry-derived;
 - `companies` даёт текущий срез базы: owner/path/size/locks/activity;
 - если `counterparty` в live-выгрузках пустой, слой остаётся пустым честно и ничего не симулирует.
