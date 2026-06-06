@@ -1051,6 +1051,7 @@ struct Snapshot {
     worktime: SourceStatus,
     worktime_management: SourceStatus,
     one_c: SourceStatus,
+    one_c_overview: SourceStatus,
     agent_quality: AgentQuality,
     agent_quality_history: Vec<AgentQualityHistoryItem>,
     agent_quality_history_summary: AgentQualityHistorySummary,
@@ -1880,6 +1881,14 @@ fn build_snapshot(args: &Cli) -> Snapshot {
         one_c: http_json_source(
             "one_c",
             &format!("{}/api/health", args.one_c_url.trim_end_matches('/')),
+            timeout,
+        ),
+        one_c_overview: http_json_source(
+            "one_c_overview",
+            &format!(
+                "{}/api/1/analytics-1c/companies/overview",
+                args.one_c_url.trim_end_matches('/')
+            ),
             timeout,
         ),
         agent_quality: load_agent_quality(&args.telemetry_store_path),
@@ -9680,17 +9689,37 @@ fn one_c_block(snapshot: &Snapshot) -> SummaryBlock {
     if !snapshot.one_c.ok {
         return block("FAIL", "1C analytics API не отвечает");
     }
-    let companies = snapshot
+    let portfolio_companies = snapshot
+        .one_c_overview
+        .payload
+        .as_ref()
+        .and_then(one_c_overview_count)
+        .unwrap_or(0);
+    let analytics_records = snapshot
         .one_c
         .payload
         .as_ref()
         .and_then(|value| value.get("companies_total"))
         .and_then(Value::as_u64)
         .unwrap_or(0);
+    let overview_note = if snapshot.one_c_overview.ok {
+        format!("компаний в портфеле={portfolio_companies}")
+    } else {
+        "портфель компаний не получен".to_string()
+    };
     block(
         "OK",
-        &format!("1C analytics отвечает, компаний={companies}"),
+        &format!("1C analytics отвечает, {overview_note}, записей аналитики={analytics_records}"),
     )
+}
+
+fn one_c_overview_count(value: &Value) -> Option<u64> {
+    value.get("count").and_then(Value::as_u64).or_else(|| {
+        value
+            .get("items")?
+            .as_array()
+            .map(|items| items.len() as u64)
+    })
 }
 
 fn owner_recommendations(snapshot: &Snapshot, summary: &SummaryResponse) -> Vec<String> {
@@ -9844,7 +9873,7 @@ fn source_summary(name: &str, payload: &Value) -> String {
                 .unwrap_or(0)
         ),
         "one_c" => format!(
-            "status={}, companies={}",
+            "status={}, analytics_records={}",
             payload
                 .get("status")
                 .and_then(Value::as_str)
@@ -9853,6 +9882,10 @@ fn source_summary(name: &str, payload: &Value) -> String {
                 .get("companies_total")
                 .and_then(Value::as_u64)
                 .unwrap_or(0)
+        ),
+        "one_c_overview" => format!(
+            "portfolio_companies={}",
+            one_c_overview_count(payload).unwrap_or(0)
         ),
         _ => "source loaded".to_string(),
     }
@@ -11381,9 +11414,16 @@ mod tests {
             one_c: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),
-                summary: "status=ok, companies=47".to_string(),
+                summary: "status=ok, analytics_records=6134".to_string(),
                 error: None,
-                payload: Some(json!({"status": "ok", "companies_total": 47})),
+                payload: Some(json!({"status": "ok", "companies_total": 6134})),
+            },
+            one_c_overview: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "portfolio_companies=43".to_string(),
+                error: None,
+                payload: Some(json!({"count": 43, "items": []})),
             },
             agent_quality: AgentQuality::default(),
             agent_quality_history: Vec::new(),
@@ -11422,6 +11462,11 @@ mod tests {
             agent_coverage_sla: AgentCoverageSla::default(),
             security_events_summary: SecurityEventsSummary::disabled(),
         };
+        let one_c = one_c_block(&snapshot);
+        assert_eq!(one_c.status, "OK");
+        assert!(one_c.text.contains("компаний в портфеле=43"));
+        assert!(one_c.text.contains("записей аналитики=6134"));
+        assert!(!one_c.text.contains("компаний=6134"));
         let evidence = DlpEvidenceResponse {
             ok: true,
             generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
@@ -11979,6 +12024,13 @@ confidence:
                 error: None,
                 payload: None,
             },
+            one_c_overview: SourceStatus {
+                ok: false,
+                status: "FAIL".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
             agent_quality: AgentQuality::default(),
             agent_quality_history: Vec::new(),
             agent_quality_history_summary: AgentQualityHistorySummary::default(),
@@ -12088,6 +12140,13 @@ confidence:
                     error: None,
                     payload: None,
                 },
+                one_c_overview: SourceStatus {
+                    ok: false,
+                    status: "FAIL".to_string(),
+                    summary: "".to_string(),
+                    error: None,
+                    payload: None,
+                },
                 agent_quality: AgentQuality::default(),
                 agent_quality_history: Vec::new(),
                 agent_quality_history_summary: AgentQualityHistorySummary::default(),
@@ -12178,6 +12237,13 @@ confidence:
             one_c: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            one_c_overview: SourceStatus {
+                ok: false,
+                status: "FAIL".to_string(),
                 summary: "".to_string(),
                 error: None,
                 payload: None,
@@ -12283,6 +12349,13 @@ confidence:
             one_c: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),
+                summary: "".to_string(),
+                error: None,
+                payload: None,
+            },
+            one_c_overview: SourceStatus {
+                ok: false,
+                status: "FAIL".to_string(),
                 summary: "".to_string(),
                 error: None,
                 payload: None,
