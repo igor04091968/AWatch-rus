@@ -14,7 +14,7 @@
     proxmox_web_gateway_tls_cert_path: "{{ proxmox_web_gateway_tls_dir }}/fullchain.pem"
     proxmox_web_gateway_tls_key_path: "{{ proxmox_web_gateway_tls_dir }}/privkey.pem"
     proxmox_web_gateway_health_path: "/healthz"
-    proxmox_web_gateway_auth_realm: "DetMir operations gateway"
+    proxmox_web_gateway_auth_realm: "AWatch-rus portal 2026-06-06"
     proxmox_web_gateway_auth_user: "detmir"
     proxmox_web_gateway_auth_file: "/etc/nginx/proxmox-web-gateway.htpasswd"
     proxmox_web_gateway_credentials_file: "/etc/detmir/proxmox-web-gateway.credentials"
