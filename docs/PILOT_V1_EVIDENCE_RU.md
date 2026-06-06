@@ -50,6 +50,7 @@ contracts, UEBA Score v1 и pfSense readiness.
 - `docs/screenshots/04-operations-view.png`;
 - `docs/screenshots/05-investigation-pack.png`;
 - `docs/screenshots/06-markdown-report.png`;
+- `docs/screenshots/07-product-architecture.png`;
 - `docs/fixtures/pfsense-demo-events.json`.
 
 Требования:

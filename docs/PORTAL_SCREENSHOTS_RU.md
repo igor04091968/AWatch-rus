@@ -9,6 +9,20 @@ forensic hashes.
 
 ## Состав
 
+### GitHub demo screenshots
+
+| Экран | Файл |
+|---|---|
+| Главный вывод | `docs/screenshots/01-executive-overview.png` |
+| Карта рисков подразделений | `docs/screenshots/02-risk-heatmap.png` |
+| Представление безопасности | `docs/screenshots/03-security-view.png` |
+| Представление эксплуатации | `docs/screenshots/04-operations-view.png` |
+| Пакет расследования | `docs/screenshots/05-investigation-pack.png` |
+| Итоговый отчет | `docs/screenshots/06-markdown-report.png` |
+| Архитектура продукта | `docs/screenshots/07-product-architecture.png` |
+
+### Release-readiness v0.1 screenshots
+
 | Экран | Файл |
 |---|---|
 | Оператор и готовность системы | `docs/screenshots/release-v0.1/portal-operator-readiness.png` |
