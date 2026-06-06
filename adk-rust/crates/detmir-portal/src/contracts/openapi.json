@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "AWatch-rus DetMir Portal API",
-    "version": "2026-06-05.v1",
-    "description": "Stable additive API contract for the current HTML portal and future React/Tauri clients. Clients must ignore unknown fields and tolerate missing optional fields."
+    "version": "2026-06-06.pilot-v1",
+    "description": "Stable additive API contract for the Rust server-rendered HTML portal and HTMX-compatible role slices. Dioxus, React, Tauri and Electron are not part of this Pilot v1 contract. Clients must ignore unknown fields and tolerate missing optional fields."
   },
   "servers": [
     {
@@ -20,6 +20,24 @@
     },
     {
       "name": "reports"
+    },
+    {
+      "name": "roles"
+    },
+    {
+      "name": "workforce"
+    },
+    {
+      "name": "security"
+    },
+    {
+      "name": "forensics"
+    },
+    {
+      "name": "ueba"
+    },
+    {
+      "name": "pfsense"
     },
     {
       "name": "incidents"
@@ -191,6 +209,15 @@
               "type": "boolean"
             },
             "description": "Return anonymized values when supported"
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PortalRole"
+            },
+            "description": "Role slice. The X-AWatch-Role header is also accepted and is preferred by the portal UI."
           }
         ],
         "responses": {
@@ -203,6 +230,144 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/executive": {
+      "get": {
+        "tags": [
+          "roles"
+        ],
+        "summary": "Executive role slice",
+        "responses": {
+          "200": {
+            "description": "Executive dashboard and Workforce summary without security detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPayload"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is not allowed to access executive scope"
+          }
+        }
+      }
+    },
+    "/workforce": {
+      "get": {
+        "tags": [
+          "workforce"
+        ],
+        "summary": "Workforce role slice",
+        "responses": {
+          "200": {
+            "description": "Workforce analytics, department comparison, owners, trends and markdown report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPayload"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is not allowed to access workforce scope"
+          }
+        }
+      }
+    },
+    "/security": {
+      "get": {
+        "tags": [
+          "security"
+        ],
+        "summary": "Security role slice",
+        "responses": {
+          "200": {
+            "description": "Security risks, events, candidates and UEBA score without Workforce dashboard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPayload"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is not allowed to access security scope"
+          }
+        }
+      }
+    },
+    "/forensics": {
+      "get": {
+        "tags": [
+          "forensics"
+        ],
+        "summary": "Forensics role slice",
+        "responses": {
+          "200": {
+            "description": "Investigations, timeline contract and export links",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportPayload"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is not allowed to access forensics scope"
+          }
+        }
+      }
+    },
+    "/ueba": {
+      "get": {
+        "tags": [
+          "ueba"
+        ],
+        "summary": "UEBA score v1 rule-based contract",
+        "responses": {
+          "200": {
+            "description": "Transparent rule-based UEBA score",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UebaPayload"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is not allowed to access UEBA scope"
+          }
+        }
+      }
+    },
+    "/pfsense": {
+      "get": {
+        "tags": [
+          "pfsense"
+        ],
+        "summary": "pfSense integration readiness contract",
+        "responses": {
+          "200": {
+            "description": "Contract-only pfSense readiness payload with demo fixtures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PfsenseReadiness"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Role is not allowed to access pfSense scope"
           }
         }
       }
@@ -605,6 +770,45 @@
   },
   "components": {
     "schemas": {
+      "PortalRole": {
+        "type": "string",
+        "enum": [
+          "executive",
+          "manager",
+          "security",
+          "forensics",
+          "admin"
+        ]
+      },
+      "RoleContext": {
+        "type": "object",
+        "required": [
+          "role",
+          "scope",
+          "server_enforced"
+        ],
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/PortalRole"
+          },
+          "role_label": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "allowed_scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "server_enforced": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      },
       "JsonObject": {
         "type": "object",
         "additionalProperties": true
@@ -713,7 +917,160 @@
               "$ref": "#/components/schemas/JsonObject"
             }
           },
+          "role_context": {
+            "$ref": "#/components/schemas/RoleContext"
+          },
           "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "UebaPayload": {
+        "type": "object",
+        "required": [
+          "ok",
+          "score",
+          "severity",
+          "score_components",
+          "reason_codes",
+          "model"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "role_context": {
+            "$ref": "#/components/schemas/RoleContext"
+          },
+          "score": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 100
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "normal",
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "score_components": {
+            "type": "object",
+            "required": [
+              "activity_anomaly",
+              "time_anomaly",
+              "application_anomaly",
+              "network_anomaly",
+              "history_anomaly"
+            ],
+            "properties": {
+              "activity_anomaly": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "time_anomaly": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "application_anomaly": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "network_anomaly": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "history_anomaly": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              }
+            },
+            "additionalProperties": false
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "model": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "risk": {
+            "$ref": "#/components/schemas/JsonObject"
+          }
+        },
+        "additionalProperties": true
+      },
+      "PfsenseReadiness": {
+        "type": "object",
+        "required": [
+          "ok",
+          "contract_version",
+          "status",
+          "ingestion_available",
+          "firewall_events",
+          "vpn_events",
+          "traffic_summary",
+          "top_destinations"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "role_context": {
+            "$ref": "#/components/schemas/RoleContext"
+          },
+          "contract_version": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "contract_only",
+              "available"
+            ]
+          },
+          "siem": {
+            "type": "boolean"
+          },
+          "ingestion_available": {
+            "type": "boolean"
+          },
+          "firewall_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
+          },
+          "vpn_events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
+          },
+          "traffic_summary": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "top_destinations": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/JsonObject"

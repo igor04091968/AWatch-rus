@@ -25,12 +25,33 @@ const VIEW_MODES = {
     description: "Главный вывод, сводка руководителя, риски подразделений и карта рисков.",
     stage: "Формирование главного вывода",
   },
+  manager: {
+    label: "Менеджер",
+    title: "Роль менеджера",
+    heading: "Представление менеджера",
+    description: "Workforce, сравнение подразделений, ответственные, тренды и отчет.",
+    stage: "Расчет Workforce и подразделений",
+  },
   security: {
     label: "Безопасность",
     title: "Роль безопасности",
     heading: "Представление безопасности",
     description: "Очередь проверки, расследования, аудит решений и пакеты расследований.",
     stage: "Подготовка разделов проверки и расследований",
+  },
+  forensics: {
+    label: "Расследования",
+    title: "Роль расследований",
+    heading: "Представление расследований",
+    description: "Карточки расследований, timeline, связка user / host / app / network event и экспорт.",
+    stage: "Подготовка timeline расследований",
+  },
+  admin: {
+    label: "Администратор",
+    title: "Роль администратора",
+    heading: "Представление администратора",
+    description: "Настройки, качество данных, источники и эксплуатационные ошибки.",
+    stage: "Проверка настроек и источников",
   },
   operations: {
     label: "Эксплуатация",
@@ -44,7 +65,7 @@ const VIEW_MODES = {
 function initialViewMode() {
   try {
     const stored = window.localStorage?.getItem("detmir.portal.viewMode");
-    return ["executive", "security", "operations"].includes(stored) ? stored : "executive";
+    return ["executive", "manager", "security", "forensics", "admin", "operations"].includes(stored) ? stored : "executive";
   } catch {
     return "executive";
   }
@@ -55,8 +76,27 @@ function apiBase() {
   return path.startsWith("/portal") ? "/portal/api" : "/api";
 }
 
+function apiRole() {
+  if (state.tab === "employees" || state.tab === "departments") return "manager";
+  if (state.tab === "owner" || state.tab === "perimeter") return "security";
+  if (state.tab === "incidents") return "forensics";
+  if (state.tab === "settings") return "admin";
+  const mode = currentViewMode();
+  if (mode === "operations") return "admin";
+  return ["executive", "manager", "security", "forensics", "admin"].includes(mode) ? mode : "executive";
+}
+
+function roleHeaders() {
+  return { "X-AWatch-Role": apiRole() };
+}
+
+function withRole(path, role = apiRole()) {
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}role=${encodeURIComponent(role)}`;
+}
+
 async function loadJson(path) {
-  const response = await fetch(`${apiBase()}${path}`, { cache: "no-store" });
+  const response = await fetch(`${apiBase()}${path}`, { cache: "no-store", headers: roleHeaders() });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
   return response.json();
 }
@@ -64,7 +104,7 @@ async function loadJson(path) {
 async function postJson(path, payload) {
   const response = await fetch(`${apiBase()}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...roleHeaders() },
     body: JSON.stringify(payload)
   });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
@@ -1202,7 +1242,10 @@ function renderRoleViewSummary(meta) {
 }
 
 function renderOperatorRoleContent(mode, data, report, extras = {}) {
+  if (mode === "manager") return renderManagerView(report);
   if (mode === "security") return renderSecurityView(data, report, extras);
+  if (mode === "forensics") return renderForensicsView(data, report, extras);
+  if (mode === "admin") return renderOperationsView(data, report);
   if (mode === "operations") return renderOperationsView(data, report);
   return renderExecutiveView(report, extras.incidents || []);
 }
@@ -1231,6 +1274,30 @@ function renderSecurityView(data, report, extras = {}) {
       <div class="band-head"><h3>Расследования</h3><span class="muted">ручная проверка, решения и материалы</span></div>
       ${renderDlpIncidentsList(extras.incidents || data.incidents || [])}
     </section>
+  `;
+}
+
+function renderManagerView(report) {
+  return `
+    ${renderExecutiveDashboard(report)}
+    ${renderDepartmentRanking(report)}
+    ${renderDepartmentHeatMap(report)}
+    ${renderOverviewAnalytics(report)}
+    <section class="dashboard-band">
+      <div class="band-head"><h3>Markdown-отчет</h3><span class="muted">экспорт управленческого среза Workforce</span></div>
+      <pre class="markdown-preview">${ui((report?.markdown || "").slice(0, 2000))}</pre>
+    </section>
+  `;
+}
+
+function renderForensicsView(data, report, extras = {}) {
+  const cases = Array.isArray(extras.cases?.cases) ? extras.cases.cases : [];
+  return `
+    ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
+    ${renderCases(cases)}
+    ${renderInvestigationTimeline(report)}
+    ${renderInvestigationPacks(report?.risk_incident_candidates)}
+    ${renderIncidentReviewAuditSummary(report)}
   `;
 }
 
@@ -1344,12 +1411,43 @@ function renderInvestigationPacks(candidates) {
         <div class="row compact-row">
           <strong>${ui(item.department || "Без подразделения")}</strong>
           <span class="muted">${ui(item.reason || "требуется проверка")} · ${ui(item.hostname || "-")}</span>
-          <a class="small-button" href="${apiBase()}/investigation-pack/${encodeURIComponent(item.id || "")}?format=markdown" download>Скачать</a>
+          <a class="small-button" href="${apiBase()}${withRole(`/investigation-pack/${encodeURIComponent(item.id || "")}?format=markdown`, "forensics")}" download>Скачать</a>
         </div>
       `).join("") : `
         <div class="row compact-row">
           <strong>Пакетов нет</strong>
           <span class="muted">Нет записей, требующих выгрузки материалов.</span>
+          <span class="badge status-ok">в норме</span>
+        </div>
+      `}</div>
+    </section>
+  `;
+}
+
+function renderInvestigationTimeline(report) {
+  const investigations = Array.isArray(report?.forensics?.investigations) ? report.forensics.investigations : [];
+  const timelines = investigations.flatMap(item => Array.isArray(item.timeline)
+    ? item.timeline.map(event => ({ ...event, investigation_id: item.investigation_id }))
+    : []);
+  return `
+    <section class="card investigation-timeline-card">
+      <div class="section-head">
+        <div>
+          <h3>Timeline событий</h3>
+          <p class="muted">Связка user / host / app / network event для ручного расследования.</p>
+        </div>
+        <span class="badge ${statusClass(timelines.length ? "INFO" : "UNKNOWN")}">${timelines.length}</span>
+      </div>
+      <div class="list compact-list">${timelines.length ? timelines.slice(0, 20).map(event => `
+        <div class="row compact-row">
+          <strong>${ui(event.timestamp || "-")}</strong>
+          <span class="muted">${ui(event.kind || "event")} · ${ui(event.entity || "-")} · ${ui(event.summary || "")}</span>
+          <span class="badge status-ok">${ui(event.source || "portal")}</span>
+        </div>
+      `).join("") : `
+        <div class="row compact-row">
+          <strong>Timeline пуст</strong>
+          <span class="muted">Нет кандидатов для расследования в текущем срезе.</span>
           <span class="badge status-ok">в норме</span>
         </div>
       `}</div>
@@ -1885,7 +1983,7 @@ function renderCases(cases) {
 
 function renderCaseActions(item) {
   const id = item?.case_id || "";
-  const packUrl = `/portal/api/cases/${encodeURIComponent(id)}?format=markdown`;
+  const packUrl = `/portal/api/cases/${encodeURIComponent(id)}?format=markdown&role=forensics`;
   return `
     <div class="button-row compact-actions">
       <button class="small-button" data-case-status="IN_PROGRESS" data-case-id="${escapeHtml(id)}">В работу</button>
@@ -2652,7 +2750,7 @@ function renderCandidateReviewActions(item) {
     ["FALSE_POSITIVE", "Ложный"],
     ["POSTPONED", "Отложить"],
   ];
-  const packUrl = `/portal/api/investigation-pack/${encodeURIComponent(id)}?format=markdown`;
+  const packUrl = `/portal/api/investigation-pack/${encodeURIComponent(id)}?format=markdown&role=forensics`;
   const createCase = reviewStatus === "CONFIRMED"
     ? `<button class="small-button investigation-pack-button primary" data-create-case="true" data-candidate-id="${escapeHtml(id)}">Создать дело</button>`
     : "";
@@ -2843,7 +2941,7 @@ async function loadCurrentTab() {
     const data = await loadJson("/operator");
     state.operatorData = data;
     state.reports = await loadJson("/reports").catch(() => state.reports);
-    if (currentViewMode() === "security") {
+    if (currentViewMode() === "security" || currentViewMode() === "forensics") {
       state.cases = await loadJson("/cases").catch(error => ({ ok: false, error: error.message, cases: [] }));
     }
     updateFilters(state.reports);

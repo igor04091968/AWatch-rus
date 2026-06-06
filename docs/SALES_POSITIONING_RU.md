@@ -327,8 +327,8 @@ AWatch-rus / DetMir в текущем позиционировании:
 ## Связанные документы
 
 - [Customer Pilot Pack](CUSTOMER_PILOT_PACK_RU.md)
-- [Описание продукта](PRODUCT_DESCRIPTION_RU.md)
+- [Описание продукта](../PRODUCT_DESCRIPTION_RU.md)
 - [Аудит готовности к пилоту](PILOT_READINESS_AUDIT_RU.md)
-- [Портал AWatch-rus](docs/PORTAL_RU.md)
-- [Business Risk](docs/BUSINESS_RISK_RU.md)
-- [Модель безопасности](docs/SECURITY_MODEL_RU.md)
+- [Портал AWatch-rus](PORTAL_RU.md)
+- [Business Risk](BUSINESS_RISK_RU.md)
+- [Модель безопасности](SECURITY_MODEL_RU.md)

@@ -171,7 +171,10 @@ async function main() {
     });
     smokeStep = "api:security_events_summary";
     const reportsPayload = await page.evaluate(async () => {
-      const response = await fetch("api/reports", { cache: "no-store" });
+      const response = await fetch("api/reports?role=security", {
+        cache: "no-store",
+        headers: { "X-AWatch-Role": "security" },
+      });
       return { ok: response.ok, status: response.status, json: await response.json() };
     });
     const securitySummary = reportsPayload.json?.security_events_summary || null;
@@ -252,8 +255,10 @@ async function main() {
           name: "role_view_switcher_present",
           ok:
             (await page.locator('[data-view-mode="executive"]').count()) === 1
+            && (await page.locator('[data-view-mode="manager"]').count()) === 1
             && (await page.locator('[data-view-mode="security"]').count()) === 1
-            && (await page.locator('[data-view-mode="operations"]').count()) === 1,
+            && (await page.locator('[data-view-mode="forensics"]').count()) === 1
+            && (await page.locator('[data-view-mode="admin"]').count()) === 1,
         });
         const expectedSecurityText = expectedSecurityEventsText(securityMode);
         checks.push({
@@ -266,6 +271,28 @@ async function main() {
               && !containsText(readyBodyText, "ClickHouse")),
           mode: securityMode,
           expected_text: expectedSecurityText,
+        });
+
+        smokeStep = "role:manager";
+        await page.click('[data-view-mode="manager"]', { timeout });
+        await page.waitForFunction(
+          () => document.querySelector("#loadingStatus")?.dataset.loadStatus === "READY"
+            && document.body.innerText.includes("ТОП-5 лучших подразделений"),
+          null,
+          { timeout },
+        );
+        const managerText = await page.locator("#content").innerText({ timeout });
+        checks.push({
+          name: "manager_role_view",
+          ok: [
+            "Представление менеджера",
+            "Сводка руководителя",
+            "ТОП-5 лучших подразделений",
+            "ТОП-5 проблемных подразделений",
+            "Карта рисков",
+            "Markdown-отчет",
+          ].every((marker) => containsText(managerText, marker))
+            && !containsText(managerText, "Материалы расследования"),
         });
 
         smokeStep = "role:security";
@@ -304,8 +331,30 @@ async function main() {
           expected_text: expectedSecurityText,
         });
 
-        smokeStep = "role:operations";
-        await page.click('[data-view-mode="operations"]', { timeout });
+        smokeStep = "role:forensics";
+        await page.click('[data-view-mode="forensics"]', { timeout });
+        await page.waitForFunction(
+          () => document.querySelector("#loadingStatus")?.dataset.loadStatus === "READY"
+            && document.body.innerText.includes("Timeline событий"),
+          null,
+          { timeout },
+        );
+        const forensicsText = await page.locator("#content").innerText({ timeout });
+        checks.push({
+          name: "forensics_role_view",
+          ok: [
+            "Представление расследований",
+            "Требует проверки",
+            "Расследования",
+            "Timeline событий",
+            "Материалы расследования",
+            "Аудит",
+          ].every((marker) => containsText(forensicsText, marker))
+            && !containsText(forensicsText, "Рейтинг подразделений"),
+        });
+
+        smokeStep = "role:admin";
+        await page.click('[data-view-mode="admin"]', { timeout });
         await page.waitForFunction(
           () => document.querySelector("#loadingStatus")?.dataset.loadStatus === "READY"
             && document.body.innerText.includes("Телеметрия"),
@@ -314,9 +363,9 @@ async function main() {
         );
         const operationsText = await page.locator("#content").innerText({ timeout });
         checks.push({
-          name: "operations_role_view",
+          name: "admin_role_view",
           ok: [
-            "Представление эксплуатации",
+            "Представление администратора",
             "Полнота данных",
             "Качество данных",
             "События безопасности за 24 часа",
@@ -333,6 +382,37 @@ async function main() {
               && (securityMode !== "fallback" || containsText(operationsText, "События безопасности временно недоступны"))),
           mode: securityMode,
           expected_text: expectedSecurityText,
+        });
+
+        smokeStep = "api:role_gates";
+        const apiUrl = (path) => new URL(path, page.url()).toString();
+        const [managerSecurity, securityWorkforce, forensicsOk, uebaOk] = await Promise.all([
+          context.request.get(apiUrl("api/security"), {
+            headers: { ...authHeaders(), "X-AWatch-Role": "manager" },
+          }),
+          context.request.get(apiUrl("api/workforce"), {
+            headers: { ...authHeaders(), "X-AWatch-Role": "security" },
+          }),
+          context.request.get(apiUrl("api/forensics"), {
+            headers: { ...authHeaders(), "X-AWatch-Role": "forensics" },
+          }),
+          context.request.get(apiUrl("api/ueba"), {
+            headers: { ...authHeaders(), "X-AWatch-Role": "security" },
+          }),
+        ]);
+        checks.push({
+          name: "server_role_gates",
+          ok:
+            managerSecurity.status() === 403
+            && securityWorkforce.status() === 403
+            && forensicsOk.ok()
+            && uebaOk.ok(),
+          statuses: {
+            manager_security: managerSecurity.status(),
+            security_workforce: securityWorkforce.status(),
+            forensics: forensicsOk.status(),
+            ueba: uebaOk.status(),
+          },
         });
       }
       if (item.tab === "settings") {

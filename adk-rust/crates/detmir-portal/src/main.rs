@@ -43,6 +43,76 @@ unsafe extern "C" {
 
 type SnapshotCache = Arc<Mutex<Option<CachedSnapshot>>>;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum PortalRole {
+    Executive,
+    Manager,
+    Security,
+    Forensics,
+    Admin,
+}
+
+impl PortalRole {
+    fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "executive" | "owner" | "rukovoditel" | "руководитель" => {
+                Some(Self::Executive)
+            }
+            "manager" | "workforce" | "руководитель_подразделения" => {
+                Some(Self::Manager)
+            }
+            "security" | "ib" | "soc" | "безопасность" => Some(Self::Security),
+            "forensics" | "investigation" | "расследования" => Some(Self::Forensics),
+            "admin" | "operations" | "operator" | "эксплуатация" => Some(Self::Admin),
+            _ => None,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Executive => "executive",
+            Self::Manager => "manager",
+            Self::Security => "security",
+            Self::Forensics => "forensics",
+            Self::Admin => "admin",
+        }
+    }
+
+    fn label_ru(self) -> &'static str {
+        match self {
+            Self::Executive => "Руководитель",
+            Self::Manager => "Руководитель подразделения",
+            Self::Security => "Безопасность",
+            Self::Forensics => "Расследования",
+            Self::Admin => "Администратор",
+        }
+    }
+
+    fn allowed_scopes(self) -> &'static [&'static str] {
+        match self {
+            Self::Executive => &["executive", "workforce"],
+            Self::Manager => &["executive", "workforce"],
+            Self::Security => &["security", "incidents", "ueba", "pfsense"],
+            Self::Forensics => &["forensics", "incidents", "ueba"],
+            Self::Admin => &[
+                "executive",
+                "workforce",
+                "security",
+                "forensics",
+                "incidents",
+                "ueba",
+                "pfsense",
+                "admin",
+            ],
+        }
+    }
+
+    fn can_access(self, scope: &str) -> bool {
+        self.allowed_scopes().contains(&scope)
+    }
+}
+
 #[derive(Clone, Debug)]
 struct CachedSnapshot {
     created: Instant,
@@ -1248,17 +1318,30 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
     let url = request.url().to_string();
     let path = normalize_path(&url);
     let anonymize = query_flag(&url, "anonymize");
+    let role = portal_role_from_request(&request, &url);
     if method == Method::Post && path == "/api/incidents/action" {
+        if !role.can_access("incidents") {
+            return respond_forbidden(request, role, "incidents");
+        }
         return handle_incident_action(request, args);
     }
     if method == Method::Post && path == "/api/incident-review" {
+        if !role.can_access("security") {
+            return respond_forbidden(request, role, "security");
+        }
         return handle_incident_review(request, args);
     }
     if method == Method::Post && path == "/api/cases" {
+        if !role.can_access("forensics") && !role.can_access("incidents") {
+            return respond_forbidden(request, role, "forensics");
+        }
         return handle_create_case(request, args, snapshot_cache);
     }
     if method == Method::Post {
         if let Some(case_id) = parse_case_status_path(&path) {
+            if !role.can_access("forensics") && !role.can_access("incidents") {
+                return respond_forbidden(request, role, "forensics");
+            }
             return handle_case_status(request, args, &case_id);
         }
     }
@@ -1269,12 +1352,21 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
         return respond_text(request, StatusCode(405), "Method Not Allowed", "text/plain");
     }
     if path == "/api/dlp/evidence" {
+        if !role.can_access("forensics") && !role.can_access("incidents") {
+            return respond_forbidden(request, role, "forensics");
+        }
         return respond_json(request, &build_dlp_evidence_response(args));
     }
     if let Some(candidate_id) = parse_investigation_pack_path(&path) {
+        if !role.can_access("forensics") && !role.can_access("incidents") {
+            return respond_forbidden(request, role, "forensics");
+        }
         return handle_investigation_pack(request, args, snapshot_cache, &url, &candidate_id);
     }
     if let Some(case_id) = parse_case_path(&path) {
+        if !role.can_access("forensics") && !role.can_access("incidents") {
+            return respond_forbidden(request, role, "forensics");
+        }
         return handle_case_details(request, args, snapshot_cache, &url, &case_id);
     }
     if let Some((evidence_id, download)) = parse_evidence_screenshot_path(&path) {
@@ -1322,10 +1414,16 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             respond_json(request, &build_operator(&snapshot, &incident_state))
         }
         "/api/manager" => {
+            if !role.can_access("workforce") {
+                return respond_forbidden(request, role, "workforce");
+            }
             let snapshot = cached_snapshot(args, snapshot_cache);
             respond_json(request, &build_manager(&snapshot))
         }
         "/api/workforce/policy/explain" => {
+            if !role.can_access("workforce") {
+                return respond_forbidden(request, role, "workforce");
+            }
             let snapshot = cached_snapshot(args, snapshot_cache);
             respond_json(
                 request,
@@ -1333,41 +1431,71 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             )
         }
         "/api/owner" => {
+            if !role.can_access("security") {
+                return respond_forbidden(request, role, "security");
+            }
             let snapshot = cached_snapshot(args, snapshot_cache);
             respond_json(request, &build_owner(&snapshot))
         }
         "/api/reports" => {
-            let snapshot = cached_snapshot(args, snapshot_cache);
-            let incident_state = load_incident_state_best_effort(args);
-            let incident_reviews = load_incident_review_best_effort(args);
-            let incident_review_audit = load_incident_review_audit_best_effort(args);
-            let cases = load_cases_best_effort(args);
-            let evidence = build_dlp_evidence_response(args);
-            let ueba_baseline_path = ueba_baseline_state_path(args);
-            respond_json(
-                request,
-                &build_reports(
-                    &snapshot,
-                    ReportRuntimeInputs {
-                        incident_state: &incident_state,
-                        incident_reviews: &incident_reviews,
-                        incident_review_audit: &incident_review_audit,
-                        cases: &cases,
-                        evidence: &evidence,
-                    },
-                    &args.workforce_policy_path,
-                    &args.ueba_policy_path,
-                    &ueba_baseline_path,
-                    anonymize,
-                ),
-            )
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            respond_json(request, &role_filtered_report(report, role))
+        }
+        "/api/executive" => {
+            if !role.can_access("executive") {
+                return respond_forbidden(request, role, "executive");
+            }
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            respond_json(request, &build_role_api_payload(report, role, "executive"))
+        }
+        "/api/workforce" => {
+            if !role.can_access("workforce") {
+                return respond_forbidden(request, role, "workforce");
+            }
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            respond_json(request, &build_role_api_payload(report, role, "workforce"))
+        }
+        "/api/security" => {
+            if !role.can_access("security") {
+                return respond_forbidden(request, role, "security");
+            }
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            respond_json(request, &build_role_api_payload(report, role, "security"))
+        }
+        "/api/forensics" => {
+            if !role.can_access("forensics") {
+                return respond_forbidden(request, role, "forensics");
+            }
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            respond_json(request, &build_role_api_payload(report, role, "forensics"))
+        }
+        "/api/ueba" => {
+            if !role.can_access("ueba") {
+                return respond_forbidden(request, role, "ueba");
+            }
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            respond_json(request, &build_ueba_api_payload(&report, role))
+        }
+        "/api/pfsense" => {
+            if !role.can_access("pfsense") {
+                return respond_forbidden(request, role, "pfsense");
+            }
+            respond_json(request, &build_pfsense_readiness_payload(role))
         }
         "/api/incidents" => {
+            if !role.can_access("incidents") {
+                return respond_forbidden(request, role, "incidents");
+            }
             let snapshot = cached_snapshot(args, snapshot_cache);
             let incident_state = load_incident_state_best_effort(args);
             respond_json(request, &build_incidents(&snapshot, &incident_state))
         }
-        "/api/cases" => respond_json(request, &build_case_list(args)),
+        "/api/cases" => {
+            if !role.can_access("forensics") && !role.can_access("incidents") {
+                return respond_forbidden(request, role, "forensics");
+            }
+            respond_json(request, &build_case_list(args))
+        }
         "/api/links" => respond_json(request, &links()),
         _ => respond_text(
             request,
@@ -1436,16 +1564,17 @@ fn normalize_path(url: &str) -> String {
 fn api_contract_summary() -> Value {
     json!({
         "ok": true,
-        "contract_version": "2026-06-05.v1",
+        "contract_version": "2026-06-06.pilot-v1",
         "generated_by": "detmir-portal",
         "api_base": "/api",
         "compatibility": {
             "policy": "additive",
-            "existing_html_portal": "unchanged",
+            "main_ui": "rust-server-rendered-html-htmx-compatible",
             "unknown_fields": "clients must ignore unknown fields",
-            "nullable_fields": "clients must tolerate null and missing optional fields"
+            "nullable_fields": "clients must tolerate null and missing optional fields",
+            "forbidden_ui_stacks": ["dioxus", "react", "tauri", "electron"]
         },
-        "targets": ["current-html", "future-react", "future-tauri"],
+        "targets": ["rust-html", "htmx-compatible"],
         "artifacts": {
             "openapi": "/api/contracts/openapi.json",
             "typescript": "/api/contracts/typescript.d.ts"
@@ -1457,6 +1586,12 @@ fn api_contract_summary() -> Value {
             {"method": "GET", "path": "/api/contracts/typescript.d.ts", "purpose": "TypeScript declarations"},
             {"method": "GET", "path": "/api/operator", "purpose": "portal overview data"},
             {"method": "GET", "path": "/api/reports", "purpose": "management report payload"},
+            {"method": "GET", "path": "/api/executive", "purpose": "executive role payload"},
+            {"method": "GET", "path": "/api/workforce", "purpose": "workforce role payload"},
+            {"method": "GET", "path": "/api/security", "purpose": "security role payload"},
+            {"method": "GET", "path": "/api/forensics", "purpose": "forensics role payload"},
+            {"method": "GET", "path": "/api/ueba", "purpose": "rule-based UEBA score v1"},
+            {"method": "GET", "path": "/api/pfsense", "purpose": "pfSense readiness contracts and demo fixtures"},
             {"method": "GET", "path": "/api/incidents", "purpose": "incident and DLP evidence summary"},
             {"method": "GET", "path": "/api/cases", "purpose": "case list"},
             {"method": "POST", "path": "/api/incident-review", "purpose": "manual candidate review status"},
@@ -1600,6 +1735,45 @@ fn query_param(url: &str, key: &str) -> Option<String> {
         let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
         (name == key && !value.is_empty()).then(|| value.to_string())
     })
+}
+
+fn portal_role_from_request(request: &Request, url: &str) -> PortalRole {
+    query_param(url, "role")
+        .as_deref()
+        .and_then(PortalRole::parse)
+        .or_else(|| {
+            request
+                .headers()
+                .iter()
+                .find(|header| header.field.equiv("X-AWatch-Role"))
+                .and_then(|header| PortalRole::parse(header.value.as_str()))
+        })
+        .unwrap_or(PortalRole::Executive)
+}
+
+fn role_envelope(role: PortalRole, scope: &str) -> Value {
+    json!({
+        "role": role.as_str(),
+        "role_label": role.label_ru(),
+        "scope": scope,
+        "allowed_scopes": role.allowed_scopes(),
+        "server_enforced": true,
+    })
+}
+
+fn respond_forbidden(request: Request, role: PortalRole, scope: &str) -> Result<()> {
+    respond_json_status(
+        request,
+        StatusCode(403),
+        &json!({
+            "ok": false,
+            "error": "forbidden",
+            "message": format!("Роль {} не имеет доступа к контуру {scope}", role.label_ru()),
+            "role": role.as_str(),
+            "scope": scope,
+            "server_enforced": true,
+        }),
+    )
 }
 
 fn parse_investigation_pack_path(path: &str) -> Option<String> {
@@ -3182,6 +3356,380 @@ fn build_reports(
         },
         "markdown": markdown,
         "links": links()
+    })
+}
+
+fn build_report_payload(args: &Cli, snapshot_cache: &SnapshotCache, anonymize: bool) -> Value {
+    let snapshot = cached_snapshot(args, snapshot_cache);
+    let incident_state = load_incident_state_best_effort(args);
+    let incident_reviews = load_incident_review_best_effort(args);
+    let incident_review_audit = load_incident_review_audit_best_effort(args);
+    let cases = load_cases_best_effort(args);
+    let evidence = build_dlp_evidence_response(args);
+    let ueba_baseline_path = ueba_baseline_state_path(args);
+    build_reports(
+        &snapshot,
+        ReportRuntimeInputs {
+            incident_state: &incident_state,
+            incident_reviews: &incident_reviews,
+            incident_review_audit: &incident_review_audit,
+            cases: &cases,
+            evidence: &evidence,
+        },
+        &args.workforce_policy_path,
+        &args.ueba_policy_path,
+        &ueba_baseline_path,
+        anonymize,
+    )
+}
+
+fn role_filtered_report(report: Value, role: PortalRole) -> Value {
+    if role == PortalRole::Admin {
+        let mut full = report;
+        if let Some(object) = full.as_object_mut() {
+            object.insert("ok".to_string(), Value::Bool(true));
+            object.insert("role_context".to_string(), role_envelope(role, "admin"));
+        }
+        return full;
+    }
+
+    let mut out = serde_json::Map::new();
+    let Some(object) = report.as_object() else {
+        out.insert("ok".to_string(), Value::Bool(false));
+        out.insert("role_context".to_string(), role_envelope(role, "unknown"));
+        return Value::Object(out);
+    };
+
+    let base_keys = [
+        "generated_at_utc",
+        "period",
+        "anonymized",
+        "severity",
+        "operator_ok",
+        "headline",
+        "links",
+    ];
+    for key in base_keys {
+        copy_json_key(object, &mut out, key);
+    }
+
+    match role {
+        PortalRole::Executive => {
+            for key in [
+                "executive_points",
+                "executive_dashboard",
+                "kpis",
+                "business_risk",
+                "business_risk_history_summary",
+                "risk_heatmap",
+                "workforce",
+                "markdown",
+            ] {
+                copy_json_key(object, &mut out, key);
+            }
+            out.insert(
+                "scope_note".to_string(),
+                json!("Руководитель видит управленческий вывод и Workforce без ИБ-детализации."),
+            );
+            out.insert("role_context".to_string(), role_envelope(role, "executive"));
+        }
+        PortalRole::Manager => {
+            for key in [
+                "executive_dashboard",
+                "kpis",
+                "business_risk",
+                "risk_heatmap",
+                "workforce",
+                "workforce_policy",
+                "markdown",
+            ] {
+                copy_json_key(object, &mut out, key);
+            }
+            out.insert(
+                "scope_note".to_string(),
+                json!("Руководитель подразделения видит Workforce и Executive Dashboard без очереди ИБ."),
+            );
+            out.insert("role_context".to_string(), role_envelope(role, "workforce"));
+        }
+        PortalRole::Security => {
+            for key in [
+                "ueba_risk",
+                "ueba_baseline",
+                "security_events_summary",
+                "security_correlation",
+                "risk_incident_candidates",
+                "incident_review_audit_summary",
+                "business_risk",
+                "risk_heatmap",
+                "markdown",
+            ] {
+                copy_json_key(object, &mut out, key);
+            }
+            out.insert(
+                "scope_note".to_string(),
+                json!("Безопасность видит риски, события и кандидатов без управленческого Workforce Dashboard."),
+            );
+            out.insert("role_context".to_string(), role_envelope(role, "security"));
+        }
+        PortalRole::Forensics => {
+            for key in [
+                "risk_incident_candidates",
+                "incident_review_audit_summary",
+                "security_events_summary",
+                "ueba_risk",
+                "markdown",
+            ] {
+                copy_json_key(object, &mut out, key);
+            }
+            out.insert(
+                "forensics".to_string(),
+                build_forensics_contract_payload(&report),
+            );
+            out.insert(
+                "scope_note".to_string(),
+                json!("Расследования видят карточки, timeline и экспорт материалов без управленческого Workforce Dashboard."),
+            );
+            out.insert("role_context".to_string(), role_envelope(role, "forensics"));
+        }
+        PortalRole::Admin => {}
+    }
+    out.insert("ok".to_string(), Value::Bool(true));
+    Value::Object(out)
+}
+
+fn copy_json_key(
+    source: &serde_json::Map<String, Value>,
+    target: &mut serde_json::Map<String, Value>,
+    key: &str,
+) {
+    if let Some(value) = source.get(key) {
+        target.insert(key.to_string(), value.clone());
+    }
+}
+
+fn build_role_api_payload(report: Value, role: PortalRole, scope: &str) -> Value {
+    let mut payload = role_filtered_report(report, role);
+    if let Some(object) = payload.as_object_mut() {
+        object.insert("role_context".to_string(), role_envelope(role, scope));
+    }
+    payload
+}
+
+fn build_ueba_api_payload(report: &Value, role: PortalRole) -> Value {
+    json!({
+        "ok": true,
+        "role_context": role_envelope(role, "ueba"),
+        "score": report.pointer("/ueba_risk/score").cloned().unwrap_or(Value::Null),
+        "severity": report.pointer("/ueba_risk/level").cloned().unwrap_or_else(|| json!("normal")),
+        "status": report.pointer("/ueba_risk/status").cloned().unwrap_or_else(|| json!("OK")),
+        "score_components": report.pointer("/ueba_risk/score_components").cloned().unwrap_or_else(|| json!({
+            "activity_anomaly": 0,
+            "time_anomaly": 0,
+            "application_anomaly": 0,
+            "network_anomaly": 0,
+            "history_anomaly": 0,
+        })),
+        "reason_codes": report.pointer("/ueba_risk/reason_codes").cloned().or_else(|| {
+            report
+                .pointer("/ueba_risk/reasons")
+                .and_then(Value::as_array)
+                .map(|items| {
+                    Value::Array(
+                        items
+                            .iter()
+                            .filter_map(|item| item.get("code").and_then(Value::as_str).map(Value::from))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+        }).unwrap_or_else(|| json!([])),
+        "explanation": report.pointer("/ueba_risk/human_explanation")
+            .or_else(|| report.pointer("/ueba_risk/summary"))
+            .cloned()
+            .unwrap_or_else(|| json!("Оценка риска по правилам v1.")),
+        "model": {
+            "version": "ueba-score-v1",
+            "type": "rule_based",
+            "formula": "activity anomaly + time anomaly + application anomaly + network anomaly + history anomaly",
+            "ml_used": false,
+            "llm_used": false
+        },
+        "risk": report.get("ueba_risk").cloned().unwrap_or_else(|| json!({})),
+    })
+}
+
+fn build_forensics_contract_payload(report: &Value) -> Value {
+    let candidates = report
+        .get("risk_incident_candidates")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let investigations = candidates
+        .iter()
+        .take(20)
+        .map(|candidate| {
+            let id = candidate
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or("candidate-unknown");
+            let department = candidate
+                .get("department")
+                .and_then(Value::as_str)
+                .unwrap_or(DEFAULT_DEPARTMENT_LABEL);
+            let host = candidate
+                .get("hostname")
+                .and_then(Value::as_str)
+                .unwrap_or("host-demo");
+            json!({
+                "investigation_id": format!("case-{id}"),
+                "candidate_id": id,
+                "title": format!("Проверка кандидата {id}"),
+                "status": candidate.pointer("/incident_review/status").and_then(Value::as_str).unwrap_or("NEW"),
+                "department": department,
+                "risk_level": candidate.get("risk_level").cloned().unwrap_or_else(|| json!("UNKNOWN")),
+                "summary": candidate.get("reason").cloned().unwrap_or_else(|| json!("требуется проверка")),
+                "timeline": forensics_timeline_for_candidate(candidate),
+                "links": {
+                    "markdown": format!("/portal/api/investigation-pack/{id}?format=markdown"),
+                    "json": format!("/portal/api/investigation-pack/{id}")
+                },
+                "entities": {
+                    "user": candidate.get("owner").cloned().unwrap_or_else(|| json!("employee-demo")),
+                    "host": host,
+                    "app": "activity-source",
+                    "network_event": "not_available"
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    json!({
+        "contract_version": "forensics-v1",
+        "investigations": investigations,
+        "timeline_schema": ["timestamp", "kind", "entity", "summary", "source"],
+        "demo_privacy": "В demo-режиме использовать только обезличенные user/host/app/network identifiers.",
+    })
+}
+
+fn forensics_timeline_for_candidate(candidate: &Value) -> Vec<Value> {
+    let first_seen = candidate
+        .get("first_seen_utc")
+        .and_then(Value::as_str)
+        .unwrap_or("2026-06-01T09:00:00Z");
+    let last_seen = candidate
+        .get("last_seen_utc")
+        .and_then(Value::as_str)
+        .unwrap_or(first_seen);
+    let id = candidate
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("candidate-unknown");
+    vec![
+        json!({
+            "timestamp": first_seen,
+            "kind": "candidate_created",
+            "entity": id,
+            "summary": candidate.get("reason").cloned().unwrap_or_else(|| json!("кандидат требует проверки")),
+            "source": "risk_rules"
+        }),
+        json!({
+            "timestamp": last_seen,
+            "kind": "evidence_snapshot",
+            "entity": candidate.get("hostname").and_then(Value::as_str).unwrap_or("host-demo"),
+            "summary": "Связка user / host / app / network event подготовлена для ручного расследования.",
+            "source": "portal_contract"
+        }),
+    ]
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PfsenseFirewallEvent {
+    timestamp: String,
+    source_host: String,
+    destination: String,
+    action: String,
+    rule_id: String,
+    protocol: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PfsenseVpnEvent {
+    timestamp: String,
+    source_host: String,
+    user_ref: String,
+    action: String,
+    tunnel: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct PfsenseTopDestination {
+    destination: String,
+    bytes: u64,
+    connections: u64,
+}
+
+fn build_pfsense_readiness_payload(role: PortalRole) -> Value {
+    let firewall_events = vec![
+        PfsenseFirewallEvent {
+            timestamp: "2026-06-01T10:00:00Z".to_string(),
+            source_host: "host-demo-01".to_string(),
+            destination: "203.0.113.10:443".to_string(),
+            action: "pass".to_string(),
+            rule_id: "demo-fw-allow-web".to_string(),
+            protocol: "tcp".to_string(),
+        },
+        PfsenseFirewallEvent {
+            timestamp: "2026-06-01T10:05:00Z".to_string(),
+            source_host: "host-demo-02".to_string(),
+            destination: "198.51.100.25:22".to_string(),
+            action: "block".to_string(),
+            rule_id: "demo-fw-block-admin".to_string(),
+            protocol: "tcp".to_string(),
+        },
+    ];
+    let vpn_events = vec![PfsenseVpnEvent {
+        timestamp: "2026-06-01T08:30:00Z".to_string(),
+        source_host: "198.51.100.77".to_string(),
+        user_ref: "employee-demo-001".to_string(),
+        action: "connect".to_string(),
+        tunnel: "vpn-demo".to_string(),
+    }];
+    let top_destinations = vec![
+        PfsenseTopDestination {
+            destination: "203.0.113.10".to_string(),
+            bytes: 42_000,
+            connections: 12,
+        },
+        PfsenseTopDestination {
+            destination: "198.51.100.25".to_string(),
+            bytes: 8_000,
+            connections: 3,
+        },
+    ];
+    json!({
+        "ok": true,
+        "role_context": role_envelope(role, "pfsense"),
+        "contract_version": "pfsense-readiness-v1",
+        "status": "contract_only",
+        "siem": false,
+        "ingestion_available": false,
+        "ingestion_note": "Реальный ingestion не заявлен: подготовлены только контракт, fixtures и API-заготовка.",
+        "schemas": {
+            "firewall_event": ["timestamp", "source_host", "destination", "action", "rule_id", "protocol"],
+            "vpn_event": ["timestamp", "source_host", "user_ref", "action", "tunnel"],
+            "traffic_summary": ["timestamp", "source_host", "destination", "bytes", "connections"],
+            "top_destination": ["destination", "bytes", "connections"]
+        },
+        "firewall_events": firewall_events,
+        "vpn_events": vpn_events,
+        "traffic_summary": {
+            "timestamp": "2026-06-01T10:10:00Z",
+            "source_host": "host-demo-01",
+            "destination": "203.0.113.10",
+            "action": "summary",
+            "bytes": 42000,
+            "connections": 12
+        },
+        "top_destinations": top_destinations,
+        "demo_data_policy": "Используются только RFC 5737 documentation IP ranges и обезличенные identifiers.",
     })
 }
 
@@ -5781,6 +6329,12 @@ fn build_ueba_risk(
         );
     }
 
+    let confidence = ueba_confidence(metrics, workforce_policy, snapshot, &policy);
+    let risk_sources = risk_sources(&reasons);
+    let score = score.min(policy.score_cap.max(1));
+    let (level, status) = ueba_risk_level(score);
+    let score_components = ueba_score_components(&reasons, score);
+    let reason_codes = ueba_reason_codes(&reasons);
     let calculated_from = ueba_calculated_from(
         metrics,
         workforce_policy,
@@ -5789,16 +6343,17 @@ fn build_ueba_risk(
         policy_configured,
         policy_error.as_deref(),
     );
-    let confidence = ueba_confidence(metrics, workforce_policy, snapshot, &policy);
-    let risk_sources = risk_sources(&reasons);
-    let score = score.min(policy.score_cap.max(1));
-    let (level, status) = ueba_risk_level(score);
     json!({
         "score": score,
         "level": level,
+        "severity": level,
         "status": status,
-        "summary": format!("{} risk, {} reason(s)", level, reasons.len()),
-        "formula": format!("sum(reason_points) capped at {}", policy.score_cap.max(1)),
+        "summary": format!("Уровень риска: {level}; факторов: {}", reasons.len()),
+        "human_explanation": ueba_human_explanation(level, &score_components, reasons.len()),
+        "formula": "activity anomaly + time anomaly + application anomaly + network anomaly + history anomaly",
+        "score_cap": policy.score_cap.max(1),
+        "score_components": score_components,
+        "reason_codes": reason_codes,
         "confidence": confidence,
         "risk_sources": risk_sources,
         "baseline_status": ueba_baseline
@@ -5842,8 +6397,119 @@ fn push_risk_reason(
     }));
 }
 
+fn ueba_reason_codes(reasons: &[Value]) -> Vec<String> {
+    reasons
+        .iter()
+        .filter_map(|reason| reason.get("code").and_then(Value::as_str))
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn ueba_component_for_reason(code: &str, source: &str) -> &'static str {
+    if matches!(code, "night_activity" | "weekend_activity") {
+        "time_anomaly"
+    } else if matches!(
+        code,
+        "dlp_fail"
+            | "dlp_warn"
+            | "application_classification_gap"
+            | "application_classification_gap_large"
+    ) {
+        "application_anomaly"
+    } else if matches!(code, "open_incidents" | "baseline_deviation") {
+        "history_anomaly"
+    } else if source.contains("network")
+        || source.contains("pfsense")
+        || source.contains("firewall")
+        || source.contains("vpn")
+        || code.contains("network")
+        || code.contains("firewall")
+        || code.contains("vpn")
+    {
+        "network_anomaly"
+    } else {
+        "activity_anomaly"
+    }
+}
+
+fn ueba_score_components(reasons: &[Value], target_score: u64) -> BTreeMap<String, u64> {
+    let keys = [
+        "activity_anomaly",
+        "time_anomaly",
+        "application_anomaly",
+        "network_anomaly",
+        "history_anomaly",
+    ];
+    let mut raw = keys
+        .iter()
+        .map(|key| ((*key).to_string(), 0_u64))
+        .collect::<BTreeMap<_, _>>();
+    for reason in reasons {
+        let code = reason
+            .get("code")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let source = reason
+            .get("source")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
+        let points = reason.get("points").and_then(Value::as_u64).unwrap_or(0);
+        let component = ueba_component_for_reason(code, source).to_string();
+        *raw.entry(component).or_insert(0) += points;
+    }
+
+    let raw_total = raw.values().sum::<u64>();
+    if raw_total == 0 || target_score >= raw_total {
+        return raw;
+    }
+
+    let mut scaled = raw
+        .iter()
+        .map(|(key, value)| {
+            let product = value.saturating_mul(target_score);
+            let base = product / raw_total;
+            let remainder = product % raw_total;
+            (key.clone(), base, remainder)
+        })
+        .collect::<Vec<_>>();
+    let mut assigned = scaled.iter().map(|(_, base, _)| *base).sum::<u64>();
+    scaled.sort_by(|left, right| right.2.cmp(&left.2).then_with(|| left.0.cmp(&right.0)));
+    for (_, base, _) in scaled.iter_mut() {
+        if assigned >= target_score {
+            break;
+        }
+        *base += 1;
+        assigned += 1;
+    }
+
+    scaled
+        .into_iter()
+        .map(|(key, value, _)| (key, value))
+        .collect::<BTreeMap<_, _>>()
+}
+
+fn ueba_human_explanation(
+    level: &str,
+    components: &BTreeMap<String, u64>,
+    reason_count: usize,
+) -> String {
+    let top_component = components
+        .iter()
+        .max_by_key(|(_, points)| *points)
+        .filter(|(_, points)| **points > 0)
+        .map(|(component, points)| format!("{component}: {points}"));
+    match top_component {
+        Some(component) => format!(
+            "UEBA v1 по правилам: уровень {level}, факторов {reason_count}, основной вклад {component}."
+        ),
+        None => format!("UEBA v1 по правилам: уровень {level}, значимых факторов нет."),
+    }
+}
+
 fn ueba_risk_level(score: u64) -> (&'static str, &'static str) {
-    if score >= 70 {
+    if score >= 85 {
+        ("critical", "FAIL")
+    } else if score >= 70 {
         ("high", "FAIL")
     } else if score >= 40 {
         ("medium", "WARN")
@@ -9323,6 +9989,12 @@ mod tests {
         for path in [
             "/contracts",
             "/reports",
+            "/executive",
+            "/workforce",
+            "/security",
+            "/forensics",
+            "/ueba",
+            "/pfsense",
             "/incidents",
             "/cases",
             "/readiness/latest",
@@ -9336,6 +10008,9 @@ mod tests {
         for required_type in [
             "ContractIndex",
             "ReportsResponse",
+            "RoleContext",
+            "UebaResponse",
+            "PfsenseReadinessResponse",
             "CaseListResponse",
             "IncidentReviewRequest",
             "export interface DetMirPortalApi",
@@ -9366,6 +10041,88 @@ mod tests {
             summary["artifacts"]["typescript"],
             "/api/contracts/typescript.d.ts"
         );
+    }
+
+    #[test]
+    fn portal_roles_parse_and_enforce_scopes() {
+        assert_eq!(PortalRole::parse("executive"), Some(PortalRole::Executive));
+        assert_eq!(PortalRole::parse("operations"), Some(PortalRole::Admin));
+        assert!(PortalRole::Executive.can_access("workforce"));
+        assert!(!PortalRole::Executive.can_access("security"));
+        assert!(PortalRole::Security.can_access("incidents"));
+        assert!(!PortalRole::Security.can_access("workforce"));
+        assert!(PortalRole::Forensics.can_access("forensics"));
+        assert!(PortalRole::Admin.can_access("pfsense"));
+    }
+
+    #[test]
+    fn role_filtered_reports_do_not_cross_default_scopes() {
+        let report = json!({
+            "generated_at_utc": "2026-06-06T00:00:00Z",
+            "headline": "demo",
+            "executive_dashboard": {"summary": {"main_risk": "demo"}},
+            "workforce": {"department_comparison": []},
+            "workforce_policy": {"configured": false},
+            "security_events_summary": {"events_24h": 1},
+            "security_correlation": [],
+            "risk_incident_candidates": [{"id": "candidate-demo"}],
+            "ueba_risk": {"score": 10, "level": "low", "status": "WARN", "reasons": [{"code": "activity_anomaly"}]},
+            "incident_review_audit_summary": {"total_changes": 0}
+        });
+
+        let executive = role_filtered_report(report.clone(), PortalRole::Executive);
+        assert!(executive.get("workforce").is_some());
+        assert!(executive.get("executive_dashboard").is_some());
+        assert!(executive.get("risk_incident_candidates").is_none());
+        assert!(executive.get("security_correlation").is_none());
+
+        let security = role_filtered_report(report.clone(), PortalRole::Security);
+        assert!(security.get("ueba_risk").is_some());
+        assert!(security.get("risk_incident_candidates").is_some());
+        assert!(security.get("workforce").is_none());
+        assert!(security.get("workforce_policy").is_none());
+
+        let forensics = role_filtered_report(report, PortalRole::Forensics);
+        assert!(forensics.get("forensics").is_some());
+        assert!(forensics.get("workforce").is_none());
+    }
+
+    #[test]
+    fn ueba_and_pfsense_contracts_are_stable_demo_safe() {
+        let report = json!({
+            "ueba_risk": {
+                "score": 55,
+                "level": "medium",
+                "status": "WARN",
+                "summary": "medium risk, 1 reason(s)",
+                "score_components": {
+                    "activity_anomaly": 15,
+                    "time_anomaly": 0,
+                    "application_anomaly": 20,
+                    "network_anomaly": 0,
+                    "history_anomaly": 20
+                },
+                "reasons": [{"code": "activity_anomaly"}]
+            }
+        });
+        let ueba = build_ueba_api_payload(&report, PortalRole::Security);
+        assert_eq!(ueba["score"], 55);
+        assert_eq!(ueba["severity"], "medium");
+        assert_eq!(ueba["score_components"]["activity_anomaly"], 15);
+        assert_eq!(ueba["score_components"]["application_anomaly"], 20);
+        assert_eq!(ueba["reason_codes"][0], "activity_anomaly");
+        assert_eq!(ueba["model"]["ml_used"], false);
+        assert_eq!(ueba["model"]["llm_used"], false);
+
+        let pfsense = build_pfsense_readiness_payload(PortalRole::Security);
+        assert_eq!(pfsense["status"], "contract_only");
+        assert_eq!(pfsense["siem"], false);
+        assert_eq!(pfsense["ingestion_available"], false);
+        let text = pfsense.to_string();
+        assert!(text.contains("203.0.113."));
+        assert!(text.contains("198.51.100."));
+        assert!(!text.contains("10.10."));
+        assert!(!text.contains("192.168."));
     }
 
     #[test]

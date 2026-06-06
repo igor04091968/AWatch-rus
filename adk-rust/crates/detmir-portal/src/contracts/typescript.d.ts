@@ -1,5 +1,6 @@
 export type ISODateTime = string;
 
+export type PortalRole = "executive" | "manager" | "security" | "forensics" | "admin";
 export type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "UNKNOWN";
 export type ReviewStatus =
   | "NEW"
@@ -33,6 +34,15 @@ export interface ContractIndex {
     [key: string]: unknown;
   };
   stable_endpoints: EndpointDescriptor[];
+  [key: string]: unknown;
+}
+
+export interface RoleContext {
+  role: PortalRole;
+  role_label?: string;
+  scope: string;
+  allowed_scopes?: string[];
+  server_enforced: boolean;
   [key: string]: unknown;
 }
 
@@ -154,6 +164,7 @@ export interface CaseStatusRequest {
 
 export interface ReportsResponse {
   ok: boolean;
+  role_context?: RoleContext;
   generated_at_utc?: ISODateTime;
   executive_points?: string[];
   executive_dashboard?: ExecutiveDashboard;
@@ -163,6 +174,59 @@ export interface ReportsResponse {
   business_risk?: BusinessRiskItem[];
   risk_incident_candidates?: IncidentCandidate[];
   cases?: CaseItem[];
+  [key: string]: unknown;
+}
+
+export interface UebaResponse {
+  ok: boolean;
+  role_context?: RoleContext;
+  score: number | null;
+  severity: "normal" | "low" | "medium" | "high" | "critical" | string;
+  status?: string;
+  score_components: {
+    activity_anomaly: number;
+    time_anomaly: number;
+    application_anomaly: number;
+    network_anomaly: number;
+    history_anomaly: number;
+  };
+  reason_codes: string[];
+  explanation: string;
+  model: JsonObject;
+  risk: JsonObject;
+  [key: string]: unknown;
+}
+
+export interface PfsenseFirewallEvent {
+  timestamp: ISODateTime;
+  source_host: string;
+  destination: string;
+  action: string;
+  rule_id?: string;
+  protocol?: string;
+  [key: string]: unknown;
+}
+
+export interface PfsenseVpnEvent {
+  timestamp: ISODateTime;
+  source_host: string;
+  user_ref?: string;
+  action: string;
+  tunnel?: string;
+  [key: string]: unknown;
+}
+
+export interface PfsenseReadinessResponse {
+  ok: boolean;
+  role_context?: RoleContext;
+  contract_version: string;
+  status: "contract_only" | "available" | string;
+  siem: boolean;
+  ingestion_available: boolean;
+  firewall_events: PfsenseFirewallEvent[];
+  vpn_events: PfsenseVpnEvent[];
+  traffic_summary: JsonObject;
+  top_destinations: JsonObject[];
   [key: string]: unknown;
 }
 
@@ -178,7 +242,13 @@ export interface DetMirPortalApi {
   getOperator(): Promise<JsonObject>;
   getManager(): Promise<JsonObject>;
   getOwner(): Promise<JsonObject>;
-  getReports(options?: { anonymize?: boolean }): Promise<ReportsResponse>;
+  getReports(options?: { anonymize?: boolean; role?: PortalRole }): Promise<ReportsResponse>;
+  getExecutive(options?: { role?: PortalRole }): Promise<ReportsResponse>;
+  getWorkforce(options?: { role?: PortalRole }): Promise<ReportsResponse>;
+  getSecurity(options?: { role?: PortalRole }): Promise<ReportsResponse>;
+  getForensics(options?: { role?: PortalRole }): Promise<ReportsResponse>;
+  getUeba(options?: { role?: PortalRole }): Promise<UebaResponse>;
+  getPfsense(options?: { role?: PortalRole }): Promise<PfsenseReadinessResponse>;
   getIncidents(): Promise<JsonObject>;
   getCases(): Promise<CaseListResponse>;
   createCase(request: CreateCaseRequest): Promise<JsonObject>;

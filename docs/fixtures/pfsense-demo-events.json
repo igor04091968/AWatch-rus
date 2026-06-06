@@ -1,0 +1,43 @@
+{
+  "contract_version": "pfsense-readiness-v1",
+  "status": "contract_only",
+  "siem": false,
+  "ingestion_available": false,
+  "firewall_events": [
+    {
+      "timestamp": "2026-06-06T08:00:00Z",
+      "source_host": "demo-host-01",
+      "destination": "203.0.113.10",
+      "action": "pass",
+      "protocol": "tcp"
+    },
+    {
+      "timestamp": "2026-06-06T08:05:00Z",
+      "source_host": "demo-host-02",
+      "destination": "198.51.100.25",
+      "action": "block",
+      "protocol": "udp"
+    }
+  ],
+  "vpn_events": [
+    {
+      "timestamp": "2026-06-06T08:10:00Z",
+      "source_host": "198.51.100.44",
+      "user_ref": "demo-user-a",
+      "action": "login",
+      "tunnel": "demo-vpn"
+    }
+  ],
+  "traffic_summary": {
+    "window": "24h",
+    "events": 3,
+    "top_action": "pass"
+  },
+  "top_destinations": [
+    {
+      "destination": "203.0.113.10",
+      "events": 12,
+      "bytes": 245760
+    }
+  ]
+}

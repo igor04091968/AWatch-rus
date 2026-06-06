@@ -261,13 +261,13 @@ read-only интеграционный контекст. Enforcement, quarantine
 
 ## Связанные документы
 
-- [Описание продукта](PRODUCT_DESCRIPTION_RU.md)
+- [Описание продукта](../PRODUCT_DESCRIPTION_RU.md)
 - [Аудит готовности к пилоту](PILOT_READINESS_AUDIT_RU.md)
-- [Чек-лист пилотного внедрения](docs/PILOT_DEPLOYMENT_CHECKLIST_RU.md)
-- [Акт приемки пилота](docs/CUSTOMER_PILOT_ACCEPTANCE_RU.md)
-- [Портал AWatch-rus](docs/PORTAL_RU.md)
-- [Business Risk](docs/BUSINESS_RISK_RU.md)
-- [Модель безопасности](docs/SECURITY_MODEL_RU.md)
-- [Архитектура](docs/ARCHITECTURE_RU.md)
-- [Развертывание агента](docs/AGENT_DEPLOYMENT_RU.md)
-- [Windows Rust Agent Worktime/RDP](docs/WINDOWS_RUST_AGENT_WORKTIME_RU.md)
+- [Чек-лист пилотного внедрения](PILOT_DEPLOYMENT_CHECKLIST_RU.md)
+- [Акт приемки пилота](CUSTOMER_PILOT_ACCEPTANCE_RU.md)
+- [Портал AWatch-rus](PORTAL_RU.md)
+- [Business Risk](BUSINESS_RISK_RU.md)
+- [Модель безопасности](SECURITY_MODEL_RU.md)
+- [Архитектура](ARCHITECTURE_RU.md)
+- [Развертывание агента](AGENT_DEPLOYMENT_RU.md)
+- [Windows Rust Agent Worktime/RDP](WINDOWS_RUST_AGENT_WORKTIME_RU.md)
