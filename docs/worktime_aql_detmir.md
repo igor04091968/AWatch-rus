@@ -1,4 +1,4 @@
-# DetMir: Worktime (AQL templates)
+# AWatch-rus: Worktime (AQL templates)
 
 Цель: получить «рабочее время» по данным ActivityWatch с учетом:
 

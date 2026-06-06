@@ -1,11 +1,11 @@
-# DetMir: операционная модель угроз
+# AWatch-rus: операционная модель угроз
 
 Дата фиксации: `2026-06-03`
 
-Статус: рабочая модель угроз `v0.1` для текущего production-контура `DetMir`.
+Статус: рабочая модель угроз `v0.1` для текущего production-контура `AWatch-rus`.
 
-Нейминг для внешних материалов: `DetMir` - продукт, `AWatch-rus` -
-репозиторий и техническая база. Рекомендуемая формула: `DetMir, программный
+Нейминг для внешних материалов: `AWatch-rus` - продукт, `AWatch-rus` -
+репозиторий и техническая база. Рекомендуемая формула: `AWatch-rus, программный
 комплекс на базе AWatch-rus`.
 
 Документ фиксирует фактически используемую модель угроз для эксплуатации,
@@ -15,11 +15,11 @@
 ## 1. Правообладание и позиционирование
 
 На момент фиксации правообладателем продукта заявлен Игорь, владелец текущего
-репозитория AWatch-rus и production-контура DetMir.
+репозитория AWatch-rus и production-контура AWatch-rus.
 
 Рабочее позиционирование продукта:
 
-> DetMir - отечественная платформа операционного контроля,
+> AWatch-rus - отечественная платформа операционного контроля,
 > технического аудита, мониторинга действий пользователей, расследования
 > инцидентов и автоматизации реагирования.
 
@@ -49,8 +49,8 @@
 
 - Windows/RDP endpoint collectors;
 - ActivityWatch/AW-rus server;
-- Rust-сервисы DetMir на Proxmox и AW server;
-- операторский портал DetMir;
+- Rust-сервисы AWatch-rus на Proxmox и AW server;
+- операторский портал AWatch-rus;
 - Grafana/Influx/SQLite/warehouse/reporting layer;
 - Telegram bot как постоянный Python runtime;
 - DLP incident/evidence pipeline;
@@ -224,7 +224,7 @@
 | T06 | Утечка upload token/secrets | Token outside git, no secret printing policy, journald cleanup after incidents. |
 | T07 | Поломка Grafana dashboards после миграции | Grafana check, datasource health, portal smoke. |
 | T08 | Автоагент выполняет опасное действие | Allowlist/dry-run/read-only parity, pfSense frozen/no-touch. |
-| T09 | Портал показывает неверный статус | DetMir status backend, data freshness checks, smoke tests. |
+| T09 | Портал показывает неверный статус | AWatch-rus status backend, data freshness checks, smoke tests. |
 | T10 | Ноутбук становится runtime-зависимостью | systemd/scheduled tasks on servers, autonomous sync/portal/services. |
 | T11 | Evidence содержит чувствительные данные | Нужна формальная retention/access/redaction policy. |
 | T12 | Злоупотребление админскими правами | Полностью не закрыто без отдельного PAM/RBAC/WORM/EDR слоя. |
@@ -291,7 +291,7 @@
 Ближайшие улучшения:
 
 1. Зафиксировать evidence retention/access policy.
-2. Добавить role-aware views в DetMir Portal.
+2. Добавить role-aware views в AWatch-rus Portal.
 3. Разделить operator/owner/security auditor роли.
 4. Добавить immutable audit export для evidence actions.
 5. Ввести policy signing или хотя бы signed policy bundle checksum.
@@ -304,7 +304,7 @@
 
 Для внутренних и внешних описаний использовать:
 
-> DetMir использует рабочую операционную модель угроз для платформы
+> AWatch-rus использует рабочую операционную модель угроз для платформы
 > технического аудита и операционного контроля. Модель покрывает сбор
 > активности, DLP-события, доказательства инцидентов, мониторинг состояния
 > сервисов, ошибки операторов, отказ компонентов и базовые сценарии

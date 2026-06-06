@@ -1,17 +1,17 @@
-# DetMir: архитектура
+# AWatch-rus: архитектура
 
 Статус: подготовительный документ для продукта и реестра российского ПО.
 
-Продуктовое имя: `DetMir`.
+Публичное имя: `AWatch-rus`.
 
 Техническая база и репозиторий: `AWatch-rus`.
 
 ## 1. Краткое описание
 
-DetMir - программный комплекс операционного контроля, технического аудита,
+AWatch-rus - программный комплекс операционного контроля, технического аудита,
 мониторинга действий пользователей и автоматизации реагирования.
 
-Архитектура построена вокруг ActivityWatch/AW-rus, Rust-сервисов DetMir,
+Архитектура построена вокруг ActivityWatch/AW-rus, Rust-сервисов AWatch-rus,
 Windows collectors, операторского портала, Grafana dashboards и evidence
 workflow.
 
@@ -38,7 +38,7 @@ Processing layer
   Hayabusa/offline enrichment
 
 Operator layer
-  DetMir Portal
+  AWatch-rus Portal
   Grafana dashboards
   Telegram notifications
 
@@ -135,7 +135,7 @@ AW/1C/file telemetry -> processing/export -> ClickHouse/Influx/Grafana
 
 ## 8. Границы продукта
 
-DetMir не заявляется как сертифицированная СЗИ, DLP, SIEM или EDR/XDR.
+AWatch-rus не заявляется как сертифицированная СЗИ, DLP, SIEM или EDR/XDR.
 
 Продукт заявляется как платформа:
 

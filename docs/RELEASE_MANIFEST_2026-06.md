@@ -11,7 +11,7 @@ Generated: `2026-06-03 09:45:52 MSK`
 
 ## Scope
 
-This is a public expert-review/source release for DetMir/AWatch-rus. It
+This is a public expert-review/source release for AWatch-rus. It
 contains sanitized source, documentation, install-kit archives, SBOM inputs and
 checksums. It does not contain private runtime configuration, live customer
 inventory, tokens, passwords, screenshots, runtime databases or evidence.
@@ -169,7 +169,7 @@ Expected policy:
 - no local operator home paths;
 - no private root paths;
 - no tokens/passwords/private keys;
-- live DetMir commercial runtime values remain in ignored/private config.
+- live AWatch-rus commercial runtime values remain in ignored/private config.
 
 ## Rollback / operational impact
 

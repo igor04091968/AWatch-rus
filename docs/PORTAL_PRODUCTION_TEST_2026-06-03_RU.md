@@ -1,6 +1,6 @@
-# Боевая проверка DetMir Portal, 2026-06-03
+# Боевая проверка AWatch-rus Portal, 2026-06-03
 
-Документ фиксирует end-to-end проверку портала DetMir в production-контуре без
+Документ фиксирует end-to-end проверку портала AWatch-rus в production-контуре без
 публикации live IP, доменов, имен хостов и путей с персональными данными.
 
 ## Область проверки
@@ -67,7 +67,7 @@
 - Parallel backend API smoke: all checked endpoints returned `200`; heavy
   snapshot endpoints completed from shared cache in about one snapshot window.
 - Playwright browser smoke through `<PUBLIC_GATEWAY_FQDN>`:
-  - title: `DetMir Portal`;
+  - title: `AWatch-rus Portal`;
   - JavaScript/page errors: none;
   - all checked `/portal/api/*` endpoints returned `200`;
   - tabs opened: руководитель, инциденты ИБ, отчеты;

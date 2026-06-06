@@ -2,7 +2,7 @@
 
 ```mermaid
 flowchart LR
-  subgraph Runtime["DetMir runtime"]
+  subgraph Runtime["AWatch-rus runtime"]
     AW["ActivityWatch / Worktime / DLP telemetry"]
     Portal["detmir-portal"]
     Readiness["detmir-readiness"]

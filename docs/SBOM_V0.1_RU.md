@@ -8,7 +8,7 @@
 
 | Поле | Значение |
 |---|---|
-| Product | DetMir, программный комплекс AWatch-rus |
+| Product | AWatch-rus, программный продукт |
 | SBOM profile | v0.1 |
 | Date | 2026-06-03 |
 | Scope | Source + Rust workspace + Python exceptions + Node/Playwright tooling + OS/service dependencies |
@@ -19,7 +19,7 @@
 |---|---|---|
 | ActivityWatch | Сбор и хранение активности | upstream application |
 | aw-server-rust | ActivityWatch server runtime | upstream/Rust |
-| DetMir Rust crates | status, checks, portal, readiness, DLP/worktime helpers | собственный код |
+| AWatch-rus Rust crates | status, checks, portal, readiness, DLP/worktime helpers | собственный код |
 | Grafana | Dashboards и визуализация | third-party application |
 | Prometheus | Metrics и alert rules | third-party application |
 | Hayabusa | Offline forensic/security analytics | third-party tool |

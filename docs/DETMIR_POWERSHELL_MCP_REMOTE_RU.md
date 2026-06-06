@@ -1,8 +1,8 @@
-# DetMir PowerShell MCP Remote
+# AWatch-rus PowerShell MCP Remote
 
 ## Что это
 
-Канонический путь для интерактивной PowerShell-работы с `DetMir` Windows-хостом `<WINDOWS_HOST>` из Linux/Codex.
+Канонический путь для интерактивной PowerShell-работы с `AWatch-rus` Windows-хостом `<WINDOWS_HOST>` из Linux/Codex.
 
 Это не замена `WinRM` в Ansible. Разделение теперь такое:
 
@@ -24,7 +24,7 @@
 
 На текущем Linux admin-host локальный `pwsh 7.6.1` не поднимает `New-PSSession` к этому Windows-хосту без отдельного WSMan client stack (`libpsrpclient` / `PSWSMan`).
 
-Практический вывод для DetMir:
+Практический вывод для AWatch-rus:
 
 - не строить interactive MCP-путь вокруг `WSMan`;
 - считать `SSH + powershell.exe` каноническим transport для локального `powershell-windows`;

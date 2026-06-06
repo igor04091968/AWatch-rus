@@ -103,7 +103,7 @@ docs/NETWORK_PERIMETER_PFSENSE_RU.md
 ```
 
 Ключевая позиция: pfSense является опциональным интеграционным слоем, а не
-обязательной частью продукта DetMir/AWatch-rus.
+обязательной частью продукта AWatch-rus.
 
 ## 8. Acceptance checklist
 

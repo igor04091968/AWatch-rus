@@ -6,7 +6,7 @@
 
 ## 1. Цель проверки
 
-Эксперт должен получить развернутый экземпляр DetMir/AWatch-rus, убедиться,
+Эксперт должен получить развернутый экземпляр AWatch-rus, убедиться,
 что ПО собирается из исходного кода, устанавливается на чистую Linux VM,
 запускает базовые сервисы и проходит smoke-проверки без приватной
 инфраструктуры правообладателя.
@@ -188,7 +188,7 @@ ansible-playbook -i ansible/inventory.ini ansible/deploy_aw_server.yml
 
 - playbook завершается без failed tasks;
 - systemd units установлены на тестовый Linux host;
-- ActivityWatch server и DetMir helper-компоненты доступны локально на
+- ActivityWatch server и AWatch-rus helper-компоненты доступны локально на
   заданных портах;
 - конфигурация не содержит боевых адресов правообладателя.
 
@@ -210,7 +210,7 @@ detmir-status --json
 
 Ожидаемый результат:
 
-- `systemctl --failed` не показывает критичных failed units DetMir/AWatch-rus;
+- `systemctl --failed` не показывает критичных failed units AWatch-rus;
 - `activitywatch-server` находится в состоянии `active`;
 - `detmir-check --json` возвращает машинно-читаемый статус без критичных
   ошибок;
@@ -245,7 +245,7 @@ curl -fsS http://127.0.0.1:9090/-/ready
 
 - Grafana health API возвращает статус `ok` или `database: ok`;
 - Prometheus ready endpoint возвращает успешный HTTP status;
-- DetMir dashboards импортированы или доступны через documented provisioning
+- AWatch-rus dashboards импортированы или доступны через documented provisioning
   path.
 
 ## 14. Проверка Windows collectors

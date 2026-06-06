@@ -1,13 +1,13 @@
 # Network perimeter и pfSense
 
-Документ описывает роль pfSense в архитектуре DetMir/AWatch-rus для
+Документ описывает роль pfSense в архитектуре AWatch-rus для
 коммерческих внедрений и экспертной оценки. pfSense рассматривается как
 опциональный интеграционный слой сетевого периметра, а не как обязательная
 часть продукта.
 
 ## 1. Позиция продукта
 
-DetMir/AWatch-rus поставляет:
+AWatch-rus поставляет:
 
 - сбор и нормализацию endpoint/server telemetry;
 - Workforce analytics;
@@ -16,7 +16,7 @@ DetMir/AWatch-rus поставляет:
 - readiness checks и portal reporting.
 
 Сетевой шлюз, firewall, NAT, VPN и quarantine enforcement могут быть
-интегрированы с DetMir, но не входят в минимальный состав продукта.
+интегрированы с AWatch-rus, но не входят в минимальный состав продукта.
 
 ## 2. Роль pfSense
 
@@ -27,16 +27,16 @@ pfSense может использоваться как:
 - шлюз для ограничений VLAN/alias/rules;
 - источник логов для корреляции с endpoint activity.
 
-DetMir не требует pfSense для базовой работы портала, readiness, workforce,
+AWatch-rus не требует pfSense для базовой работы портала, readiness, workforce,
 DLP-lite evidence и отчетов.
 
 ## 3. Интеграционные границы
 
 | Слой | Статус |
 |---|---|
-| Endpoint telemetry | обязательный слой DetMir |
-| Server-side checks/readiness | обязательный слой DetMir |
-| Portal/Grafana/Prometheus | обязательный слой DetMir |
+| Endpoint telemetry | обязательный слой AWatch-rus |
+| Server-side checks/readiness | обязательный слой AWatch-rus |
+| Portal/Grafana/Prometheus | обязательный слой AWatch-rus |
 | pfSense logs/context | опциональная интеграция |
 | pfSense policy enforcement | опциональная интеграция с отдельным решением |
 | Автоматический quarantine | не включать без отдельного согласования |
@@ -45,7 +45,7 @@ DLP-lite evidence и отчетов.
 
 По умолчанию:
 
-- DetMir только читает сетевой контекст, если интеграция включена;
+- AWatch-rus только читает сетевой контекст, если интеграция включена;
 - любые изменения firewall/NAT/VPN/quarantine запрещены без отдельного change
   request;
 - pfSense credentials хранятся вне Git и вне public release assets;
@@ -53,7 +53,7 @@ DLP-lite evidence и отчетов.
 
 ## 5. Что не заявлять
 
-Для реестра российского ПО и публичной экспертизы не позиционировать DetMir как:
+Для реестра российского ПО и публичной экспертизы не позиционировать AWatch-rus как:
 
 - firewall;
 - NAC;
@@ -63,7 +63,7 @@ DLP-lite evidence и отчетов.
 
 Корректная формулировка:
 
-> DetMir поддерживает интеграцию с сетевым периметром заказчика, включая
+> AWatch-rus поддерживает интеграцию с сетевым периметром заказчика, включая
 > pfSense-compatible gateways, как внешний источник контекста и опциональную
 > точку применения политик.
 

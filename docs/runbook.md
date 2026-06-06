@@ -518,9 +518,9 @@ curl -fsS 'http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-file-operations_<AW_SER
 Remove-NetFirewallRule -DisplayName 'AWatch WAL Test Block 5600' -ErrorAction SilentlyContinue
 ```
 
-### PowerShell MCP на DetMir Windows host
+### PowerShell MCP на AWatch-rus Windows host
 
-Для `DetMir` Windows host `<WINDOWS_HOST>` интерактивный путь из Linux/Codex закреплён через `SSH`, а не через `WSMan`.
+Для `AWatch-rus` Windows host `<WINDOWS_HOST>` интерактивный путь из Linux/Codex закреплён через `SSH`, а не через `WSMan`.
 
 Быстрый вход:
 

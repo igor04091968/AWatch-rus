@@ -227,4 +227,4 @@ detmir-readiness --json --allow-disabled-influx
 ```
 
 Такой запуск допустим только как временный исключительный режим; для полного
-commercial DetMir contour Influx/Grafana должны быть зелеными.
+commercial AWatch-rus contour Influx/Grafana должны быть зелеными.

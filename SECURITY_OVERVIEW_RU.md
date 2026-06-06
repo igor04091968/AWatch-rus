@@ -17,7 +17,7 @@
 5. `Forensic Layer`
    Отдельный bounded DFIR-путь через `Hayabusa`, который используется для post-incident enrichment, а не как основной real-time detector.
 
-Подтвержденный runtime для `DetMir`:
+Подтвержденный runtime для `AWatch-rus`:
 
 - `<AW_SERVER_HOST>` — основной `AW-rus` server, health, worktime/reporting, DLP server-side services, `Hayabusa` processing.
 - `<GATEWAY_HOST>` — operator/gateway host, Telegram bot, web gateway, часть `1C` analytics runtime.
@@ -335,7 +335,7 @@ Collector и server-side сервисы проектировались так, �
 - status, support and investigation commands;
 - human-readable operator menu для DLP и forensic path.
 
-### MCP / PowerShell remote для DetMir
+### MCP / PowerShell remote для AWatch-rus
 
 Документ: `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md`
 

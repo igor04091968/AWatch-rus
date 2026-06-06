@@ -1,6 +1,6 @@
 # Release readiness v0.1
 
-Документ фиксирует готовность DetMir/AWatch-rus к первому управляемому release
+Документ фиксирует готовность AWatch-rus к первому управляемому release
 readiness циклу: проверяемость сборки, SBOM, installation/runbook, архитектура,
 портал, readiness bundle и публичная гигиена.
 
@@ -19,7 +19,7 @@ GitHub release tag. Это контрольная точка готовност�
 - зафиксировать SBOM/third-party inventory;
 - дать эксперту повторяемую установку и ручной сценарий проверки;
 - приложить обезличенные screenshots портала;
-- сохранить разделение public source и live commercial DetMir runtime.
+- сохранить разделение public source и live commercial AWatch-rus runtime.
 
 ## 2. Состав release-readiness пакета
 

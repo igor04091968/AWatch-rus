@@ -1,14 +1,14 @@
 # SBOM и release checklist
 
 Документ фиксирует минимальный порядок подготовки публичного релиза
-DetMir/AWatch-rus: исходники, сборка, артефакты, сторонние компоненты,
+AWatch-rus: исходники, сборка, артефакты, сторонние компоненты,
 лицензии, публичная гигиена и экспертная проверка.
 
 ## 1. Идентификация релиза
 
 Перед сборкой зафиксировать:
 
-- product name: `DetMir, программный комплекс AWatch-rus`;
+- product name: `AWatch-rus, программный продукт`;
 - repository: `AWatch-rus`;
 - release tag: `vX.Y.Z`;
 - commit: вывод `git rev-parse HEAD`;
@@ -116,7 +116,7 @@ git ls-files '*.py'
 Критерий:
 
 - Python-файлы имеют понятную роль;
-- ядро DetMir/AWatch-rus позиционируется как Rust-first;
+- ядро AWatch-rus позиционируется как Rust-first;
 - README/registry docs не обещают отсутствие Python там, где он еще остается.
 
 ## 6. Third-party license inventory
@@ -262,7 +262,7 @@ bash scripts/verify_release_assets.sh --self-test
 
 - чистая VM проходит путь установка -> сборка -> проверка;
 - ActivityWatch API отвечает;
-- базовые DetMir checks работают;
+- базовые AWatch-rus checks работают;
 - diagnostic bundle собран;
 - инструкция воспроизводима без доступа к личному стенду разработчика.
 

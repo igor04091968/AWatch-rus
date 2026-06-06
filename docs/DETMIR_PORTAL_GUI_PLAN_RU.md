@@ -1,4 +1,4 @@
-# DetMir Portal GUI Plan
+# AWatch-rus Portal GUI Plan
 
 Документ предназначен для следующего агента, в том числе менее сильного. Не
 надо угадывать архитектуру: идти по фазам, проверять каждый слой, не ломать
@@ -103,7 +103,7 @@ baseline и раздела `Phase 8: Post-MVP Enhancements`.
 
 ## Цель
 
-Сделать единый web GUI для работы с контуром DetMir:
+Сделать единый web GUI для работы с контуром AWatch-rus:
 
 - оператор видит техническое состояние и последние проблемы;
 - менеджер видит работу сотрудников и отклонения без технических терминов;
@@ -330,7 +330,7 @@ base path.
 MVP read-only список:
 
 - DLP incidents/cases;
-- DetMir health failures;
+- AWatch-rus health failures;
 - Grafana data failures;
 - stale collectors;
 - 1C analytics warnings.
@@ -444,7 +444,7 @@ card.
    - кнопка-ссылка "Открыть AW".
 
 2. Health grid:
-   - DetMir;
+   - AWatch-rus;
    - ActivityWatch;
    - Worktime API;
    - Grafana Data;
@@ -461,7 +461,7 @@ card.
    - для каждого: источник, текст, время, ссылка.
 
 5. Deep links:
-   - DetMir ActivityWatch dashboard;
+   - AWatch-rus ActivityWatch dashboard;
    - Worktime report;
    - AW UI;
    - Grafana dashboards;
@@ -587,7 +587,7 @@ ansible proxmox -i inventory.ini -m shell -a 'detmir-check --json'
 Acceptance:
 
 - рабочее дерево понятно;
-- текущий DetMir не сломан;
+- текущий AWatch-rus не сломан;
 - нет попытки чинить unrelated проблемы.
 
 ## Phase 1: Create Rust Crate
@@ -763,7 +763,7 @@ Service:
 
 ```ini
 [Unit]
-Description=DetMir Operator Portal
+Description=AWatch-rus Operator Portal
 After=network-online.target
 Wants=network-online.target
 

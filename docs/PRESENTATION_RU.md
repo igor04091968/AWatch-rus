@@ -1,9 +1,9 @@
-# DetMir / AW-rus: презентационные экраны
+# AWatch-rus / AW-rus: презентационные экраны
 
-Документ собирает живые экраны DetMir / AW-rus и Grafana для demo,
+Документ собирает живые экраны AWatch-rus / AW-rus и Grafana для demo,
 коммерческой презентации и внутренних согласований.
 
-## 1. DetMir Workforce: трудоотдача и загрузка
+## 1. AWatch-rus Workforce: трудоотдача и загрузка
 
 Первый коммерческий экран для владельца и руководителя. Показывает не
 "сидел за компьютером", а активность: кто реально работал, кто
@@ -23,7 +23,7 @@
 Управленческий экран по активности пользователей: кто работал, сколько времени,
 как выглядит команда по дням и кто активен сегодня.
 
-![DetMir: Работа пользователей в RDP](assets/screenshots/grafana-rdp-worktime.png)
+![AWatch-rus: Работа пользователей в RDP](assets/screenshots/grafana-rdp-worktime.png)
 
 Источник в репозитории:
 
@@ -33,7 +33,7 @@
 
 Технический dashboard для ИБ: сработки, severity, типы сигналов, verdict'ы, очередь кейсов и состояние доставки данных.
 
-![DetMir: DLP и ИБ обзор](assets/screenshots/grafana-dlp-security.png)
+![AWatch-rus: DLP и ИБ обзор](assets/screenshots/grafana-dlp-security.png)
 
 Источник в репозитории:
 
@@ -43,7 +43,7 @@
 
 Экран для руководителя ИБ: открытые кейсы, инциденты повышенного риска, ожидающие решения события и верхнеуровневая динамика.
 
-![DetMir: ИБ сводка для руководства](assets/screenshots/grafana-dlp-management.png)
+![AWatch-rus: ИБ сводка для руководства](assets/screenshots/grafana-dlp-management.png)
 
 Источник в репозитории:
 
@@ -99,7 +99,7 @@ Live endpoint:
 
 ## Рекомендуемый порядок демонстрации
 
-1. `DetMir Workforce` - активность, загрузка, RDP/1C и рабочие
+1. `AWatch-rus Workforce` - активность, загрузка, RDP/1C и рабочие
    приложения.
 2. `RDP Worktime Report` - отдельный генерируемый per-user отчет как
    доказательство реальной работы сотрудников.

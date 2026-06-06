@@ -17,9 +17,9 @@ Version-controlled dashboard JSON находятся в каталоге `grafan
 
 ## Что импортируется
 
-1. `DetMir: Работа пользователей в RDP`
-2. `DetMir: DLP и ИБ обзор`
-3. `DetMir: ИБ сводка для руководства`
+1. `AWatch-rus: Работа пользователей в RDP`
+2. `AWatch-rus: DLP и ИБ обзор`
+3. `AWatch-rus: ИБ сводка для руководства`
 4. `AW-rus: DLP обзор`
 
 По умолчанию playbook складывает их в folder `AWatch-rus` с `uid=awatch-rus`.

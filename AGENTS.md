@@ -3,7 +3,7 @@ AGENTS for OpenCode
 Keep this file minimal and high-signal: only include facts an agent would otherwise miss.
 
 1) Repo purpose (one line)
-- This repository bundles an ActivityWatch Server deployment, RU WebUI patch, Windows collectors (PowerShell), and Rust operational utilities for aggregation, monitoring, health checks, SLO, DLP helpers, and DetMir automation. Python is retained only for explicit exceptions: Telegram bot runtime, pfSense tooling, OCR/content-analysis, 1C AI/ETL, and detmir-mcp.
+- This repository bundles an ActivityWatch Server deployment, RU WebUI patch, Windows collectors (PowerShell), and Rust operational utilities for aggregation, monitoring, health checks, SLO, DLP helpers, and AWatch-rus automation. Python is retained only for explicit exceptions: Telegram bot runtime, pfSense tooling, OCR/content-analysis, 1C AI/ETL, and detmir-mcp.
 
 2) Highest-value entrypoints & commands
 - Read README.md and docs/preparation.md first (they are the authoritative onboarding flow).

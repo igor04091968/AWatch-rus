@@ -1,4 +1,4 @@
-# Модель безопасности DetMir/AWatch-rus
+# Модель безопасности AWatch-rus
 
 Дата фиксации: `2026-06-03`.
 
@@ -11,7 +11,7 @@
 |---|---|---|
 | Владелец бизнеса | Смотрит управленческие KPI и итоговые отчеты | Portal owner/report views, агрегаты без технических деталей по умолчанию. |
 | Руководитель подразделения | Анализирует загрузку и активность команды | Workforce dashboards, role/app weights, drill-down в рамках подразделения. |
-| Оператор DetMir | Ежедневная эксплуатация и triage | Portal operator views, readiness, incidents, links, acknowledgement workflow. |
+| Оператор AWatch-rus | Ежедневная эксплуатация и triage | Portal operator views, readiness, incidents, links, acknowledgement workflow. |
 | Администратор системы | Установка, обновления, сервисы, backup/restore | Server shell/systemd/Ansible, конфигурация и runtime paths. |
 | Специалист ИБ | Разбор DLP-lite/ИБ событий | Incident/evidence views, Grafana security dashboards, export reports. |
 | Разработчик/maintainer | Развитие продукта | Source repo, release tooling, CI, SBOM, docs. Не должен иметь customer secrets в Git. |
@@ -62,7 +62,7 @@
 
 ## 6. Ограничения модели
 
-DetMir/AWatch-rus в текущем positioning не заявляется как:
+AWatch-rus в текущем positioning не заявляется как:
 
 - сертифицированная СЗИ;
 - enterprise SIEM;

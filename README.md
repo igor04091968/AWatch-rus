@@ -1,6 +1,6 @@
 # AWatch-rus
 
-AWatch-rus / DetMir - программный комплекс операционного контроля,
+AWatch-rus - программный комплекс операционного контроля,
 технического аудита, оценки трудоотдачи сотрудников и мониторинга
 корпоративной ИТ-инфраструктуры на базе ActivityWatch, Rust-сервисов
 автоматизации, Grafana/Prometheus-витрин и модулей расследования инцидентов.
@@ -11,11 +11,11 @@ evidence и Hayabusa используются как прикладные мод
 
 ## Назначение
 
-- DetMir Workforce: активность сотрудников, загрузка, RDP/1C/рабочие
+- AWatch-rus Workforce: активность сотрудников, загрузка, RDP/1C/рабочие
   приложения и управленческие отчеты для владельца бизнеса.
-- DetMir Security: DLP-сигналы, evidence, очередь кейсов и audit действий
+- AWatch-rus Security: DLP-сигналы, evidence, очередь кейсов и audit действий
   оператора без заявления продукта как сертифицированной СЗИ.
-- DetMir Forensics: цепочки событий, Hayabusa/offline-разбор и материалы для
+- AWatch-rus Forensics: цепочки событий, Hayabusa/offline-разбор и материалы для
   внутреннего расследования.
 - Контроль доступности и свежести данных ActivityWatch.
 - Учет активного времени, RDP-сессий, окон, приложений и рабочих интервалов.
@@ -25,7 +25,7 @@ evidence и Hayabusa используются как прикладные мод
 
 ## Rust-first runtime
 
-Основной серверный runtime DetMir переведен на Rust: status/check/auto-heal,
+Основной серверный runtime AWatch-rus переведен на Rust: status/check/auto-heal,
 SLO, worktime, DLP server-side helpers, evidence и install-kit tooling.
 
 Python в репозитории остается для вспомогательных направлений: Telegram bot
@@ -122,7 +122,7 @@ Markdown-отчет собирает главный вывод, риски по�
 - [Сценарий экспертной проверки](docs/EXPERT_TEST_SCENARIO_RU.md)
 - [Release manifest 2026-06](docs/RELEASE_MANIFEST_2026-06.md)
 - [Эксплуатационный профиль](docs/OPERATIONAL_PROOF_PROFILE_RU.md)
-- [Коммерческие модули DetMir](docs/DETMIR_COMMERCIAL_MODULES_RU.md)
+- [Коммерческие модули AWatch-rus](docs/DETMIR_COMMERCIAL_MODULES_RU.md)
 - [Архитектурный baseline](docs/ARCHITECTURE_BASELINE_RU.md)
 - [Пакет пилота для заказчика](docs/CUSTOMER_PILOT_PACK_RU.md)
 - [Pilot v1.0](docs/PILOT_V1_RU.md)

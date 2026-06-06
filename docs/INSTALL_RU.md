@@ -1,14 +1,14 @@
-# DetMir: установка и первичная проверка
+# AWatch-rus: установка и первичная проверка
 
 Статус: подготовительный документ для пакета реестра российского ПО.
 
-Продуктовое имя: `DetMir`.
+Публичное имя: `AWatch-rus`.
 
 Техническая база и репозиторий: `AWatch-rus`.
 
 ## 1. Назначение
 
-Документ описывает воспроизводимую установочную модель DetMir без публикации
+Документ описывает воспроизводимую установочную модель AWatch-rus без публикации
 секретов и внутренних адресов production-контура.
 
 Подробные внутренние playbooks и текущие runtime-пути описаны в
@@ -46,9 +46,9 @@ Endpoint-контур:
 
 1. Подготовить сервер.
 2. Установить AW-rus server.
-3. Развернуть Rust binaries DetMir.
+3. Развернуть Rust binaries AWatch-rus.
 4. Установить systemd units/timers.
-5. Развернуть DetMir Portal.
+5. Развернуть AWatch-rus Portal.
 6. Настроить Grafana datasources и dashboards.
 7. Настроить DLP/worktime/reporting services.
 8. Развернуть Windows collectors.

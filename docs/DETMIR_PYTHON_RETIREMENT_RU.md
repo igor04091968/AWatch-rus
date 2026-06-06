@@ -1,10 +1,10 @@
-# DetMir: статус вывода Python из runtime
+# AWatch-rus: статус вывода Python из runtime
 
 Дата фиксации: 2026-06-03.
 
 ## Решение
 
-Боевой контур DetMir/AWatch-rus переводится на Rust-first runtime. Python entrypoints удаляются из серверных DLP, health, SLO, worktime, Hayabusa/offline tooling, backup/merge и deploy путей, если для них уже есть Rust-замена.
+Боевой контур AWatch-rus переводится на Rust-first runtime. Python entrypoints удаляются из серверных DLP, health, SLO, worktime, Hayabusa/offline tooling, backup/merge и deploy путей, если для них уже есть Rust-замена.
 
 ## Удалено из repo/runtime path
 

@@ -38,7 +38,7 @@
 
 ## release-readiness-v0.1 - 2026-06-03
 
-Назначение этапа: довести DetMir/AWatch-rus до проверяемого release-readiness
+Назначение этапа: довести AWatch-rus до проверяемого release-readiness
 пакета для пилота, экспертной оценки и последующей публикации релиза без
 раскрытия приватного коммерческого контура.
 
@@ -64,15 +64,15 @@
 - `cargo test --manifest-path adk-rust/Cargo.toml -p detmir-readiness -p detmir-portal`.
 - `cargo clippy --manifest-path adk-rust/Cargo.toml -p detmir-readiness -p detmir-portal --all-targets -- -D warnings`.
 - `node --check adk-rust/crates/detmir-portal/src/static/app.js`.
-- Ansible syntax-check для AW server и DetMir portal deploy playbooks.
-- Runtime deployment на проектные сервисы DetMir без изменения pfSense или
+- Ansible syntax-check для AW server и AWatch-rus portal deploy playbooks.
+- Runtime deployment на проектные сервисы AWatch-rus без изменения pfSense или
   Proxmox platform layer.
 
 ## v1.0.1-public-review - 2026-06-03
 
-Назначение релиза: публичный пакет для экспертной оценки DetMir/AWatch-rus и
+Назначение релиза: публичный пакет для экспертной оценки AWatch-rus и
 подготовки к реестровой проверке. Релиз не меняет работающий коммерческий
-runtime DetMir; изменения относятся к source/release package, документации,
+runtime AWatch-rus; изменения относятся к source/release package, документации,
 обезличиванию и проверяемости поставки.
 
 ### Добавлено
@@ -120,7 +120,7 @@ runtime DetMir; изменения относятся к source/release package,
 ### Известные ограничения
 
 - `v1.0.1-public-review` является source/review release. Коммерческий runtime
-  DetMir продолжает использовать private runtime config вне Git.
+  AWatch-rus продолжает использовать private runtime config вне Git.
 - Python остается для Telegram runtime, OCR/content-analysis, 1C/AI/ETL и MCP
   helpers. Это отражено в registry docs как допустимое исключение.
 - pfSense/infrastructure runtime не менялся в рамках этого релиза.

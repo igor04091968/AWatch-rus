@@ -38,7 +38,7 @@ Release type: public expert-review/source package.
 
 ## Что входит
 
-- Обезличенный public source package DetMir/AWatch-rus.
+- Обезличенный public source package AWatch-rus.
 - Документы для экспертной проверки и реестровой подготовки.
 - Пересобранный sanitized install-kit.
 - SBOM inputs для Rust/Python dependency review.
@@ -58,7 +58,7 @@ Release type: public expert-review/source package.
 ## Что проверено
 
 - Rust workspace собран в release mode.
-- Все ожидаемые DetMir Rust release binaries найдены.
+- Все ожидаемые AWatch-rus Rust release binaries найдены.
 - Install-kit пересобран и прошел manifest/archive validation.
 - Quality gate прошел.
 - Публичные/private маркеры старого стенда не найдены в release-facing
@@ -75,7 +75,7 @@ Release type: public expert-review/source package.
 
 ## Ограничения
 
-- Этот release не публикует приватную runtime-конфигурацию DetMir.
+- Этот release не публикует приватную runtime-конфигурацию AWatch-rus.
 - Runtime-секреты, inventory, реальные домены, реальные адреса и evidence
   остаются вне Git и вне release assets.
 - Telegram runtime остается на Python как принятое архитектурное исключение.

@@ -1,4 +1,4 @@
-# DetMir / AWatch-rus: сторонние компоненты и лицензии
+# AWatch-rus: сторонние компоненты и лицензии
 
 Статус документа: рабочий license inventory для подготовки поставки и
 экспертной проверки. Документ не является юридическим заключением. Перед
@@ -7,10 +7,10 @@
 
 ## 1. Собственный код проекта
 
-Собственные компоненты `DetMir / AWatch-rus`:
+Собственные компоненты `AWatch-rus`:
 
 - Rust workspace `adk-rust/`;
-- DetMir status/check/auto/heal helpers;
+- AWatch-rus status/check/auto/heal helpers;
 - worktime exporters/API/bridge/autoheal;
 - DLP server-side helpers;
 - evidence API и portal helpers;
@@ -35,19 +35,19 @@ Apache License 2.0
 | Компонент | Роль в продукте | Типовая лицензия upstream | Статус поставки | Комментарий для аудита |
 |---|---|---|---|---|
 | ActivityWatch | Базовый сбор и API событий активности | MPL-2.0 | Устанавливается/используется как внешний компонент | Weak copyleft на измененные MPL-файлы; модификации ActivityWatch нужно учитывать отдельно. |
-| Grafana OSS | Dashboards и визуализация | AGPL-3.0 для современных версий Grafana OSS | Обычно внешний сервис/контейнер, не собственный код DetMir | AGPL требует отдельной проверки модели распространения и сетевого использования. |
+| Grafana OSS | Dashboards и визуализация | AGPL-3.0 для современных версий Grafana OSS | Обычно внешний сервис/контейнер, не собственный код AWatch-rus | AGPL требует отдельной проверки модели распространения и сетевого использования. |
 | Prometheus | Monitoring ecosystem, exporters, scrape model | Apache-2.0 | Внешний компонент при включении мониторинга | Совместим с Apache-поставкой при соблюдении notice/license требований. |
 | InfluxDB / compatible TSDB | Хранилище временных рядов `aw_metrics` | Зависит от версии/дистрибутива | Внешний компонент | Зафиксировать конкретную версию в release notes. |
 | Hayabusa | Offline/DFIR timeline и enrichment | AGPLv3; rules могут иметь Detection Rule License | Опциональный прикладной модуль расследования | Не позиционировать как ядро продукта; проверить obligations при включении в поставку. |
 | Ansible | Deployment automation | GPL-3.0-or-later для Ansible core | Инструмент установки | Обычно не линкуется с кодом продукта; входит в toolchain. |
 | PowerShell | Windows deployment/collectors runtime | MIT для PowerShell Core; Windows PowerShell как компонент ОС | Runtime/tooling | Уточнять окружение заказчика: Windows PowerShell или PowerShell 7. |
 | SQLite | Local state/warehouse DB | Public domain/blessing style | Embedded/library/runtime | Обычно низкий license risk. |
-| ClickHouse clients/tooling | 1C/file analytics integration | Зависит от клиента; ClickHouse server Apache-2.0 | Отдельный 1C/business-data слой | Не является обязательным ядром DetMir. |
+| ClickHouse clients/tooling | 1C/file analytics integration | Зависит от клиента; ClickHouse server Apache-2.0 | Отдельный 1C/business-data слой | Не является обязательным ядром AWatch-rus. |
 | OpenAI/Pollinations-compatible integrations | AI assistant/integration paths | API terms, не open-source license | Опционально | Не включать ключи/API credentials в поставку. |
 
 ## 3. Rust dependencies
 
-Rust является основным runtime-слоем DetMir. Точный список зависимостей должен
+Rust является основным runtime-слоем AWatch-rus. Точный список зависимостей должен
 фиксироваться по `Cargo.lock` конкретного релиза.
 
 Ключевые crates, используемые в workspace:
@@ -82,7 +82,7 @@ cargo about generate about.hbs > ../docs/licenses-rust.html
 
 ## 4. Python-зависимости
 
-Python не является основным runtime-ядром DetMir. Он остается для
+Python не является основным runtime-ядром AWatch-rus. Он остается для
 согласованных вспомогательных направлений:
 
 - Telegram bot runtime, если включен в экземпляре;
@@ -120,7 +120,7 @@ release profile.
 
 | Компонент | Роль | License-audit действие |
 |---|---|---|
-| Grafana dashboards JSON | Собственные dashboards DetMir | Входят в собственную поставку; проверить отсутствие embedded secrets/URLs. |
+| Grafana dashboards JSON | Собственные dashboards AWatch-rus | Входят в собственную поставку; проверить отсутствие embedded secrets/URLs. |
 | ActivityWatch WebUI patches | Собственный overlay/patch слой | Учитывать MPL-2.0 границы ActivityWatch, если изменяются upstream файлы. |
 | Playwright/browser smoke tooling | Проверки UI | Обычно dev/test dependency; не включать в runtime claim. |
 | JavaScript snippets | WebUI patching/helper scripts | Проверить зависимости, если добавляются npm packages. |

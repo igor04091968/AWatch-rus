@@ -2,7 +2,7 @@
 
 Дата: 2026-06-05
 
-Цель: убрать зависимость AWatch-rus/DetMir от PowerShell-скриптов на рабочих
+Цель: убрать зависимость AWatch-rus от PowerShell-скриптов на рабочих
 хостах и заменить их на самодостаточные Rust EXE/службы без потери данных,
 без ухудшения пилотной демонстрации и без изменения функционального объема.
 
@@ -64,7 +64,7 @@ hostnames, private IP, токены и runtime evidence paths.
   а P0 PowerShell collector runtime отсутствует. Это не означает полного
   удаления legacy `.ps1`: они оставлены как rollback/reference до расширения
   глубокой функциональной parity.
-- Основные серверные DetMir/AW/DLP helpers уже Rust-first:
+- Основные серверные AWatch-rus/AW/DLP helpers уже Rust-first:
   `detmir-status`, `detmir-check`, `detmir-auto`, `detmir-heal-safe`,
   `aw-rus-healthd-rust`, `dlp-*`, `worktime-*`, `aw-health-check`,
   `check-aw-data`, `aw-prune-local-state` и другие.
@@ -529,7 +529,7 @@ systemctl list-timers aw-1c-ingest.timer --no-pager
 
 Expected:
 
-- DetMir severity is OK or explained WARN;
+- AWatch-rus severity is OK or explained WARN;
 - no failed Rust services;
 - ClickHouse writer timer is active;
 - portal data freshness is acceptable for pilot.

@@ -34,9 +34,9 @@ CLICKHOUSE_PASSWORD=
 `CLICKHOUSE_PASSWORD` используется только для HTTP Basic Auth и не выводится в
 JSON, markdown-отчеты или health-ответы.
 
-## Текущий DetMir runtime
+## Текущий AWatch-rus runtime
 
-В рабочем контуре DetMir ClickHouse запущен не на AW-сервере `<AW_SERVER_HOST>`, а
+В рабочем контуре AWatch-rus ClickHouse запущен не на AW-сервере `<AW_SERVER_HOST>`, а
 на gateway/Proxmox-хосте `<GATEWAY_HOST>` как Docker Compose service:
 
 - каталог: `/opt/activitywatch/clickhouse-1c`;

@@ -1,4 +1,4 @@
-# Чек-лист пилотного внедрения DetMir
+# Чек-лист пилотного внедрения AWatch-rus
 
 Дата фиксации: `2026-06-03`.
 
@@ -37,7 +37,7 @@ placeholders и не содержит live infrastructure values.
 | Release assets проверены | `<OK/WARN/FAIL>` | `scripts/verify_release_assets.sh`. |
 | Private inventory создан вне Git | `<OK/WARN/FAIL>` | `ansible/inventory.ini` ignored. |
 | Secrets/env созданы вне Git | `<OK/WARN/FAIL>` | `private-config/*.env`, systemd env. |
-| DetMir services deployed | `<OK/WARN/FAIL>` | Только project apps, не platform layer. |
+| AWatch-rus services deployed | `<OK/WARN/FAIL>` | Только project apps, не platform layer. |
 | Endpoint collectors deployed | `<OK/WARN/FAIL>` | Windows/RDP profile. |
 
 ## 4. Первичная проверка

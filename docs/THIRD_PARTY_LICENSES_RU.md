@@ -2,7 +2,7 @@
 
 Дата фиксации: `2026-06-03`.
 
-Документ является audit-facing сводкой по сторонним компонентам DetMir /
+Документ является audit-facing сводкой по сторонним компонентам AWatch-rus /
 AWatch-rus. Полный исторический inventory ведется в корне репозитория:
 [`THIRD_PARTY_LICENSES_RU.md`](../THIRD_PARTY_LICENSES_RU.md). Машинные SBOM
 artifacts для релиза публикуются в GitHub Release assets.
@@ -23,7 +23,7 @@ bash scripts/generate_release_sbom_v0_2.sh dist/release-v0.2
 
 | Компонент | Версия / источник версии | Лицензия | Назначение | Риск |
 |---|---|---|---|---|
-| Собственный код DetMir/AWatch-rus | Git tag / commit release package | Apache-2.0 | Rust helpers, portal, readiness, deployment docs/scripts | Низкий при сохранении собственных прав и clean release history. |
+| Собственный код AWatch-rus | Git tag / commit release package | Apache-2.0 | Rust helpers, portal, readiness, deployment docs/scripts | Низкий при сохранении собственных прав и clean release history. |
 | ActivityWatch | Фиксируется в install/deployment profile | MPL-2.0 | Endpoint/server telemetry и ActivityWatch API | Средний: учитывать MPL границы при изменении upstream-файлов. |
 | Grafana OSS | Фиксируется в deployment profile | AGPL-3.0 для современных OSS версий | Dashboards и визуализация | Повышенный: явно описывать как внешний компонент, проверять obligations. |
 | Prometheus | Фиксируется в deployment profile | Apache-2.0 | Metrics, alert rules, scraping | Низкий/средний: соблюдать notice/license требования. |

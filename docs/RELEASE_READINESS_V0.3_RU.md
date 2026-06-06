@@ -31,7 +31,7 @@ v0.3 добавляет объяснительный audit layer поверх э
 
 Для release description использовать формулировку:
 
-> AWatch-rus v0.2 is an auditable release package for DetMir with machine SBOM,
+> AWatch-rus v0.2 is an auditable release package for AWatch-rus with machine SBOM,
 > checksums, detached signatures, a signed Git tag and pilot acceptance
 > documentation. The package is prepared for expert review, commercial pilot
 > onboarding and Russian software registry positioning.

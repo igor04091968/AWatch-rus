@@ -1,10 +1,10 @@
-# DetMir: Единая рабочая модель системы
+# AWatch-rus: Единая рабочая модель системы
 
 Дата фиксации: `2026-05-24`
 
 Последнее runtime-уточнение: `2026-05-30`
 
-Этот файл предназначен как единая рабочая опора по `DetMir`: что именно входит в систему, где это живет, каким инструментарием проект надо планировать и сопровождать, и какой операционный контур считать промышленным.
+Этот файл предназначен как единая рабочая опора по `AWatch-rus`: что именно входит в систему, где это живет, каким инструментарием проект надо планировать и сопровождать, и какой операционный контур считать промышленным.
 
 Если старые документы расходятся с этим файлом по адресам или runtime-ролям, для текущей эксплуатации приоритет у этого файла.
 
@@ -14,17 +14,17 @@
 
 Связанное продуктовое позиционирование:
 `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` фиксирует безопасный
-заход для реестра российского ПО: DetMir как платформа операционного контроля и
+заход для реестра российского ПО: AWatch-rus как платформа операционного контроля и
 управления ИТ-инфраструктурой, с ориентиром на класс `09.10`, без заявления
 сертифицированной DLP/SIEM/EDR/XDR/СЗИ.
 
-Нейминг для внешних материалов: `DetMir` - продукт, `AWatch-rus` -
-репозиторий и техническая база. Рекомендуемая формула: `DetMir, программный
+Нейминг для внешних материалов: `AWatch-rus` - продукт, `AWatch-rus` -
+репозиторий и техническая база. Рекомендуемая формула: `AWatch-rus, программный
 комплекс на базе AWatch-rus`.
 
 ## 1. Назначение
 
-`DetMir` в этом репозитории это не только `ActivityWatch Server`.
+`AWatch-rus` в этом репозитории это не только `ActivityWatch Server`.
 Это полный production-контур:
 
 - сбор активности и DLP-сигналов с Windows/RDP;
@@ -57,7 +57,7 @@
 
 - серверный путь `AW-rus` сейчас должен считаться `<AW_SERVER_HOST>`;
 - операторский и gateway-контур должен считаться `<GATEWAY_HOST>`;
-- Windows production-host для `DetMir` сейчас `<WINDOWS_HOST>`, а не старые упоминания `<OLD_WINDOWS_HOST>`.
+- Windows production-host для `AWatch-rus` сейчас `<WINDOWS_HOST>`, а не старые упоминания `<OLD_WINDOWS_HOST>`.
 
 ### 2.1 Runtime snapshot после полной проверки 2026-05-28
 
@@ -81,7 +81,7 @@
 | `dlp-health-check --json` | `ok=20 warn=0 fail=0` |
 | `systemctl --failed` на `<AW_SERVER_HOST>` | `0 loaded units listed` |
 | Playwright browser smoke | `14/14` страниц открылись |
-| Grafana authenticated API/UI smoke | login OK, `19` dashboards в `/api/search`, все ключевые `1C File`/`DetMir` dashboards открылись |
+| Grafana authenticated API/UI smoke | login OK, `19` dashboards в `/api/search`, все ключевые `1C File`/`AWatch-rus` dashboards открылись |
 | Grafana datasource health | `OK` для `clickhouse-1c`, `InfluxDB-AW`, `loki`, Proxmox/pfSense Influx datasources |
 | Python unit tests по AW server/worktime/DLP/exporters | `36 passed` |
 | `proxmox.test_tsj_guardian_bot` | `25 tests OK` |
@@ -148,7 +148,7 @@
 - для текущего production recovery закреплен рабочий путь через `schtasks.exe` и live interactive admin principal;
 - не запускать полный hardening-прогон без причины, если buckets свежие и `ActivityWatch Recovery` уже `Last Result: 0`.
 
-## 3. Полный функциональный состав DetMir
+## 3. Полный функциональный состав AWatch-rus
 
 ### 3.1 Ядро AW-rus
 
@@ -281,7 +281,7 @@ Telegram bot `DetMirAuto` обязан покрывать:
 
 ## 5. Промышленный набор инструментов для планирования и сопровождения
 
-Ниже минимальный правильный стек, который стоит считать базовым для `DetMir`.
+Ниже минимальный правильный стек, который стоит считать базовым для `AWatch-rus`.
 
 ### 5.1 Обязательное ядро GSD
 
@@ -320,7 +320,7 @@ Telegram bot `DetMirAuto` обязан покрывать:
 - `gsd-ui-checker`
 - `gsd-ui-auditor`
 
-### 5.3 Операционные skills для живого DetMir
+### 5.3 Операционные skills для живого AWatch-rus
 
 - `aw-ops-checks`
 - `aw-russian-collectors-guard`
@@ -339,7 +339,7 @@ Telegram bot `DetMirAuto` обязан покрывать:
 
 Причина простая:
 
-- `DetMir` уже не greenfield и не playground;
+- `AWatch-rus` уже не greenfield и не playground;
 - лишняя оркестрация здесь опаснее, чем полезна;
 - нужен жесткий управляемый контур, а не разросшийся набор экспериментальных режимов.
 
@@ -362,7 +362,7 @@ Telegram bot `DetMirAuto` обязан покрывать:
 - `gsd-secure-phase`
 - `gsd-ui-phase`
 
-## 7. Рабочий lifecycle для DetMir
+## 7. Рабочий lifecycle для AWatch-rus
 
 ### 7.1 Планирование
 
@@ -405,7 +405,7 @@ Telegram bot `DetMirAuto` обязан покрывать:
 - phase `SUMMARY.md`;
 - если нужно, `STATE.md` и `ROADMAP.md`.
 
-Для `DetMir` это обязательно, потому что основная историческая боль проекта была не в отсутствии кода, а в расхождении между repo, runtime и реальностью.
+Для `AWatch-rus` это обязательно, потому что основная историческая боль проекта была не в отсутствии кода, а в расхождении между repo, runtime и реальностью.
 
 ## 8. Базовый комплект артефактов
 
@@ -450,7 +450,7 @@ Telegram bot `DetMirAuto` обязан покрывать:
 
 ## 10. Что считать правильным направлением развития
 
-Приоритет для `DetMir` сейчас такой:
+Приоритет для `AWatch-rus` сейчас такой:
 
 1. не расширять систему ценой потери baseline stability;
 2. сначала держать зеленым production runtime;
@@ -465,6 +465,6 @@ Telegram bot `DetMirAuto` обязан покрывать:
 - “быстро добавить еще один контур”;
 - и “сделать существующий контур проверяемым, документированным и устойчивым”,
 
-для `DetMir` правильный выбор почти всегда второй.
+для `AWatch-rus` правильный выбор почти всегда второй.
 
 Это и есть промышленный режим сопровождения этой системы.
