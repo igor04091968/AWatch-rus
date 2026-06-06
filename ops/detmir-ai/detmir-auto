@@ -1,169 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-state_dir="${DETMIR_AI_STATE_DIR:-/var/lib/detmir-ai}"
-lock_dir="${DETMIR_AI_RUN_DIR:-${XDG_RUNTIME_DIR:-/tmp}}"
-auto_heal="${DETMIR_AUTO_HEAL:-1}"
-retain_days="${DETMIR_AI_RETAIN_DAYS:-14}"
+rust_bin="${DETMIR_AUTO_RUST_BIN:-/usr/local/bin/detmir-auto-rust}"
+legacy_bin="${DETMIR_AUTO_LEGACY_BIN:-/usr/local/bin/detmir-auto.legacy-shell}"
+env_file="${DETMIR_AUTO_ENV_FILE:-/etc/detmir/detmir-check.env}"
 
-mkdir -p "$state_dir"/runs "$state_dir"/reports "$state_dir"/logs
-
-lock_file="$lock_dir/detmir-auto.lock"
-exec 9>"$lock_file"
-if ! flock -n 9; then
-  echo "detmir-auto: another run is active"
-  exit 0
+if [[ -r "$env_file" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$env_file"
+  set +a
 fi
 
-stamp="$(date -u +%Y%m%d-%H%M%S)"
-run_dir_full="$state_dir/runs/$stamp"
-mkdir -p "$run_dir_full"
-
-check_file="$run_dir_full/detmir-check.json"
-dlp_file="$run_dir_full/detmir-dlp.json"
-heal_log="$run_dir_full/heal.log"
-bundle_file="$run_dir_full/bundle.txt"
-report_file="$state_dir/reports/detmir-report-$stamp.md"
-state_file="$state_dir/state-$stamp.json"
-
-run_check() {
-  local rc=0
-  detmir-check --json >"$check_file" || rc=$?
-  echo "$rc" >"$run_dir_full/check.rc"
-}
-
-run_dlp() {
-  local rc=0
-  detmir-dlp >"$dlp_file" || rc=$?
-  echo "$rc" >"$run_dir_full/dlp.rc"
-}
-
-summarize() {
-  python3 - "$check_file" "$dlp_file" "$run_dir_full/check.rc" "$run_dir_full/dlp.rc" <<'PY'
-import json
-import sys
-from pathlib import Path
-
-check_path, dlp_path, check_rc_path, dlp_rc_path = map(Path, sys.argv[1:])
-check_rc = int(check_rc_path.read_text().strip())
-dlp_rc = int(dlp_rc_path.read_text().strip())
-summary = {
-    "check_rc": check_rc,
-    "dlp_rc": dlp_rc,
-    "check_ok": False,
-    "dlp_ok": False,
-    "severity": "FAIL" if check_rc or dlp_rc else "OK",
-    "needs_heal": bool(check_rc or dlp_rc),
-    "reasons": [],
-}
-try:
-    check = json.loads(check_path.read_text())
-    summary["check_ok"] = bool(check.get("ok"))
-    cs = check.get("summary") or {}
-    summary["detmir_summary"] = cs
-    if cs.get("bucket_dead", 0) or cs.get("bucket_stale", 0) or cs.get("service_failures", 0):
-        summary["reasons"].append("detmir-check has stale/dead bucket or required service failure")
-except Exception as exc:
-    summary["reasons"].append(f"detmir-check parse failed: {exc}")
-
-try:
-    dlp = json.loads(dlp_path.read_text())
-    summary["dlp_ok"] = bool(dlp.get("ok"))
-    summary["dlp_counts"] = dlp.get("counts")
-    counts = dlp.get("counts") or {}
-    if counts.get("fail", 0) or counts.get("warn", 0):
-        summary["reasons"].append("dlp-health-check has warn/fail")
-except Exception as exc:
-    summary["reasons"].append(f"detmir-dlp parse failed: {exc}")
-
-if summary["check_ok"] and summary["dlp_ok"]:
-    summary["severity"] = "OK"
-    summary["needs_heal"] = False
-elif not summary["reasons"]:
-    summary["severity"] = "WARN"
-else:
-    summary["severity"] = "FAIL"
-
-print(json.dumps(summary, ensure_ascii=False, indent=2))
-PY
-}
-
-run_check
-run_dlp
-summary_before="$(summarize)"
-printf '%s\n' "$summary_before" >"$run_dir_full/summary-before.json"
-
-if [ "$auto_heal" = "1" ] && python3 -c 'import json,sys; print("yes" if json.load(sys.stdin).get("needs_heal") else "no")' <<<"$summary_before" | grep -qx yes; then
-  {
-    echo "detmir-heal-safe started at $(date -u --iso-8601=seconds)"
-    detmir-heal-safe
-    echo "detmir-heal-safe finished at $(date -u --iso-8601=seconds)"
-  } >"$heal_log" 2>&1 || true
-  sleep 10
-  run_check
-  run_dlp
-else
-  echo "auto-heal skipped" >"$heal_log"
+if [[ -x "$rust_bin" ]]; then
+  exec "$rust_bin" "$@"
 fi
 
-summary_after="$(summarize)"
-printf '%s\n' "$summary_after" >"$state_file"
+if [[ -x "$legacy_bin" ]]; then
+  exec "$legacy_bin" "$@"
+fi
 
-{
-  echo "Ты операторский AI-помощник DetMir. По фактам ниже дай короткий русский отчет."
-  echo "Структура ответа:"
-  echo "1. Состояние: OK/WARN/FAIL"
-  echo "2. Что важно"
-  echo "3. Что уже сделал автомат"
-  echo "4. Что сделать человеку, если нужно"
-  echo
-  echo "Правила:"
-  echo "- Не предлагай рестарты, если факты чистые."
-  echo "- Отличай event-driven bucket от dead/stale."
-  echo "- DLP sendFailures важны только при новом sendFailuresDelta или warn/fail."
-  echo "- Auto-heal умеет только серверные systemd-сервисы AW/DLP; Windows/RDP не трогает."
-  echo
-  echo "=== summary-before ==="
-  cat "$run_dir_full/summary-before.json"
-  echo
-  echo "=== summary-after ==="
-  cat "$state_file"
-  echo
-  echo "=== heal-log ==="
-  sed -n '1,300p' "$heal_log"
-  echo
-  echo "=== detmir-check ==="
-  sed -n '1,1600p' "$check_file"
-  echo
-  echo "=== detmir-dlp ==="
-  sed -n '1,1600p' "$dlp_file"
-} >"$bundle_file"
-
-{
-  echo "# DetMir Autonomous Report"
-  echo
-  echo "- generated_at_utc: $(date -u --iso-8601=seconds)"
-  echo "- run_dir: $run_dir_full"
-  echo
-  polli-chat --model text.daily --max-tokens 900 <"$bundle_file" || {
-    echo "Pollinations report failed; raw summary follows."
-    cat "$state_file"
-  }
-} >"$report_file"
-
-ln -sfn "$run_dir_full" "$state_dir/latest-run"
-ln -sfn "$report_file" "$state_dir/latest-report.md"
-ln -sfn "$state_file" "$state_dir/latest-state.json"
-
-find "$state_dir/runs" -mindepth 1 -maxdepth 1 -type d -mtime +"$retain_days" -exec rm -rf {} +
-find "$state_dir/reports" -type f -name 'detmir-report-*.md' -mtime +"$retain_days" -delete
-find "$state_dir" -maxdepth 1 -type f -name 'state-*.json' -mtime +"$retain_days" -delete
-
-cat "$report_file"
-
-python3 - "$state_file" <<'PY'
-import json
-import sys
-state = json.load(open(sys.argv[1]))
-raise SystemExit(0 if state.get("severity") == "OK" else 2)
-PY
+echo "detmir-auto: neither $rust_bin nor $legacy_bin is executable" >&2
+exit 127

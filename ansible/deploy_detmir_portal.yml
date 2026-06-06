@@ -46,7 +46,7 @@
         content: |
           DETMIR_PORTAL_BIND={{ detmir_portal_bind }}
           DETMIR_PORTAL_STATUS_CMD=detmir-status --json
-          DETMIR_PORTAL_CHECK_CMD='timeout 8s detmir-check --json --aw-api "$DETMIR_AW_API" --worktime-url "$DETMIR_WORKTIME_URL" --one-c-url "$DETMIR_ONE_C_URL" --rdp-host "$DETMIR_RDP_HOST" --hostname "$DETMIR_HOSTNAME"'
+          DETMIR_PORTAL_CHECK_CMD='cat /var/lib/detmir-ai/latest-run/detmir-check.json'
           DETMIR_PORTAL_FAILED_UNITS_CMD=systemctl --failed --no-pager
           DETMIR_PORTAL_WORKTIME_URL={{ detmir_portal_worktime_url }}
           DETMIR_PORTAL_ONE_C_URL={{ detmir_portal_one_c_url }}
@@ -64,6 +64,61 @@
           CLICKHOUSE_DATABASE={{ detmir_clickhouse_database | default('analytics_1c') }}
           CLICKHOUSE_USER={{ detmir_clickhouse_user | default('default') }}
           CLICKHOUSE_PASSWORD={{ detmir_clickhouse_password | default('') }}
+
+    - name: Preserve local ClickHouse security-events settings when available
+      ansible.builtin.shell: |
+        set -euo pipefail
+        python3 - <<'PY'
+        from pathlib import Path
+
+        source = Path("/opt/activitywatch/clickhouse-1c/.env")
+        target = Path("{{ detmir_portal_env_path }}")
+        if not source.exists() or not target.exists():
+            raise SystemExit(0)
+
+        kv = {}
+        for line in source.read_text().splitlines():
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            kv[key.strip()] = value.strip().strip('"').strip("'")
+
+        updates = {
+            "SECURITY_EVENTS_BACKEND": "clickhouse",
+            "CLICKHOUSE_URL": "http://127.0.0.1:8123",
+            "CLICKHOUSE_DATABASE": kv.get("CLICKHOUSE_DB", "analytics_1c"),
+            "CLICKHOUSE_USER": kv.get("CLICKHOUSE_USER", "default"),
+            "CLICKHOUSE_PASSWORD": kv.get("CLICKHOUSE_PASSWORD", ""),
+        }
+
+        lines = []
+        seen = set()
+        for line in target.read_text().splitlines():
+            if "=" in line and not line.startswith("#"):
+                key = line.split("=", 1)[0].strip()
+                if key in updates:
+                    lines.append(f"{key}={updates[key]}")
+                    seen.add(key)
+                    continue
+            lines.append(line)
+        for key, value in updates.items():
+            if key not in seen:
+                lines.append(f"{key}={value}")
+        target.write_text("\n".join(lines) + "\n")
+        PY
+      args:
+        executable: /bin/bash
+      no_log: true
+      when: detmir_security_events_backend | default('clickhouse') == 'clickhouse'
+
+    - name: Remove stale detmir-portal systemd overrides
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/detmir-portal.service.d/20-timeouts.conf
+        - /etc/systemd/system/detmir-portal.service.d/30-warm-cache.conf
+      register: detmir_portal_stale_overrides
 
     - name: Install initial workforce policy when absent
       ansible.builtin.copy:
@@ -122,7 +177,6 @@
     - name: Reload systemd
       ansible.builtin.systemd:
         daemon_reload: true
-      when: detmir_portal_service_unit.changed
 
     - name: Enable and restart detmir-portal
       ansible.builtin.systemd:
@@ -150,7 +204,10 @@
       failed_when: >
         detmir_portal_reports.status != 200
         or detmir_portal_reports.json.kpis is not defined
-        or 'derived detections/cases' not in (detmir_portal_reports.json.markdown | default(''))
+        or (
+          'derived detections/cases' not in (detmir_portal_reports.json.markdown | default(''))
+          and 'расчетными выводами' not in (detmir_portal_reports.json.markdown | default(''))
+        )
       changed_when: false
 
 - name: Deploy DetMir DLP evidence API on AW server

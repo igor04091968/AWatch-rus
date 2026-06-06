@@ -45,7 +45,9 @@ File 1C + reglog + host telemetry
 - `docker-compose.yml` — локальный scaffold ClickHouse + Grafana.
 - `.env.example` — переменные окружения.
 - `clickhouse/init/*.sql` — схема БД.
-- `etl/load_1c_exports.py` — loader CSV/JSON выгрузок в raw/core таблицы.
+- `adk-rust/crates/aw-1c-ingest` — production writer CSV/JSON выгрузок в
+  raw/core ClickHouse таблицы.
+- `etl/load_1c_exports.py` — legacy loader для rollback/ручной отладки.
 - `etl/build_business_event_exports.py` — read-only normalizer из
   `documents/postings/audit` в canonical `business_events/document_changes`.
 - `etl/extract_1c_mcp_toolkit.py` — read-only extractor из
@@ -64,7 +66,8 @@ File 1C + reglog + host telemetry
 - `grafana/provisioning/dashboards/files/1c-telemetry-board.json` — telemetry dashboard по состоянию файловых баз, reglog growth, busy markers и host load.
 - `detections/build_entity_timeline.sql` — сборка единого timeline слоя.
 - `detections/open_cases_from_detections.sql` — шаблон открытия cases из detections.
-- `ops/etl-cron.example` — пример расписания каждые 6 часов.
+- `ops/etl-cron.example` — legacy cron example; production использует
+  `aw-1c-ingest.timer`.
 - `ops/retention-policy.md` — минимальная retention policy.
 - `ai/INVESTIGATOR_API.md` — контракт AI Investigator поверх ClickHouse/cases.
 - `ai/refresh_company_intelligence.py` — materialization forecast/signals по `counterparty`.
@@ -110,7 +113,7 @@ mkdir -p landing/{documents,postings,business_events,document_changes,companies,
 cp etl/config.example.yml etl/config.yml
 ```
 
-4. Запустить ETL:
+4. Запустить ingest:
 
 ```bash
 python3 -m venv .venv
@@ -119,8 +122,7 @@ pip install -r etl/requirements.txt
 python etl/extract_1c_mcp_toolkit.py --config etl/config.yml --validate-config
 python etl/extract_1c_mcp_toolkit.py --config etl/config.yml --dataset documents --dry-run
 python etl/extract_1c_mcp_toolkit.py --config etl/config.yml
-python etl/build_business_event_exports.py --config etl/config.yml
-python etl/load_1c_exports.py --config etl/config.yml
+/usr/local/bin/aw-1c-ingest-rust --root /opt/activitywatch/clickhouse-1c
 ```
 
 5. Применить detections:
@@ -233,9 +235,7 @@ etl/extract_1c_mcp_toolkit.py
           ↓
 landing/{documents,postings,business_events,document_changes,companies,reglog}
           ↓
-etl/build_business_event_exports.py
-          ↓
-etl/load_1c_exports.py
+aw-1c-ingest-rust
 ```
 
 Что он умеет:

@@ -111,7 +111,9 @@ $effectiveHayabusaAutoUploadMode = if ($existingConfig -and $existingConfig.PSOb
 $effectiveHayabusaAutoUploadTaskName = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'taskName') { [string]$existingConfig.forensics.hayabusaAutomation.taskName } else { 'ActivityWatch Hayabusa Upload' }
 $effectiveFile1CAutoUploadEnabled = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.analytics.file1cAutomation.enabled } else { $true }
 $effectiveFile1CAutoUploadIntervalHours = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'intervalHours') { [int]$existingConfig.analytics.file1cAutomation.intervalHours } else { 6 }
+$effectiveFile1CAutoUploadIntervalMinutes = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'intervalMinutes') { [int]$existingConfig.analytics.file1cAutomation.intervalMinutes } else { [Math]::Max(1, $effectiveFile1CAutoUploadIntervalHours) * 60 }
 $effectiveFile1CAutoUploadTaskName = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'taskName') { [string]$existingConfig.analytics.file1cAutomation.taskName } else { 'ActivityWatch File1C Upload' }
+$effectiveFile1CAutoUploadRunAsUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'runAsUser') { [string]$existingConfig.analytics.file1cAutomation.runAsUser } else { '' }
 $effectiveFile1CTargetHost = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetHost') { [string]$existingConfig.analytics.file1cAutomation.targetHost } else { '' }
 $effectiveFile1CTargetUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetUser') { [string]$existingConfig.analytics.file1cAutomation.targetUser } else { 'igor' }
 
@@ -220,7 +222,9 @@ $config = New-ActivityWatchDeploymentConfig `
     -HayabusaAutoUploadTaskName $effectiveHayabusaAutoUploadTaskName `
     -File1CAutoUploadEnabled $effectiveFile1CAutoUploadEnabled `
     -File1CAutoUploadIntervalHours $effectiveFile1CAutoUploadIntervalHours `
+    -File1CAutoUploadIntervalMinutes $effectiveFile1CAutoUploadIntervalMinutes `
     -File1CAutoUploadTaskName $effectiveFile1CAutoUploadTaskName `
+    -File1CAutoUploadRunAsUser $effectiveFile1CAutoUploadRunAsUser `
     -File1CTargetHost $effectiveFile1CTargetHost `
     -File1CTargetUser $effectiveFile1CTargetUser `
     -LaunchScriptPath $effectiveLaunchScript `

@@ -1,6 +1,6 @@
 # Аудит готовности AWatch-rus / DetMir к пилотной эксплуатации
 
-Дата аудита: `2026-06-04`
+Дата аудита: `2026-06-05`
 
 Объект аудита: AWatch-rus / DetMir, Rust workspace `adk-rust`, портал
 `detmir-portal`, агент `awatch-agent-rs`, документы коммерческого пилота и
@@ -12,14 +12,17 @@
 
 ## 1. Итоговая оценка
 
-Статус: `ГОТОВ К КОНТРОЛИРУЕМОМУ ПИЛОТУ С ОГРАНИЧЕНИЯМИ`
+Статус: `ГОТОВ К КОНТРОЛИРУЕМОМУ ДЕМОНСТРАЦИОННОМУ ПИЛОТУ`
 
-Оценка готовности: `80 / 100`
+Оценка готовности: `90 / 100`
 
 Вывод:
 
 - Для ограниченного пилота на заранее согласованном контуре критических
-  технических блокеров не выявлено.
+  технических блокеров в коде и портале не выявлено.
+- Полный демонстрационный путь "главный риск -> подразделение -> кандидат ->
+  расследование -> пакет -> отчет" проверен на рабочем DetMir-контуре; перед
+  показом нужен только короткий преддемо-прогон на той же сети и экране.
 - Для широкого промышленного внедрения остаются обязательные доработки:
   формальный контур доступа/RBAC, backup/retention для файловых state,
   sizing/load-тесты, API/schema versioning и регламент эксплуатации агента.
@@ -31,10 +34,10 @@
 
 | Проверка | Результат |
 |---|---|
-| `cargo test --workspace` | OK |
-| `cargo clippy --all-targets --all-features -- -D warnings` | OK |
+| `cargo test --workspace` | OK после локального переноса Cargo target на Linux-ФС: `<LOCAL_CARGO_TARGET_DIR>`. Старый `target/` на `fuseblk` не подходит для `libsqlite3-sys`. |
+| `cargo clippy --all-targets --all-features` | OK |
 | `cargo build --release` | OK |
-| `node scripts/detmir-portal-tabs-smoke.mjs` на временном локальном портале | OK |
+| `node scripts/detmir-portal-tabs-smoke.mjs` против `<PORTAL_URL>` | OK; security events доступны через ClickHouse, переход к расследованию проверен, найдено 3 кнопки расследования. |
 | `GET /portal/api/reports` на пустом state-dir | OK, валидный JSON |
 | Отсутствие `expected_nodes.json` | OK, `agent_coverage_sla.sla_status=UNKNOWN` |
 | Отсутствие `incident_reviews.json`, `incident_review_audit.jsonl`, `cases.json` | OK, портал не падает |
@@ -46,8 +49,21 @@ Portal smoke подтвердил:
 - вкладки `Обзор`, `Сотрудники`, `Подразделения`, `Риски`, `Расследования`,
   `Сетевой периметр`, `Отчеты`, `Настройки` открываются;
 - Risk Narrative выводится первым;
-- read-only настройки отображают период, рабочий день, пороги и источник правил;
-- переход `Risk -> Investigation` работает как read-only сценарий.
+- read-only настройки отображают период, рабочий день, русские названия
+  порогов и источник правил;
+- видимые статусы портала переведены с `OK/WARN/FAIL/UNKNOWN` на русские
+  формулировки; технические подсказки ClickHouse/env убраны из пользовательских
+  экранов;
+- переход "кандидат -> расследование" проверен: smoke нашел 3 кнопки перехода
+  и открыл карточку расследования;
+- события безопасности читаются порталом через ClickHouse:
+  `backend=clickhouse`, `status=ok`, `fallback_used=false`;
+- первый расчет отчета прогревается при старте `detmir-portal.service`; после
+  прогрева `/api/reports` отвечает за доли секунды;
+- фоновое обновление больше не переводит готовый экран в состояние
+  "Загрузка данных"; 70-секундная браузерная проверка сохранила `READY`;
+- мобильная проверка 390px прошла: `READY`, глобального горизонтального overflow
+  нет.
 
 ## 3. Архитектура
 
@@ -91,8 +107,9 @@ Portal smoke подтвердил:
 
 Слабые стороны:
 
-- Нет явной версии API и machine-readable JSON Schema для `/api/reports`,
-  `/api/telemetry`, `/api/incident-review`, `/api/cases`.
+- Контракты API уже доступны через `/api/contracts`, OpenAPI и TypeScript,
+  но нужна формальная матрица версий и журнал совместимых/несовместимых
+  изменений полей.
 - Нет отдельного lightweight endpoint для части управленческих данных; `/api/reports`
   остается большим агрегирующим endpoint.
 - Авторизация пользователя портала предполагается внешним gateway; сам портал не
@@ -120,6 +137,8 @@ Portal smoke подтвердил:
 - На пустых данных портал работает, но часть выводов ожидаемо имеет статус
   `UNKNOWN`/`ATTENTION`; перед демо нужен подготовленный demo/pilot dataset.
 - PDF/export-путь требует отдельной приемочной проверки в конкретном окружении.
+- Документы для заказчика все еще требуют языковой чистки от англоязычных
+  терминов и технических сокращений.
 
 Оценка: `готов к демонстрации и пилоту при наличии auth gateway`.
 
@@ -191,7 +210,8 @@ enterprise endpoint agent`.
 
 - Нет единого “операторского пакета пилота” в одном маршруте: installation ->
   first telemetry -> validation -> demo -> acceptance.
-- API contract пока описан текстом, а не JSON Schema/OpenAPI.
+- API-контракты уже оформлены отдельными маршрутами, но документация должна
+  явно ссылаться на OpenAPI/TypeScript и порядок проверки совместимости.
 - Не хватает sizing guide: число endpoints, объем telemetry/day, CPU/RAM/disk,
   рекомендуемый retention.
 
@@ -296,7 +316,8 @@ enterprise endpoint agent`.
 
 - Нет встроенного RBAC/auth в portal application layer.
 - JSON/JSONL state пока не hardened для больших объемов и параллельных записей.
-- Нет API versioning/OpenAPI/JSON Schema.
+- API-контракты и OpenAPI уже есть, но нет формального versioning и матрицы
+  совместимости agent/server/portal.
 - Нет load/sizing профиля.
 - Windows agent еще требует промышленного rollout guide и матрицы OS/locale.
 - FreeBSD/pfSense support нельзя считать законченным commercial module.
@@ -315,7 +336,7 @@ enterprise endpoint agent`.
    оператор, администратор.
 6. Сделать matrix agent compatibility: OS, locale, session source, fallback,
    worktime accepted/not accepted.
-7. Подготовить demo dataset и anonymized pilot dataset.
+7. Подготовить anonymized pilot dataset и регламент преддемо-прогона.
 
 ## 16. Риски пилота
 
@@ -342,7 +363,7 @@ enterprise endpoint agent`.
 2. Нет утвержденного backup/retention/access-control регламента для telemetry,
    cases, audit и evidence.
 3. Нет sizing/load-test отчета.
-4. Нет API/schema versioning и матрицы совместимости agent/server.
+4. Нет формального API versioning и матрицы совместимости agent/server/portal.
 5. Нет завершенного customer pilot runbook с ожидаемыми результатами проверки.
 
 ## 18. Рекомендации v0.3
@@ -356,11 +377,13 @@ enterprise endpoint agent`.
    evidence.
 4. Зафиксировать версии agent/server/portal и команды проверки в pilot
    acceptance act.
-5. Подготовить anonymized demo dataset и отдельный live pilot dataset.
+5. Перед показом выполнить преддемо-прогон: готовность данных, наличие
+   кандидата, открытие расследования, скачивание пакета и итоговый отчет.
 
 Приоритет P1 для v0.3:
 
-1. Добавить OpenAPI/JSON Schema для ключевых endpoints.
+1. Зафиксировать API versioning, матрицу совместимости и порядок проверки
+   OpenAPI/TypeScript contracts.
 2. Добавить storage hardening для JSON/JSONL state или перенести критичный state
    в SQLite.
 3. Сделать load test: 50/100/250 endpoints, records/day, `/api/reports` p95.

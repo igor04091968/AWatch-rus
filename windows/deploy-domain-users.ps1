@@ -47,7 +47,9 @@ param(
     [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
     [bool]$File1CAutoUploadEnabled = $true,
     [int]$File1CAutoUploadIntervalHours = 6,
+    [int]$File1CAutoUploadIntervalMinutes = 15,
     [string]$File1CAutoUploadTaskName = 'ActivityWatch File1C Upload',
+    [string]$File1CAutoUploadRunAsUser,
     [string]$File1CTargetHost,
     [string]$File1CTargetUser = 'igor',
     [string]$File1CRegistryWorkbookPath = 'E:\USER1\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx',
@@ -157,7 +159,9 @@ $config = New-ActivityWatchDeploymentConfig `
     -HayabusaAutoUploadTaskName $HayabusaAutoUploadTaskName `
     -File1CAutoUploadEnabled $File1CAutoUploadEnabled `
     -File1CAutoUploadIntervalHours $File1CAutoUploadIntervalHours `
+    -File1CAutoUploadIntervalMinutes $File1CAutoUploadIntervalMinutes `
     -File1CAutoUploadTaskName $File1CAutoUploadTaskName `
+    -File1CAutoUploadRunAsUser $File1CAutoUploadRunAsUser `
     -File1CTargetHost $File1CTargetHost `
     -File1CTargetUser $File1CTargetUser `
     -File1CRegistryWorkbookPath $File1CRegistryWorkbookPath `

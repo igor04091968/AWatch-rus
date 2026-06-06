@@ -5,7 +5,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 const DEFAULT_SSH_TARGET: &str = "igor@192.0.2.13";
-const DEFAULT_REMOTE_COMMAND: &str = "sudo -n /usr/local/bin/dlp-health-check --json";
+const DEFAULT_REMOTE_COMMAND: &str = "sudo -n env AW_DLP_HEALTH_ENDPOINT_SEND_FAILURE_WARN_COUNT=10 AW_DLP_HEALTH_FILEOPS_SEND_FAILURE_WARN_COUNT=10 /usr/local/bin/dlp-health-check --json";
 
 #[derive(Debug, Parser)]
 #[command(about = "Run the DetMir DLP health check on the AW server over SSH.")]

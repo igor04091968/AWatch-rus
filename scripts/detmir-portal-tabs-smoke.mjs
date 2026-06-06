@@ -165,9 +165,9 @@ async function main() {
       name: "loading_refresh_status_ready",
       ok:
         (await page.locator("#loadingStatus").count()) === 1
+        && (await page.locator("#loadingStatus").evaluate((node) => node.dataset.loadStatus)) === "READY"
         && (await page.locator("#loadingStateText").innerText({ timeout })).includes("Данные готовы")
-        && (await page.locator("#loadingStageText").innerText({ timeout })).includes("Данные готовы")
-        && !(await page.locator("body").innerText({ timeout })).includes("Загрузка данных"),
+        && (await page.locator("#loadingStageText").innerText({ timeout })).includes("Данные готовы"),
     });
     smokeStep = "api:security_events_summary";
     const reportsPayload = await page.evaluate(async () => {
@@ -339,8 +339,8 @@ async function main() {
         const requiredSettings = [
           "Период расчета",
           "Рабочий день",
-          "Порог WARN",
-          "Порог FAIL",
+          "Порог внимания",
+          "Порог критического риска",
           "Источник правил",
           "Дата последнего пересчета",
         ];

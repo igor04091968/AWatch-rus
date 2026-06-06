@@ -931,7 +931,9 @@ function New-ActivityWatchDeploymentConfig {
         [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
         [bool]$File1CAutoUploadEnabled = $true,
         [int]$File1CAutoUploadIntervalHours = 6,
+        [int]$File1CAutoUploadIntervalMinutes = 15,
         [string]$File1CAutoUploadTaskName = 'ActivityWatch File1C Upload',
+        [string]$File1CAutoUploadRunAsUser,
         [string]$File1CTargetHost,
         [string]$File1CTargetUser = 'igor',
         [string]$File1CRemoteRoot = '/opt/activitywatch/clickhouse-1c/landing',
@@ -981,6 +983,7 @@ function New-ActivityWatchDeploymentConfig {
             evtxExportScript = $EvtxExportScript
             hayabusaUploadScript = $HayabusaUploadScript
             file1cTelemetryScript = $File1CTelemetryScript
+            file1cTelemetryExecutable = if ([string]::IsNullOrWhiteSpace($File1CTelemetryScript)) { '' } else { Join-Path (Split-Path -Parent $File1CTelemetryScript) 'aw-windows-telemetry.exe' }
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -1022,8 +1025,10 @@ function New-ActivityWatchDeploymentConfig {
         analytics = [pscustomobject]@{
             file1cAutomation = [pscustomobject]@{
                 enabled = [bool]$File1CAutoUploadEnabled
+                intervalMinutes = $File1CAutoUploadIntervalMinutes
                 intervalHours = $File1CAutoUploadIntervalHours
                 taskName = $File1CAutoUploadTaskName
+                runAsUser = $File1CAutoUploadRunAsUser
                 targetHost = $File1CTargetHost
                 targetUser = $File1CTargetUser
                 remoteRoot = $File1CRemoteRoot
@@ -1412,13 +1417,59 @@ function Start-CollectorScriptIfNeeded {
     Start-Process -FilePath `$PowerShellExe -ArgumentList `$argumentList -WindowStyle Hidden
 }
 
+function Test-RustCollectorRunning {
+    param(
+        [string]`$Subcommand,
+        [int]`$SessionId
+    )
+
+    if ([string]::IsNullOrWhiteSpace(`$Subcommand)) {
+        return `$false
+    }
+
+    return [bool]@(
+        Get-CimInstance Win32_Process -Filter "Name = 'aw-windows-telemetry.exe'" -ErrorAction SilentlyContinue |
+            Where-Object {
+                `$_.SessionId -eq `$SessionId -and
+                `$_.CommandLine -match [Regex]::Escape(`$Subcommand)
+            } |
+            Select-Object -First 1
+    ).Count
+}
+
+function Start-RustCollectorIfNeeded {
+    param(
+        [string]`$ExePath,
+        [string]`$Subcommand,
+        [string]`$ConfigPath,
+        [int]`$SessionId
+    )
+
+    if ([string]::IsNullOrWhiteSpace(`$ExePath) -or [string]::IsNullOrWhiteSpace(`$Subcommand)) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath `$ExePath)) {
+        return
+    }
+
+    if (Test-RustCollectorRunning -Subcommand `$Subcommand -SessionId `$SessionId) {
+        return
+    }
+
+    `$argumentList = @(`$Subcommand, '--config-path', `$ConfigPath, '--mode', 'enforce')
+    Start-Process -FilePath `$ExePath -ArgumentList `$argumentList -WindowStyle Hidden
+}
+
 `$config = Get-DeploymentConfig -Path `$ConfigPath
 `$sessionId = (Get-Process -Id `$PID).SessionId
 `$installRoot = [string]`$config.paths.installRoot
 `$stateRoot = [string]`$config.paths.stateRoot
+`$deployRoot = if (`$config.paths.PSObject.Properties.Name -contains 'deployRoot' -and -not [string]::IsNullOrWhiteSpace([string]`$config.paths.deployRoot)) { [string]`$config.paths.deployRoot } elseif (`$config.paths.PSObject.Properties.Name -contains 'toolkitRoot' -and -not [string]::IsNullOrWhiteSpace([string]`$config.paths.toolkitRoot)) { [string]`$config.paths.toolkitRoot } else { `$installRoot }
 `$script:ApiBase = '{0}://{1}:{2}/api/0' -f [string]`$config.server.scheme, [string]`$config.server.host, [string]`$config.server.port
 `$script:Hostname = if (`$config.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]`$config.awHostname)) { [string]`$config.awHostname } else { `$env:COMPUTERNAME }
 `$script:KnownBuckets = @{}
+`$telemetryExe = if (`$config.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable' -and -not [string]::IsNullOrWhiteSpace([string]`$config.paths.file1cTelemetryExecutable)) { [string]`$config.paths.file1cTelemetryExecutable } else { Join-Path `$deployRoot 'windows\aw-windows-telemetry.exe' }
 `$collectorScript = [string]`$config.paths.collectorScript
 `$endpointCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]`$config.paths.endpointCollectorScript } else { Join-Path `$stateRoot 'dlp-endpoint-signals-collector.ps1' }
 `$fileCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]`$config.paths.fileCollectorScript } else { Join-Path `$stateRoot 'file-operations-collector.ps1' }
@@ -1430,6 +1481,9 @@ function Start-CollectorScriptIfNeeded {
 `$afkEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]`$config.collectors.afkEnabled } else { `$true }
 `$windowEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]`$config.collectors.windowEnabled } else { `$true }
 `$fileOpsEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]`$config.collectors.fileOpsEnabled } else { `$true }
+`$browserCollectorMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'browserCollectorMode') { [string]`$config.collectors.browserCollectorMode } else { 'powershell_primary' }
+`$dlpEndpointMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'dlpEndpointMode') { [string]`$config.collectors.dlpEndpointMode } else { 'powershell_primary' }
+`$fileOpsMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsMode') { [string]`$config.collectors.fileOpsMode } else { 'powershell_primary' }
 `$emailEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'emailEnabled') { [bool]`$config.collectors.emailEnabled } else { `$false }
 `$emailCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'emailCollectorScript') { [string]`$config.paths.emailCollectorScript } else { Join-Path `$stateRoot 'email-outbound-collector.ps1' }
 `$launchLockPath = New-LaunchLock -StateRoot `$stateRoot -SessionId `$sessionId
@@ -1459,10 +1513,22 @@ try {
     }
     catch {
     }
-    Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
-    Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    if (`$browserCollectorMode -ieq 'rust_primary') {
+        Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'browser-domains-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId
+    } else {
+        Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    }
+    if (`$dlpEndpointMode -ieq 'rust_primary') {
+        Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'dlp-endpoint-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId
+    } else {
+        Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+    }
     if (`$fileOpsEnabled) {
-        Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+        if (`$fileOpsMode -ieq 'rust_primary') {
+            Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'file-operations-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId
+        } else {
+            Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+        }
     }
     if (`$emailEnabled -and (Test-Path -LiteralPath `$emailCollectorScript)) {
         Start-CollectorScriptIfNeeded -ScriptPath `$emailCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
@@ -2473,13 +2539,22 @@ function Register-ActivityWatchFile1CAutoUploadTask {
     }
 
     $uploadScript = if ($config.paths.PSObject.Properties.Name -contains 'file1cTelemetryScript') { [string]$config.paths.file1cTelemetryScript } else { Join-Path $config.paths.stateRoot 'export-upload-file-1c-telemetry.ps1' }
-    if (-not (Test-Path -LiteralPath $uploadScript)) {
-        throw "Не найден скрипт file-1C telemetry upload: $uploadScript"
+    $uploadExeCandidates = New-Object System.Collections.Generic.List[string]
+    if ($config.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable' -and -not [string]::IsNullOrWhiteSpace([string]$config.paths.file1cTelemetryExecutable)) {
+        $uploadExeCandidates.Add([string]$config.paths.file1cTelemetryExecutable)
+    }
+    $uploadExeCandidates.Add((Join-Path (Join-Path ([System.Environment]::GetFolderPath('ProgramFiles')) 'AWatch-rus\windows') 'aw-windows-telemetry.exe'))
+    $uploadExeCandidates.Add((Join-Path $config.paths.stateRoot 'aw-windows-telemetry.exe'))
+    $uploadExe = @($uploadExeCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_) } | Select-Object -First 1) | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($uploadExe) -and -not (Test-Path -LiteralPath $uploadScript)) {
+        throw "Не найден Rust binary или legacy script file-1C telemetry upload: $uploadExeCandidates / $uploadScript"
     }
 
-    $intervalHours = [Math]::Max(1, [int]$automation.intervalHours)
-    $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-    $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`""
+    $intervalMinutes = if ($automation.PSObject.Properties.Name -contains 'intervalMinutes') {
+        [Math]::Max(1, [int]$automation.intervalMinutes)
+    } else {
+        [Math]::Max(1, [int]$automation.intervalHours) * 60
+    }
     $runnerUserId = $null
     if ($automation.PSObject.Properties.Name -contains 'runAsUser' -and -not [string]::IsNullOrWhiteSpace([string]$automation.runAsUser)) {
         $runnerUserId = [string]$automation.runAsUser
@@ -2495,16 +2570,23 @@ function Register-ActivityWatchFile1CAutoUploadTask {
         $runnerUserId = @($config.userTasks | ForEach-Object { [string]$_.userId } | Select-Object -First 1) | Select-Object -First 1
     }
 
-    Remove-ActivityWatchScheduledTask -TaskName $taskName
-    if (-not [string]::IsNullOrWhiteSpace($runnerUserId)) {
-        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU $runnerUserId /RL HIGHEST /F | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($uploadExe)) {
+        $action = New-ScheduledTaskAction -Execute $uploadExe -Argument "file1c-upload --config-path `"$ConfigPath`""
     }
     else {
-        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+        $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+        $action = New-ScheduledTaskAction -Execute $powerShellExe -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`""
     }
-    if ($LASTEXITCODE -ne 0) {
-        throw "Не удалось создать scheduled task $taskName через schtasks.exe"
+    $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).Date) -RepetitionInterval (New-TimeSpan -Minutes $intervalMinutes) -RepetitionDuration (New-TimeSpan -Days 3650)
+    if (-not [string]::IsNullOrWhiteSpace($runnerUserId)) {
+        $principal = New-ScheduledTaskPrincipal -UserId $runnerUserId -LogonType Interactive -RunLevel Highest
     }
+    else {
+        $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+    }
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 }
 
 function Set-ActivityWatchAcl {

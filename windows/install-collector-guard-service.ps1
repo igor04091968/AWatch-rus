@@ -22,6 +22,7 @@ function Assert-Admin {
 Assert-Admin
 
 $guardScriptPath = Join-Path $PSScriptRoot 'aw-collector-guard.ps1'
+$rustTelemetryPath = Join-Path $PSScriptRoot 'aw-windows-telemetry.exe'
 $serviceSourcePath = Join-Path $PSScriptRoot 'AWatchRusCollectorGuardService.cs'
 $serviceExePath = Join-Path $PSScriptRoot 'AWatchRusCollectorGuardService.exe'
 if (-not (Test-Path -LiteralPath $guardScriptPath)) {
@@ -64,7 +65,13 @@ if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $serviceExePath)) {
 
 $logsRoot = Join-Path (Split-Path -Path $ConfigPath -Parent) 'logs'
 $serviceLogPath = Join-Path $logsRoot 'collector-guard-service.log'
-$binPath = "`"$serviceExePath`" --service-name `"$ServiceName`" --script `"$guardScriptPath`" --config `"$ConfigPath`" --mode $Mode --loop $LoopSeconds --log `"$serviceLogPath`""
+if (Test-Path -LiteralPath $rustTelemetryPath) {
+    $rustArgs = "collector-guard --config-path `"$ConfigPath`" --mode $Mode --loop-seconds $LoopSeconds"
+    $binPath = "`"$serviceExePath`" --service-name `"$ServiceName`" --exec `"$rustTelemetryPath`" --args `"$rustArgs`" --log `"$serviceLogPath`""
+}
+else {
+    $binPath = "`"$serviceExePath`" --service-name `"$ServiceName`" --script `"$guardScriptPath`" --config `"$ConfigPath`" --mode $Mode --loop $LoopSeconds --log `"$serviceLogPath`""
+}
 
 New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName 'AWatch-rus Collector Guard' -StartupType Automatic | Out-Null
 sc.exe description $ServiceName "Session-aware ActivityWatch collector guard for AWatch-rus" | Out-Null
@@ -86,3 +93,4 @@ sc.exe start $ServiceName | Out-Null
 Write-Output "Collector guard service installed: $ServiceName"
 Write-Output "Mode: $Mode"
 Write-Output "Config: $ConfigPath"
+Write-Output "Runtime: $(if (Test-Path -LiteralPath $rustTelemetryPath) { 'rust' } else { 'powershell' })"

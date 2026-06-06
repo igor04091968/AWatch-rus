@@ -7,9 +7,13 @@
     aw_windows_repo_root: "{{ playbook_dir | dirname }}"
     aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
+    aw_windows_rust_target_root: "{{ lookup('env', 'CARGO_TARGET_DIR') | default('/tmp/detmir-adk-rust-target', true) }}"
+    aw_windows_telemetry_exe_source: "{{ aw_windows_rust_target_root }}/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe"
+    aw_windows_telemetry_exe_path: "{{ aw_windows_deploy_root }}\\windows\\aw-windows-telemetry.exe"
     aw_windows_file_1c_target_user: "igor"
-    aw_windows_file_1c_auto_upload_interval_hours: 6
+    aw_windows_file_1c_auto_upload_interval_minutes: 15
     aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
+    aw_windows_file_1c_auto_upload_run_as_user: "HOST-EXAMPLE\\Администратор"
     aw_windows_file_1c_remote_root: "/opt/activitywatch/clickhouse-1c/landing"
     aw_windows_file_1c_remote_key_path: ""
     aw_windows_file_1c_registry_workbook_path: "E:\\USER1\\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx"
@@ -67,6 +71,11 @@
         src: "{{ aw_windows_repo_root }}/windows/export-upload-file-1c-telemetry.ps1"
         dest: "{{ aw_windows_deploy_root }}\\windows\\export-upload-file-1c-telemetry.ps1"
 
+    - name: Загрузить Rust telemetry binary в toolkit
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_telemetry_exe_source }}"
+        dest: "{{ aw_windows_telemetry_exe_path }}"
+
     - name: Загрузить file-1C telemetry script в state root
       ansible.windows.win_copy:
         src: "{{ aw_windows_repo_root }}/windows/export-upload-file-1c-telemetry.ps1"
@@ -87,6 +96,11 @@
           } else {
             $config.paths | Add-Member -NotePropertyName 'file1cTelemetryScript' -NotePropertyValue "{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1"
           }
+          if ($config.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable') {
+            $config.paths.file1cTelemetryExecutable = "{{ aw_windows_telemetry_exe_path }}"
+          } else {
+            $config.paths | Add-Member -NotePropertyName 'file1cTelemetryExecutable' -NotePropertyValue "{{ aw_windows_telemetry_exe_path }}"
+          }
 
           if ($config.PSObject.Properties.Name -notcontains 'analytics') {
             $config | Add-Member -NotePropertyName 'analytics' -NotePropertyValue ([pscustomobject]@{})
@@ -94,10 +108,11 @@
 
           $automation = [pscustomobject]@{
             enabled = $true
-            intervalHours = {{ aw_windows_file_1c_auto_upload_interval_hours | int }}
+            intervalMinutes = {{ aw_windows_file_1c_auto_upload_interval_minutes | int }}
             taskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
             targetHost = "{{ aw_windows_file_1c_target_host_effective }}"
             targetUser = "{{ aw_windows_file_1c_target_user }}"
+            runAsUser = "{{ aw_windows_file_1c_auto_upload_run_as_user }}"
             remoteRoot = "{{ aw_windows_file_1c_remote_root }}"
             registryWorkbookPath = "{{ aw_windows_file_1c_registry_workbook_path }}"
             remoteKeyPath = "{{ aw_windows_file_1c_remote_key_path }}"
@@ -154,19 +169,20 @@
         script: |
           $ErrorActionPreference = 'Stop'
           $taskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
-          $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-          $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1`" -ConfigPath `"{{ aw_windows_state_root }}\deployment-config.json`""
+          $telemetryExe = "{{ aw_windows_telemetry_exe_path }}"
+          $runAsUser = "{{ aw_windows_file_1c_auto_upload_run_as_user }}"
+          $taskArgs = "file1c-upload --config-path `"{{ aw_windows_state_root }}\deployment-config.json`""
+          $action = New-ScheduledTaskAction -Execute $telemetryExe -Argument $taskArgs
+          $trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).Date) -RepetitionInterval (New-TimeSpan -Minutes {{ aw_windows_file_1c_auto_upload_interval_minutes | int }}) -RepetitionDuration (New-TimeSpan -Days 3650)
+          if ([string]::IsNullOrWhiteSpace($runAsUser)) {
+            $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+          } else {
+            $principal = New-ScheduledTaskPrincipal -UserId $runAsUser -LogonType Interactive -RunLevel Highest
+          }
+          $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
           $existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
           if ($existingTask) {
-            $action = New-ScheduledTaskAction -Execute $powerShellExe -Argument "-NoProfile -ExecutionPolicy Bypass -File `"{{ aw_windows_state_root }}\export-upload-file-1c-telemetry.ps1`" -ConfigPath `"{{ aw_windows_state_root }}\deployment-config.json`""
-            try {
-              Set-ScheduledTask -TaskName $taskName -Action $action -ErrorAction Stop | Out-Null
-            } catch {
-              Write-Host "skip task action update for $taskName because the existing principal requires stored credentials: $($_.Exception.Message)"
-            }
+            Set-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -ErrorAction Stop | Out-Null
           } else {
-            & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO {{ aw_windows_file_1c_auto_upload_interval_hours | int }} /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-              throw "Не удалось создать scheduled task $taskName"
-            }
+            Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
           }

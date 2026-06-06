@@ -7,8 +7,12 @@
     aw_repo_root: "{{ playbook_dir | dirname }}"
     aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
+    aw_windows_rust_target_root: "{{ lookup('env', 'CARGO_TARGET_DIR') | default('/tmp/detmir-adk-rust-target', true) }}"
+    aw_windows_telemetry_exe_source: "{{ aw_windows_rust_target_root }}/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe"
+    aw_windows_telemetry_exe_path: "{{ aw_windows_deploy_root }}\\windows\\aw-windows-telemetry.exe"
     aw_windows_evidence_sync_task_name: "ActivityWatch DLP Evidence Sync"
-    aw_windows_evidence_sync_interval_minutes: 5
+    aw_windows_evidence_sync_interval_minutes: 15
+    aw_windows_evidence_sync_run_as_user: "HOST-EXAMPLE\\Администратор"
     aw_windows_evidence_sync_api_url: "http://192.0.2.13:8721/api/dlp/evidence/upload"
     aw_windows_evidence_sync_script: "{{ aw_windows_state_root }}\\sync-dlp-evidence-artifacts.ps1"
     aw_windows_evidence_sync_token_path: "{{ aw_windows_state_root }}\\dlp-evidence-upload-token.txt"
@@ -37,6 +41,11 @@
       ansible.windows.win_copy:
         src: "{{ aw_repo_root }}/windows/sync-dlp-evidence-artifacts.ps1"
         dest: "{{ aw_windows_evidence_sync_script }}"
+
+    - name: Install Rust Windows telemetry binary
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_telemetry_exe_source }}"
+        dest: "{{ aw_windows_telemetry_exe_path }}"
 
     - name: Normalize DLP evidence sync script encoding
       ansible.windows.win_powershell:
@@ -76,23 +85,26 @@
         script: |
           $ErrorActionPreference = 'Stop'
           $taskName = "{{ aw_windows_evidence_sync_task_name }}"
-          $ps = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+          $telemetryExe = "{{ aw_windows_telemetry_exe_path }}"
           $args = @(
-            '-NoProfile',
-            '-ExecutionPolicy', 'Bypass',
-            '-File', '"{{ aw_windows_evidence_sync_script }}"',
-            '-EvidenceApiUrl', '"{{ aw_windows_evidence_sync_api_url }}"',
-            '-TokenPath', '"{{ aw_windows_evidence_sync_token_path }}"',
-            '-StatePath', '"{{ aw_windows_evidence_sync_state_path }}"',
-            '-LogPath', '"{{ aw_windows_evidence_sync_log_path }}"'
+            'dlp-evidence-sync',
+            '--evidence-api-url', '"{{ aw_windows_evidence_sync_api_url }}"',
+            '--token-path', '"{{ aw_windows_evidence_sync_token_path }}"',
+            '--state-path', '"{{ aw_windows_evidence_sync_state_path }}"',
+            '--log-path', '"{{ aw_windows_evidence_sync_log_path }}"'
           ) -join ' '
-          $action = New-ScheduledTaskAction -Execute $ps -Argument $args
+          $action = New-ScheduledTaskAction -Execute $telemetryExe -Argument $args
           $trigger = New-ScheduledTaskTrigger `
             -Once `
             -At ((Get-Date).AddMinutes(1)) `
             -RepetitionInterval (New-TimeSpan -Minutes {{ aw_windows_evidence_sync_interval_minutes | int }}) `
             -RepetitionDuration (New-TimeSpan -Days 3650)
-          $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+          $runAsUser = "{{ aw_windows_evidence_sync_run_as_user }}"
+          if ([string]::IsNullOrWhiteSpace($runAsUser)) {
+            $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+          } else {
+            $principal = New-ScheduledTaskPrincipal -UserId $runAsUser -LogonType Interactive -RunLevel Highest
+          }
           $settings = New-ScheduledTaskSettingsSet `
             -AllowStartIfOnBatteries `
             -StartWhenAvailable `
@@ -112,11 +124,12 @@
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = 'Stop'
-          $result = & "{{ aw_windows_evidence_sync_script }}" `
-            -EvidenceApiUrl "{{ aw_windows_evidence_sync_api_url }}" `
-            -TokenPath "{{ aw_windows_evidence_sync_token_path }}" `
-            -StatePath "{{ aw_windows_evidence_sync_state_path }}" `
-            -LogPath "{{ aw_windows_evidence_sync_log_path }}"
+          $result = & "{{ aw_windows_telemetry_exe_path }}" `
+            dlp-evidence-sync `
+            --evidence-api-url "{{ aw_windows_evidence_sync_api_url }}" `
+            --token-path "{{ aw_windows_evidence_sync_token_path }}" `
+            --state-path "{{ aw_windows_evidence_sync_state_path }}" `
+            --log-path "{{ aw_windows_evidence_sync_log_path }}"
           $result
       register: aw_windows_evidence_sync_smoke
 

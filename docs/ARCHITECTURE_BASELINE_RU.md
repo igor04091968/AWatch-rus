@@ -27,12 +27,15 @@ Future Desktop Forensics: Tauri + React + Rust core
 
 ## Исключено из roadmap
 
-Dioxus и DPD Portal исключены из архитектурного roadmap проекта.
+Экспериментальные Rust UI/prototype mirror направления исключены из
+архитектурного roadmap проекта.
 
 Это означает:
 
-- новые Dioxus/DPD crate не добавляются;
-- `/dpd/` и `/dpd/api/*` не являются частью публичного API-контракта;
+- новые crate для экспериментальных UI/prototype mirror направлений не
+  добавляются;
+- устаревшие mirror-prefix маршруты не являются частью публичного
+  API-контракта;
 - будущий UI не должен парсить HTML текущего портала;
 - новые UI-фреймворки требуют отдельного architecture decision;
 - breaking changes API требуют version bump контракта и migration window.

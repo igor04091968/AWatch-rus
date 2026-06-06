@@ -153,7 +153,7 @@ Endpoints:
 - `clickhouse-1c/ops/run_company_intelligence_api.sh`
 - `clickhouse-1c/ops/aw-1c-company-api.service`
 
-И `run_ingest_cycle.sh` теперь:
+И production writer `aw-1c-ingest-rust` теперь:
 
 1. грузит новые выгрузки;
 2. обновляет timeline/detections/cases;

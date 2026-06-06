@@ -8,6 +8,8 @@
     ansible_winrm_read_timeout_sec: 180
     aw_windows_repo_root: "{{ playbook_dir | dirname }}"
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
+    aw_windows_rust_target_root: "{{ lookup('env', 'CARGO_TARGET_DIR') | default('/tmp/detmir-adk-rust-target', true) }}"
+    aw_windows_telemetry_exe_source: "{{ aw_windows_rust_target_root }}/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe"
     aw_windows_server_scheme: "http"
     aw_windows_server_port: 5600
     aw_windows_package_version: "v0.13.2"
@@ -37,8 +39,9 @@
     aw_windows_hayabusa_auto_upload_mode: "incident"
     aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"
     aw_windows_file_1c_auto_upload_enabled: true
-    aw_windows_file_1c_auto_upload_interval_hours: 6
+    aw_windows_file_1c_auto_upload_interval_minutes: 15
     aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
+    aw_windows_file_1c_auto_upload_run_as_user: "{{ aw_windows_domain }}\\{{ aw_windows_builtin_administrator_name }}"
     aw_windows_file_1c_target_user: "igor"
     aw_windows_file_1c_registry_workbook_path: "E:\\USER1\\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx"
     aw_windows_afk_enabled_default: true
@@ -195,6 +198,11 @@
         - web-category-rules.example.json
         - dlp-policy.example.json
 
+    - name: Загрузить Rust Windows telemetry binary
+      ansible.windows.win_copy:
+        src: "{{ aw_windows_telemetry_exe_source }}"
+        dest: "{{ aw_windows_deploy_root }}\\windows\\aw-windows-telemetry.exe"
+
     - name: Нормализовать кодировку PowerShell файлов (UTF-8 BOM для Windows PowerShell)
       ansible.windows.win_powershell:
         script: |
@@ -273,8 +281,9 @@
             HayabusaAutoUploadMode = "{{ aw_windows_hayabusa_auto_upload_mode }}"
             HayabusaAutoUploadTaskName = "{{ aw_windows_hayabusa_auto_upload_task_name }}"
             File1CAutoUploadEnabled = {{ '$true' if (aw_windows_file_1c_auto_upload_enabled | bool) else '$false' }}
-            File1CAutoUploadIntervalHours = {{ aw_windows_file_1c_auto_upload_interval_hours | int }}
+            File1CAutoUploadIntervalMinutes = {{ aw_windows_file_1c_auto_upload_interval_minutes | int }}
             File1CAutoUploadTaskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
+            File1CAutoUploadRunAsUser = "{{ aw_windows_file_1c_auto_upload_run_as_user }}"
             File1CTargetHost = "{{ aw_windows_file_1c_target_host_effective }}"
             File1CTargetUser = "{{ aw_windows_file_1c_target_user }}"
             File1CRegistryWorkbookPath = "{{ aw_windows_file_1c_registry_workbook_path }}"

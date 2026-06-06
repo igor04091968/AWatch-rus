@@ -10,8 +10,7 @@ Agent: Rust
 Current Portal: Rust server-rendered HTML + HTMX
 Future Enterprise UI: React + TypeScript
 Future Desktop Forensics: Tauri + React + Rust core
-Dioxus: excluded from roadmap
-DPD Portal: excluded from roadmap
+Experimental Rust UI/prototype mirrors: excluded from roadmap
 ```
 
 ## Правила
@@ -22,7 +21,8 @@ DPD Portal: excluded from roadmap
 - Будущий React/Tauri UI не должен ломать текущий портал.
 - Agent и backend остаются Rust-first.
 - Новые UI-фреймворки не добавлять без отдельного architecture decision.
-- Dioxus и DPD Portal исключены из архитектурного roadmap проекта.
+- Экспериментальные Rust UI/prototype mirror направления не входят в
+  архитектурный roadmap проекта.
 - Будущий React/Tauri UI не должен парсить HTML текущего портала как источник
   данных.
 

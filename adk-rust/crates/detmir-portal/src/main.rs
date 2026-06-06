@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -29,7 +29,7 @@ const APP_JS: &str = include_str!("static/app.js");
 const API_CONTRACT_OPENAPI: &str = include_str!("contracts/openapi.json");
 const API_CONTRACT_TYPESCRIPT: &str = include_str!("contracts/typescript.d.ts");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
-const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(5);
+const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(120);
 const DEFAULT_DEPARTMENT_LABEL: &str = "Без подразделения";
 
 #[cfg(unix)]
@@ -1308,10 +1308,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             API_CONTRACT_TYPESCRIPT,
             "text/plain; charset=utf-8",
         ),
-        "/api/health" => respond_json(
-            request,
-            &build_health(&cached_snapshot(args, snapshot_cache)),
-        ),
+        "/api/health" => respond_json(request, &build_fast_health(snapshot_cache)),
         "/api/readiness/latest" => respond_json(request, &readiness_latest(args)),
         "/api/readiness/bundle" => respond_json(request, &readiness_bundle(args)),
         "/api/readiness/verify" => respond_json(request, &readiness_verify(args)),
@@ -1640,6 +1637,27 @@ fn cached_snapshot(args: &Cli, cache: &SnapshotCache) -> Snapshot {
         snapshot: snapshot.clone(),
     });
     snapshot
+}
+
+fn build_fast_health(cache: &SnapshotCache) -> HealthResponse {
+    match cache.try_lock() {
+        Ok(guard) => guard
+            .as_ref()
+            .map(|cached| build_health(&cached.snapshot))
+            .unwrap_or_else(lightweight_health),
+        Err(_) => lightweight_health(),
+    }
+}
+
+fn lightweight_health() -> HealthResponse {
+    let mut sources = BTreeMap::new();
+    sources.insert("portal".to_string(), true);
+    HealthResponse {
+        ok: true,
+        generated_at_utc: now(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        sources,
+    }
 }
 
 fn build_snapshot(args: &Cli) -> Snapshot {
@@ -2630,12 +2648,18 @@ fn security_events_block(summary: &SecurityEventsSummary) -> SummaryBlock {
 }
 
 fn run_shell(command: &str, timeout: Duration) -> Result<(String, String, bool)> {
+    let stdout_path = command_output_path("stdout");
+    let stderr_path = command_output_path("stderr");
+    let stdout_file =
+        File::create(&stdout_path).with_context(|| format!("create {}", stdout_path.display()))?;
+    let stderr_file =
+        File::create(&stderr_path).with_context(|| format!("create {}", stderr_path.display()))?;
     let mut shell = Command::new("/bin/sh");
     shell
         .arg("-lc")
         .arg(command)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdout(Stdio::from(stdout_file))
+        .stderr(Stdio::from(stderr_file));
     #[cfg(unix)]
     unsafe {
         shell.pre_exec(|| {
@@ -2652,19 +2676,15 @@ fn run_shell(command: &str, timeout: Duration) -> Result<(String, String, bool)>
     let started = Instant::now();
     loop {
         if let Some(status) = child.try_wait()? {
-            let mut stdout = String::new();
-            let mut stderr = String::new();
-            if let Some(mut pipe) = child.stdout.take() {
-                pipe.read_to_string(&mut stdout)?;
-            }
-            if let Some(mut pipe) = child.stderr.take() {
-                pipe.read_to_string(&mut stderr)?;
-            }
+            let stdout = read_command_output(&stdout_path)?;
+            let stderr = read_command_output(&stderr_path)?;
+            cleanup_command_output(&stdout_path, &stderr_path);
             return Ok((stdout, stderr, status.success()));
         }
         if started.elapsed() > timeout {
             kill_shell_tree(&mut child);
             let _ = child.wait();
+            cleanup_command_output(&stdout_path, &stderr_path);
             return Err(anyhow!(
                 "command timed out after {}s: {command}",
                 timeout.as_secs()
@@ -2672,6 +2692,27 @@ fn run_shell(command: &str, timeout: Duration) -> Result<(String, String, bool)>
         }
         thread::sleep(Duration::from_millis(100));
     }
+}
+
+fn command_output_path(stream: &str) -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    std::env::temp_dir().join(format!(
+        "detmir-portal-command-{}-{nanos}-{stream}.log",
+        std::process::id()
+    ))
+}
+
+fn read_command_output(path: &Path) -> Result<String> {
+    let bytes = fs::read(path).with_context(|| format!("read {}", path.display()))?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn cleanup_command_output(stdout_path: &Path, stderr_path: &Path) {
+    let _ = fs::remove_file(stdout_path);
+    let _ = fs::remove_file(stderr_path);
 }
 
 #[cfg(unix)]
@@ -3519,6 +3560,9 @@ fn build_risk_incident_candidates(
     candidates.extend(low_trust_risk_candidates(risks, snapshot));
     candidates.extend(agent_quality_candidates(snapshot, &problem_nodes_by_host));
     candidates.extend(agent_coverage_candidates(snapshot));
+    if candidates.is_empty() {
+        candidates.extend(workforce_insight_risk_candidates(snapshot, risks));
+    }
 
     candidates.sort_by(|left, right| {
         risk_incident_candidate_rank(right)
@@ -4716,6 +4760,64 @@ fn agent_coverage_candidates(snapshot: &Snapshot) -> Vec<RiskIncidentCandidate> 
             recommendation: Some(node.recommendation.clone()),
             incident_review: IncidentReviewState::default(),
             incident_review_audit: Vec::new(),
+        })
+        .collect()
+}
+
+fn workforce_insight_risk_candidates(
+    snapshot: &Snapshot,
+    risks: &[BusinessRiskItem],
+) -> Vec<RiskIncidentCandidate> {
+    let primary_risk = risks.first();
+    let department = primary_risk
+        .map(|item| item.department.clone())
+        .unwrap_or_else(|| DEFAULT_DEPARTMENT_LABEL.to_string());
+    let risk_level = primary_risk
+        .map(|item| item.risk_level.clone())
+        .unwrap_or_else(|| "MEDIUM".to_string());
+    let recommendation = primary_risk
+        .map(|item| item.recommendation.clone())
+        .unwrap_or_else(|| {
+            "Проверить первичные события ActivityWatch и причины отклонения активности.".to_string()
+        });
+    workforce_insight_items(snapshot)
+        .into_iter()
+        .filter(|item| {
+            let status = item.get("status").and_then(Value::as_str).unwrap_or("INFO");
+            !matches!(status, "OK" | "INFO")
+        })
+        .take(3)
+        .map(|item| {
+            let label = item
+                .get("label")
+                .and_then(Value::as_str)
+                .unwrap_or("Отклонение активности");
+            let value = item.get("value").and_then(Value::as_str).unwrap_or("");
+            RiskIncidentCandidate {
+                id: risk_candidate_id(
+                    "workforce-insight",
+                    &department,
+                    &format!("{label}:{value}"),
+                ),
+                department: Some(department.clone()),
+                owner: None,
+                hostname: None,
+                risk_level: Some(risk_level.clone()),
+                reason: Some(label.to_string()),
+                evidence: vec![
+                    format!("activity_signal={label}"),
+                    format!("details={value}"),
+                    format!(
+                        "security_events_24h={}",
+                        snapshot.security_events_summary.events_24h
+                    ),
+                ],
+                first_seen_utc: Some(snapshot.generated_at_utc.clone()),
+                last_seen_utc: Some(snapshot.generated_at_utc.clone()),
+                recommendation: Some(recommendation.clone()),
+                incident_review: IncidentReviewState::default(),
+                incident_review_audit: Vec::new(),
+            }
         })
         .collect()
 }
@@ -9456,6 +9558,17 @@ mod tests {
         let err = run_shell("sh -c 'sleep 5 & wait'", Duration::from_millis(200)).unwrap_err();
         assert!(started.elapsed() < Duration::from_secs(2));
         assert!(err.to_string().contains("command timed out"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_shell_does_not_block_on_background_stdout_handle() {
+        let started = Instant::now();
+        let (stdout, _, success) =
+            run_shell("sh -c 'sleep 5 & printf ok'", Duration::from_secs(2)).unwrap();
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(success);
+        assert_eq!(stdout, "ok");
     }
 
     #[test]

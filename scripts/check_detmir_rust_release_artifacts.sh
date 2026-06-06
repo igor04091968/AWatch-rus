@@ -60,6 +60,7 @@ required_bins=(
   aw-hayabusa-link-case-rust
   aw-hayabusa-from-windows-rust
   aw-hayabusa-autoprocess-rust
+  aw-1c-ingest
 )
 
 missing=0

@@ -123,6 +123,10 @@ function displayText(value) {
     .replaceAll("Grafana dashboards", "графики")
     .replaceAll("Grafana data", "данные графиков")
     .replaceAll("Grafana", "Графики")
+    .replaceAll("SECURITY_EVENTS_BACKEND", "настройка источника событий")
+    .replaceAll("CLICKHOUSE_*", "параметры источника событий")
+    .replaceAll("ClickHouse", "источник событий")
+    .replaceAll("local_fallback", "резервный локальный источник")
     .replaceAll("DetMir ActivityWatch", "Журнал активности")
     .replaceAll("AW UI", "Журнал активности")
     .replaceAll("bundle", "пакет проверки")
@@ -166,9 +170,20 @@ function displayText(value) {
     .replaceAll("daily", "день")
     .replaceAll("weekly", "неделя")
     .replaceAll("monthly", "месяц")
-    .replaceAll("OK", "OK")
-    .replaceAll("FAIL", "FAIL")
-    .replaceAll("WARN", "WARN");
+    .replace(/\bCRITICAL\b/g, "критично")
+    .replace(/\bWARNING\b/g, "требует внимания")
+    .replace(/\bUNKNOWN\b/g, "нет данных")
+    .replace(/\bDISABLED\b/g, "отключено")
+    .replace(/\bREADY\b/g, "готово")
+    .replace(/\bOPEN\b/g, "открыто")
+    .replace(/\bINFO\b/g, "информация")
+    .replace(/\bHIGH\b/g, "высокий риск")
+    .replace(/\bMEDIUM\b/g, "средний риск")
+    .replace(/\bLOW\b/g, "низкий риск")
+    .replace(/\bFAIL\b/g, "критично")
+    .replace(/\bWARN\b/g, "требует внимания")
+    .replace(/\bNO\b/g, "нет")
+    .replace(/\bOK\b/g, "в норме");
 }
 
 function ui(value) {
@@ -233,7 +248,7 @@ function setViewMode(mode) {
 function renderSummary(summary, readiness) {
   const global = document.getElementById("globalStatus");
   global.className = `status-pill ${statusClass(summary.severity)}`;
-  global.textContent = `Сбор данных ${summary.operator_ok ? "OK" : "NO"} · ${summary.severity}`;
+  global.textContent = `Сбор данных ${summary.operator_ok ? "в норме" : "нет данных"} · ${displayText(summary.severity)}`;
   const blocks = Object.entries(summary.blocks || {});
   const readinessCard = renderReadinessSummaryCard(readiness);
   document.getElementById("summary").innerHTML = readinessCard + blocks.map(([name, block]) => `
@@ -268,8 +283,8 @@ function renderReadinessSummaryCard(readiness) {
       </div>
       <div class="readiness-metrics">
         <div><span class="muted">Дата</span><strong>${escapeHtml(generated)}</strong></div>
-        <div><span class="muted">Подпись</span><strong class="${signatureOk ? "text-ok" : "text-fail"}">${signatureOk ? "OK" : "FAIL"}</strong></div>
-        <div><span class="muted">Контрольная сумма</span><strong class="${checksumOk ? "text-ok" : "text-fail"}">${checksumOk ? "OK" : "FAIL"}</strong></div>
+        <div><span class="muted">Подпись</span><strong class="${signatureOk ? "text-ok" : "text-fail"}">${signatureOk ? "подтверждена" : "не подтверждена"}</strong></div>
+        <div><span class="muted">Контрольная сумма</span><strong class="${checksumOk ? "text-ok" : "text-fail"}">${checksumOk ? "подтверждена" : "не подтверждена"}</strong></div>
       </div>
       <p class="muted small">Отпечаток ключа: <code>${escapeHtml(shortFingerprint(fingerprint))}</code></p>
       <p id="readinessVerifyStatus" class="muted small">${escapeHtml(verificationText)}</p>
@@ -774,7 +789,7 @@ function departmentRows(report) {
       total: parsed.total,
       hhmm: parsed.hhmm,
       trend,
-      risk: status === "FAIL" ? "FAIL — требуется действие" : status === "WARN" ? "WARN — требуется внимание" : "LOW — все нормально",
+      risk: status === "FAIL" ? "критично — требуется действие" : status === "WARN" ? "требует внимания" : "низкий риск — все нормально",
       reason: departmentRiskReason({ item, parsed, activity, status, trend }),
       check: departmentCheckText({ parsed, status, trend }),
     };
@@ -808,8 +823,8 @@ function executiveDashboardKpis(report) {
   return [
     metricCard("Сотрудников в работе", latest.active_users ?? findKpi(report, "Сотрудники")?.value ?? "нет данных", "OK", "активны сегодня"),
     metricCard("Средний индекс активности", Number.isFinite(average) ? `${average}%` : findKpi(report, "Индекс активности")?.value, average === null ? "UNKNOWN" : workforceIndexStatus(average), "по подразделениям"),
-    metricCard("WARN подразделений", rows.filter(row => row.status === "WARN").length, rows.some(row => row.status === "WARN") ? "WARN" : "OK", "требуется внимание"),
-    metricCard("FAIL подразделений", rows.filter(row => row.status === "FAIL").length, rows.some(row => row.status === "FAIL") ? "FAIL" : "OK", "требуется действие"),
+    metricCard("Требуют внимания", rows.filter(row => row.status === "WARN").length, rows.some(row => row.status === "WARN") ? "WARN" : "OK", "подразделения"),
+    metricCard("Критичные подразделения", rows.filter(row => row.status === "FAIL").length, rows.some(row => row.status === "FAIL") ? "FAIL" : "OK", "требуется действие"),
     metricCard("Критических рисков", criticalRisks, criticalRisks ? "FAIL" : "OK", "приоритетный разбор"),
     metricCard("Тренд недели", signedPercent(weeklyTrendPct(report)), Number(weeklyTrendPct(report)) < 0 ? "WARN" : "OK", "динамика активности"),
   ].join("");
@@ -906,7 +921,7 @@ function renderDepartmentRanking(report) {
       <span class="badge ${statusClass(row.status)}">${ui(row.status)}</span>
     </div>
   `).join("")}</div>`;
-  const emptyRows = `<div class="list compact-list"><div class="row compact-row"><strong>Нет данных</strong><span class="muted">Подразделения пока не рассчитаны.</span><span class="badge status-unknown">UNKNOWN</span></div></div>`;
+  const emptyRows = `<div class="list compact-list"><div class="row compact-row"><strong>Нет данных</strong><span class="muted">Подразделения пока не рассчитаны.</span><span class="badge status-unknown">нет данных</span></div></div>`;
   return `
     <section class="ranking-grid">
       <article class="card">
@@ -994,7 +1009,7 @@ function renderDepartmentHeatMap(report) {
               <td><strong>Нет данных</strong><small>Подразделения пока не рассчитаны.</small></td>
               <td>-</td>
               <td>-</td>
-              <td><span class="badge status-unknown">UNKNOWN</span></td>
+              <td><span class="badge status-unknown">нет данных</span></td>
               <td>-</td>
               <td><button class="small-button" data-open-investigation="true">Открыть расследование</button></td>
             </tr>
@@ -1149,7 +1164,7 @@ function renderSourceList(data) {
     <div class="row">
       <strong>${ui(name)}</strong>
       <span class="muted">${ui(source?.summary || source?.error || "нет данных")}</span>
-      <span class="badge ${statusClass(source?.status || source?.ok)}">${escapeHtml(source?.status || (source?.ok ? "OK" : "FAIL"))}</span>
+      <span class="badge ${statusClass(source?.status || source?.ok)}">${ui(source?.status || (source?.ok ? "OK" : "FAIL"))}</span>
     </div>
   `).join("")}</div>`;
 }
@@ -1243,7 +1258,7 @@ function renderOperationsErrors(data, report) {
   if (report?.security_events_summary?.fallback_used) {
     rows.push([
       "События безопасности",
-      report.security_events_summary.error || "ClickHouse недоступен",
+      report.security_events_summary.error || "Источник событий недоступен",
       "WARN",
     ]);
   }
@@ -1282,7 +1297,7 @@ function renderOperationsErrors(data, report) {
         <div class="row compact-row">
           <strong>Критичных ошибок нет</strong>
           <span class="muted">Портал не видит ошибок коллектора или проблемных рабочих мест в текущем срезе.</span>
-          <span class="badge status-ok">OK</span>
+          <span class="badge status-ok">в норме</span>
         </div>
       `}</div>
     </section>
@@ -1335,7 +1350,7 @@ function renderInvestigationPacks(candidates) {
         <div class="row compact-row">
           <strong>Пакетов нет</strong>
           <span class="muted">Нет записей, требующих выгрузки материалов.</span>
-          <span class="badge status-ok">OK</span>
+          <span class="badge status-ok">в норме</span>
         </div>
       `}</div>
     </section>
@@ -1855,7 +1870,7 @@ function renderCases(cases) {
               <tr>
                 <td>Нет дел</td>
                 <td>-</td>
-                <td><span class="badge status-ok">OK</span></td>
+                <td><span class="badge status-ok">в норме</span></td>
                 <td>-</td>
                 <td>Создайте дело из подтвержденного кандидата.</td>
                 <td>-</td>
@@ -1941,7 +1956,7 @@ function renderUebaRisk(risk) {
           <span class="muted">${ui(item.value || "")} · ${ui(item.recommendation || "")}</span>
           <span class="badge ${statusClass(item.status || item.severity)}">+${escapeHtml(item.points || 0)}</span>
         </div>
-      `).join("") : `<div class="row compact-row"><strong>Сигналы</strong><span class="muted">Существенных риск-сигналов в текущем срезе нет.</span><span class="badge status-ok">OK</span></div>`}</div>
+      `).join("") : `<div class="row compact-row"><strong>Сигналы</strong><span class="muted">Существенных риск-сигналов в текущем срезе нет.</span><span class="badge status-ok">в норме</span></div>`}</div>
     </section>
   `;
 }
@@ -2038,7 +2053,7 @@ function renderAgentQualityHistory(history, summary) {
         <span class="badge ${statusClass(status)}">${ui(status)}</span>
       </div>
       <div class="quality-decision">
-        <div><span class="muted">OK дней</span><strong>${escapeHtml(s.ok_days ?? 0)}</strong></div>
+        <div><span class="muted">Дней в норме</span><strong>${escapeHtml(s.ok_days ?? 0)}</strong></div>
         <div><span class="muted">Проблемных дней</span><strong>${escapeHtml(unstableDays)}</strong></div>
         <div><span class="muted">Показатели подтверждены</span><strong>${escapeHtml(s.kpi_accepted_pct ?? 0)}%</strong></div>
       </div>
@@ -2051,7 +2066,7 @@ function renderAgentQualityHistory(history, summary) {
             <span class="muted">источник=${ui(item.source || "unknown")} · показатели=${item.kpi_accepted ? "да" : "нет"}${item.collector_error ? ` · ${ui(item.collector_error)}` : ""}</span>
             <span class="badge ${statusClass(item.status)}">${ui(item.status || "UNKNOWN")}</span>
           </div>
-        `).join("") : `<div class="row compact-row"><strong>История</strong><span class="muted">История качества агента за период отсутствует.</span><span class="badge status-unknown">UNKNOWN</span></div>`}</div>
+        `).join("") : `<div class="row compact-row"><strong>История</strong><span class="muted">История качества агента за период отсутствует.</span><span class="badge status-unknown">нет данных</span></div>`}</div>
       </details>
     </section>
   `;
@@ -2076,7 +2091,7 @@ function renderAgentQualityNodes(nodes, summary) {
       </div>
       <div class="quality-decision">
         <div><span class="muted">Всего узлов</span><strong>${escapeHtml(s.total_nodes ?? 0)}</strong></div>
-        <div><span class="muted">OK</span><strong>${escapeHtml(s.ok_nodes ?? 0)}</strong></div>
+        <div><span class="muted">В норме</span><strong>${escapeHtml(s.ok_nodes ?? 0)}</strong></div>
         <div><span class="muted">Проблемных</span><strong>${escapeHtml(Number(s.degraded_nodes || 0) + Number(s.unknown_nodes || 0))}</strong></div>
         <div><span class="muted">Показатели подтверждены</span><strong>${escapeHtml(s.accepted_kpi_nodes_pct ?? 0)}%</strong></div>
       </div>
@@ -2106,7 +2121,7 @@ function renderAgentQualityNodes(nodes, summary) {
             `).join("") : `
               <tr>
                 <td>Нет данных</td>
-                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td><span class="badge status-unknown">нет данных</span></td>
                 <td>unknown</td>
                 <td>-</td>
                 <td>нет</td>
@@ -2207,7 +2222,7 @@ function renderSecurityEventsSummary(summary, options = {}) {
       : "Агрегированная сводка без сырых журналов и без автоматического создания инцидентов.";
   const top = Array.isArray(s.top_departments) ? s.top_departments.slice(0, 5) : [];
   const warning = fallback
-    ? `<div class="quality-warning">События безопасности временно недоступны. Проверьте ClickHouse и переменные SECURITY_EVENTS_BACKEND/CLICKHOUSE_*.</div>`
+    ? `<div class="quality-warning">События безопасности временно недоступны. Проверьте подключение источника событий.</div>`
     : "";
   if (options.compact) {
     return `
@@ -2247,7 +2262,7 @@ function renderSecurityEventsSummary(summary, options = {}) {
       </div>
       ${warning}
       ${s.error ? `<p class="muted small">Причина: ${ui(s.error)}</p>` : ""}
-      ${disabled ? `<p class="muted small">Для включения задайте SECURITY_EVENTS_BACKEND=clickhouse и параметры CLICKHOUSE_*.</p>` : ""}
+      ${disabled ? `<p class="muted small">Источник событий безопасности не включен в текущем режиме.</p>` : ""}
       ${options.compact ? "" : `
         <div class="table-scroll">
           <table class="data-table">
@@ -2313,7 +2328,7 @@ function renderBusinessRisk(items) {
             `).join("") : `
               <tr>
                 <td>Нет данных</td>
-                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td><span class="badge status-unknown">нет данных</span></td>
                 <td>нет данных</td>
                 <td>0</td>
                 <td>Дождаться расчета подразделений.</td>
@@ -2370,10 +2385,10 @@ function renderRiskHeatmap(items) {
             `).join("") : `
               <tr>
                 <td>Нет данных</td>
-                <td>UNKNOWN</td>
-                <td>UNKNOWN</td>
-                <td>UNKNOWN</td>
-                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>нет данных</td>
+                <td>нет данных</td>
+                <td>нет данных</td>
+                <td><span class="badge status-unknown">нет данных</span></td>
                 <td>0</td>
                 <td>0</td>
                 <td>-</td>
@@ -2454,9 +2469,9 @@ function renderSecurityCorrelation(items) {
             `).join("") : `
               <tr>
                 <td>Нет данных</td>
-                <td>UNKNOWN</td>
-                <td>UNKNOWN</td>
-                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td>нет данных</td>
+                <td>нет данных</td>
+                <td><span class="badge status-unknown">нет данных</span></td>
                 <td>проверить 0 · расследования 0</td>
                 <td>0</td>
                 <td>0/100</td>
@@ -2529,7 +2544,7 @@ function renderBusinessRiskTimeline(history, summary) {
               <tr>
                 <td>-</td>
                 <td>История не накоплена</td>
-                <td><span class="badge status-unknown">UNKNOWN</span></td>
+                <td><span class="badge status-unknown">нет данных</span></td>
                 <td>Нужно дождаться daily history.</td>
               </tr>
             `}
@@ -2583,7 +2598,7 @@ function renderRiskIncidentCandidates(items) {
                 <td>-</td>
                 <td>Нет кандидатов</td>
                 <td>-</td>
-                <td><span class="badge status-ok">OK</span></td>
+                <td><span class="badge status-ok">в норме</span></td>
                 <td><span class="badge status-unknown">NEW</span></td>
                 <td>очередь проверки пуста</td>
                 <td>Действий не требуется.</td>
@@ -2645,6 +2660,7 @@ function renderCandidateReviewActions(item) {
     <div class="button-row compact-actions">${actions.map(([status, label]) => `
       <button class="small-button" data-review-status="${escapeHtml(status)}" data-candidate-id="${escapeHtml(id)}">${ui(label)}</button>
     `).join("")}</div>
+    <button class="small-button" data-open-investigation="true">Открыть расследование</button>
     <a class="small-button investigation-pack-button" href="${escapeHtml(packUrl)}" download>Скачать пакет расследования</a>
     ${createCase}
   `;
@@ -2753,8 +2769,8 @@ function settingRows(report) {
   return [
     ["Период расчета", period.label, period.key === "today" ? "оперативный дневной срез" : `${period.days} календарных дней`],
     ["Рабочий день", `${workdayHours} ч`, `роль: ${policy.role_label || activeRole.label || policy.default_role || "default"}`],
-    ["Порог WARN", ">= 15 баллов", "любой ненормальный риск попадает в очередь проверки"],
-    ["Порог FAIL", ">= 70 баллов", "высокий риск требует приоритетного разбора"],
+    ["Порог внимания", ">= 15 баллов", "любой ненормальный риск попадает в очередь проверки"],
+    ["Порог критического риска", ">= 70 баллов", "высокий риск требует приоритетного разбора"],
     ["Источник правил", policy.configured ? basename(policy.path) : "встроенные правила", risk.policy_configured ? `правила оценки риска: ${basename(risk.policy_path)}` : "правила оценки риска: встроенная модель"],
     ["Дата последнего пересчета", report?.generated_at_utc || "-", `версия политики: ${risk.policy_version || "ueba-rule-v1"}`],
   ];
@@ -2786,24 +2802,27 @@ async function refresh(options = {}) {
   const content = document.getElementById("content");
   const background = Boolean(options.background);
   const stage = options.stage || "Получение данных";
+  const progress = (status, label, value) => {
+    if (!background) setLoadStatus(status, label, value);
+  };
   try {
-    setLoadStatus("LOADING", stage, background ? 35 : 8);
+    progress("LOADING", stage, 8);
     if (!background && content) content.innerHTML = renderLoadingContent(stage);
     if (!state.links) {
-      setLoadStatus("LOADING", "Получение данных", 18);
+      progress("LOADING", "Получение данных", 18);
       state.links = await loadJson("/links");
     }
-    setLoadStatus("LOADING", "Расчёт показателей", 34);
+    progress("LOADING", "Расчёт показателей", 34);
     const summary = await loadJson("/summary");
-    setLoadStatus("LOADING", "Расчёт показателей", 46);
+    progress("LOADING", "Расчёт показателей", 46);
     state.readiness = {
       bundle: await loadJson("/readiness/bundle").catch(error => ({ ok: false, error: error.message })),
       verify: state.readiness?.verify || null
     };
     renderSummary(summary, state.readiness);
-    setLoadStatus("LOADING", "Формирование главного вывода", 68);
+    progress("LOADING", "Формирование главного вывода", 68);
     const tabResult = await loadCurrentTab();
-    setLoadStatus("LOADING", "Подготовка разделов", 88);
+    progress("LOADING", "Подготовка разделов", 88);
     if (!hasTabData(state.tab, tabResult)) {
       setLoadStatus("EMPTY", "Данные отсутствуют", 100);
       if (content) {
@@ -3031,7 +3050,7 @@ async function verifyReadinessBundle(button) {
   };
   const status = document.getElementById("readinessVerifyStatus");
   if (status) {
-    status.textContent = `Проверено: контрольная сумма ${verify.checksum_verified ? "OK" : "FAIL"} · подпись ${verify.signature_verified ? "OK" : "FAIL"}`;
+    status.textContent = `Проверено: контрольная сумма ${verify.checksum_verified ? "подтверждена" : "не подтверждена"} · подпись ${verify.signature_verified ? "подтверждена" : "не подтверждена"}`;
   }
   button.disabled = false;
   button.textContent = "Проверить пакет";

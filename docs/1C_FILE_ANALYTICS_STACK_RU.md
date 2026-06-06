@@ -58,11 +58,11 @@ Windows file 1C host (<WINDOWS_HOST>)
   ├─ file-base busy markers
   └─ host telemetry
           ↓
-export-upload-file-1c-telemetry.ps1
+aw-windows-telemetry.exe file1c-upload
           ↓  scp
 <GATEWAY_HOST> /opt/activitywatch/clickhouse-1c/landing/*
           ↓
-run_ingest_cycle.sh
+aw-1c-ingest-rust
   ├─ raw tables
   ├─ core tables
   ├─ entity_timeline
@@ -76,8 +76,9 @@ Grafana <GRAFANA_HOST>
 
 Контур считается рабочим, если одновременно выполняется всё:
 
-1. Windows scheduled task `ActivityWatch File1C Upload` запускается по расписанию.
-2. На `<GATEWAY_HOST>` работает `aw-1c-ingest.timer`.
+1. Windows scheduled task `ActivityWatch File1C Upload` запускается раз в 15 минут.
+2. На `<GATEWAY_HOST>` работает `aw-1c-ingest.timer`; цикл сбора и записи в
+   ClickHouse выполняется раз в 15 минут.
 3. На `<GATEWAY_HOST>` работает `aw-1c-proofcheck.timer`.
 4. `ClickHouse` содержит живые строки в:
    - `documents`
@@ -89,11 +90,17 @@ Grafana <GRAFANA_HOST>
    - `cases`
 5. В `Grafana` на `<GRAFANA_HOST>` dashboards открываются и смотрят в datasource `clickhouse-1c`.
 
+Скриншоты не входят в file-1C контур. `ActivityWatch File1C Upload` передает
+только метаданные файловых баз, журналов, audit/host JSONL и registry workbook.
+PNG/скриншоты при работе с 1C не копируются в ClickHouse landing и не должны
+синхронизироваться как DLP evidence.
+
 ## 4. Каталоги и артефакты
 
 ### 4.1 На Windows `<WINDOWS_HOST>`
 
 - `C:\ProgramData\AWatch-rus\deployment-config.json`
+- `C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe`
 - `C:\ProgramData\AWatch-rus\export-upload-file-1c-telemetry.ps1`
 - `C:\ProgramData\AWatch-rus\logs\file1c-telemetry.log`
 - `C:\ProgramData\AWatch-rus\ssh\awops_ed25519`
@@ -112,6 +119,7 @@ Grafana <GRAFANA_HOST>
 - runtime:
   - `/opt/activitywatch/clickhouse-1c/.env`
   - `/opt/activitywatch/clickhouse-1c/etl/config.yml`
+  - `/usr/local/bin/aw-1c-ingest-rust`
   - `/opt/activitywatch/clickhouse-1c/.venv`
 
 ### 4.3 systemd units на `<GATEWAY_HOST>`
@@ -142,7 +150,8 @@ ansible-playbook -i <PROJECT_ROOT>/ansible/inventory.ini \
 - раскладывает `clickhouse-1c` в `/opt/activitywatch/clickhouse-1c`;
 - поднимает `ClickHouse`;
 - создаёт `.env` и `etl/config.yml`;
-- включает `aw-1c-ingest.timer`;
+- устанавливает Rust-бинарник `aw-1c-ingest-rust`;
+- включает `aw-1c-ingest.timer` с периодом 15 минут;
 - включает `aw-1c-proofcheck.timer`.
 
 ### 5.2 Windows uploader на `<WINDOWS_HOST>`
@@ -160,9 +169,11 @@ ansible-playbook -i <PROJECT_ROOT>/ansible/inventory.ini \
 
 Что делает:
 
-- копирует `export-upload-file-1c-telemetry.ps1`;
+- копирует Rust-бинарник `aw-windows-telemetry.exe`;
+- оставляет `export-upload-file-1c-telemetry.ps1` как legacy fallback;
 - обновляет `deployment-config.json`;
-- создаёт/обновляет scheduled task `ActivityWatch File1C Upload`.
+- создаёт/обновляет scheduled task `ActivityWatch File1C Upload` на запуск
+  `aw-windows-telemetry.exe file1c-upload`.
 
 ### 5.3 Production Grafana на `<GRAFANA_HOST>`
 
@@ -186,21 +197,30 @@ Grafana уже должна содержать:
 
 ### 6.1 Почему он нужен
 
-Создание file-1C scheduled task через `schtasks` по умолчанию использует `SYSTEM`.
-
-Для этой конкретной задачи production-схема должна использовать **рабочий principal**, а не `SYSTEM`.
+Для этой конкретной задачи production-схема должна использовать **рабочий
+interactive principal**, а не `SYSTEM`, потому что на текущем Windows-хосте
+SYSTEM-запуск внешних процессов нестабилен.
 
 Проверенная рабочая учётка:
 
 - `HOST-EXAMPLE\Администратор`
 
-### 6.2 Команда переключения principal
+### 6.2 Проверка scheduled task
 
 На `<WINDOWS_HOST>`:
 
-```cmd
-schtasks /Change /TN "\ActivityWatch File1C Upload" /RU "HOST-EXAMPLE\Администратор" /RP "<LOCAL_ADMIN_PASSWORD>"
+```powershell
+$task = Get-ScheduledTask -TaskName "ActivityWatch File1C Upload"
+$task.Actions[0].Execute
+$task.Actions[0].Arguments
+$task.Principal.UserId
 ```
+
+Ожидаемо:
+
+- `Execute`: `C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe`
+- `Arguments`: `file1c-upload --config-path "C:\ProgramData\AWatch-rus\deployment-config.json"`
+- `Principal`: `Администратор` / `HOST-EXAMPLE\Администратор`
 
 ### 6.3 Проверка
 
@@ -237,7 +257,7 @@ Get-Content -Tail 80 C:\ProgramData\AWatch-rus\logs\file1c-telemetry.log
 ### 7.2 Backend ingestion
 
 ```bash
-AW_1C_ROOT=/opt/activitywatch/clickhouse-1c /opt/activitywatch/clickhouse-1c/ops/run_ingest_cycle.sh
+AW_1C_ROOT=/opt/activitywatch/clickhouse-1c /usr/local/bin/aw-1c-ingest-rust --root /opt/activitywatch/clickhouse-1c
 ```
 
 ### 7.3 Freshness proof
@@ -392,7 +412,7 @@ docker ps --format '{{.Names}}' | rg aw-rus-1c-clickhouse
 3. Запустить exporter вручную:
 
 ```powershell
-& "C:\ProgramData\AWatch-rus\export-upload-file-1c-telemetry.ps1" -ConfigPath "C:\ProgramData\AWatch-rus\deployment-config.json"
+& "C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe" file1c-upload --config-path "C:\ProgramData\AWatch-rus\deployment-config.json"
 ```
 
 ### 12.2 Backend сторона
@@ -402,12 +422,125 @@ docker ps --format '{{.Names}}' | rg aw-rus-1c-clickhouse
 3. Запустить ingest вручную:
 
 ```bash
-AW_1C_ROOT=/opt/activitywatch/clickhouse-1c /opt/activitywatch/clickhouse-1c/ops/run_ingest_cycle.sh
+AW_1C_ROOT=/opt/activitywatch/clickhouse-1c /usr/local/bin/aw-1c-ingest-rust --root /opt/activitywatch/clickhouse-1c
 ```
 
 4. Проверить freshness.
 
-## 13. Безопасность
+## 13. Ручное изменение параметров
+
+Использовать этот раздел, если нужно временно изменить production-параметры
+без полного redeploy. После ручного изменения желательно синхронизировать те же
+значения в Ansible vars, иначе следующий полный deploy может вернуть прежние
+настройки.
+
+### 13.1 Изменить период Windows file-1C upload
+
+На Windows/RDP host в elevated PowerShell:
+
+```powershell
+$taskName = "ActivityWatch File1C Upload"
+$minutes = 15
+
+$configPath = "C:\ProgramData\AWatch-rus\deployment-config.json"
+$config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
+$config.analytics.file1cAutomation.intervalMinutes = $minutes
+$config | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $configPath -Encoding UTF8
+
+$task = Get-ScheduledTask -TaskName $taskName
+$trigger = New-ScheduledTaskTrigger -Once -At ((Get-Date).Date) `
+  -RepetitionInterval (New-TimeSpan -Minutes $minutes) `
+  -RepetitionDuration (New-TimeSpan -Days 3650)
+
+Set-ScheduledTask -TaskName $taskName `
+  -Action $task.Actions `
+  -Trigger $trigger `
+  -Principal $task.Principal `
+  -Settings $task.Settings
+```
+
+Проверить:
+
+```powershell
+Get-ScheduledTaskInfo -TaskName "ActivityWatch File1C Upload"
+(Get-ScheduledTask -TaskName "ActivityWatch File1C Upload").Actions
+```
+
+### 13.2 Изменить параметры file-1C upload
+
+Основной файл:
+
+```text
+C:\ProgramData\AWatch-rus\deployment-config.json
+```
+
+Ключевые поля:
+
+```json
+{
+  "analytics": {
+    "file1cAutomation": {
+      "intervalMinutes": 15,
+      "targetHost": "<GATEWAY_HOST>",
+      "targetUser": "igor",
+      "remoteRoot": "/opt/activitywatch/clickhouse-1c/landing",
+      "remoteKeyPath": "C:\\ProgramData\\AWatch-rus\\ssh\\awops_ed25519",
+      "registryWorkbookPath": "E:\\USER1\\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx"
+    }
+  }
+}
+```
+
+Smoke-run после изменения:
+
+```powershell
+& "C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe" file1c-upload --config-path "C:\ProgramData\AWatch-rus\deployment-config.json"
+Get-Content -LiteralPath "C:\ProgramData\AWatch-rus\logs\file1c-telemetry.log" -Tail 40 -Encoding UTF8
+```
+
+### 13.3 Изменить период server-side ingest
+
+На `<GATEWAY_HOST>`:
+
+```bash
+sudo mkdir -p /etc/systemd/system/aw-1c-ingest.timer.d
+
+sudo tee /etc/systemd/system/aw-1c-ingest.timer.d/override.conf >/dev/null <<'EOF'
+[Timer]
+OnUnitActiveSec=
+OnUnitActiveSec=15min
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl restart aw-1c-ingest.timer
+systemctl list-timers aw-1c-ingest.timer
+```
+
+### 13.4 Изменить защитную задержку ingest
+
+Файл на `<GATEWAY_HOST>`:
+
+```bash
+sudo nano /opt/activitywatch/clickhouse-1c/etl/config.yml
+```
+
+Параметр:
+
+```yaml
+min_file_age_seconds: 180
+```
+
+Нормальный диапазон: `60-180` секунд. Не ставить слишком низко: ingest может
+прочитать файл во время SCP-загрузки.
+
+Проверить:
+
+```bash
+sudo systemctl start aw-1c-ingest.service
+sudo journalctl -u aw-1c-ingest.service -n 50 --no-pager
+```
+
+## 14. Безопасность
 
 - Не хранить пароль администратора Windows в git.
 - Не хранить секреты в docs.
@@ -415,11 +548,11 @@ AW_1C_ROOT=/opt/activitywatch/clickhouse-1c /opt/activitywatch/clickhouse-1c/ops
 - Не давать AI write-back в 1С.
 - Не менять `1Cv8.1CD`.
 
-## 14. Связанные файлы
+## 15. Связанные файлы
 
 - [clickhouse-1c/README.md](<PROJECT_ROOT>/clickhouse-1c/README.md)
-- [clickhouse-1c/etl/load_1c_exports.py](<PROJECT_ROOT>/clickhouse-1c/etl/load_1c_exports.py)
-- [clickhouse-1c/ops/run_ingest_cycle.sh](<PROJECT_ROOT>/clickhouse-1c/ops/run_ingest_cycle.sh)
+- [adk-rust/crates/aw-1c-ingest](<PROJECT_ROOT>/adk-rust/crates/aw-1c-ingest)
+- [clickhouse-1c/ops/run_ingest_cycle.sh](<PROJECT_ROOT>/clickhouse-1c/ops/run_ingest_cycle.sh) - legacy rollback path
 - [clickhouse-1c/ops/check_ingest_freshness.sh](<PROJECT_ROOT>/clickhouse-1c/ops/check_ingest_freshness.sh)
 - [ansible/deploy_file_1c_analytics.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_analytics.yml)
 - [ansible/deploy_file_1c_windows_telemetry.yml](<PROJECT_ROOT>/ansible/deploy_file_1c_windows_telemetry.yml)

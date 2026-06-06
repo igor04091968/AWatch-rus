@@ -32,6 +32,9 @@ Python в репозитории остается для вспомогател�
 runtime, OCR/content-analysis, 1C/AI/ETL integration и MCP/dev helpers. Эти
 части не являются ядром Rust-first runtime.
 
+Портальный слой зафиксирован как Rust server-rendered HTML + HTMX с JSON API,
+OpenAPI и TypeScript declarations для будущих React/Tauri-клиентов.
+
 ## Что видит оператор
 
 - Работал ли пользователь за компьютером или в удаленной сессии.

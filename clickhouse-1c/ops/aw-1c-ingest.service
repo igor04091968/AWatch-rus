@@ -1,5 +1,5 @@
 [Unit]
-Description=AW-rus file-1C ingest cycle
+Description=AW-rus file-1C ingest cycle (Rust)
 After=docker.service
 Requires=docker.service
 
@@ -7,7 +7,7 @@ Requires=docker.service
 Type=oneshot
 WorkingDirectory=/opt/activitywatch/clickhouse-1c
 Environment=AW_1C_ROOT=/opt/activitywatch/clickhouse-1c
-ExecStart=/opt/activitywatch/clickhouse-1c/ops/run_ingest_cycle.sh
+ExecStart=/usr/local/bin/aw-1c-ingest-rust --root /opt/activitywatch/clickhouse-1c
 TimeoutStartSec=45min
 User=root
 Group=root

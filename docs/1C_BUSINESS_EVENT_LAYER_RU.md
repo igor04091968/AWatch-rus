@@ -108,7 +108,7 @@
 
 1. Внешний extractor читает только безопасные read-only источники.
 2. Формирует `jsonl/csv` в landing-каталоги.
-3. `etl/load_1c_exports.py` грузит данные в raw/core ClickHouse tables.
+3. `aw-1c-ingest-rust` грузит данные в raw/core ClickHouse tables.
 4. Detection/AI слой работает только с ClickHouse.
 
 То есть LLM и manager pages не ходят в 1С напрямую.
@@ -179,7 +179,7 @@
 - ETL support:
   - `landing/business_events`
   - `landing/document_changes`
-  - dataset mapping в `etl/load_1c_exports.py`
+  - dataset mapping в `aw-1c-ingest-rust`
 - built-in normalizer:
   - `etl/build_business_event_exports.py`
   - собирает canonical events из существующих read-only выгрузок
@@ -191,7 +191,7 @@
   - забирает `reglog` через `get_event_log`
   - пишет в те же `landing/*`, которые уже понимает loader
 - ingest wiring:
-  - normalizer запускается перед `load_1c_exports.py`
+  - normalizer встроен в production writer `aw-1c-ingest-rust`
 - timeline/detection wiring:
   - `business_events` и `document_change_events` уже входят в
     `entity_timeline`

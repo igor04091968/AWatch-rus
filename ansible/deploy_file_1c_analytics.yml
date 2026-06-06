@@ -6,6 +6,7 @@
 
   vars:
     aw_file_1c_repo_root: "{{ playbook_dir | dirname }}"
+    aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_file_1c_repo_root + '/adk-rust/target', true)) + '/release' }}"
     aw_file_1c_release_root: /opt/activitywatch/releases
     aw_file_1c_release_dir: "{{ aw_file_1c_release_root }}/clickhouse-1c"
     aw_file_1c_root: /opt/activitywatch/clickhouse-1c
@@ -229,6 +230,26 @@
         - 03_views.sql
         - 04_company_intelligence.sql
         - 05_financial_reporting.sql
+
+    - name: Проверить локальный Rust binary aw-1c-ingest
+      ansible.builtin.stat:
+        path: "{{ aw_rust_release_dir }}/aw-1c-ingest"
+      delegate_to: localhost
+      become: false
+      register: aw_file_1c_ingest_binary
+
+    - name: Остановить deploy без Rust binary aw-1c-ingest
+      ansible.builtin.fail:
+        msg: "Missing {{ aw_rust_release_dir }}/aw-1c-ingest. Build with cargo build --release -p aw-1c-ingest."
+      when: not (aw_file_1c_ingest_binary.stat.exists | default(false))
+
+    - name: Установить Rust binary aw-1c-ingest
+      ansible.builtin.copy:
+        src: "{{ aw_rust_release_dir }}/aw-1c-ingest"
+        dest: /usr/local/bin/aw-1c-ingest-rust
+        owner: root
+        group: root
+        mode: "0755"
 
     - name: Установить systemd unit aw-1c-ingest.service
       ansible.builtin.copy:

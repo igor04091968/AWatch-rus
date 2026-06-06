@@ -23,22 +23,27 @@ namespace AWatchRus
             Directory.CreateDirectory(Path.GetDirectoryName(options.LogPath));
             File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " service starting" + Environment.NewLine);
 
-            var psi = new ProcessStartInfo
-            {
-                FileName = options.PowerShellPath,
-                Arguments = string.Format(
+            var fileName = string.IsNullOrWhiteSpace(options.ExecPath) ? options.PowerShellPath : options.ExecPath;
+            var arguments = string.IsNullOrWhiteSpace(options.ExecPath)
+                ? string.Format(
                     "-NoProfile -ExecutionPolicy Bypass -File \"{0}\" -ConfigPath \"{1}\" -Mode {2} -LoopSeconds {3}",
                     options.ScriptPath,
                     options.ConfigPath,
                     options.Mode,
-                    options.LoopSeconds),
+                    options.LoopSeconds)
+                : options.ExecArgs;
+
+            var psi = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = false,
                 RedirectStandardError = false,
             };
             child = Process.Start(psi);
-            File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " child pid=" + child.Id + Environment.NewLine);
+            File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " child pid=" + child.Id + " exec=" + fileName + Environment.NewLine);
         }
 
         protected override void OnStop()
@@ -84,6 +89,8 @@ namespace AWatchRus
         public string Mode = "shadow";
         public int LoopSeconds = 60;
         public string LogPath = @"C:\ProgramData\AWatch-rus\logs\collector-guard-service.log";
+        public string ExecPath = null;
+        public string ExecArgs = null;
     }
 
     internal static class Program
@@ -115,6 +122,8 @@ namespace AWatchRus
                     if (int.TryParse(value, out parsed)) options.LoopSeconds = parsed;
                 }
                 else if (key == "--log") options.LogPath = value;
+                else if (key == "--exec") options.ExecPath = value;
+                else if (key == "--args") options.ExecArgs = value;
                 i++;
             }
             return options;

@@ -245,7 +245,10 @@
 - SHA-256 validation;
 - atomic write в evidence storage;
 - audit records для upload/view/download;
-- Windows scheduled task `ActivityWatch DLP Evidence Sync` каждые 5 минут;
+- Windows scheduled task `ActivityWatch DLP Evidence Sync` каждые 15 минут
+  через Rust-бинарник `aw-windows-telemetry.exe dlp-evidence-sync`; копируются
+  только DLP incident screenshots, 1C/обычные PNG из `incident-artifacts`
+  игнорируются;
 - external Playwright smoke для портала/evidence/Grafana routes;
 - Grafana актуальность и datasource health checks;
 - rollback-critical backups;
