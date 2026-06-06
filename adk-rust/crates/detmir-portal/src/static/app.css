@@ -81,12 +81,14 @@ body.security-mode {
 body.security-mode .small-button,
 body.security-mode a.button,
 body.security-mode .tab,
+body.security-mode .nav-link,
 body.security-mode .control-strip select {
   background: #111827;
   color: var(--ink);
 }
 
-body.security-mode .tab.is-active {
+body.security-mode .tab.is-active,
+body.security-mode .nav-link.is-active {
   background: #0f2a3a;
   color: var(--link);
 }
@@ -219,7 +221,8 @@ h1 {
   gap: 6px;
 }
 
-.tab {
+.tab,
+.nav-link {
   width: 100%;
   border: 1px solid transparent;
   background: transparent;
@@ -229,36 +232,26 @@ h1 {
   font: inherit;
   font-weight: 700;
   text-align: left;
+}
+
+.tab {
   cursor: pointer;
 }
 
-.tab.is-active {
+.nav-link {
+  display: block;
+  text-decoration: none;
+}
+
+.tab.is-active,
+.nav-link.is-active {
   border-color: rgba(37, 99, 235, 0.7);
   color: #ffffff;
   background: #1d4ed8;
 }
 
-.tab:hover {
-  background: rgba(148, 163, 184, 0.14);
-  color: #ffffff;
-}
-
-.nav-link {
-  display: block;
-  width: 100%;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #cbd5e1;
-  border-radius: 8px;
-  padding: 11px 12px;
-  font: inherit;
-  font-weight: 700;
-  text-align: left;
-  text-decoration: none;
-}
-
-.nav-link:hover,
-.nav-link.is-active {
+.tab:hover,
+.nav-link:hover {
   background: rgba(148, 163, 184, 0.14);
   color: #ffffff;
 }

@@ -284,3 +284,19 @@ node scripts/detmir-portal-tabs-smoke.mjs
 ```
 
 Тест проверяет все вкладки, настройки только для чтения и переход от риска к расследованию.
+
+Проверка страницы архитектуры и CSS:
+
+```bash
+DETMIR_PORTAL_SMOKE_URL=http://127.0.0.1:8720/portal/ node scripts/detmir-portal-tabs-smoke.mjs
+curl -fsS http://127.0.0.1:8720/portal/architecture | grep -E 'Rust Agent|PowerShell Provider|implemented|planned|future'
+rg -n '[0-9]+ (px|fr|rem|em|%)' adk-rust/crates/detmir-portal/src/static/app.css || true
+```
+
+Ожидаемый результат:
+
+- `/portal/architecture` возвращает `200`;
+- страница содержит `Rust Agent`, `PowerShell Provider`, `implemented`,
+  `planned`, `future`;
+- команда `rg` не находит разорванные CSS-единицы вида `1 px`, `8 px`,
+  `1 fr`.

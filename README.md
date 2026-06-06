@@ -100,7 +100,8 @@ hostname, логинов, сотрудников, подразделений з�
 [безопасность](docs/screenshots/03-security-view.png),
 [эксплуатация](docs/screenshots/04-operations-view.png),
 [пакет расследования](docs/screenshots/05-investigation-pack.png),
-[итоговый отчет](docs/screenshots/06-markdown-report.png).
+[итоговый отчет](docs/screenshots/06-markdown-report.png),
+[архитектура продукта](docs/screenshots/07-product-architecture.png).
 
 ### Главный вывод
 
@@ -143,6 +144,14 @@ hostname, логинов, сотрудников, подразделений з�
 
 Markdown-отчет собирает главный вывод, риски подразделений, материалы
 расследований и рекомендации в формате, удобном для передачи руководителю.
+
+### Архитектура продукта
+
+![Архитектура продукта](docs/screenshots/07-product-architecture.png)
+
+Страница `/portal/architecture` показывает текущие компоненты, planned
+extensions и future-направления без создания новых API или фиктивных
+collectors.
 
 ## Если дашборд пустой
 

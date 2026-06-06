@@ -26,6 +26,7 @@
 - [Представление эксплуатации](../screenshots/04-operations-view.png)
 - [Пакет расследования](../screenshots/05-investigation-pack.png)
 - [Итоговый отчет](../screenshots/06-markdown-report.png)
+- [Архитектура продукта](../screenshots/07-product-architecture.png)
 
 ## Простая расшифровка
 
