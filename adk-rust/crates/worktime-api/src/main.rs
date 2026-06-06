@@ -2118,26 +2118,9 @@ fn build_rollups(rows: &[Value], actions: &[Value], field: &str) -> Vec<Value> {
             .filter(|s| !s.is_empty())
             .unwrap_or("unassigned")
             .to_string();
-        let group = groups.entry(name.clone()).or_insert_with(|| {
-            let mut g = Map::new();
-            g.insert("name".into(), json!(name));
-            for key in [
-                "users_count",
-                "active_users",
-                "inactive_users",
-                "below_target_users",
-                "workday_total_active_seconds",
-                "actions_count",
-                "critical_actions_count",
-                "high_actions_count",
-                "medium_actions_count",
-                "low_actions_count",
-            ] {
-                g.insert(key.into(), json!(0));
-            }
-            g.insert("users".into(), json!([]));
-            g
-        });
+        let Some(group) = groups.get_mut(&name) else {
+            continue;
+        };
         inc(group, "actions_count", 1);
         let key = match action.get("priority").and_then(Value::as_str).unwrap_or("") {
             "critical" => "critical_actions_count",
@@ -2178,6 +2161,12 @@ fn inc(map: &mut Map<String, Value>, key: &str, amount: i64) {
 fn compact_rollup_points(rollups: &[Value]) -> Vec<Value> {
     rollups
         .iter()
+        .filter(|item| {
+            item.get("users_count")
+                .and_then(Value::as_i64)
+                .unwrap_or(0)
+                > 0
+        })
         .map(|item| {
             json!({
                 "name": item.get("name").cloned().unwrap_or(json!("")),
@@ -2405,6 +2394,10 @@ fn add_rollup_history_insights(
             continue;
         };
         for item in items {
+            let users = item.get("users_count").and_then(Value::as_i64).unwrap_or(0);
+            if users <= 0 {
+                continue;
+            }
             let Some(name) = item.get("name").and_then(Value::as_str) else {
                 continue;
             };
@@ -2909,7 +2902,20 @@ fn history_component(value: &str) -> String {
 
 fn load_management_history_point(path: &Path) -> Option<Value> {
     let payload: Value = serde_json::from_slice(&fs::read(path).ok()?).ok()?;
-    payload.get("point").cloned()
+    payload.get("point").cloned().map(sanitize_trend_point)
+}
+
+fn sanitize_trend_point(mut point: Value) -> Value {
+    let Some(object) = point.as_object_mut() else {
+        return point;
+    };
+    for key in ["department_rollups", "owner_rollups"] {
+        let Some(items) = object.get(key).and_then(Value::as_array) else {
+            continue;
+        };
+        object.insert(key.to_string(), json!(compact_rollup_points(items)));
+    }
+    point
 }
 
 fn today_csv(rows: &[Value]) -> String {
@@ -3359,6 +3365,116 @@ mod tests {
                 .iter()
                 .any(|item| item["code"] == "portfolio_activity_falling")
         );
+    }
+
+    #[test]
+    fn management_history_ignores_action_only_rollups() {
+        let cfg = test_config();
+        let trend = ["2026-05-12", "2026-05-13", "2026-05-14"]
+            .into_iter()
+            .map(|date| {
+                json!({
+                    "report_date": date,
+                    "portfolio_coverage_pct": 50.0,
+                    "department_rollups": [
+                        {"name": "ops", "users_count": 0, "portfolio_coverage_pct": 0.0},
+                        {"name": "Отдел продаж", "users_count": 2, "portfolio_coverage_pct": 10.0}
+                    ],
+                    "owner_rollups": [
+                        {"name": "ops", "users_count": 0, "portfolio_coverage_pct": 0.0},
+                        {"name": "Руководитель", "users_count": 1, "portfolio_coverage_pct": 10.0}
+                    ]
+                })
+            })
+            .collect::<Vec<_>>();
+        let insights = build_management_insights(
+            &cfg,
+            &json!({
+                "calendar_total_active_seconds": 0,
+                "workday_total_active_seconds": 0
+            }),
+            &[],
+            &[],
+            &[],
+            &trend,
+            NaiveDate::from_ymd_opt(2026, 5, 14).unwrap(),
+        );
+        assert!(!insights.iter().any(|item| item["subject"] == "ops"));
+        assert!(
+            insights
+                .iter()
+                .any(|item| item["subject"] == "Отдел продаж")
+        );
+        assert!(
+            insights
+                .iter()
+                .any(|item| item["subject"] == "Руководитель")
+        );
+    }
+
+    #[test]
+    fn compact_rollup_points_hides_action_only_groups() {
+        let points = compact_rollup_points(&[
+            json!({"name": "ops", "users_count": 0, "portfolio_coverage_pct": 0.0, "actions_count": 2}),
+            json!({"name": "Отдел продаж", "users_count": 2, "portfolio_coverage_pct": 50.0, "actions_count": 1}),
+        ]);
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0]["name"], "Отдел продаж");
+    }
+
+    #[test]
+    fn build_rollups_does_not_create_action_only_groups() {
+        let rows = vec![json!({
+            "user": "user1",
+            "department": "Отдел продаж",
+            "manager_owner": "Руководитель",
+            "status": "below_target",
+            "workday_active_seconds": 3600
+        })];
+        let actions = vec![
+            action(
+                "source_freshness_review",
+                "critical",
+                "ops",
+                "today",
+                "техническая проверка источника",
+                "проверить сервис",
+                "",
+                json!({}),
+            ),
+            action(
+                "manager_review",
+                "high",
+                "Руководитель",
+                "today",
+                "проверка руководителя",
+                "разобрать нагрузку",
+                "",
+                json!({}),
+            ),
+        ];
+        let rollups = build_rollups(&rows, &actions, "manager_owner");
+        assert_eq!(rollups.len(), 1);
+        assert_eq!(rollups[0]["name"], "Руководитель");
+        assert_eq!(rollups[0]["actions_count"], 1);
+    }
+
+    #[test]
+    fn sanitize_trend_point_removes_legacy_action_only_rollups() {
+        let point = sanitize_trend_point(json!({
+            "department_rollups": [
+                {"name": "ops", "users_count": 0, "portfolio_coverage_pct": 0.0},
+                {"name": "Отдел продаж", "users_count": 2, "portfolio_coverage_pct": 50.0}
+            ],
+            "owner_rollups": [
+                {"name": "ops", "users_count": 0, "portfolio_coverage_pct": 0.0},
+                {"name": "Руководитель", "users_count": 1, "portfolio_coverage_pct": 50.0}
+            ]
+        }));
+        assert_eq!(point["department_rollups"].as_array().unwrap().len(), 1);
+        assert_eq!(point["owner_rollups"].as_array().unwrap().len(), 1);
+        assert_eq!(point["department_rollups"][0]["name"], "Отдел продаж");
+        assert_eq!(point["owner_rollups"][0]["name"], "Руководитель");
     }
 
     #[test]
