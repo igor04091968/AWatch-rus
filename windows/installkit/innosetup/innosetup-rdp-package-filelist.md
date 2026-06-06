@@ -32,6 +32,7 @@
 - `windows/AWatchRusCollectorGuardService.cs`
 - `windows/aw-collector-guard.ps1`
 - `windows/install-collector-guard-service.ps1`
+- `windows/aw-windows-telemetry.exe`
 - `windows/hardening-recovery.ps1`
 - `windows/validate-deployment.ps1`
 - `windows/migrate-awatch-rus-paths.ps1`

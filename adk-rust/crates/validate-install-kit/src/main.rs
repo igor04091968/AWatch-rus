@@ -16,6 +16,7 @@ const MANIFEST_NAME: &str = "MANIFEST.txt";
 const REQUIRED_RELATIVE_FILES: &[&str] = &[
     "MANIFEST.txt",
     "README-INSTALL-KIT.txt",
+    "windows/aw-windows-telemetry.exe",
     "windows/deploy-ensemble.ps1",
     "windows/validate-deployment.ps1",
     "ansible/deploy_aw_windows.yml",
@@ -473,8 +474,8 @@ mod tests {
         );
         let report = validate(&cfg);
         assert!(report.ok, "{report:#?}");
-        assert_eq!(report.manifest_completeness.tracked_files, 9);
-        assert_eq!(report.archive_composition.files, 10);
+        assert_eq!(report.manifest_completeness.tracked_files, 10);
+        assert_eq!(report.archive_composition.files, 11);
     }
 
     #[test]
@@ -521,6 +522,7 @@ mod tests {
         let kit = root.join(DEFAULT_KIT_DIR);
         for rel in [
             "windows/deploy-ensemble.ps1",
+            "windows/aw-windows-telemetry.exe",
             "windows/validate-deployment.ps1",
             "ansible/deploy_aw_windows.yml",
             "aw-server/install_aw_server.sh",
@@ -537,6 +539,7 @@ mod tests {
         let files = [
             "README-INSTALL-KIT.txt",
             "windows/deploy-ensemble.ps1",
+            "windows/aw-windows-telemetry.exe",
             "windows/validate-deployment.ps1",
             "ansible/deploy_aw_windows.yml",
             "aw-server/install_aw_server.sh",
@@ -561,6 +564,7 @@ mod tests {
             ("README-INSTALL-KIT.txt", b"readme".as_slice()),
             ("MANIFEST.txt", b"manifest".as_slice()),
             ("windows/deploy-ensemble.ps1", b"deploy".as_slice()),
+            ("windows/aw-windows-telemetry.exe", b"rust-exe".as_slice()),
             ("windows/validate-deployment.ps1", b"validate".as_slice()),
             ("ansible/deploy_aw_windows.yml", b"ansible".as_slice()),
             ("aw-server/install_aw_server.sh", b"server".as_slice()),

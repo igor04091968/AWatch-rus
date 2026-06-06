@@ -50,6 +50,7 @@ required_files=(
   windows/AWatchRusCollectorGuardService.cs
   windows/aw-collector-guard.ps1
   windows/install-collector-guard-service.ps1
+  windows/aw-windows-telemetry.exe
   windows/dlp-policy.native-cross-os.example.json
 )
 
@@ -59,7 +60,11 @@ for rel in "${required_files[@]}"; do
     echo "Missing extracted file: $rel" >&2
     exit 1
   fi
-  if ! cmp -s "$rel" "$extracted"; then
+  repo_rel="$rel"
+  if [[ "$rel" == "windows/aw-windows-telemetry.exe" ]]; then
+    repo_rel="adk-rust/target/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe"
+  fi
+  if ! cmp -s "$repo_rel" "$extracted"; then
     echo "Extracted file differs from repo: $rel" >&2
     exit 1
   fi

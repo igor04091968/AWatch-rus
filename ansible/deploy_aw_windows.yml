@@ -9,7 +9,10 @@
     aw_windows_repo_root: "{{ playbook_dir | dirname }}"
     aw_windows_deploy_root: "C:\\Program Files\\AWatch-rus"
     aw_windows_rust_target_root: "{{ lookup('env', 'CARGO_TARGET_DIR') | default('/tmp/detmir-adk-rust-target', true) }}"
-    aw_windows_telemetry_exe_source: "{{ aw_windows_rust_target_root }}/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe"
+    aw_windows_telemetry_exe_source_candidates:
+      - "{{ aw_windows_repo_root }}/windows/aw-windows-telemetry.exe"
+      - "{{ aw_windows_rust_target_root }}/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe"
+    aw_windows_telemetry_exe_source: ""
     aw_windows_server_scheme: "http"
     aw_windows_server_port: 5600
     aw_windows_package_version: "v0.13.2"
@@ -198,9 +201,41 @@
         - web-category-rules.example.json
         - dlp-policy.example.json
 
+    - name: Проверить кандидаты Rust Windows telemetry binary
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ aw_windows_telemetry_exe_source_candidates }}"
+      delegate_to: localhost
+      become: false
+      register: aw_windows_telemetry_exe_candidate_stats
+
+    - name: Выбрать Rust Windows telemetry binary
+      ansible.builtin.set_fact:
+        aw_windows_telemetry_exe_source_effective: >-
+          {{
+            aw_windows_telemetry_exe_source
+            if (aw_windows_telemetry_exe_source | string | length) > 0
+            else (
+              aw_windows_telemetry_exe_candidate_stats.results
+              | selectattr('stat.exists')
+              | map(attribute='item')
+              | list
+              | first
+              | default('')
+            )
+          }}
+
+    - name: Проверить наличие Rust Windows telemetry binary
+      ansible.builtin.fail:
+        msg: >-
+          Не найден aw-windows-telemetry.exe. Соберите его командой:
+          cargo build --release --target x86_64-pc-windows-gnu -p aw-windows-telemetry
+          или используйте актуальный install-kit с windows/aw-windows-telemetry.exe.
+      when: aw_windows_telemetry_exe_source_effective | length == 0
+
     - name: Загрузить Rust Windows telemetry binary
       ansible.windows.win_copy:
-        src: "{{ aw_windows_telemetry_exe_source }}"
+        src: "{{ aw_windows_telemetry_exe_source_effective }}"
         dest: "{{ aw_windows_deploy_root }}\\windows\\aw-windows-telemetry.exe"
 
     - name: Нормализовать кодировку PowerShell файлов (UTF-8 BOM для Windows PowerShell)

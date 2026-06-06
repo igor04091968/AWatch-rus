@@ -11,6 +11,12 @@
 
 ## Compile
 
+Build the Rust Windows runtime first:
+
+```sh
+cargo build --release --target x86_64-pc-windows-gnu -p aw-windows-telemetry
+```
+
 From this folder:
 
 ```bat

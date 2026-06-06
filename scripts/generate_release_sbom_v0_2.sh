@@ -67,7 +67,7 @@ cyclonedx = {
         "timestamp": generated_at,
         "component": {
             "type": "application",
-            "name": "DetMir AWatch-rus",
+            "name": "AWatch-rus",
             "version": "release-readiness-v0.2",
             "bom-ref": "pkg:generic/detmir-awatch-rus@release-readiness-v0.2",
         },
@@ -83,7 +83,7 @@ spdx = {
     "spdxVersion": "SPDX-2.3",
     "dataLicense": "CC0-1.0",
     "SPDXID": "SPDXRef-DOCUMENT",
-    "name": "DetMir AWatch-rus release-readiness-v0.2 Rust SBOM",
+    "name": "AWatch-rus release-readiness-v0.2 Rust SBOM",
     "documentNamespace": f"https://github.com/igor04091968/AWatch-rus/sbom/{commit}",
     "creationInfo": {
         "created": generated_at,

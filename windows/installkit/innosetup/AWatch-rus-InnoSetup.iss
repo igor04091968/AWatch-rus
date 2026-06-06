@@ -47,6 +47,7 @@ Source: "..\..\deploy-ensemble.ps1"; DestDir: "{app}\windows"; Flags: ignorevers
 Source: "..\..\AWatchRusCollectorGuardService.cs"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\aw-collector-guard.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\install-collector-guard-service.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
+Source: "..\..\..\adk-rust\target\x86_64-pc-windows-gnu\release\aw-windows-telemetry.exe"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\hardening-recovery.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\validate-deployment.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\migrate-awatch-rus-paths.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion

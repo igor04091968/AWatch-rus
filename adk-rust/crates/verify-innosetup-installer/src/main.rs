@@ -14,8 +14,11 @@ const REQUIRED_FILES: &[&str] = &[
     "windows/AWatchRusCollectorGuardService.cs",
     "windows/aw-collector-guard.ps1",
     "windows/install-collector-guard-service.ps1",
+    "windows/aw-windows-telemetry.exe",
     "windows/dlp-policy.native-cross-os.example.json",
 ];
+const WINDOWS_TELEMETRY_EXE_SOURCE: &str =
+    "adk-rust/target/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe";
 const GUARD_MARKER: &str = "collector guard self-test OK";
 
 #[derive(Debug, Parser)]
@@ -145,7 +148,11 @@ fn verify(root: &Path, installer: &Path, wineprefix: &Path) -> Report {
     let mut checked = Vec::new();
     for rel in REQUIRED_FILES {
         let extracted = install_dir.join(rel);
-        let repo = root.join(rel);
+        let repo = if *rel == "windows/aw-windows-telemetry.exe" {
+            root.join(WINDOWS_TELEMETRY_EXE_SOURCE)
+        } else {
+            root.join(rel)
+        };
         if !extracted.is_file() {
             errors.push(format!("Missing extracted file: {rel}"));
             continue;

@@ -10,10 +10,15 @@ use sha2::{Digest, Sha256};
 use zip::write::SimpleFileOptions;
 
 const KIT_DIR: &str = "install-kit-awindows-20260427-211240";
-const README: &str = r#"ActivityWatch DetMir Windows Install Kit
+const WINDOWS_TELEMETRY_EXE_SOURCE: &str =
+    "adk-rust/target/x86_64-pc-windows-gnu/release/aw-windows-telemetry.exe";
+const WINDOWS_TELEMETRY_EXE_DEST: &str = "windows/aw-windows-telemetry.exe";
+
+const README: &str = r#"AWatch-rus Windows Install Kit
 
 Includes:
 - windows/* (deploy scripts, collectors, common module, configs/examples)
+- windows/aw-windows-telemetry.exe (Rust Windows telemetry runtime)
 - ansible/* (Windows and AW server playbooks, examples, inventory, tasks)
 - aw-server/* (server installer, health orchestrator, RU patch loader, host groups, default settings)
 - scripts/* (install-kit rebuild/validation, quality gates, browser/web smoke checks)
@@ -138,6 +143,12 @@ fn rebuild(root: &Path) -> Result<()> {
     {
         copy_file(root, &kit, rel)?;
     }
+    copy_file_as(
+        root,
+        &kit,
+        WINDOWS_TELEMETRY_EXE_SOURCE,
+        WINDOWS_TELEMETRY_EXE_DEST,
+    )?;
 
     write_file_replace(&kit.join("README-INSTALL-KIT.txt"), README.as_bytes())
         .with_context(|| format!("write {}", kit.join("README-INSTALL-KIT.txt").display()))?;
@@ -166,8 +177,12 @@ fn remove_server_config_dirs(kit: &Path) -> Result<()> {
 }
 
 fn copy_file(root: &Path, kit: &Path, rel: &str) -> Result<()> {
-    let src = root.join(rel);
-    let dest = kit.join(rel);
+    copy_file_as(root, kit, rel, rel)
+}
+
+fn copy_file_as(root: &Path, kit: &Path, src_rel: &str, dest_rel: &str) -> Result<()> {
+    let src = root.join(src_rel);
+    let dest = kit.join(dest_rel);
     fs::create_dir_all(dest.parent().context("destination parent")?)
         .with_context(|| format!("create parent for {}", dest.display()))?;
     let bytes = fs::read(&src).with_context(|| format!("read {}", src.display()))?;

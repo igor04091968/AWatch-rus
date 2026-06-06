@@ -10,7 +10,8 @@ use sha2::{Digest, Sha256};
 
 const DEFAULT_KIT_DIR: &str = "install-kit-awindows-20260427-211240";
 const MANIFEST_NAME: &str = "MANIFEST.txt";
-const ALLOWED_KIT_ONLY_FILES: &[&str] = &["README-INSTALL-KIT.txt"];
+const ALLOWED_KIT_ONLY_FILES: &[&str] =
+    &["README-INSTALL-KIT.txt", "windows/aw-windows-telemetry.exe"];
 const ALLOWED_KIT_ONLY_PREFIXES: &[&str] = &["server-configs-"];
 
 #[derive(Debug, Parser)]
