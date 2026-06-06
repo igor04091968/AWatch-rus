@@ -117,6 +117,8 @@ Markdown-отчет собирает главный вывод, риски по�
 - [Архитектурный baseline](docs/ARCHITECTURE_BASELINE_RU.md)
 - [Пакет пилота для заказчика](docs/CUSTOMER_PILOT_PACK_RU.md)
 - [Pilot v1.0](docs/PILOT_V1_RU.md)
+- [Pilot v1.0 acceptance checklist](docs/PILOT_V1_ACCEPTANCE_CHECKLIST_RU.md)
+- [Pilot v1.0 evidence](docs/PILOT_V1_EVIDENCE_RU.md)
 - [Ролевая модель портала](docs/ROLES_RU.md)
 - [UEBA Score v1](docs/UEBA_SCORE_RU.md)
 - [pfSense integration readiness](docs/PFSENSE_INTEGRATION_RU.md)
