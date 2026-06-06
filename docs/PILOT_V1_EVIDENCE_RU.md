@@ -18,6 +18,7 @@ contracts, UEBA Score v1 и pfSense readiness.
 | UEBA | [UEBA_SCORE_RU.md](UEBA_SCORE_RU.md) | rule-based scoring без ML/LLM |
 | pfSense | [PFSENSE_INTEGRATION_RU.md](PFSENSE_INTEGRATION_RU.md) | readiness=`contract_only`, без SIEM/ingestion claims |
 | Demo сценарий | [CUSTOMER_DEMO_SCENARIO_RU.md](CUSTOMER_DEMO_SCENARIO_RU.md) | 10-минутный показ заказчику |
+| Pilot v1 demo | [PILOT_DEMO_SCENARIO_RU.md](PILOT_DEMO_SCENARIO_RU.md) | воспроизводимый demo-pack по ролям |
 | Преддемо | [DEMO_RUNBOOK_RU.md](DEMO_RUNBOOK_RU.md) | прогрев и порядок проверки перед показом |
 | Gap analysis | [PILOT_GAP_ANALYSIS_RU.md](PILOT_GAP_ANALYSIS_RU.md) | известные риски и остаточные ограничения |
 
@@ -52,6 +53,11 @@ contracts, UEBA Score v1 и pfSense readiness.
 - `docs/screenshots/06-markdown-report.png`;
 - `docs/screenshots/07-product-architecture.png`;
 - `docs/fixtures/pfsense-demo-events.json`.
+- `docs/fixtures/pilot-v1-demo/demo-seed-data.json`;
+- `docs/fixtures/pilot-v1-demo/evidence-pack/executive-summary.md`;
+- `docs/fixtures/pilot-v1-demo/evidence-pack/security-technical-summary.md`;
+- `docs/fixtures/pilot-v1-demo/evidence-pack/investigation-report.md`;
+- `docs/fixtures/pilot-v1-demo/evidence-pack/investigation-contract.json`.
 
 Требования:
 
@@ -81,6 +87,7 @@ cargo build --workspace --release
 cd ..
 git diff --check
 node scripts/detmir-portal-tabs-smoke.mjs
+node scripts/detmir-pilot-demo-smoke.mjs
 ```
 
 Что подтверждают команды:
@@ -93,6 +100,8 @@ node scripts/detmir-portal-tabs-smoke.mjs
 - `git diff --check` - нет whitespace-ошибок в diff.
 - `node scripts/detmir-portal-tabs-smoke.mjs` - портал, вкладки, роли и
   server-side role gates проходят smoke.
+- `node scripts/detmir-pilot-demo-smoke.mjs` - demo-навигация, API contracts и
+  role-filtering для Pilot v1 demo проходят smoke.
 
 ## Приемочный вывод
 

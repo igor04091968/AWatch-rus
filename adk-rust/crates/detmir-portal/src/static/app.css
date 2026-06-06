@@ -82,13 +82,17 @@ body.security-mode .small-button,
 body.security-mode a.button,
 body.security-mode .tab,
 body.security-mode .nav-link,
+body.security-mode .view-button,
+body.security-mode .demo-button,
 body.security-mode .control-strip select {
   background: #111827;
   color: var(--ink);
 }
 
 body.security-mode .tab.is-active,
-body.security-mode .nav-link.is-active {
+body.security-mode .nav-link.is-active,
+body.security-mode .view-button.is-active,
+body.security-mode .demo-button.is-active {
   background: #0f2a3a;
   color: var(--link);
 }
@@ -145,14 +149,16 @@ h1 {
 
 .control-strip,
 .header-actions,
-.view-switch {
+.view-switch,
+.demo-switch {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
 }
 
-.view-switch {
+.view-switch,
+.demo-switch {
   align-items: center;
   padding: 4px;
   border: 1px solid var(--line);
@@ -160,14 +166,16 @@ h1 {
   background: var(--panel);
 }
 
-.view-switch > span {
+.view-switch > span,
+.demo-switch > span {
   padding: 0 6px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
-.view-button {
+.view-button,
+.demo-button {
   min-height: 30px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -180,18 +188,21 @@ h1 {
   cursor: pointer;
 }
 
-.view-button.is-active {
+.view-button.is-active,
+.demo-button.is-active {
   border-color: #1d4ed8;
   background: #2563eb;
   color: #ffffff;
 }
 
-.view-button:hover {
+.view-button:hover,
+.demo-button:hover {
   color: var(--ink);
   background: rgba(37, 99, 235, 0.08);
 }
 
-.view-button.is-active:hover {
+.view-button.is-active:hover,
+.demo-button.is-active:hover {
   color: #ffffff;
   background: #1d4ed8;
 }
@@ -1210,10 +1221,13 @@ pre {
   .topbar-side { justify-items: stretch; min-width: 0; width: 100%; }
   .control-strip,
   .header-actions,
-  .view-switch { justify-content: flex-start; }
+  .view-switch,
+  .demo-switch { justify-content: flex-start; }
   .control-strip label { min-width: 100%; }
-  .view-switch > span { flex-basis: 100%; }
-  .view-button { flex: 1 1 120px; }
+  .view-switch > span,
+  .demo-switch > span { flex-basis: 100%; }
+  .view-button,
+  .demo-button { flex: 1 1 120px; }
   h1 { font-size: 24px; }
   .page-head { flex-direction: column; }
   .period-banner { flex-direction: column; align-items: flex-start; }

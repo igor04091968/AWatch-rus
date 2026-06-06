@@ -1,0 +1,53 @@
+{
+  "contract_version": "forensics-v1",
+  "demo_only": true,
+  "investigation": {
+    "investigation_id": "case-demo-004",
+    "candidate_id": "sec-demo-004",
+    "status": "in_review",
+    "severity": "critical",
+    "summary": "Ночная административная активность и сетевой признак требуют ручной проверки.",
+    "entities": {
+      "user": "demo-user-005",
+      "host": "HOST-DEMO-05",
+      "app": "admin-tool-demo.exe",
+      "network_event": "203.0.113.20:443"
+    },
+    "timeline": [
+      {
+        "timestamp": "2026-06-06T21:40:00Z",
+        "kind": "activity",
+        "entity": "demo-user-005",
+        "summary": "Ночная активность в административном приложении.",
+        "source": "activity_rules"
+      },
+      {
+        "timestamp": "2026-06-06T21:45:00Z",
+        "kind": "risk",
+        "entity": "sec-demo-004",
+        "summary": "UEBA Score v1 severity critical.",
+        "source": "ueba-score-v1"
+      },
+      {
+        "timestamp": "2026-06-06T21:46:00Z",
+        "kind": "network",
+        "entity": "HOST-DEMO-05",
+        "summary": "Сетевой признак по readiness-контракту.",
+        "source": "pfsense-contract"
+      }
+    ],
+    "exports": {
+      "markdown": "investigation-report.md",
+      "executive_summary": "executive-summary.md",
+      "security_summary": "security-technical-summary.md"
+    }
+  },
+  "claims": {
+    "siem": false,
+    "classic_dlp": false,
+    "ml_used": false,
+    "llm_used": false,
+    "pfsense_ingestion": false,
+    "pfsense_status": "contract_only"
+  }
+}

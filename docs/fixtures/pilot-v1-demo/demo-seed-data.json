@@ -1,0 +1,223 @@
+{
+  "dataset": "awatch-rus-pilot-v1-demo",
+  "generated_at_utc": "2026-06-06T09:00:00Z",
+  "demo_only": true,
+  "privacy": {
+    "real_personal_data": false,
+    "real_customer_hosts": false,
+    "real_customer_networks": false,
+    "allowed_network_examples": [
+      "192.0.2.0/24",
+      "198.51.100.0/24",
+      "203.0.113.0/24"
+    ]
+  },
+  "departments": [
+    {
+      "department_id": "dept-sales-demo",
+      "name": "Отдел продаж",
+      "activity_index": 82,
+      "load_state": "normal",
+      "risk": "low"
+    },
+    {
+      "department_id": "dept-accounting-demo",
+      "name": "Бухгалтерия",
+      "activity_index": 68,
+      "load_state": "normal",
+      "risk": "medium"
+    },
+    {
+      "department_id": "dept-warehouse-demo",
+      "name": "Склад",
+      "activity_index": 41,
+      "load_state": "low_activity",
+      "risk": "high"
+    },
+    {
+      "department_id": "dept-support-demo",
+      "name": "Поддержка",
+      "activity_index": 91,
+      "load_state": "overload",
+      "risk": "medium"
+    },
+    {
+      "department_id": "dept-it-demo",
+      "name": "ИТ",
+      "activity_index": 74,
+      "load_state": "normal",
+      "risk": "critical"
+    }
+  ],
+  "users": [
+    {
+      "user_ref": "demo-user-001",
+      "department_id": "dept-sales-demo",
+      "host": "HOST-DEMO-01",
+      "responsible": "manager-demo-sales"
+    },
+    {
+      "user_ref": "demo-user-002",
+      "department_id": "dept-accounting-demo",
+      "host": "HOST-DEMO-02",
+      "responsible": "manager-demo-accounting"
+    },
+    {
+      "user_ref": "demo-user-003",
+      "department_id": "dept-warehouse-demo",
+      "host": "HOST-DEMO-03",
+      "responsible": "manager-demo-warehouse"
+    },
+    {
+      "user_ref": "demo-user-004",
+      "department_id": "dept-support-demo",
+      "host": "HOST-DEMO-04",
+      "responsible": "manager-demo-support"
+    },
+    {
+      "user_ref": "demo-user-005",
+      "department_id": "dept-it-demo",
+      "host": "HOST-DEMO-05",
+      "responsible": "manager-demo-it"
+    }
+  ],
+  "activity_events": [
+    {
+      "timestamp": "2026-06-06T08:55:00Z",
+      "user_ref": "demo-user-001",
+      "host": "HOST-DEMO-01",
+      "app": "crm-demo.exe",
+      "kind": "normal_activity",
+      "duration_minutes": 42
+    },
+    {
+      "timestamp": "2026-06-06T09:10:00Z",
+      "user_ref": "demo-user-002",
+      "host": "HOST-DEMO-02",
+      "app": "1cv8.exe",
+      "kind": "business_app_activity",
+      "duration_minutes": 67
+    },
+    {
+      "timestamp": "2026-06-06T10:25:00Z",
+      "user_ref": "demo-user-003",
+      "host": "HOST-DEMO-03",
+      "app": "rdp-session",
+      "kind": "low_activity",
+      "duration_minutes": 8
+    },
+    {
+      "timestamp": "2026-06-06T21:40:00Z",
+      "user_ref": "demo-user-005",
+      "host": "HOST-DEMO-05",
+      "app": "admin-tool-demo.exe",
+      "kind": "night_access_anomaly",
+      "duration_minutes": 24
+    }
+  ],
+  "security_events": [
+    {
+      "event_id": "sec-demo-001",
+      "timestamp": "2026-06-06T11:05:00Z",
+      "severity": "low",
+      "user_ref": "demo-user-001",
+      "host": "HOST-DEMO-01",
+      "reason_code": "activity_anomaly",
+      "description": "Повышенная активность без сетевых признаков."
+    },
+    {
+      "event_id": "sec-demo-002",
+      "timestamp": "2026-06-06T12:20:00Z",
+      "severity": "medium",
+      "user_ref": "demo-user-002",
+      "host": "HOST-DEMO-02",
+      "reason_code": "application_anomaly",
+      "description": "Редкое приложение в рабочем контексте."
+    },
+    {
+      "event_id": "sec-demo-003",
+      "timestamp": "2026-06-06T18:35:00Z",
+      "severity": "high",
+      "user_ref": "demo-user-003",
+      "host": "HOST-DEMO-03",
+      "reason_code": "low_activity_with_late_rdp",
+      "description": "Низкая дневная активность и поздняя RDP-сессия."
+    },
+    {
+      "event_id": "sec-demo-004",
+      "timestamp": "2026-06-06T21:45:00Z",
+      "severity": "critical",
+      "user_ref": "demo-user-005",
+      "host": "HOST-DEMO-05",
+      "reason_code": "night_network_admin_activity",
+      "description": "Ночное администрирование и сетевой признак требуют ручной проверки."
+    }
+  ],
+  "network_events": [
+    {
+      "timestamp": "2026-06-06T21:46:00Z",
+      "source_host": "HOST-DEMO-05",
+      "source_ip": "192.0.2.15",
+      "destination": "203.0.113.20:443",
+      "action": "pass",
+      "provider_status": "contract_only"
+    },
+    {
+      "timestamp": "2026-06-06T21:47:00Z",
+      "source_host": "HOST-DEMO-05",
+      "source_ip": "192.0.2.15",
+      "destination": "198.51.100.25:22",
+      "action": "block",
+      "provider_status": "contract_only"
+    }
+  ],
+  "ueba_score_examples": [
+    {
+      "user_ref": "demo-user-001",
+      "score": 18,
+      "severity": "low",
+      "reason_codes": [
+        "activity_anomaly"
+      ]
+    },
+    {
+      "user_ref": "demo-user-002",
+      "score": 42,
+      "severity": "medium",
+      "reason_codes": [
+        "application_anomaly",
+        "history_anomaly"
+      ]
+    },
+    {
+      "user_ref": "demo-user-003",
+      "score": 63,
+      "severity": "high",
+      "reason_codes": [
+        "activity_anomaly",
+        "time_anomaly"
+      ]
+    },
+    {
+      "user_ref": "demo-user-005",
+      "score": 82,
+      "severity": "critical",
+      "reason_codes": [
+        "time_anomaly",
+        "network_anomaly",
+        "history_anomaly"
+      ]
+    }
+  ],
+  "investigation": {
+    "investigation_id": "case-demo-004",
+    "candidate_id": "sec-demo-004",
+    "status": "in_review",
+    "entities": {
+      "user": "demo-user-005",
+      "host": "HOST-DEMO-05",
+      "app": "admin-tool-demo.exe",
+      "network_event": "203.0.113.20:443"
+    }
+  }
+}

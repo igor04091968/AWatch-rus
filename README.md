@@ -73,6 +73,28 @@ Future:
 - React/TypeScript Enterprise UI.
 - Tauri Desktop Forensics.
 
+## Pilot v1 demo
+
+Pilot v1 demo показывает AWatch-rus как рабочую платформу Workforce Analytics +
+Security Analytics + Forensics для ролей `executive`, `manager`, `security`,
+`forensics` и `admin`.
+
+Демо-материалы:
+
+- [сценарий Pilot v1 demo](docs/PILOT_DEMO_SCENARIO_RU.md);
+- [demo seed data](docs/fixtures/pilot-v1-demo/demo-seed-data.json);
+- [demo evidence pack](docs/fixtures/pilot-v1-demo/evidence-pack/);
+- [преддемо-runbook](docs/DEMO_RUNBOOK_RU.md).
+
+Границы показа:
+
+- pfSense показывается только как `contract_only/readiness`, без заявления
+  production ingestion или SIEM;
+- UEBA Score v1 является прозрачной rule-based моделью, без ML/LLM;
+- demo fixtures не содержат реальных IP-адресов, hostname, логинов, ФИО,
+  подразделений заказчика или событий безопасности;
+- planned/future providers не являются реализованными collectors.
+
 ## Что видит оператор
 
 - Работал ли пользователь за компьютером или в удаленной сессии.
@@ -172,6 +194,7 @@ collectors.
 - [Архитектурный baseline](docs/ARCHITECTURE_BASELINE_RU.md)
 - [Пакет пилота для заказчика](docs/CUSTOMER_PILOT_PACK_RU.md)
 - [Pilot v1.0](docs/PILOT_V1_RU.md)
+- [Pilot v1 demo](docs/PILOT_DEMO_SCENARIO_RU.md)
 - [Pilot v1.0 acceptance checklist](docs/PILOT_V1_ACCEPTANCE_CHECKLIST_RU.md)
 - [Pilot v1.0 evidence](docs/PILOT_V1_EVIDENCE_RU.md)
 - [Позиционирование продукта](docs/PRODUCT_POSITIONING_RU.md)

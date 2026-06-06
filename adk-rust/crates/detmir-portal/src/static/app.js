@@ -248,6 +248,9 @@ function updateViewModeButtons() {
   document.querySelectorAll("[data-view-mode]").forEach(button => {
     button.classList.toggle("is-active", button.dataset.viewMode === currentViewMode());
   });
+  document.querySelectorAll("[data-demo-view-mode]").forEach(button => {
+    button.classList.toggle("is-active", button.dataset.demoViewMode === currentViewMode());
+  });
 }
 
 function setViewMode(mode) {
@@ -2298,9 +2301,7 @@ function renderSecurityEventsSummary(summary, options = {}) {
   const title = options.compact
     ? "События безопасности"
     : "События безопасности за 24 часа";
-  const compactStateText = disabled && options.compact
-    ? "Детализация скрыта для роли"
-    : stateText;
+  const compactStateText = stateText;
   const compactModeText = disabled && options.compact
     ? "Без ИБ-детализации"
     : disabled
@@ -3050,6 +3051,10 @@ document.querySelectorAll(".tab").forEach(btn => {
 
 document.querySelectorAll("[data-view-mode]").forEach(btn => {
   btn.addEventListener("click", () => setViewMode(btn.dataset.viewMode));
+});
+
+document.querySelectorAll("[data-demo-view-mode]").forEach(btn => {
+  btn.addEventListener("click", () => setViewMode(btn.dataset.demoViewMode));
 });
 
 document.getElementById("periodFilter")?.addEventListener("change", event => {

@@ -3441,6 +3441,7 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
                 "business_risk",
                 "business_risk_history_summary",
                 "risk_heatmap",
+                "security_events_summary",
                 "workforce",
                 "markdown",
             ] {
@@ -10038,6 +10039,27 @@ mod tests {
     }
 
     #[test]
+    fn portal_pilot_demo_navigation_is_present() {
+        for marker in [
+            "Pilot v1 demo",
+            "Executive demo",
+            "Manager demo",
+            "Security demo",
+            "Forensics demo",
+            "Admin demo",
+            "data-demo-view-mode=\"executive\"",
+            "data-demo-view-mode=\"security\"",
+            "data-demo-view-mode=\"forensics\"",
+            "data-demo-view-mode=\"admin\"",
+        ] {
+            assert!(
+                INDEX_HTML.contains(marker),
+                "demo navigation missing {marker}"
+            );
+        }
+    }
+
+    #[test]
     fn api_contract_artifacts_are_valid_and_future_ui_ready() {
         let openapi: Value =
             serde_json::from_str(API_CONTRACT_OPENAPI).expect("OpenAPI contract must be JSON");
@@ -10134,6 +10156,7 @@ mod tests {
         let executive = role_filtered_report(report.clone(), PortalRole::Executive);
         assert!(executive.get("workforce").is_some());
         assert!(executive.get("executive_dashboard").is_some());
+        assert!(executive.get("security_events_summary").is_some());
         assert!(executive.get("risk_incident_candidates").is_none());
         assert!(executive.get("security_correlation").is_none());
 
