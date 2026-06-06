@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AWatch-rus Product Architecture</title>
+  <link rel="stylesheet" href="/portal/app.css">
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar" aria-label="Основная навигация">
+      <div class="sidebar-brand">
+        <strong>AWatch-rus</strong>
+        <span>Архитектура продукта</span>
+      </div>
+      <nav class="tabs">
+        <a class="nav-link" href="/portal/">Портал</a>
+        <a class="nav-link is-active" href="/portal/architecture">Архитектура</a>
+      </nav>
+    </aside>
+    <main class="shell architecture-page">
+      <header class="topbar">
+        <div class="brand">
+          <p class="eyebrow">AWatch-rus</p>
+          <h1>Product Architecture</h1>
+          <p class="lead">Текущие компоненты, предусмотренные расширения и будущие направления без заявления фиктивных collectors.</p>
+        </div>
+        <div class="topbar-side">
+          <a class="small-button" href="/portal/">Вернуться в портал</a>
+        </div>
+      </header>
+
+      <section class="content-panel architecture-content" aria-label="Архитектура продукта">
+        <section class="card">
+          <h2>Current Components</h2>
+          <p>Эти элементы относятся к текущему рабочему контуру AWatch-rus.</p>
+          <div class="architecture-grid">
+            <article><span class="status-pill status-ok">implemented</span><strong>Backend</strong><p>Rust-first серверные helpers, report layer и portal runtime.</p></article>
+            <article><span class="status-pill status-ok">implemented</span><strong>Portal</strong><p>Rust server-rendered HTML + HTMX-compatible JSON API.</p></article>
+            <article><span class="status-pill status-ok">implemented</span><strong>Rust Agent</strong><p>Агентский Rust runtime и Windows telemetry paths в текущей parity-модели.</p></article>
+            <article><span class="status-pill status-ok">implemented</span><strong>Reports</strong><p>Workforce, Security и Forensics отчеты, включая Markdown export.</p></article>
+            <article><span class="status-pill status-ok">implemented</span><strong>UEBA v1</strong><p>Прозрачная rule-based модель без ML, LLM и внешних SaaS.</p></article>
+            <article><span class="status-pill status-ok">implemented</span><strong>Forensics</strong><p>Карточки расследований, timeline и evidence package.</p></article>
+            <article><span class="status-pill status-ok">implemented</span><strong>Role gates</strong><p>Серверные проверки доступа для Pilot v1 ролей.</p></article>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Planned Extensions</h2>
+          <p>Эти направления предусмотрены архитектурой, но не являются готовой функциональностью без отдельной реализации и тестов.</p>
+          <div class="architecture-grid">
+            <article><span class="status-pill status-warn">planned</span><strong>PowerShell Provider</strong><p>Agentless/legacy Windows source после формализации provider contract.</p></article>
+            <article><span class="status-pill status-warn">planned</span><strong>SSH Provider</strong><p>Read-only probes и existing logs для Linux/Unix/network hosts.</p></article>
+            <article><span class="status-pill status-warn">planned</span><strong>Syslog Provider</strong><p>Нормализация событий от внешних log sources.</p></article>
+            <article><span class="status-pill status-warn">planned</span><strong>1C Provider</strong><p>Расширение текущего file-based 1C analytics сценария до формального provider.</p></article>
+            <article><span class="status-pill status-unknown">contract_only</span><strong>pfSense Provider</strong><p>Readiness contracts и demo fixture без заявления production ingestion.</p></article>
+            <article><span class="status-pill status-warn">planned</span><strong>Russian OS validation</strong><p>Astra Linux, РЕД ОС, Альт и РОСА требуют distro-specific smoke и compatibility matrix.</p></article>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Future</h2>
+          <p>Эти элементы являются будущими направлениями, а не частью текущего Pilot v1.</p>
+          <div class="architecture-grid">
+            <article><span class="status-pill status-unknown">future</span><strong>SCUD Provider</strong><p>Сопоставление с физическим доступом после отдельного vendor/source contract.</p></article>
+            <article><span class="status-pill status-unknown">future</span><strong>VPN Provider</strong><p>Сетевой контекст для расследований после отдельной реализации.</p></article>
+            <article><span class="status-pill status-unknown">future</span><strong>React/TypeScript Enterprise UI</strong><p>Будущий enterprise UI, не текущий основной portal UI.</p></article>
+            <article><span class="status-pill status-unknown">future</span><strong>Tauri Desktop Forensics</strong><p>Отдельный desktop-контур для forensic workflows.</p></article>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Граница заявления</h2>
+          <p>Страница является информационной. Она не добавляет backend API, collectors или ingestion. Planned и future элементы не считаются implemented.</p>
+        </section>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

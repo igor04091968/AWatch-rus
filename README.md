@@ -37,6 +37,42 @@ JSON API, OpenAPI и TypeScript declarations. Dioxus не используетс
 рассматривается для Pilot v1.0. React, Tauri и Electron также не входят в
 текущий основной UI.
 
+## Product Evolution
+
+AWatch-rus уже является рабочей платформой Workforce + Security + Forensics.
+Архитектура предусматривает расширение на агентные и agentless-источники
+данных. Planned/Future элементы ниже не являются реализованной функциональностью
+и не должны трактоваться как готовые collectors или integrations.
+
+Implemented:
+
+- Rust Backend.
+- Rust Agent.
+- HTML/HTMX Portal.
+- Role-based Pilot v1 contracts.
+- Product architecture page `/portal/architecture`.
+- Workforce reports.
+- UEBA v1.
+- Forensics reporting.
+- pfSense contract/readiness layer со статусом `contract_only`, без заявления
+  production ingestion.
+
+Planned:
+
+- Provider detail expansion under `/portal/architecture`.
+- PowerShell Provider.
+- SSH Provider.
+- Syslog Provider.
+- 1C Provider как формализация текущего file-based 1C analytics направления.
+- Russian OS support validation.
+
+Future:
+
+- Extended Enterprise connectors.
+- SCUD/VPN integrations.
+- React/TypeScript Enterprise UI.
+- Tauri Desktop Forensics.
+
 ## Что видит оператор
 
 - Работал ли пользователь за компьютером или в удаленной сессии.
@@ -128,6 +164,7 @@ Markdown-отчет собирает главный вывод, риски по�
 - [Pilot v1.0](docs/PILOT_V1_RU.md)
 - [Pilot v1.0 acceptance checklist](docs/PILOT_V1_ACCEPTANCE_CHECKLIST_RU.md)
 - [Pilot v1.0 evidence](docs/PILOT_V1_EVIDENCE_RU.md)
+- [Позиционирование продукта](docs/PRODUCT_POSITIONING_RU.md)
 - [Экосистема сборщиков](docs/COLLECTOR_ECOSYSTEM_RU.md)
 - [Стратегия внедрения](docs/DEPLOYMENT_STRATEGY_RU.md)
 - [Стратегия платформ](docs/PLATFORM_STRATEGY_RU.md)

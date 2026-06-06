@@ -24,6 +24,7 @@ use sha2::{Digest, Sha256};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 const INDEX_HTML: &str = include_str!("static/index.html");
+const ARCHITECTURE_HTML: &str = include_str!("static/architecture.html");
 const APP_CSS: &str = include_str!("static/app.css");
 const APP_JS: &str = include_str!("static/app.js");
 const API_CONTRACT_OPENAPI: &str = include_str!("contracts/openapi.json");
@@ -1372,13 +1373,10 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
     if let Some((evidence_id, download)) = parse_evidence_screenshot_path(&path) {
         return handle_evidence_screenshot(request, args, &evidence_id, download);
     }
+    if let Some(html) = portal_html_route(&path) {
+        return respond_text(request, StatusCode(200), html, "text/html; charset=utf-8");
+    }
     match path.as_str() {
-        "/" | "/operator" | "/manager" | "/owner" | "/incidents" | "/reports" => respond_text(
-            request,
-            StatusCode(200),
-            INDEX_HTML,
-            "text/html; charset=utf-8",
-        ),
         "/app.css" => respond_text(request, StatusCode(200), APP_CSS, "text/css; charset=utf-8"),
         "/app.js" => respond_text(
             request,
@@ -1503,6 +1501,14 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             "Not Found",
             "text/plain; charset=utf-8",
         ),
+    }
+}
+
+fn portal_html_route(path: &str) -> Option<&'static str> {
+    match path {
+        "/" | "/operator" | "/manager" | "/owner" | "/incidents" | "/reports" => Some(INDEX_HTML),
+        "/architecture" => Some(ARCHITECTURE_HTML),
+        _ => None,
     }
 }
 
@@ -9961,6 +9967,7 @@ mod tests {
     fn normalizes_gateway_prefix() {
         assert_eq!(normalize_path("/portal/api/health?x=1"), "/api/health");
         assert_eq!(normalize_path("/portal/"), "/");
+        assert_eq!(normalize_path("/portal/architecture"), "/architecture");
         assert_eq!(normalize_path("/api/health"), "/api/health");
         assert!(query_flag("/api/reports?anonymize=1", "anonymize"));
         assert!(query_flag("/api/reports?anonymize=true", "anonymize"));
@@ -9974,6 +9981,23 @@ mod tests {
             Some("risk-candidate-123")
         );
         assert_eq!(safe_download_stem("risk:candidate/1"), "risk_candidate_1");
+    }
+
+    #[test]
+    fn portal_architecture_page_is_informational_and_status_labeled() {
+        assert!(portal_html_route("/architecture").is_some());
+        let body = portal_html_route("/architecture").unwrap();
+        for marker in [
+            "Rust Agent",
+            "PowerShell Provider",
+            "implemented",
+            "planned",
+            "future",
+            "contract_only",
+            "Страница является информационной",
+        ] {
+            assert!(body.contains(marker), "architecture page missing {marker}");
+        }
     }
 
     #[test]
