@@ -31,7 +31,8 @@ const API_CONTRACT_OPENAPI: &str = include_str!("contracts/openapi.json");
 const API_CONTRACT_TYPESCRIPT: &str = include_str!("contracts/typescript.d.ts");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
 const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(120);
-const DEFAULT_DEPARTMENT_LABEL: &str = "Без подразделения";
+const DEFAULT_DEPARTMENT_LABEL: &str = "Не привязано к подразделению";
+const LEGACY_UNASSIGNED_DEPARTMENT_LABEL: &str = "Без подразделения";
 
 #[cfg(unix)]
 const SIGKILL: i32 = 9;
@@ -2165,7 +2166,10 @@ fn display_name_opt(value: Option<&str>, fallback: &str) -> String {
         return fallback.to_string();
     };
     let value = value.trim();
-    if value.is_empty() || has_broken_display_chars(value) {
+    if value.is_empty()
+        || value == LEGACY_UNASSIGNED_DEPARTMENT_LABEL
+        || has_broken_display_chars(value)
+    {
         fallback.to_string()
     } else {
         value.to_string()
@@ -2670,7 +2674,7 @@ FORMAT JSONEachRow
     let top_sql = format!(
         r#"
 WITH now() - INTERVAL 24 HOUR AS since
-SELECT if(empty(infobase), 'Без подразделения', infobase) AS department, toUInt64(count()) AS events
+SELECT if(empty(infobase), 'Не привязано к подразделению', infobase) AS department, toUInt64(count()) AS events
 FROM {database}.entity_timeline
 WHERE ts >= since
 GROUP BY department
@@ -10336,6 +10340,10 @@ mod tests {
     fn display_department_name_replaces_corrupt_runtime_labels() {
         assert_eq!(display_department_name(Some("Бухгалтерия")), "Бухгалтерия");
         assert_eq!(display_department_name(Some("")), DEFAULT_DEPARTMENT_LABEL);
+        assert_eq!(
+            display_department_name(Some("Без подразделения")),
+            DEFAULT_DEPARTMENT_LABEL
+        );
         assert_eq!(
             display_department_name(Some("\u{FFFD}\u{FFFD}\u{FFFD}\u{FFFD}")),
             DEFAULT_DEPARTMENT_LABEL

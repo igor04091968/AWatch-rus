@@ -17,6 +17,8 @@ const state = {
   },
 };
 
+const DEFAULT_DEPARTMENT_LABEL = "Не привязано к подразделению";
+
 const VIEW_MODES = {
   executive: {
     label: "Руководитель",
@@ -802,7 +804,7 @@ function departmentRows(report) {
     const status = item.status || "INFO";
     const responsible = item.responsible || departmentResponsible(owners, index);
     return {
-      label: item.label || "Без подразделения",
+      label: item.label || DEFAULT_DEPARTMENT_LABEL,
       activity,
       activityText: Number.isFinite(activity) ? `${Math.round(activity)}%` : firstPercent(item.value),
       deviation: item.deviation || departmentDeviation(item),
@@ -1392,7 +1394,7 @@ function renderInvestigationPacks(candidates) {
       </div>
       <div class="list compact-list">${rows.length ? rows.map(item => `
         <div class="row compact-row">
-          <strong>${ui(item.department || "Без подразделения")}</strong>
+          <strong>${ui(item.department || DEFAULT_DEPARTMENT_LABEL)}</strong>
           <span class="muted">${ui(item.reason || "требуется проверка")} · ${ui(item.hostname || "-")}</span>
           <a class="small-button" href="${apiBase()}${withRole(`/investigation-pack/${encodeURIComponent(item.id || "")}?format=markdown`, "forensics")}" download>Скачать</a>
         </div>
@@ -2364,7 +2366,7 @@ function renderSecurityEventsSummary(summary, options = {}) {
             <tbody>
               ${top.length ? top.map(item => `
                 <tr>
-                  <td>${ui(item.department || "Без подразделения")}</td>
+                  <td>${ui(item.department || DEFAULT_DEPARTMENT_LABEL)}</td>
                   <td>${ui(item.events ?? 0)}</td>
                 </tr>
               `).join("") : `
@@ -2376,7 +2378,7 @@ function renderSecurityEventsSummary(summary, options = {}) {
             </tbody>
           </table>
         </div>
-        <p class="muted small">Последнее событие: ${ui(s.last_event_utc || "нет данных")} · запрос ${ui(s.query_ms ?? 0)} ms.</p>
+        <p class="muted small">${ui(DEFAULT_DEPARTMENT_LABEL)} — событие есть в источнике, но в нем не передана связь с оргструктурой. Последнее событие: ${ui(s.last_event_utc || "нет данных")} · запрос ${ui(s.query_ms ?? 0)} ms.</p>
       `}
     </section>
   `;
@@ -2408,7 +2410,7 @@ function renderBusinessRisk(items) {
           <tbody>
             ${rows.length ? rows.map(item => `
               <tr>
-                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td><strong>${ui(item.department || DEFAULT_DEPARTMENT_LABEL)}</strong></td>
                 <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
                 <td>${ui(businessRiskReasons(item))}</td>
                 <td>${ui(item.security_events_24h ?? 0)}</td>
@@ -2459,7 +2461,7 @@ function renderRiskHeatmap(items) {
           <tbody>
             ${rows.length ? rows.map(item => `
               <tr class="heatmap-row heatmap-${escapeHtml(String(item.heat_level || "unknown").toLowerCase())}">
-                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td><strong>${ui(item.department || DEFAULT_DEPARTMENT_LABEL)}</strong></td>
                 <td>${ui(riskPercentText(item.trust_kpi_score))}</td>
                 <td>${ui(riskPercentText(item.activity_score))}</td>
                 <td>${ui(riskPercentText(item.agent_coverage_pct))}</td>
@@ -2546,7 +2548,7 @@ function renderSecurityCorrelation(items) {
           <tbody>
             ${rows.length ? rows.map(item => `
               <tr>
-                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td><strong>${ui(item.department || DEFAULT_DEPARTMENT_LABEL)}</strong></td>
                 <td>${ui(riskPercentText(item.trust_kpi_score))}</td>
                 <td>${ui(riskPercentText(item.activity_score))}</td>
                 <td><span class="badge ${statusClass(item.business_risk_level)}">${ui(item.business_risk_level || "UNKNOWN")}</span></td>
@@ -2625,7 +2627,7 @@ function renderBusinessRiskTimeline(history, summary) {
             ${rows.length ? rows.map(item => `
               <tr>
                 <td>${ui(item.date || "-")}</td>
-                <td><strong>${ui(item.department || "Без подразделения")}</strong></td>
+                <td><strong>${ui(item.department || DEFAULT_DEPARTMENT_LABEL)}</strong></td>
                 <td><span class="badge ${statusClass(item.risk_level)}">${ui(item.risk_level || "UNKNOWN")}</span></td>
                 <td>${ui(Array.isArray(item.reasons) && item.reasons.length ? item.reasons.join("; ") : "нет существенных причин")}</td>
               </tr>
