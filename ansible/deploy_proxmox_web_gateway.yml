@@ -162,7 +162,12 @@
         path: "{{ proxmox_web_gateway_auth_file }}"
       register: proxmox_web_gateway_auth_stat
 
-    - name: Создать gateway Basic Auth credential при первом запуске
+    - name: Проверить наличие gateway credential файла
+      ansible.builtin.stat:
+        path: "{{ proxmox_web_gateway_credentials_file }}"
+      register: proxmox_web_gateway_credentials_stat
+
+    - name: Создать согласованные gateway Basic Auth credential
       ansible.builtin.shell: |
         set -eu
         umask 077
@@ -172,9 +177,10 @@
         printf 'url=https://{{ proxmox_web_gateway_public_hostname }}/\nuser={{ proxmox_web_gateway_auth_user }}\npassword=%s\n' "$password" > '{{ proxmox_web_gateway_credentials_file }}'
       args:
         executable: /bin/sh
-        creates: "{{ proxmox_web_gateway_auth_file }}"
       no_log: true
-      when: not proxmox_web_gateway_auth_stat.stat.exists
+      when: >
+        not (proxmox_web_gateway_auth_stat.stat.exists | default(false))
+        or not (proxmox_web_gateway_credentials_stat.stat.exists | default(false))
 
     - name: Зафиксировать права gateway Basic Auth файла
       ansible.builtin.file:
