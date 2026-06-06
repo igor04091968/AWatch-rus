@@ -102,6 +102,7 @@ hostname, логинов, сотрудников, подразделений з�
 [пакет расследования](docs/screenshots/05-investigation-pack.png),
 [итоговый отчет](docs/screenshots/06-markdown-report.png),
 [архитектура продукта](docs/screenshots/07-product-architecture.png).
+Сводный список и правила публикации: [docs/PORTAL_SCREENSHOTS_RU.md](docs/PORTAL_SCREENSHOTS_RU.md).
 
 ### Главный вывод
 
