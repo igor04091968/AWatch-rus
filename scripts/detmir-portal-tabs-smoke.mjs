@@ -261,11 +261,17 @@ async function main() {
             && (await page.locator('[data-view-mode="admin"]').count()) === 1,
         });
         const expectedSecurityText = expectedSecurityEventsText(securityMode);
+        const executiveSecurityTextOk = securityMode === "available"
+          ? containsText(readyBodyText, "События безопасности")
+            && containsText(readyBodyText, "Событий за 24 часа")
+            && !containsText(readyBodyText, "События безопасности временно недоступны")
+            && !containsText(readyBodyText, "Источник событий безопасности отключён")
+          : containsText(readyBodyText, expectedSecurityText);
         checks.push({
           name: "security_events_executive_text",
           ok:
             !expectedSecurityText
-            || (containsText(readyBodyText, expectedSecurityText)
+            || (executiveSecurityTextOk
               && !containsText(readyBodyText, "SECURITY_EVENTS_BACKEND")
               && !containsText(readyBodyText, "CLICKHOUSE_*")
               && !containsText(readyBodyText, "ClickHouse")),

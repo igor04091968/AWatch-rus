@@ -261,27 +261,6 @@ function setViewMode(mode) {
     setTab("operator");
     return;
   }
-  if (state.operatorData && state.reports) {
-    const content = document.getElementById("content");
-    if (content) {
-      content.innerHTML = renderOperator(state.operatorData, state.reports, { cases: state.cases });
-    }
-    setLoadStatus("READY", "Данные готовы", 100);
-    consumePendingScroll();
-    if (mode === "security" && !state.cases) {
-      loadJson("/cases")
-        .then(cases => {
-          state.cases = cases;
-          if (currentViewMode() === "security" && state.tab === "operator" && content) {
-            content.innerHTML = renderOperator(state.operatorData, state.reports, { cases: state.cases });
-          }
-        })
-        .catch(() => {
-          state.cases = { ok: false, cases: [] };
-        });
-    }
-    return;
-  }
   refresh({ stage: VIEW_MODES[mode].stage });
 }
 
@@ -479,7 +458,11 @@ function hasTabData(tab, payload) {
     const report = payload.report || {};
     return (Array.isArray(report.kpis) && report.kpis.length > 0)
       || (Array.isArray(report.executive_points) && report.executive_points.length > 0)
-      || (Array.isArray(payload.data?.workforce) && payload.data.workforce.length > 0);
+      || (Array.isArray(payload.data?.workforce) && payload.data.workforce.length > 0)
+      || Boolean(report.workforce && Object.keys(report.workforce).length > 0)
+      || Boolean(report.security_events_summary)
+      || (Array.isArray(report.risk_incident_candidates) && report.risk_incident_candidates.length > 0)
+      || (Array.isArray(report.forensics?.investigations) && report.forensics.investigations.length > 0);
   }
   if (tab === "employees") {
     return Array.isArray(payload.data?.workforce) && payload.data.workforce.length > 0;
@@ -2313,6 +2296,14 @@ function renderSecurityEventsSummary(summary, options = {}) {
   const title = options.compact
     ? "События безопасности"
     : "События безопасности за 24 часа";
+  const compactStateText = disabled && options.compact
+    ? "Детализация скрыта для роли"
+    : stateText;
+  const compactModeText = disabled && options.compact
+    ? "Без ИБ-детализации"
+    : disabled
+      ? localModeText
+      : "Агрегированная сводка";
   const subtitle = disabled
     ? `${stateText}. ${localModeText}.`
     : fallback
@@ -2328,14 +2319,14 @@ function renderSecurityEventsSummary(summary, options = {}) {
         <div class="section-head">
           <div>
             <h3 ${tooltip("Краткая управленческая сводка доступности событий безопасности за последние 24 часа.")}>${ui(title)}</h3>
-            <p class="muted">${ui(stateText)}</p>
+            <p class="muted">${ui(compactStateText)}</p>
           </div>
           <span class="badge ${statusClass(status)}">${ui(status)}</span>
         </div>
         <div class="quality-grid">
-          <div><span class="muted">Состояние</span><strong>${ui(stateText)}</strong></div>
+          <div><span class="muted">Состояние</span><strong>${ui(compactStateText)}</strong></div>
           <div><span class="muted">Событий за 24 часа</span><strong>${ui(s.events_24h ?? 0)}</strong></div>
-          <div><span class="muted">Режим</span><strong>${ui(disabled ? localModeText : "Агрегированная сводка")}</strong></div>
+          <div><span class="muted">Режим</span><strong>${ui(compactModeText)}</strong></div>
         </div>
       </section>
     `;

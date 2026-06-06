@@ -200,6 +200,7 @@
         method: GET
         status_code: 200
         return_content: true
+        timeout: 90
       register: detmir_portal_reports
       failed_when: >
         detmir_portal_reports.status != 200
