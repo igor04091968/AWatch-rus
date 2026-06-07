@@ -2,11 +2,12 @@
 
 Дата проверки: 2026-06-07.
 
-Статус после TASK_014: рабочий внутренний pilot-контур приведен к Demo Freeze
+Статус после TASK_015: рабочий внутренний pilot-контур приведен к Demo Freeze
 v1 по portal runtime, production-hardening endpoints и основным live smoke.
-Контур собирает и показывает реальные данные; расширение пилота допустимо
-только контролируемо, после ручной проверки UEBA evidence и назначения
-операционного ownership.
+UEBA `critical` разобран в `docs/UEBA_CRITICAL_REVIEW_RU.md` и
+классифицирован как `Needs Investigation`. Расширение пилота допустимо только
+контролируемо, после проверки agent coverage и назначения операционного
+ownership.
 
 ## Executive Summary
 
@@ -37,8 +38,8 @@ v1 по portal runtime, production-hardening endpoints и основным live 
 - Executive visual conformance не проходит по текущему freeze smoke: в рабочем
   runtime не отображаются новые Pilot v1 блоки Risk Narrative / Explainable KPI
   / Recommended Actions;
-- UEBA на live-контуре возвращает `critical` score; нужна ручная проверка
-  evidence, чтобы отличить реальный риск от шумного правила.
+- UEBA на live-контуре возвращает `critical` score; TASK_015 классифицировал
+  его как `Needs Investigation`, а не как подтвержденный инцидент ИБ.
 
 TASK_014 remediation update:
 
@@ -53,8 +54,8 @@ TASK_014 remediation update:
 
 Вывод: контур можно использовать для контролируемого внутреннего pilot review и
 подготовки ограниченного пилота. Перед расширением на 10-50 пользователей
-остается вручную разобрать UEBA `critical` evidence и закрепить порядок
-операционной поддержки.
+остается проверить agent coverage, уточнить missing application data и
+закрепить порядок операционной поддержки.
 
 ## Scope
 
@@ -202,13 +203,16 @@ Live endpoint:
 - reason codes: несколько;
 - score components: несколько.
 
-Оценка:
+Оценка после TASK_015:
 
 - UEBA endpoint работает;
-- score `critical` требует ручной проверки evidence;
-- без ручной проверки нельзя считать это подтвержденным нарушением;
-- высокий score может быть как реальным риском, так и шумом от неполного
-  покрытия/устаревших источников/политики baseline.
+- score `critical` является фактическим rule-based результатом текущих
+  сигналов;
+- классификация: `Needs Investigation`;
+- security interpretation: `Operational Risk confirmed; Security Risk unknown`;
+- executive readiness: `Insufficient Confidence`;
+- основной вклад дают Workforce/baseline/history signals, а не DLP, network,
+  time или application anomaly.
 
 ## Risk Narrative Validation
 
@@ -302,8 +306,9 @@ Backlog/dead-letter:
 
 Потенциальный шум:
 
-- UEBA severity `critical` / score `100` без ручной валидации evidence может
-  выглядеть завышенным;
+- UEBA severity `critical` / score `100` после TASK_015 классифицирован как
+  `Needs Investigation`: высокий score выглядит операционно значимым, но не
+  доказывает ИБ-инцидент;
 - stale исторические buckets могут искажать общее восприятие freshness, если не
   разделять active, inactive и event-driven bucket types;
 - live Executive headline/runtime naming все еще может содержать старую
@@ -344,7 +349,8 @@ Backlog/dead-letter:
 
 Критично перед расширением пилота:
 
-1. Провести ручной разбор UEBA `critical` с evidence, не меняя правила вслепую.
+1. Проверить agent coverage и missing application data, которые могли усилить
+   UEBA `critical`.
 2. Назначить операционного владельца live smoke, deploy parity и rollback.
 3. Зафиксировать регламент: после каждого deploy проверять binary/version,
    endpoint matrix и live smoke.
@@ -403,6 +409,6 @@ Executive Action Center и основным smoke-проверкам. Текущ
 
 ```text
 ready for controlled internal pilot review;
-ready for limited pilot preparation after manual UEBA evidence review and
-operations ownership assignment.
+ready for limited pilot preparation after agent coverage review and operations
+ownership assignment.
 ```

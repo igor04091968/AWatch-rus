@@ -36,8 +36,12 @@ headline, KPI label и CLI help используют публичное назв
   действий.
 - TASK_013 live validation выявил deployment/version drift, но TASK_014 закрыл
   его controlled deploy актуального portal binary и повторным live smoke.
-- Перед расширением пилота остается ручной разбор UEBA evidence и закрепление
-  операционного ownership за deploy parity, rollback и регулярными smoke.
+- TASK_015 выполнил ручной разбор UEBA `critical`: классификация
+  `Needs Investigation`, security interpretation - `Operational Risk confirmed;
+  Security Risk unknown`.
+- Перед расширением пилота остается проверить agent coverage/missing application
+  data и закрепить операционный ownership за deploy parity, rollback и
+  регулярными smoke.
 
 ## Overall Status
 

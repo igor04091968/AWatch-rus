@@ -265,3 +265,41 @@ git diff --check
 персональные данные не попали в git;
 алгоритм UEBA не изменен;
 все проверки проходят.
+
+## Выполнение
+
+Дата выполнения: 2026-06-07.
+
+Статус: выполнено.
+
+Создан документ:
+
+```text
+docs/UEBA_CRITICAL_REVIEW_RU.md
+```
+
+Итоговая классификация:
+
+```text
+Needs Investigation
+```
+
+Краткий вывод:
+
+* UEBA `critical` подтвержден как фактический rule-based результат текущих
+  входных сигналов.
+* `critical` не подтвержден как доказанный инцидент ИБ.
+* Главный вклад дают Workforce signals и baseline/history, а не DLP, network,
+  time или application anomaly.
+* Нулевое agent coverage и low KPI confidence не позволяют безопасно трактовать
+  текущий score как true positive.
+* Алгоритм, weights, thresholds, Risk Narrative и Action Center не менялись.
+* Реальные пользователи, hostname, IP, логины, подразделения, события и
+  forensic payload в Git не добавлялись.
+
+Статусы:
+
+```text
+Executive readiness: Insufficient Confidence
+Security interpretation: Operational Risk confirmed; Security Risk unknown
+```
