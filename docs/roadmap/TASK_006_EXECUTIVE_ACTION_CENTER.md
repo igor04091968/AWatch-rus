@@ -254,3 +254,56 @@ docs/EXECUTIVE_ACTION_CENTER_RU.md
 7. Тесты.
 8. Проверки.
 9. Ограничения.
+
+## Выполнение
+
+Статус: done.
+
+Файлы:
+
+- `adk-rust/crates/detmir-portal/src/executive_actions.rs`;
+- `adk-rust/crates/detmir-portal/src/main.rs`;
+- `adk-rust/crates/detmir-portal/src/static/app.js`;
+- `adk-rust/crates/detmir-portal/src/static/app.css`;
+- `adk-rust/crates/detmir-portal/src/contracts/openapi.json`;
+- `adk-rust/crates/detmir-portal/src/contracts/typescript.d.ts`;
+- `adk-rust/crates/detmir-portal/src/production/limits.rs`;
+- `scripts/awatch-production-hardening-smoke.mjs`;
+- `docs/EXECUTIVE_ACTION_CENTER_RU.md`;
+- `README.md`.
+
+Новые endpoints:
+
+- `GET /api/actions`.
+
+Action model:
+
+- `priority`;
+- `title`;
+- `summary`;
+- `owner_role`;
+- `recommended_deadline`;
+- `reason_codes`;
+- `evidence`.
+
+Rule engine:
+
+- deterministic rule-based;
+- использует существующие сигналы Workforce KPI, UEBA, coverage, security
+  correlation, incident candidates и Risk Narrative;
+- не использует ML/LLM;
+- не выполняет auto-remediation.
+
+UI:
+
+- Executive View показывает блок `Рекомендуемые действия`;
+- Security View показывает блок `Рекомендуемые действия ИБ` с ИБ-действиями и
+  действиями, передаваемыми в расследование;
+- Markdown report содержит раздел `## Рекомендуемые действия`.
+
+Ограничения:
+
+- рекомендации не выполняются автоматически;
+- пользователи не блокируются;
+- политики не меняются;
+- DLP/EDR/ML/LLM не добавлялись.

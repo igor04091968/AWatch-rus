@@ -80,6 +80,12 @@ async function main() {
   assert(Array.isArray(riskNarrative.json?.why), "Risk narrative must include why list");
   assert(riskNarrative.json?.model?.type === "rule_based", "Risk narrative must be rule-based");
 
+  const actions = await request("/api/actions?role=executive");
+  assert(actions.response.status === 200, "Actions API must return 200");
+  assert(Array.isArray(actions.json?.actions), "Actions API must include actions array");
+  assert(actions.json?.model?.type === "rule_based", "Actions model must be rule-based");
+  assert(actions.json?.model?.auto_remediation === false, "Actions must not enable auto-remediation");
+
   console.log(JSON.stringify({
     ok: true,
     baseUrl,
@@ -92,6 +98,7 @@ async function main() {
       "role gates",
       "/api/workforce/kpi/explain",
       "/api/risk/narrative",
+      "/api/actions",
     ],
   }, null, 2));
 }

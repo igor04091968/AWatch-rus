@@ -40,6 +40,9 @@
       "name": "risk"
     },
     {
+      "name": "actions"
+    },
+    {
       "name": "pfsense"
     },
     {
@@ -891,6 +894,42 @@
           }
         }
       }
+    },
+    "/actions": {
+      "get": {
+        "tags": [
+          "actions"
+        ],
+        "summary": "Rule-based executive action center",
+        "parameters": [
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PortalRole"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recommended actions payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionCenterResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Query limits rejected"
+          },
+          "403": {
+            "description": "Role denied"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1024,6 +1063,12 @@
           "risk_narrative": {
             "$ref": "#/components/schemas/RiskNarrative"
           },
+          "recommended_actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionItem"
+            }
+          },
           "agent_quality": {
             "$ref": "#/components/schemas/JsonObject"
           },
@@ -1049,6 +1094,96 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/JsonObject"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "ActionItem": {
+        "type": "object",
+        "required": [
+          "priority",
+          "title",
+          "summary",
+          "owner_role",
+          "recommended_deadline",
+          "reason_codes",
+          "evidence"
+        ],
+        "properties": {
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "owner_role": {
+            "type": "string",
+            "enum": [
+              "executive",
+              "manager",
+              "security",
+              "forensics",
+              "admin"
+            ]
+          },
+          "recommended_deadline": {
+            "type": "string"
+          },
+          "reason_codes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "ActionCenterResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "actions",
+          "model"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "role_context": {
+            "$ref": "#/components/schemas/RoleContext"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionItem"
+            }
+          },
+          "model": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "generated_at_utc": {
+            "type": "string"
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           }
         },

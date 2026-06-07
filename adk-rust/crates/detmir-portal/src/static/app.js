@@ -738,6 +738,64 @@ function renderRiskNarrative(report) {
   `;
 }
 
+function renderActionCenter(actions, options = {}) {
+  const items = Array.isArray(actions) ? actions.slice(0, 6) : [];
+  if (!items.length) {
+    return `
+      <section class="card action-center-card">
+        <div class="section-head">
+          <div>
+            <h3>${ui(options.title || "Рекомендуемые действия")}</h3>
+            <p class="muted">Критичных действий по текущему срезу не требуется.</p>
+          </div>
+          <span class="badge status-ok">low</span>
+        </div>
+      </section>
+    `;
+  }
+  return `
+    <section class="card action-center-card ${options.security ? "security-actions-card" : ""}">
+      <div class="section-head">
+        <div>
+          <h3 ${tooltip("Rule-based список действий: что сделать, кому адресовано, срок и почему система предлагает это действие.")}>${ui(options.title || "Рекомендуемые действия")}</h3>
+          <p class="muted">Рекомендации сформированы по Workforce KPI, UEBA, покрытию данных, корреляции безопасности и кандидатам на проверку.</p>
+        </div>
+        <span class="badge ${statusClass(items[0]?.priority)}">${ui(items[0]?.priority || "low")}</span>
+      </div>
+      <div class="action-center-list">
+        ${items.map(action => `
+          <article class="action-item">
+            <div class="action-item-head">
+              <span class="badge ${statusClass(action.priority)}">${ui(action.priority || "low")}</span>
+              <strong>${ui(action.title || "Действие не указано")}</strong>
+            </div>
+            <p>${ui(action.summary || "Описание действия не указано")}</p>
+            <div class="action-meta">
+              <span><strong>Срок</strong> ${ui(action.recommended_deadline || "72h")}</span>
+              <span><strong>Адресат</strong> ${ui(actionOwnerLabel(action.owner_role))}</span>
+            </div>
+            <div class="action-reasons">
+              ${(Array.isArray(action.reason_codes) ? action.reason_codes : []).slice(0, 4).map(code => `<span>${ui(code)}</span>`).join("")}
+            </div>
+            <ul>${(Array.isArray(action.evidence) ? action.evidence : []).slice(0, 3).map(item => `<li>${ui(item)}</li>`).join("")}</ul>
+          </article>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function actionOwnerLabel(value) {
+  const map = {
+    executive: "Руководитель",
+    manager: "Руководитель подразделения",
+    security: "ИБ",
+    forensics: "Расследования",
+    admin: "Эксплуатация"
+  };
+  return map[value] || value || "Ответственный";
+}
+
 function optionalPercent(value) {
   const number = Number(value);
   return Number.isFinite(number) ? `${Math.round(number)}%` : "нет данных";
@@ -1289,6 +1347,7 @@ function renderOperatorRoleContent(mode, data, report, extras = {}) {
 function renderExecutiveView(report, incidents) {
   return `
     ${renderRiskNarrative(report)}
+    ${renderActionCenter(report?.recommended_actions, { title: "Рекомендуемые действия" })}
     ${renderExecutiveDashboard(report)}
     ${renderKpiExplain(report?.workforce_kpi_explain)}
     ${renderSecurityEventsSummary(report?.security_events_summary, { compact: true })}
@@ -1301,6 +1360,7 @@ function renderExecutiveView(report, incidents) {
 function renderSecurityView(data, report, extras = {}) {
   const cases = Array.isArray(extras.cases?.cases) ? extras.cases.cases : [];
   return `
+    ${renderActionCenter(report?.recommended_actions, { title: "Рекомендуемые действия ИБ", security: true })}
     ${renderSecurityEventsSummary(report?.security_events_summary)}
     ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
     ${renderSecurityCorrelation(report?.security_correlation)}
@@ -2933,6 +2993,7 @@ function renderReports(data) {
     </div>
     ${renderPeriodBanner(data)}
     ${renderRiskNarrative(data)}
+    ${renderActionCenter(data.recommended_actions, { title: "Рекомендуемые действия" })}
     ${renderExecutiveDashboard(data)}
     ${renderReportTypeCards()}
     <div class="grid-2">

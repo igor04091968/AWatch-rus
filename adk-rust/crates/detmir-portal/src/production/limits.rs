@@ -126,6 +126,7 @@ pub(crate) fn is_limited_api_route(path: &str) -> bool {
             | "/api/pfsense"
             | "/api/workforce/kpi/explain"
             | "/api/risk/narrative"
+            | "/api/actions"
     )
 }
 

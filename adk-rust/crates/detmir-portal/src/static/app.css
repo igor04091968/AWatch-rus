@@ -988,6 +988,83 @@ h1 {
   margin: 12px 0;
 }
 
+.action-center-card {
+  margin: 12px 0;
+}
+
+.security-actions-card {
+  border-left: 4px solid #7c2d12;
+}
+
+.action-center-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.action-item {
+  display: grid;
+  gap: 8px;
+  min-height: 196px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.action-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.action-item-head strong,
+.action-item p,
+.action-item li {
+  overflow-wrap: anywhere;
+}
+
+.action-item p {
+  margin: 0;
+}
+
+.action-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.action-meta span {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.action-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.action-reasons span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.action-item ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
 .risk-narrative-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1303,6 +1380,8 @@ pre {
   .executive-grid { grid-template-columns: 1fr; }
   .risk-narrative-grid { grid-template-columns: 1fr; }
   .risk-narrative-columns { grid-template-columns: 1fr; }
+  .action-center-list { grid-template-columns: 1fr; }
+  .action-meta { grid-template-columns: 1fr; }
   .analytics-grid { grid-template-columns: 1fr; }
   .incident-row { grid-template-columns: 1fr; }
   .evidence-row { grid-template-columns: 1fr; }

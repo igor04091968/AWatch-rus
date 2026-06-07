@@ -87,6 +87,30 @@ export interface RiskNarrative {
   [key: string]: unknown;
 }
 
+export type ActionPriority = "low" | "medium" | "high" | "critical";
+export type ActionOwnerRole = "executive" | "manager" | "security" | "forensics" | "admin";
+
+export interface ActionItem {
+  priority: ActionPriority | string;
+  title: string;
+  summary: string;
+  owner_role: ActionOwnerRole | string;
+  recommended_deadline: string;
+  reason_codes: string[];
+  evidence: string[];
+  [key: string]: unknown;
+}
+
+export interface ActionCenterResponse {
+  ok: boolean;
+  role_context?: RoleContext;
+  actions: ActionItem[];
+  model?: JsonObject;
+  generated_at_utc?: ISODateTime;
+  limitations?: string[];
+  [key: string]: unknown;
+}
+
 export interface AgentQuality {
   collector_source?: string;
   collector_error?: string | null;
@@ -218,6 +242,7 @@ export interface ReportsResponse {
   executive_points?: string[];
   executive_dashboard?: ExecutiveDashboard;
   risk_narrative?: RiskNarrative;
+  recommended_actions?: ActionItem[];
   agent_quality?: AgentQuality;
   agent_coverage_sla?: AgentCoverageSla;
   business_risk?: BusinessRiskItem[];
@@ -303,6 +328,7 @@ export interface DetMirPortalApi {
     module?: string;
     role?: PortalRole;
   }): Promise<RiskNarrative>;
+  getActions(options?: { role?: PortalRole }): Promise<ActionCenterResponse>;
   getPfsense(options?: { role?: PortalRole }): Promise<PfsenseReadinessResponse>;
   getIncidents(): Promise<JsonObject>;
   getCases(): Promise<CaseListResponse>;

@@ -23,10 +23,14 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
+mod executive_actions;
 mod production;
 mod risk_narrative;
 mod workforce_kpi_explain;
 
+use executive_actions::{
+    actions_from_center, build_action_center_from_report, filter_actions_for_role,
+};
 use production::{
     build_healthz, build_readyz, build_version, http_request_metadata, is_limited_api_route,
     log_http_request, mark_request_started, record_http_metric, record_ingestion_accepted,
@@ -1316,6 +1320,7 @@ struct ReportMarkdownContext<'a> {
     security_events_summary: &'a SecurityEventsSummary,
     risk_incident_candidates: &'a [RiskIncidentCandidate],
     incident_review_audit_summary: &'a IncidentReviewAuditSummary,
+    recommended_actions: &'a Value,
 }
 
 struct ReportRuntimeInputs<'a> {
@@ -1559,6 +1564,10 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
                 &build_risk_narrative_from_report(&report, role, &query),
             )
         }
+        "/api/actions" => {
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            respond_json(request, &build_action_center_from_report(&report, role))
+        }
         "/api/owner" => {
             if !role.can_access("security") {
                 return respond_forbidden(request, role, "security");
@@ -1766,7 +1775,8 @@ fn api_contract_summary() -> Value {
             {"method": "GET", "path": "/api/readiness/latest", "purpose": "latest readiness status"},
             {"method": "GET", "path": "/api/workforce/policy/explain", "purpose": "workforce policy explanation"},
             {"method": "GET", "path": "/api/workforce/kpi/explain", "purpose": "rule-based Workforce KPI explanation"},
-            {"method": "GET", "path": "/api/risk/narrative", "purpose": "rule-based executive risk narrative"}
+            {"method": "GET", "path": "/api/risk/narrative", "purpose": "rule-based executive risk narrative"},
+            {"method": "GET", "path": "/api/actions", "purpose": "rule-based executive action center"}
         ]
     })
 }
@@ -3335,6 +3345,16 @@ fn build_reports(
         PortalRole::Executive,
         &RiskNarrativeQuery::default(),
     );
+    let action_signal_report = json!({
+        "workforce_kpi_explain": workforce_kpi_explain,
+        "ueba_risk": ueba_risk,
+        "agent_coverage_sla": agent_coverage_sla,
+        "security_correlation": security_correlation,
+        "risk_incident_candidates": risk_incident_candidates,
+        "risk_narrative": risk_narrative,
+    });
+    let action_center = build_action_center_from_report(&action_signal_report, PortalRole::Admin);
+    let recommended_actions = actions_from_center(&action_center);
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
         "Контур DetMir работает штатно, критичных действий не требуется"
@@ -3452,6 +3472,7 @@ fn build_reports(
             security_events_summary: &security_events_summary,
             risk_incident_candidates: &risk_incident_candidates,
             incident_review_audit_summary: &incident_review_audit_summary,
+            recommended_actions: &recommended_actions,
         },
     );
     json!({
@@ -3464,6 +3485,7 @@ fn build_reports(
         "executive_points": executive_points,
         "executive_dashboard": executive_dashboard,
         "risk_narrative": risk_narrative,
+        "recommended_actions": recommended_actions,
         "kpis": [
             report_kpi("Оценка риска", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("оценка риска")),
             report_kpi("Качество данных", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
@@ -3707,6 +3729,12 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
             out.insert("role_context".to_string(), role_envelope(role, "forensics"));
         }
         PortalRole::Admin => {}
+    }
+    if let Some(actions) = object.get("recommended_actions") {
+        out.insert(
+            "recommended_actions".to_string(),
+            filter_actions_for_role(actions, role),
+        );
     }
     out.insert("ok".to_string(), Value::Bool(true));
     Value::Object(out)
@@ -7182,6 +7210,7 @@ fn render_report_markdown(
         context.risk_heatmap,
         context.security_correlation,
     );
+    append_recommended_actions_markdown(&mut text, context.recommended_actions);
     append_executive_dashboard_markdown(&mut text, context.executive_dashboard);
     text.push_str("## Ключевые показатели\n\n");
     text.push_str(&format!("- Общий статус: {}\n", summary.severity));
@@ -7354,6 +7383,58 @@ fn append_risk_narrative_markdown(text: &mut String, narrative: &Value) {
         "ограничения не указаны",
     );
     text.push('\n');
+}
+
+fn append_recommended_actions_markdown(text: &mut String, actions: &Value) {
+    text.push_str("\n## Рекомендуемые действия\n\n");
+    let Some(items) = actions.as_array().filter(|items| !items.is_empty()) else {
+        text.push_str("- Критичных управленческих действий по текущему срезу не требуется.\n");
+        return;
+    };
+    for action in items.iter().take(12) {
+        text.push_str(&format!(
+            "- [{}] {} — {}; срок: {}; адресат: {}; причины: {}\n",
+            action
+                .get("priority")
+                .and_then(Value::as_str)
+                .unwrap_or("low"),
+            action
+                .get("title")
+                .and_then(Value::as_str)
+                .unwrap_or("Действие не указано"),
+            action
+                .get("summary")
+                .and_then(Value::as_str)
+                .unwrap_or("обоснование не указано"),
+            action
+                .get("recommended_deadline")
+                .and_then(Value::as_str)
+                .unwrap_or("72h"),
+            action
+                .get("owner_role")
+                .and_then(Value::as_str)
+                .unwrap_or("manager"),
+            action
+                .get("reason_codes")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        let evidence = action
+            .get("evidence")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .take(3)
+            .collect::<Vec<_>>();
+        if !evidence.is_empty() {
+            text.push_str(&format!("  - Обоснование: {}\n", evidence.join("; ")));
+        }
+    }
 }
 
 fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveDashboard) {
@@ -10637,6 +10718,12 @@ mod tests {
                 "demo navigation missing {marker}"
             );
         }
+        assert!(APP_JS.contains("function renderActionCenter"));
+        assert!(APP_JS.contains("Рекомендуемые действия ИБ"));
+        assert!(APP_CSS.contains(".action-center-card"));
+        assert!(!APP_CSS.contains("1 px"));
+        assert!(!APP_CSS.contains("1 fr"));
+        assert!(!APP_CSS.contains("8 px"));
     }
 
     #[test]
@@ -10656,6 +10743,7 @@ mod tests {
             "/workforce",
             "/workforce/kpi/explain",
             "/risk/narrative",
+            "/actions",
             "/security",
             "/forensics",
             "/ueba",
@@ -10678,6 +10766,8 @@ mod tests {
             "PfsenseReadinessResponse",
             "WorkforceKpiExplainResponse",
             "RiskNarrative",
+            "ActionItem",
+            "ActionCenterResponse",
             "CaseListResponse",
             "IncidentReviewRequest",
             "export interface DetMirPortalApi",
@@ -10750,7 +10840,36 @@ mod tests {
             "security_correlation": [],
             "risk_incident_candidates": [{"id": "candidate-demo"}],
             "ueba_risk": {"score": 10, "level": "low", "status": "WARN", "reasons": [{"code": "activity_anomaly"}]},
-            "incident_review_audit_summary": {"total_changes": 0}
+            "incident_review_audit_summary": {"total_changes": 0},
+            "recommended_actions": [
+                {
+                    "priority": "high",
+                    "title": "Проверить подразделение",
+                    "summary": "Низкий Workforce KPI требует ручного разбора",
+                    "owner_role": "manager",
+                    "recommended_deadline": "24h",
+                    "reason_codes": ["LOW_WORKFORCE_KPI"],
+                    "evidence": ["Workforce KPI ниже порога"]
+                },
+                {
+                    "priority": "high",
+                    "title": "Передать в ИБ",
+                    "summary": "UEBA score требует проверки ИБ",
+                    "owner_role": "security",
+                    "recommended_deadline": "24h",
+                    "reason_codes": ["HIGH_UEBA"],
+                    "evidence": ["UEBA score high"]
+                },
+                {
+                    "priority": "high",
+                    "title": "Провести расследование кандидата",
+                    "summary": "Кандидат требует ручного разбора",
+                    "owner_role": "forensics",
+                    "recommended_deadline": "24h",
+                    "reason_codes": ["INCIDENT_CANDIDATE"],
+                    "evidence": ["Есть кандидат на проверку"]
+                }
+            ]
         });
 
         let executive = role_filtered_report(report.clone(), PortalRole::Executive);
@@ -10759,16 +10878,58 @@ mod tests {
         assert!(executive.get("security_events_summary").is_some());
         assert!(executive.get("risk_incident_candidates").is_none());
         assert!(executive.get("security_correlation").is_none());
+        assert_eq!(
+            executive["recommended_actions"].as_array().unwrap().len(),
+            1
+        );
+        assert_eq!(executive["recommended_actions"][0]["owner_role"], "manager");
 
         let security = role_filtered_report(report.clone(), PortalRole::Security);
         assert!(security.get("ueba_risk").is_some());
         assert!(security.get("risk_incident_candidates").is_some());
         assert!(security.get("workforce").is_none());
         assert!(security.get("workforce_policy").is_none());
+        assert_eq!(security["recommended_actions"].as_array().unwrap().len(), 2);
+        assert!(
+            security["recommended_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["owner_role"] == "security"
+                    && action["reason_codes"][0] == "HIGH_UEBA")
+        );
+        assert!(
+            security["recommended_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["owner_role"] == "forensics"
+                    && action["reason_codes"][0] == "INCIDENT_CANDIDATE")
+        );
 
         let forensics = role_filtered_report(report, PortalRole::Forensics);
         assert!(forensics.get("forensics").is_some());
         assert!(forensics.get("workforce").is_none());
+        assert_eq!(
+            forensics["recommended_actions"].as_array().unwrap().len(),
+            2
+        );
+        assert!(
+            forensics["recommended_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["owner_role"] == "security"
+                    && action["reason_codes"][0] == "HIGH_UEBA")
+        );
+        assert!(
+            forensics["recommended_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|action| action["owner_role"] == "forensics"
+                    && action["reason_codes"][0] == "INCIDENT_CANDIDATE")
+        );
     }
 
     #[test]
@@ -12221,6 +12382,26 @@ mod tests {
                 .unwrap()
                 .contains("## Объяснение индекса активности")
         );
+        assert!(report["recommended_actions"].is_array());
+        assert!(!report["recommended_actions"].as_array().unwrap().is_empty());
+        assert!(
+            report["recommended_actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item["reason_codes"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|code| code == "LOW_COVERAGE"))
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
+                .contains("## Рекомендуемые действия")
+        );
+        assert!(report["markdown"].as_str().unwrap().contains("причины:"));
         assert!(report["risk_narrative"].is_object());
         assert_eq!(report["risk_narrative"]["ok"], true);
         assert_eq!(report["risk_narrative"]["model"]["type"], "rule_based");
