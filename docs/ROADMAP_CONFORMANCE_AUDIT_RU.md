@@ -34,6 +34,11 @@ headline, KPI label и CLI help используют публичное назв
 - Полная production-приемка требует live validation на стенде заказчика:
   доступность, TLS/reverse proxy, источники данных, backup/restore и ownership
   действий.
+- TASK_013 live validation выявил deployment/version drift: рабочий внутренний
+  runtime собирает и показывает реальные данные, но не соответствует Demo
+  Freeze v1 по production-hardening endpoints и отдельным risk/explain/action
+  endpoints. До расширения пилота нужен controlled deploy/parity check и
+  повторный live smoke.
 
 ## Overall Status
 
