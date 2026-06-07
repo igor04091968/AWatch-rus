@@ -3,7 +3,10 @@ use std::{
     fs,
     io::Cursor,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -13,6 +16,7 @@ use chrono::{
     TimeZone, Utc,
 };
 use clap::Parser;
+use regex::Regex;
 use reqwest::{
     blocking::Client,
     header::{CONNECTION, HeaderMap, HeaderValue},
@@ -137,12 +141,23 @@ type IdentitySamples = BTreeMap<(String, String), Vec<(DateTime<Utc>, AwEvent)>>
 type DateBounds = (DateTime<Utc>, DateTime<Utc>);
 type EventsForDate = (DateBounds, Vec<AwEvent>);
 
+#[derive(Default)]
+struct RuntimeMetrics {
+    aw_query_duration_ms: AtomicU64,
+    aw_query_timeout_count: AtomicU64,
+    report_build_error_count: AtomicU64,
+    report_cache_hit: AtomicU64,
+    report_stale_served: AtomicU64,
+    report_degraded: AtomicU64,
+}
+
 #[derive(Clone)]
 struct App {
     config: Arc<Config>,
     aw: Client,
     events_cache: EventsCache,
     report_cache: ReportCache,
+    metrics: Arc<RuntimeMetrics>,
 }
 
 fn env(name: &str, fallback: &str) -> String {
@@ -376,6 +391,7 @@ impl App {
             aw,
             events_cache: Arc::new(Mutex::new(HashMap::new())),
             report_cache: Arc::new(Mutex::new(HashMap::new())),
+            metrics: Arc::new(RuntimeMetrics::default()),
         })
     }
 
@@ -392,12 +408,17 @@ impl App {
         let url = format!("{}{}", self.config.aw_api_base, path);
         let mut last_error = None;
         for attempt in 1..=attempts.max(1) {
+            let started = Instant::now();
             let mut request = self.aw.get(&url);
             if let Some(timeout) = timeout {
                 request = request.timeout(timeout);
             }
             match request.send() {
                 Ok(response) => {
+                    self.metrics.aw_query_duration_ms.store(
+                        started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+                        Ordering::Relaxed,
+                    );
                     if !response.status().is_success() {
                         return Err(anyhow!("AW {path} returned HTTP {}", response.status()));
                     }
@@ -406,7 +427,16 @@ impl App {
                         .with_context(|| format!("decode AW JSON {path}"));
                 }
                 Err(error) => {
+                    self.metrics.aw_query_duration_ms.store(
+                        started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+                        Ordering::Relaxed,
+                    );
                     let is_timeout = error.is_timeout();
+                    if is_timeout {
+                        self.metrics
+                            .aw_query_timeout_count
+                            .fetch_add(1, Ordering::Relaxed);
+                    }
                     last_error = Some(error);
                     if is_timeout {
                         break;
@@ -430,11 +460,133 @@ impl App {
             Ok(events) => events,
             Err(error) => {
                 eprintln!(
-                    "[aw-worktime-api-rust] events fetch failed bucket={bucket_id}: {error:#}"
+                    "[aw-worktime-api-rust] events fetch failed bucket={} error={}",
+                    sanitize_bucket_for_log(bucket_id),
+                    sanitize_error_for_log(&format!("{error:#}"))
                 );
                 Vec::new()
             }
         }
+    }
+
+    fn health_payload(&self) -> Value {
+        let degraded = self.metrics.report_degraded.load(Ordering::Relaxed) > 0;
+        json!({
+            "ok": !degraded,
+            "status": if degraded { "DEGRADED" } else { "OK" },
+            "generated_at_utc": to_iso_utc(Utc::now()),
+            "report_timezone": "Europe/Moscow",
+            "default_host": self.config.default_host,
+            "aw_api_base": self.config.aw_api_base,
+            "runtime": self.runtime_metrics_payload(false, false),
+        })
+    }
+
+    fn runtime_metrics_payload(&self, report_cache_hit: bool, report_stale_served: bool) -> Value {
+        json!({
+            "worktime_events_limit": self.config.worktime_events_limit,
+            "aw_http_timeout_seconds": self.config.aw_http_timeout_seconds,
+            "report_cache_hit": report_cache_hit,
+            "report_stale_served": report_stale_served,
+            "aw_query_duration_ms": self.metrics.aw_query_duration_ms.load(Ordering::Relaxed),
+            "aw_query_timeout_count": self.metrics.aw_query_timeout_count.load(Ordering::Relaxed),
+            "report_build_error_count": self.metrics.report_build_error_count.load(Ordering::Relaxed),
+            "report_cache_hit_count": self.metrics.report_cache_hit.load(Ordering::Relaxed),
+            "report_stale_served_count": self.metrics.report_stale_served.load(Ordering::Relaxed),
+        })
+    }
+
+    fn runtime_headers(&self, cache_state: &str) -> Vec<(String, String)> {
+        vec![
+            ("X-AW-Worktime-Cache".into(), cache_state.to_string()),
+            (
+                "X-AW-Worktime-Events-Limit".into(),
+                self.config.worktime_events_limit.to_string(),
+            ),
+            (
+                "X-AW-Worktime-AW-Timeout-Seconds".into(),
+                format!("{:.3}", self.config.aw_http_timeout_seconds),
+            ),
+            (
+                "X-AW-Worktime-AW-Query-Duration-Ms".into(),
+                self.metrics
+                    .aw_query_duration_ms
+                    .load(Ordering::Relaxed)
+                    .to_string(),
+            ),
+            (
+                "X-AW-Worktime-AW-Query-Timeout-Count".into(),
+                self.metrics
+                    .aw_query_timeout_count
+                    .load(Ordering::Relaxed)
+                    .to_string(),
+            ),
+            (
+                "X-AW-Worktime-Report-Build-Error-Count".into(),
+                self.metrics
+                    .report_build_error_count
+                    .load(Ordering::Relaxed)
+                    .to_string(),
+            ),
+        ]
+    }
+
+    fn log_report_runtime(
+        &self,
+        path: &str,
+        outcome: &str,
+        cache_state: &str,
+        report_cache_hit: bool,
+        report_stale_served: bool,
+        error: Option<&str>,
+    ) {
+        let error_suffix = error
+            .map(|value| format!(" error={}", sanitize_error_for_log(value)))
+            .unwrap_or_default();
+        eprintln!(
+            "[aw-worktime-api-rust] report {outcome} path={path} cache={cache_state} worktime_events_limit={} aw_http_timeout_seconds={:.3} report_cache_hit={} report_stale_served={} aw_query_duration_ms={} aw_query_timeout_count={} report_build_error_count={}{}",
+            self.config.worktime_events_limit,
+            self.config.aw_http_timeout_seconds,
+            report_cache_hit,
+            report_stale_served,
+            self.metrics.aw_query_duration_ms.load(Ordering::Relaxed),
+            self.metrics.aw_query_timeout_count.load(Ordering::Relaxed),
+            self.metrics
+                .report_build_error_count
+                .load(Ordering::Relaxed),
+            error_suffix
+        );
+    }
+
+    fn add_runtime_to_json(
+        &self,
+        data: Vec<u8>,
+        content_type: &str,
+        report_cache_hit: bool,
+        report_stale_served: bool,
+        degraded_reason: Option<&str>,
+    ) -> Vec<u8> {
+        if !content_type.starts_with("application/json") {
+            return data;
+        }
+        let Ok(mut payload) = serde_json::from_slice::<Value>(&data) else {
+            return data;
+        };
+        let Some(object) = payload.as_object_mut() else {
+            return data;
+        };
+        object.insert(
+            "runtime".to_string(),
+            self.runtime_metrics_payload(report_cache_hit, report_stale_served),
+        );
+        if let Some(reason) = degraded_reason {
+            object.insert("ok".to_string(), json!(false));
+            object.insert("status".to_string(), json!("DEGRADED"));
+            object.insert("degraded".to_string(), json!(true));
+            object.insert("stale".to_string(), json!(report_stale_served));
+            object.insert("degraded_reason".to_string(), json!(reason));
+        }
+        serde_json::to_vec_pretty(&payload).unwrap_or(data)
     }
 
     fn fetch_bucket_events_result(
@@ -526,45 +678,103 @@ impl App {
             &department,
         );
         if let Some(cached) = self.get_report_cache(&cache_key, false) {
-            return (
-                cached.data,
-                cached.content_type,
-                vec![
-                    ("X-AW-Worktime-Cache".into(), "fresh".into()),
-                    ("X-AW-Worktime-Cache-Reason".into(), "ttl".into()),
-                ],
-            );
+            self.metrics
+                .report_cache_hit
+                .fetch_add(1, Ordering::Relaxed);
+            let data =
+                self.add_runtime_to_json(cached.data, &cached.content_type, true, false, None);
+            let mut headers = self.runtime_headers("fresh");
+            headers.push(("X-AW-Worktime-Cache-Reason".into(), "ttl".into()));
+            self.log_report_runtime(path, "ok", "fresh", true, false, None);
+            return (data, cached.content_type, headers);
         }
         let built =
             self.build_report_response(path, params, &fmt, &host, report_date, &owner, &department);
         match built {
             Ok((data, content_type)) => {
+                self.metrics.report_degraded.store(0, Ordering::Relaxed);
+                let data = self.add_runtime_to_json(data, &content_type, false, false, None);
                 self.save_report_cache(cache_key, data.clone(), content_type.clone());
-                (data, content_type, Vec::new())
+                self.log_report_runtime(path, "ok", "miss", false, false, None);
+                (data, content_type, self.runtime_headers("miss"))
             }
             Err(error) => {
-                eprintln!("[aw-worktime-api-rust] report build failed path={path}: {error:#}");
+                self.metrics
+                    .report_build_error_count
+                    .fetch_add(1, Ordering::Relaxed);
+                self.metrics.report_degraded.store(1, Ordering::Relaxed);
+                let sanitized_error = sanitize_error_for_log(&format!("{error:#}"));
                 if let Some(cached) = self.get_report_cache(&cache_key, true) {
-                    return (
+                    self.metrics
+                        .report_cache_hit
+                        .fetch_add(1, Ordering::Relaxed);
+                    self.metrics
+                        .report_stale_served
+                        .fetch_add(1, Ordering::Relaxed);
+                    let data = self.add_runtime_to_json(
                         cached.data,
-                        cached.content_type,
-                        vec![
-                            ("X-AW-Worktime-Cache".into(), "stale".into()),
-                            ("X-AW-Worktime-Cache-Reason".into(), "build-error".into()),
-                        ],
+                        &cached.content_type,
+                        true,
+                        true,
+                        Some("stale_cache_served_after_build_error"),
                     );
+                    let mut headers = self.runtime_headers("stale");
+                    headers.push(("X-AW-Worktime-Cache-Reason".into(), "build-error".into()));
+                    self.log_report_runtime(
+                        path,
+                        "degraded",
+                        "stale",
+                        true,
+                        true,
+                        Some(&sanitized_error),
+                    );
+                    return (data, cached.content_type, headers);
                 }
+                self.log_report_runtime(
+                    path,
+                    "degraded",
+                    "degraded",
+                    false,
+                    false,
+                    Some(&sanitized_error),
+                );
                 let data = serde_json::to_vec_pretty(&json!({
                     "ok": false,
-                    "error": "report_unavailable",
+                    "status": "DEGRADED",
+                    "degraded": true,
+                    "stale": false,
+                    "reason": "report_unavailable",
                     "message": "report build failed and no cached response is available",
                     "generated_at_utc": to_iso_utc(Utc::now()),
+                    "report_timezone": "Europe/Moscow",
+                    "host": host,
+                    "report_date": report_date.to_string(),
+                    "rows": [],
+                    "actions": [],
+                    "sources": [],
+                    "summary": {
+                        "users_count": 0,
+                        "active_users": 0,
+                        "inactive_users": 0,
+                        "portfolio_coverage_pct": 0.0,
+                        "actions_count": 0,
+                        "critical_actions_count": 0
+                    },
+                    "executive": {
+                        "portfolio_state": "degraded",
+                        "headline": "Данные рабочего времени временно недоступны; используется безопасный degraded-режим.",
+                        "message": "ActivityWatch API не ответил в заданный лимит, тяжелые повторные запросы не выполняются.",
+                        "focus_items": [],
+                        "stale_sources": [],
+                        "stale_sources_count": 0
+                    },
+                    "runtime": self.runtime_metrics_payload(false, false),
                 }))
                 .unwrap_or_default();
                 (
                     data,
                     "application/json; charset=utf-8".to_string(),
-                    Vec::new(),
+                    self.runtime_headers("degraded"),
                 )
             }
         }
@@ -923,6 +1133,39 @@ fn collect_worktime_host_from_bucket_id(bucket_id: &str, hosts: &mut BTreeSet<St
 
 fn sessions_bucket(host: &str) -> String {
     format!("aw-worktime-sessions_{host}")
+}
+
+fn sanitize_bucket_for_log(bucket_id: &str) -> String {
+    for prefix in [
+        "aw-worktime-sessions_",
+        "aw-watcher-afk_",
+        "aw-watcher-window_",
+        "aw-rdp-afk_",
+        "aw-rdp-window_",
+        "aw-file-operations_",
+        "aw-dlp-endpoint-signals_",
+        "aw-watcher-web-chrome_",
+        "aw-watcher-web-edge_",
+        "aw-detmir-web-category_",
+        "aw-session-events_",
+    ] {
+        if bucket_id.starts_with(prefix) {
+            return format!("{prefix}<HOST>");
+        }
+    }
+    bucket_id.to_string()
+}
+
+fn sanitize_error_for_log(value: &str) -> String {
+    static IP_RE: OnceLock<Regex> = OnceLock::new();
+    static BUCKET_HOST_RE: OnceLock<Regex> = OnceLock::new();
+    let ip_re = IP_RE.get_or_init(|| Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b").unwrap());
+    let bucket_re =
+        BUCKET_HOST_RE.get_or_init(|| Regex::new(r"(aw-[A-Za-z0-9-]+_)[A-Za-z0-9_.-]+").unwrap());
+    let redacted_ips = ip_re.replace_all(value, "<IP>").into_owned();
+    bucket_re
+        .replace_all(&redacted_ips, "$1<HOST>")
+        .into_owned()
 }
 
 fn resolve_report_date(config: &Config, day: Option<&str>, date: Option<&str>) -> NaiveDate {
@@ -3195,13 +3438,7 @@ fn handle(app: &App, request: Request) {
     let url = request.url().to_string();
     let (path, query) = url.split_once('?').unwrap_or((&url, ""));
     if path == "/health" || path == "/api/health" {
-        let payload = json!({
-            "ok": true,
-            "generated_at_utc": to_iso_utc(Utc::now()),
-            "report_timezone": "Europe/Moscow",
-            "default_host": app.config.default_host,
-            "aw_api_base": app.config.aw_api_base,
-        });
+        let payload = app.health_payload();
         respond(
             request,
             200,
@@ -3269,7 +3506,7 @@ fn handle(app: &App, request: Request) {
     let status = if content_type.starts_with("application/json")
         && serde_json::from_slice::<Value>(&data)
             .ok()
-            .and_then(|v| v.get("error").cloned())
+            .and_then(|v| v.get("error").or_else(|| v.get("http_error")).cloned())
             .is_some()
     {
         503
@@ -3299,6 +3536,21 @@ mod tests {
 
     fn test_config() -> Config {
         load_config()
+    }
+
+    fn degraded_test_config(cache_dir: &Path) -> Config {
+        let mut cfg = test_config();
+        cfg.aw_api_base = "http://127.0.0.1:9/api/0".to_string();
+        cfg.default_host = DEFAULT_HOST.to_string();
+        cfg.worktime_events_limit = 250;
+        cfg.aw_http_timeout_seconds = 0.5;
+        cfg.source_http_timeout_seconds = 0.25;
+        cfg.report_cache_ttl_seconds = 0;
+        cfg.report_stale_ttl_seconds = 600;
+        cfg.report_disk_stale_ttl_seconds = 600;
+        cfg.report_disk_cache_dir = cache_dir.to_path_buf();
+        cfg.management_history_dir = cache_dir.join("history");
+        cfg
     }
 
     fn event(ts: &str, username: &str, sid: i64, active: bool, extra: Value) -> AwEvent {
@@ -3529,6 +3781,90 @@ mod tests {
             true,
             true
         ));
+    }
+
+    #[test]
+    fn degraded_report_without_cache_returns_compact_response() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = App::new(degraded_test_config(dir.path())).unwrap();
+        let started = Instant::now();
+        let (data, content_type, headers) = app.report_response(
+            "/reports/worktime/management",
+            &Params::parse("format=json&host=HOST-EXAMPLE"),
+            "application/json",
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "degraded response must be bounded"
+        );
+        assert!(content_type.starts_with("application/json"));
+        assert!(
+            headers
+                .iter()
+                .any(|(key, value)| { key == "X-AW-Worktime-Cache" && value == "degraded" })
+        );
+        let payload: Value = serde_json::from_slice(&data).unwrap();
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["status"], "DEGRADED");
+        assert_eq!(payload["stale"], false);
+        assert_eq!(payload["runtime"]["worktime_events_limit"], 250);
+        assert_eq!(payload["runtime"]["report_build_error_count"], 1);
+        let health = app.health_payload();
+        assert_eq!(health["ok"], false);
+        assert_eq!(health["status"], "DEGRADED");
+    }
+
+    #[test]
+    fn stale_cache_is_served_after_report_build_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = degraded_test_config(dir.path());
+        let report_date = resolve_report_date(&cfg, None, None);
+        let app = App::new(cfg).unwrap();
+        let cache_key = make_report_cache_key(
+            "/reports/worktime/management",
+            "json",
+            "HOST-EXAMPLE",
+            report_date,
+            "",
+            "",
+            "",
+        );
+        let cached_payload = json!({
+            "generated_at_utc": to_iso_utc(Utc::now()),
+            "host": "HOST-EXAMPLE",
+            "report_date": report_date.to_string(),
+            "report_timezone": "Europe/Moscow",
+            "summary": {"portfolio_coverage_pct": 75.0},
+            "rows": [{"user": "demo", "workday_active_seconds": 60}],
+            "actions": [],
+            "sources": [],
+            "department_rollups": [],
+            "owner_rollups": []
+        });
+        app.save_report_cache(
+            cache_key,
+            serde_json::to_vec_pretty(&cached_payload).unwrap(),
+            "application/json; charset=utf-8".to_string(),
+        );
+
+        let (data, _content_type, headers) = app.report_response(
+            "/reports/worktime/management",
+            &Params::parse("format=json&host=HOST-EXAMPLE"),
+            "application/json",
+        );
+        assert!(
+            headers
+                .iter()
+                .any(|(key, value)| { key == "X-AW-Worktime-Cache" && value == "stale" })
+        );
+        let payload: Value = serde_json::from_slice(&data).unwrap();
+        assert_eq!(payload["ok"], false);
+        assert_eq!(payload["status"], "DEGRADED");
+        assert_eq!(payload["stale"], true);
+        assert_eq!(payload["runtime"]["report_cache_hit"], true);
+        assert_eq!(payload["runtime"]["report_stale_served"], true);
+        assert_eq!(payload["runtime"]["report_stale_served_count"], 1);
+        assert_eq!(app.health_payload()["ok"], false);
     }
 
     #[test]

@@ -2593,13 +2593,16 @@ fn http_json_source(name: &str, url: &str, timeout: Duration) -> SourceStatus {
     {
         Ok(response) => match response.error_for_status() {
             Ok(response) => match response.json::<Value>() {
-                Ok(payload) => SourceStatus {
-                    ok: true,
-                    status: status_from_payload(&payload),
-                    summary: source_summary(name, &payload),
-                    error: None,
-                    payload: Some(payload),
-                },
+                Ok(payload) => {
+                    let status = status_from_payload(&payload);
+                    SourceStatus {
+                        ok: source_ok_from_payload(&payload, &status),
+                        status,
+                        summary: source_summary(name, &payload),
+                        error: None,
+                        payload: Some(payload),
+                    }
+                }
                 Err(err) => SourceStatus {
                     ok: false,
                     status: "FAIL".to_string(),
@@ -9812,6 +9815,16 @@ fn status_from_payload(payload: &Value) -> String {
         .to_string()
 }
 
+fn source_ok_from_payload(payload: &Value, status: &str) -> bool {
+    if payload_bool(payload, "/ok") == Some(false) {
+        return false;
+    }
+    !matches!(
+        status.trim().to_ascii_uppercase().as_str(),
+        "FAIL" | "FAILED" | "ERROR" | "CRITICAL" | "DEGRADED"
+    )
+}
+
 fn source_summary(name: &str, payload: &Value) -> String {
     match name {
         "detmir_status" => format!(
@@ -9861,7 +9874,19 @@ fn source_summary(name: &str, payload: &Value) -> String {
                 .unwrap_or(0)
         ),
         "worktime_management" => format!(
-            "coverage={:.0}%, departments={}, owners={}",
+            "status={}, cache_hit={}, stale_served={}, coverage={:.0}%, departments={}, owners={}",
+            payload
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("OK"),
+            payload
+                .pointer("/runtime/report_cache_hit")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            payload
+                .pointer("/runtime/report_stale_served")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             payload
                 .pointer("/summary/portfolio_coverage_pct")
                 .and_then(Value::as_f64)
@@ -10136,6 +10161,22 @@ mod tests {
         assert!(!PortalRole::Security.can_access("workforce"));
         assert!(PortalRole::Forensics.can_access("forensics"));
         assert!(PortalRole::Admin.can_access("pfsense"));
+    }
+
+    #[test]
+    fn degraded_worktime_payload_is_not_healthy_source() {
+        let payload = json!({
+            "ok": false,
+            "status": "DEGRADED",
+            "runtime": {
+                "report_cache_hit": true,
+                "report_stale_served": true
+            }
+        });
+        let status = status_from_payload(&payload);
+        assert_eq!(status, "DEGRADED");
+        assert!(!source_ok_from_payload(&payload, &status));
+        assert!(source_summary("worktime_management", &payload).contains("stale_served=true"));
     }
 
     #[test]

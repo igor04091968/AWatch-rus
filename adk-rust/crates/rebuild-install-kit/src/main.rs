@@ -103,6 +103,7 @@ const SCRIPTS_FILES: &[&str] = &[
     "scripts/rebuild_install_kit.sh",
     "scripts/validate_install_kit.sh",
     "scripts/verify_innosetup_installer.sh",
+    "scripts/worktime-degraded-smoke.mjs",
 ];
 
 #[derive(Debug, Parser)]

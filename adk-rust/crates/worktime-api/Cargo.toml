@@ -16,3 +16,7 @@ serde_json.workspace = true
 tiny_http.workspace = true
 url.workspace = true
 urlencoding.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
