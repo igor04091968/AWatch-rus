@@ -2,10 +2,11 @@
 
 Дата проверки: 2026-06-07.
 
-Статус: рабочий внутренний pilot-контур подтвержден частично. Контур собирает и
-показывает реальные данные, но перед расширением пилота нужно закрыть
-deployment/version drift между Demo Freeze v1 и фактически запущенным portal
-runtime.
+Статус после TASK_014: рабочий внутренний pilot-контур приведен к Demo Freeze
+v1 по portal runtime, production-hardening endpoints и основным live smoke.
+Контур собирает и показывает реальные данные; расширение пилота допустимо
+только контролируемо, после ручной проверки UEBA evidence и назначения
+операционного ownership.
 
 ## Executive Summary
 
@@ -24,7 +25,7 @@ runtime.
 - Forensics view и базовые portal tabs открываются;
 - Windows runtime содержит активный текущий агентский процесс и watcher-процессы.
 
-Ключевые gaps:
+Ключевые gaps, найденные до TASK_014:
 
 - фактический portal runtime отстает от Demo Freeze v1: отдельные endpoints
   `/portal/api/workforce/kpi/explain`, `/portal/api/risk/narrative` и
@@ -39,9 +40,21 @@ runtime.
 - UEBA на live-контуре возвращает `critical` score; нужна ручная проверка
   evidence, чтобы отличить реальный риск от шумного правила.
 
-Вывод: контур можно использовать для ограниченного внутреннего просмотра
-реальных данных и сбора обратной связи, но не стоит расширять пилот до
-10-50 пользователей, пока не закрыт deployment/version drift.
+TASK_014 remediation update:
+
+- deployment/version drift закрыт controlled deploy актуального release binary;
+- live `/healthz`, `/readyz`, `/version`, `/metrics` теперь отвечают `200`;
+- request id / correlation id headers возвращаются;
+- live Explainable KPI, Risk Narrative и Executive Action Center endpoints
+  отвечают `200`;
+- live production hardening smoke прошел;
+- live browser conformance smoke прошел;
+- live portal tabs smoke прошел.
+
+Вывод: контур можно использовать для контролируемого внутреннего pilot review и
+подготовки ограниченного пилота. Перед расширением на 10-50 пользователей
+остается вручную разобрать UEBA `critical` evidence и закрепить порядок
+операционной поддержки.
 
 ## Scope
 
@@ -90,37 +103,38 @@ runtime.
 | Gateway `/portal/` | `401` снаружи | Внешний доступ закрыт авторизацией |
 | Portal local `/portal/` | `200` | UI доступен на gateway host |
 | Portal local `/portal/api/health` | `200` | API health доступен |
-| Portal local `/healthz` | `404` | Production-hardening endpoint не доступен на live runtime |
-| Portal local `/readyz` | `404` | Production-hardening endpoint не доступен на live runtime |
-| Portal local `/version` | `404` | Production-hardening endpoint не доступен на live runtime |
-| Portal local `/metrics` | `404` | Production-hardening endpoint не доступен на live runtime |
+| Portal local `/healthz` | `200` | Production-hardening endpoint подтвержден после TASK_014 |
+| Portal local `/readyz` | `200` | Production-hardening endpoint подтвержден после TASK_014 |
+| Portal local `/version` | `200` | Production-hardening endpoint подтвержден после TASK_014 |
+| Portal local `/metrics` | `200` | Prometheus text metrics подтверждены после TASK_014 |
 | ActivityWatch `/api/0/settings` | `200` | AW API отвечает |
 
-Request/correlation headers:
+Request/correlation headers после TASK_014:
 
-- `X-Request-Id`: не возвращается live portal API;
-- `X-Correlation-Id`: не возвращается live portal API.
+- `X-Request-Id`: возвращается live portal API;
+- `X-Correlation-Id`: возвращается live portal API.
 
 Metrics:
 
-- Prometheus metrics format на фактическом portal runtime не подтвержден,
-  потому что `/metrics` возвращает `404`.
+- Prometheus metrics format на фактическом portal runtime подтвержден через
+  `/metrics`.
 
 ## Portal Validation
 
 Проверено через tunnel к фактическому gateway-local portal port. Screenshots
 создавались только во временном каталоге вне репозитория и не коммитились.
 
-Результат `scripts/browser-conformance-smoke.mjs` на live-контуре:
+Результат `scripts/browser-conformance-smoke.mjs` на live-контуре после
+TASK_014:
 
 | View | Результат | Комментарий |
 | --- | --- | --- |
-| Executive | FAIL | Не найдены Pilot v1 blocks: KPI, Explainable KPI, Risk Narrative, Recommended Actions |
-| Workforce | FAIL | Не найдены ожидаемые freeze-маркеры KPI/Trend/Explainability |
-| Security | FAIL | Не найдены ожидаемые freeze-маркеры security/risk/action blocks |
+| Executive | OK | KPI, Explainable KPI, Risk Narrative и Recommended Actions отображаются |
+| Workforce | OK | KPI, подразделения, тренды и explainability отображаются |
+| Security | OK | Security actions, events, correlation и candidates отображаются |
 | Forensics | OK | Расследования, timeline, материалы и аудит отображаются |
 
-Результат `scripts/detmir-portal-tabs-smoke.mjs` на live-контуре:
+Результат `scripts/detmir-portal-tabs-smoke.mjs` на live-контуре после TASK_014:
 
 - базовые tabs открываются;
 - loading status доходит до ready;
@@ -128,7 +142,7 @@ Metrics:
 - Security events доступны;
 - manager/security/forensics/admin view checks проходят;
 - server role gates проходят;
-- Executive dashboard layer и expected management block order не проходят.
+- Executive dashboard layer и expected management block order проходят.
 
 ## KPI Validation
 
@@ -159,22 +173,17 @@ Metrics:
 
 ## Explainable KPI Validation
 
-Live endpoint:
+Live endpoint после TASK_014:
 
 ```text
-/portal/api/workforce/kpi/explain -> 404
+/portal/api/workforce/kpi/explain -> 200
 ```
 
 Вывод:
 
-- Explainable KPI реализован и покрыт тестами в текущей кодовой базе;
-- на рабочем контуре отдельный endpoint не развернут;
-- live UI не показывает ожидаемый блок `Почему такой индекс активности?` в
-  соответствии с freeze smoke.
-
-Gap:
-
-- deployment/version drift между текущим repository state и live portal runtime.
+- Explainable KPI развернут на рабочем контуре;
+- live UI показывает ожидаемый блок `Почему такой индекс активности?`;
+- прежний `404` был следствием устаревшего deployed binary.
 
 ## UEBA Validation
 
@@ -203,35 +212,33 @@ Live endpoint:
 
 ## Risk Narrative Validation
 
-Live endpoint:
+Live endpoint после TASK_014:
 
 ```text
-/portal/api/risk/narrative -> 404
+/portal/api/risk/narrative -> 200
 ```
 
 Вывод:
 
-- Risk Narrative реализован в текущей кодовой базе и задокументирован в
-  `docs/RISK_NARRATIVE_RU.md`;
-- на рабочем контуре отдельный endpoint и Executive UI block не соответствуют
-  Demo Freeze v1 ожиданиям;
-- risk narrative нельзя демонстрировать на live-контуре как подтвержденный
-  deployed capability до обновления runtime.
+- Risk Narrative развернут на рабочем контуре;
+- Executive UI block соответствует Demo Freeze v1 ожиданиям;
+- Risk Narrative можно показывать как deployed capability, сохраняя честное
+  ограничение: это rule-based объяснение, не ML-прогноз.
 
 ## Executive Action Center Validation
 
-Live endpoint:
+Live endpoint после TASK_014:
 
 ```text
-/portal/api/actions -> 404
+/portal/api/actions -> 200
 ```
 
 Вывод:
 
-- Executive Action Center реализован в текущей кодовой базе и задокументирован;
-- live runtime не отдает отдельный actions endpoint;
-- рекомендации в demo/freeze сценарии нельзя заявлять как live-deployed feature
-  до обновления portal runtime.
+- Executive Action Center развернут на рабочем контуре;
+- live runtime отдает отдельный actions endpoint;
+- рекомендации можно показывать как deployed rule-based guidance, без claims об
+  автоматическом remediation.
 
 ## Agent/Data Flow Validation
 
@@ -311,18 +318,15 @@ Backlog/dead-letter:
 
 ## Documentation Mismatches
 
-Найдены важные расхождения:
+Расхождения, найденные TASK_013, закрыты TASK_014:
 
-1. Документация Demo Freeze v1 описывает production-hardening endpoints
-   `/healthz`, `/readyz`, `/version`, `/metrics`; live portal runtime их не
-   отдает на фактическом portal port.
-2. Документация и текущая кодовая база описывают standalone endpoints
-   `/api/workforce/kpi/explain`, `/api/risk/narrative`, `/api/actions`; live
-   portal runtime на gateway-local path возвращает `404`.
-3. Visual smoke текущей freeze-ветки ожидает Executive blocks, которых нет в
-   live runtime.
-4. Public naming hygiene в repository docs закрыт, но live runtime/report text
-   может сохранять старую внутреннюю терминологию до обновления deployment.
+1. Production-hardening endpoints `/healthz`, `/readyz`, `/version`,
+   `/metrics` теперь доступны на фактическом portal port.
+2. Standalone endpoints `/api/workforce/kpi/explain`,
+   `/api/risk/narrative`, `/api/actions` теперь доступны на live runtime.
+3. Visual smoke текущей freeze-ветки проходит Executive, Workforce, Security и
+   Forensics views.
+4. Live runtime обновлен controlled deploy актуального release binary.
 
 ## Security / Privacy Notes
 
@@ -332,20 +336,18 @@ Backlog/dead-letter:
 - raw JSON payload не коммитился;
 - screenshots с реальными данными не коммитились;
 - реальные IP/hostname/usernames/ФИО/подразделения в этот документ не внесены;
-- проверка выполнялась read-only;
-- destructive commands, restarts и deploy не выполнялись.
+- deploy выполнялся controlled способом с backup старого binary и rollback path;
+- destructive data operations не выполнялись;
+- collectors, scoring rules и источники данных не менялись.
 
 ## Gaps
 
 Критично перед расширением пилота:
 
-1. Закрыть deployment/version drift live portal runtime относительно Demo Freeze
-   v1.
-2. После обновления runtime повторить production-hardening smoke на реальном
-   контуре.
-3. Проверить request id / correlation id headers на live API.
-4. Проверить `/metrics` на live runtime и мониторинг low-cardinality metrics.
-5. Провести ручной разбор UEBA `critical` с evidence, не меняя правила вслепую.
+1. Провести ручной разбор UEBA `critical` с evidence, не меняя правила вслепую.
+2. Назначить операционного владельца live smoke, deploy parity и rollback.
+3. Зафиксировать регламент: после каждого deploy проверять binary/version,
+   endpoint matrix и live smoke.
 
 Желательно до пилотного расширения:
 
@@ -353,9 +355,7 @@ Backlog/dead-letter:
    эксплуатации и расследователей.
 2. Разделить freshness report по bucket types: active, inactive, event-driven,
    historical.
-3. Подготовить live validation checklist для deploy parity: repo commit,
-   deployed binary version, endpoint matrix, smoke results.
-4. Проверить Windows-side spool/backlog безопасной командой без раскрытия путей
+3. Проверить Windows-side spool/backlog безопасной командой без раскрытия путей
    и payload.
 
 Можно перенести после первого ограниченного пилота:
@@ -379,7 +379,7 @@ operations oriented:
 
 ## Explicit Non-Goals
 
-В рамках TASK_013 не выполнялись:
+В рамках TASK_013/TASK_014 не выполнялись:
 
 - новые API;
 - новый UI;
@@ -387,7 +387,7 @@ operations oriented:
 - ML/LLM;
 - DLP/SIEM/EDR claims;
 - изменение scoring logic;
-- restart/redeploy production services;
+- изменение collectors или источников данных;
 - выгрузка персональных данных;
 - сохранение real screenshots в git.
 
@@ -397,11 +397,12 @@ operations oriented:
 Portal, ActivityWatch, Security events, UEBA endpoint, Forensics и базовые role
 views частично подтверждены.
 
-При этом live runtime не соответствует Demo Freeze v1 по production-hardening
-endpoints и новым risk/explain/action endpoints. До расширения пилота нужно
-закрыть deployment/version drift и повторить live validation. Текущий статус:
+После TASK_014 live runtime соответствует Demo Freeze v1 по production-hardening
+endpoints, request/correlation headers, Explainable KPI, Risk Narrative,
+Executive Action Center и основным smoke-проверкам. Текущий статус:
 
 ```text
-ready for controlled internal review;
-not ready for expanded pilot until live runtime parity is restored.
+ready for controlled internal pilot review;
+ready for limited pilot preparation after manual UEBA evidence review and
+operations ownership assignment.
 ```

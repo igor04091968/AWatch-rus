@@ -29,16 +29,15 @@ headline, KPI label и CLI help используют публичное назв
 - Добавлен browser-level conformance smoke с Playwright и screenshots runtime
   artifacts.
 
-Оставшиеся acceptance gaps:
+Оставшиеся acceptance gaps после TASK_014:
 
 - Полная production-приемка требует live validation на стенде заказчика:
   доступность, TLS/reverse proxy, источники данных, backup/restore и ownership
   действий.
-- TASK_013 live validation выявил deployment/version drift: рабочий внутренний
-  runtime собирает и показывает реальные данные, но не соответствует Demo
-  Freeze v1 по production-hardening endpoints и отдельным risk/explain/action
-  endpoints. До расширения пилота нужен controlled deploy/parity check и
-  повторный live smoke.
+- TASK_013 live validation выявил deployment/version drift, но TASK_014 закрыл
+  его controlled deploy актуального portal binary и повторным live smoke.
+- Перед расширением пилота остается ручной разбор UEBA evidence и закрепление
+  операционного ownership за deploy parity, rollback и регулярными smoke.
 
 ## Overall Status
 

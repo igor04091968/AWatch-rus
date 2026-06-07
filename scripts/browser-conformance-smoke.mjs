@@ -70,11 +70,24 @@ async function switchView(page, selector, timeout) {
     selector.match(/data-view-mode="([^"]+)"/)?.[1] || "",
     { timeout },
   );
-  await page.waitForTimeout(250);
+}
+
+async function waitForViewContent(page, spec, timeout) {
+  await page.waitForFunction(
+    ({ markers, minLength }) => {
+      const content = document.querySelector("#content")?.innerText || "";
+      if (content.trim().length < minLength) return false;
+      const normalized = content.toLocaleLowerCase("ru-RU");
+      return markers.every((marker) => normalized.includes(String(marker).toLocaleLowerCase("ru-RU")));
+    },
+    { markers: spec.required, minLength: 120 },
+    { timeout },
+  );
 }
 
 async function checkView(page, spec, artifactDir, timeout) {
   await switchView(page, `[data-view-mode="${spec.viewMode}"]`, timeout);
+  await waitForViewContent(page, spec, timeout);
   const content = await page.locator("#content").innerText({ timeout });
   const body = await page.locator("body").innerText({ timeout });
   const missing = missingMarkers(content, spec.required);
