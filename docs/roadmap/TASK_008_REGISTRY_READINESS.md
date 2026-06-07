@@ -232,3 +232,65 @@ Registry readiness documentation
 5. Что явно не заявляется.
 6. Какие пробелы остались до реальной подачи.
 
+## Выполнение
+
+Статус: done.
+
+Созданные документы:
+
+- `docs/REGISTRY_PRODUCT_PASSPORT_RU.md`;
+- `docs/REGISTRY_ARCHITECTURE_RU.md`;
+- `docs/REGISTRY_FUNCTIONAL_SCOPE_RU.md`;
+- `docs/REGISTRY_DEPENDENCY_STATEMENT_RU.md`;
+- `docs/REGISTRY_DEPLOYMENT_MODEL_RU.md`;
+- `docs/REGISTRY_COMMERCIAL_POSITIONING_RU.md`;
+- `docs/REGISTRY_READINESS_CHECKLIST_RU.md`.
+
+Обновленные документы:
+
+- `README.md`;
+- `docs/roadmap/TASK_008_REGISTRY_READINESS.md`.
+
+Core:
+
+- Workforce KPI;
+- Explainable KPI;
+- UEBA Score v1;
+- Risk Narrative;
+- Executive Action Center;
+- Reports and Markdown export;
+- Role-based portals;
+- Rust Agent baseline;
+- API contracts;
+- Demo Pack;
+- readiness and smoke checks.
+
+Optional:
+
+- pfSense;
+- 1C;
+- AD/LDAP;
+- SIEM/syslog;
+- external storage;
+- Grafana/Prometheus/InfluxDB/ClickHouse where configured in конкретной
+  поставке.
+
+Not claimed:
+
+- полноценная DLP;
+- полноценная SIEM;
+- EDR/XDR;
+- ML/LLM scoring;
+- auto-remediation без ручного контроля;
+- обязательный pfSense ingestion;
+- current React/Tauri UI.
+
+Оставшиеся пробелы до реальной подачи:
+
+- правообладательский пакет;
+- release tag and signed/checksummed artifacts;
+- release-specific SBOM;
+- юридическая проверка лицензий;
+- публичная страница продукта;
+- финальные install/user/admin guides под конкретный release;
+- проверка требований актуальной редакции правил реестра.

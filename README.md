@@ -187,8 +187,24 @@ collectors.
 
 ## Поставка и регистрация
 
+- Registry readiness documentation:
+  [product passport](docs/REGISTRY_PRODUCT_PASSPORT_RU.md),
+  [architecture](docs/REGISTRY_ARCHITECTURE_RU.md),
+  [functional scope](docs/REGISTRY_FUNCTIONAL_SCOPE_RU.md),
+  [dependency statement](docs/REGISTRY_DEPENDENCY_STATEMENT_RU.md),
+  [deployment model](docs/REGISTRY_DEPLOYMENT_MODEL_RU.md),
+  [commercial positioning](docs/REGISTRY_COMMERCIAL_POSITIONING_RU.md),
+  [readiness checklist](docs/REGISTRY_READINESS_CHECKLIST_RU.md).
+
 - [Позиционирование для реестра российского ПО](docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)
+- [Registry product passport](docs/REGISTRY_PRODUCT_PASSPORT_RU.md)
+- [Registry architecture](docs/REGISTRY_ARCHITECTURE_RU.md)
+- [Registry functional scope](docs/REGISTRY_FUNCTIONAL_SCOPE_RU.md)
+- [Registry dependency statement](docs/REGISTRY_DEPENDENCY_STATEMENT_RU.md)
+- [Registry deployment model](docs/REGISTRY_DEPLOYMENT_MODEL_RU.md)
+- [Registry commercial positioning](docs/REGISTRY_COMMERCIAL_POSITIONING_RU.md)
+- [Registry readiness checklist](docs/REGISTRY_READINESS_CHECKLIST_RU.md)
 - [Описание продукта](PRODUCT_DESCRIPTION_RU.md)
 - [Журнал изменений](CHANGELOG_RU.md)
 - [Установка для эксперта](INSTALL_FOR_EXPERT_RU.md)
