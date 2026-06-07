@@ -1,0 +1,267 @@
+Цель
+
+Проверить, почему UEBA на реальном DetMir-контуре показывает:
+
+severity = critical
+
+и определить:
+
+True Positive
+или
+False Positive
+или
+Insufficient Context
+
+Без изменения алгоритма.
+
+Без изменения весов.
+
+Без изменения правил.
+
+Контекст
+
+После выполнения:
+
+TASK_014_DEPLOYMENT_DRIFT_REMEDIATION
+
+все production validation проверки проходят.
+
+Остался единственный существенный риск:
+
+UEBA показывает critical
+
+До расширения пилота необходимо понять:
+
+это реальная аномалия;
+шумное правило;
+недостаток данных;
+некорректная корреляция.
+Важные ограничения
+
+Запрещено:
+
+менять UEBA score calculation;
+менять severity thresholds;
+менять weights;
+менять Risk Narrative;
+менять Action Center;
+отключать правила;
+подгонять результат под ожидаемый;
+коммитить реальные данные пользователей;
+коммитить реальные логины;
+коммитить реальные hostname;
+коммитить реальные IP;
+коммитить реальные события.
+Что проверить
+1. UEBA Evidence Chain
+
+Для текущего critical определить:
+
+какие rule triggers сработали;
+какие signals участвовали;
+какие evidence использованы;
+какие severity contributors внесли вклад;
+какой итоговый score.
+
+Создать обезличенную сводку.
+
+Пример:
+
+Signal A → +20
+
+Signal B → +15
+
+Signal C → +30
+
+Coverage penalty → +10
+
+Final score → 75
+
+Без реальных данных.
+
+2. Explainability Consistency
+
+Проверить согласованность:
+
+UEBA
+
+↓
+
+Risk Narrative
+
+↓
+
+Recommended Actions
+
+Ответить:
+
+совпадают ли причины;
+нет ли противоречий;
+нет ли отсутствующих evidence.
+3. False Positive Review
+
+Проверить:
+
+есть ли признаки нормальной активности, интерпретированной как риск;
+есть ли тестовые данные;
+есть ли временные всплески;
+есть ли проблемы с покрытием данных.
+
+Классифицировать:
+
+Likely True Positive
+
+Likely False Positive
+
+Needs Investigation
+4. Coverage Review
+
+Проверить:
+
+agent coverage;
+bucket freshness;
+missing telemetry;
+stale data;
+delayed ingestion.
+
+Определить:
+
+могли ли проблемы покрытия искусственно поднять severity.
+
+5. Executive Review Impact
+
+Ответить:
+
+можно ли сейчас безопасно показывать текущий critical руководителю.
+
+Статусы:
+
+Ready For Executive Demo
+
+Needs Security Review First
+
+Insufficient Confidence
+6. Security Review Impact
+
+Ответить:
+
+можно ли считать critical:
+
+Operational Risk
+
+Security Risk
+
+Unknown
+
+с текущими данными.
+
+7. Performance / Stability Check
+
+Проверить:
+
+не является ли critical следствием ошибки runtime;
+нет ли исключений;
+нет ли поврежденных данных;
+нет ли дублирования событий;
+нет ли бесконечного накопления evidence.
+Что создать
+
+Создать документ:
+
+docs/UEBA_CRITICAL_REVIEW_RU.md
+
+Структура:
+
+# UEBA Critical Evidence Review
+
+## Executive Summary
+
+## Scope
+
+## Current Severity
+
+## Evidence Summary
+
+## Signal Contributions
+
+## Coverage Assessment
+
+## Explainability Consistency
+
+## False Positive Analysis
+
+## Security Interpretation
+
+## Executive Interpretation
+
+## Classification
+
+True Positive
+False Positive
+Needs Investigation
+
+## Risks
+
+## Recommendations
+
+## Conclusion
+Допустимые изменения
+
+Разрешено:
+
+документация;
+audit notes;
+anonymized summaries;
+validation scripts;
+дополнительные проверки.
+
+Нежелательно:
+
+любые изменения алгоритмов.
+
+Если найден дефект алгоритма:
+
+не исправлять.
+
+Создать recommendation.
+
+Проверки
+
+Выполнить:
+
+cargo fmt --all --check
+
+cargo clippy --all-targets --all-features -- -D warnings
+
+cargo test --all
+
+cargo build --release
+
+node scripts/deployment-readiness-smoke.mjs
+
+node scripts/pilot-validation-smoke.mjs
+
+AWATCH_PORTAL_SMOKE_URL=http://127.0.0.1:8720 node scripts/awatch-production-hardening-smoke.mjs
+
+AWATCH_BROWSER_SMOKE_URL=http://127.0.0.1:8720/portal/ node scripts/browser-conformance-smoke.mjs
+
+Выполнить:
+
+git diff --check
+
+и sensitive scan.
+
+Критерии приемки
+
+Задача выполнена если:
+
+создан docs/UEBA_CRITICAL_REVIEW_RU.md;
+выполнен анализ evidence;
+определены contributors;
+выполнена false positive review;
+выполнена coverage review;
+определен статус executive readiness;
+определен статус security readiness;
+персональные данные не попали в git;
+алгоритм UEBA не изменен;
+все проверки проходят.
