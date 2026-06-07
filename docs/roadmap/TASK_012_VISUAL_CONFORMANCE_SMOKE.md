@@ -165,3 +165,65 @@ docs/BROWSER_CONFORMANCE_RU.md
 4. Примеры screenshots.
 5. Результаты smoke.
 6. Ограничения.
+
+---
+
+## Выполнение
+
+Статус: выполнено.
+
+Используемый инструмент:
+
+- Playwright через существующий локальный loader проекта.
+
+Создан smoke:
+
+- `scripts/browser-conformance-smoke.mjs`.
+
+Создана документация:
+
+- `docs/BROWSER_CONFORMANCE_RU.md`.
+
+Обновлен README:
+
+- добавлена ссылка на browser conformance smoke.
+
+Проверяемые страницы/роли:
+
+- Executive / `data-view-mode="executive"`;
+- Workforce / `data-view-mode="manager"`;
+- Security / `data-view-mode="security"`;
+- Forensics / `data-view-mode="forensics"`.
+
+Проверяемые блоки:
+
+- KPI;
+- Explainable KPI;
+- Risk Narrative;
+- Recommended Actions;
+- Department Comparison;
+- Trend Status;
+- события безопасности;
+- связь рисков и активности;
+- Investigation data;
+- timeline событий;
+- материалы расследования;
+- аудит.
+
+Примечание: отдельный блок Risk Narrative проверяется в Executive view. В
+Security view smoke проверяет уже существующий блок связи рисков и активности,
+не добавляя новый UI и не создавая новый claim.
+
+Screenshots:
+
+- `artifacts/browser-smoke/executive.png`;
+- `artifacts/browser-smoke/workforce.png`;
+- `artifacts/browser-smoke/security.png`;
+- `artifacts/browser-smoke/forensics.png`.
+
+Ограничения:
+
+- smoke не проверяет дизайн pixel-perfect;
+- smoke не добавляет новые API, UI или данные;
+- screenshots являются runtime artifacts и не коммитятся в Git;
+- live customer-stand visual validation остается отдельным acceptance шагом.

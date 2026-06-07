@@ -12,6 +12,7 @@
 windows/*.report.json
 .rollout-logs/
 output/
+artifacts/browser-smoke/
 dist/
 .ai/
 .autonomous/

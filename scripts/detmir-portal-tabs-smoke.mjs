@@ -208,16 +208,15 @@ async function main() {
       if (item.tab === "operator") {
         const readyBodyText = await page.locator("#content").innerText({ timeout });
         const requiredExecutive = [
-          "Главный вывод",
+          "Риск-нарратив",
           "Достоверность показателей",
           "Полнота данных",
-          "Главная причина риска",
-          "Подтверждающие слои",
+          "Главный риск",
           "Карта рисков",
           "Риски подразделений",
-          "Рабочая активность сотрудников",
-          "Контроль безопасности",
-          "Что требует внимания",
+          "Почему такой индекс активности?",
+          "Рекомендуемые действия",
+          "Пробел в данных",
         ];
         checks.push({
           name: "executive_dashboard_layer",
@@ -233,7 +232,7 @@ async function main() {
         const cardHeadings = await page.$$eval("#content section.card h3, #content h3.section-title", (nodes) =>
           nodes.map((node) => node.textContent.trim()),
         );
-        const riskNarrativeIndex = cardHeadings.indexOf("Главный вывод");
+        const riskNarrativeIndex = cardHeadings.indexOf("Риск-нарратив");
         const executiveIndex = cardHeadings.indexOf("Сводка руководителя");
         const businessRiskIndex = cardHeadings.indexOf("Риски подразделений");
         const heatmapIndex = cardHeadings.indexOf("Карта рисков");
@@ -245,7 +244,7 @@ async function main() {
             businessRiskIndex > executiveIndex &&
             heatmapIndex > businessRiskIndex,
           order: [
-            "Главный вывод",
+            "Риск-нарратив",
             "Сводка руководителя",
             "Риски подразделений",
             "Карта рисков",
@@ -295,7 +294,7 @@ async function main() {
             "Сводка руководителя",
             "ТОП-5 лучших подразделений",
             "ТОП-5 проблемных подразделений",
-            "Карта рисков",
+            "Heat Map подразделений",
             "Markdown-отчет",
           ].every((marker) => containsText(managerText, marker))
             && !containsText(managerText, "Материалы расследования"),
