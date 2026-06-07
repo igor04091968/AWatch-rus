@@ -21,6 +21,15 @@ const REQUIRED_RELATIVE_FILES: &[&str] = &[
     "windows/validate-deployment.ps1",
     "ansible/deploy_aw_windows.yml",
     "aw-server/install_aw_server.sh",
+    "aw-server/aw-worktime-api.service",
+    "aw-server/aw-worktime-autoheal.service",
+    "aw-server/aw-worktime-autoheal.timer",
+    "aw-server/aw-worktime-prewarm.service",
+    "aw-server/aw-worktime-prewarm.timer",
+    "aw-server/aw-worktime-ui-bridge.service",
+    "aw-server/aw-worktime-ui-bridge.timer",
+    "aw-server/aw-rus-healthd.service",
+    "aw-server/aw-rus-healthd.timer",
     "scripts/rebuild_install_kit.sh",
     "scripts/validate_install_kit.sh",
     "scripts/check_install_kit_vs_repo.sh",
@@ -451,7 +460,10 @@ mod tests {
     use tempfile::tempdir;
     use zip::write::SimpleFileOptions;
 
-    use super::{Config, DEFAULT_KIT_DIR, check_archive_composition, read_manifest, validate};
+    use super::{
+        Config, DEFAULT_KIT_DIR, REQUIRED_RELATIVE_FILES, check_archive_composition, read_manifest,
+        validate,
+    };
 
     #[test]
     fn manifest_parser_rejects_bad_line() {
@@ -474,8 +486,14 @@ mod tests {
         );
         let report = validate(&cfg);
         assert!(report.ok, "{report:#?}");
-        assert_eq!(report.manifest_completeness.tracked_files, 10);
-        assert_eq!(report.archive_composition.files, 11);
+        assert_eq!(
+            report.manifest_completeness.tracked_files,
+            REQUIRED_RELATIVE_FILES.len() - 1
+        );
+        assert_eq!(
+            report.archive_composition.files,
+            REQUIRED_RELATIVE_FILES.len()
+        );
     }
 
     #[test]
@@ -520,36 +538,13 @@ mod tests {
 
     fn create_fixture(root: &std::path::Path, matching_archives: bool) {
         let kit = root.join(DEFAULT_KIT_DIR);
-        for rel in [
-            "windows/deploy-ensemble.ps1",
-            "windows/aw-windows-telemetry.exe",
-            "windows/validate-deployment.ps1",
-            "ansible/deploy_aw_windows.yml",
-            "aw-server/install_aw_server.sh",
-            "scripts/rebuild_install_kit.sh",
-            "scripts/validate_install_kit.sh",
-            "scripts/check_install_kit_vs_repo.sh",
-            "scripts/quality-gate.sh",
-        ] {
+        for rel in fixture_files_without_manifest() {
             let path = kit.join(rel);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, rel).unwrap();
         }
-        fs::write(kit.join("README-INSTALL-KIT.txt"), "readme").unwrap();
-        let files = [
-            "README-INSTALL-KIT.txt",
-            "windows/deploy-ensemble.ps1",
-            "windows/aw-windows-telemetry.exe",
-            "windows/validate-deployment.ps1",
-            "ansible/deploy_aw_windows.yml",
-            "aw-server/install_aw_server.sh",
-            "scripts/rebuild_install_kit.sh",
-            "scripts/validate_install_kit.sh",
-            "scripts/check_install_kit_vs_repo.sh",
-            "scripts/quality-gate.sh",
-        ];
         let mut manifest = String::new();
-        for rel in files {
+        for rel in fixture_files_without_manifest() {
             let path = kit.join(rel);
             let digest = super::sha256_file(&path).unwrap();
             manifest.push_str(&format!("{digest}  {DEFAULT_KIT_DIR}/{rel}\n"));
@@ -559,26 +554,23 @@ mod tests {
         write_tar(root, matching_archives);
     }
 
-    fn archive_files(matching: bool) -> Vec<(&'static str, &'static [u8])> {
-        let mut files = vec![
-            ("README-INSTALL-KIT.txt", b"readme".as_slice()),
-            ("MANIFEST.txt", b"manifest".as_slice()),
-            ("windows/deploy-ensemble.ps1", b"deploy".as_slice()),
-            ("windows/aw-windows-telemetry.exe", b"rust-exe".as_slice()),
-            ("windows/validate-deployment.ps1", b"validate".as_slice()),
-            ("ansible/deploy_aw_windows.yml", b"ansible".as_slice()),
-            ("aw-server/install_aw_server.sh", b"server".as_slice()),
-            ("scripts/rebuild_install_kit.sh", b"rebuild".as_slice()),
-            (
-                "scripts/validate_install_kit.sh",
-                b"validate-kit".as_slice(),
-            ),
-            ("scripts/check_install_kit_vs_repo.sh", b"check".as_slice()),
-            ("scripts/quality-gate.sh", b"quality".as_slice()),
-        ];
+    fn fixture_files_without_manifest() -> Vec<&'static str> {
+        REQUIRED_RELATIVE_FILES
+            .iter()
+            .copied()
+            .filter(|rel| *rel != "MANIFEST.txt")
+            .collect()
+    }
+
+    fn archive_files(matching: bool) -> Vec<(&'static str, Vec<u8>)> {
+        let mut files: Vec<(&'static str, Vec<u8>)> = REQUIRED_RELATIVE_FILES
+            .iter()
+            .copied()
+            .map(|rel| (rel, rel.as_bytes().to_vec()))
+            .collect();
         if !matching {
             files.pop();
-            files.push(("scripts/other.sh", b"other".as_slice()));
+            files.push(("scripts/other.sh", b"other".to_vec()));
         }
         files
     }
@@ -591,7 +583,7 @@ mod tests {
         for (rel, data) in archive_files(true) {
             zip.start_file(format!("{DEFAULT_KIT_DIR}/{rel}"), options)
                 .unwrap();
-            zip.write_all(data).unwrap();
+            zip.write_all(&data).unwrap();
         }
         zip.finish().unwrap();
     }
@@ -607,7 +599,11 @@ mod tests {
             header.set_mode(0o644);
             header.set_cksum();
             builder
-                .append_data(&mut header, format!("{DEFAULT_KIT_DIR}/{rel}"), data)
+                .append_data(
+                    &mut header,
+                    format!("{DEFAULT_KIT_DIR}/{rel}"),
+                    data.as_slice(),
+                )
                 .unwrap();
         }
         builder.finish().unwrap();

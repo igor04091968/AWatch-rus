@@ -1,12 +1,12 @@
 [Unit]
-Description=AW Worktime Autoheal (HOST-EXAMPLE)
+Description=AW Worktime Autoheal
 After=network-online.target activitywatch-server.service
 Wants=network-online.target
 
 [Service]
 Type=oneshot
+EnvironmentFile=/etc/activitywatch/aw-server.env
 Environment=AW_URL=http://127.0.0.1:5600
-Environment=AW_WORKTIME_HOST=HOST-EXAMPLE
 ExecStart=/usr/local/bin/aw-worktime-autoheal-rust
 User=root
 Group=root

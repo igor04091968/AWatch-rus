@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
     env,
     ffi::OsStr,
     fs::{self, File},
@@ -4033,6 +4033,9 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
         .unwrap_or_else(|| "powershell_primary".to_string());
     let worktime_legacy_fallback_enabled =
         json_bool(&config, &["collectors", "worktimeLegacyFallbackEnabled"]).unwrap_or(true);
+    let file_ops_enabled = json_bool(&config, &["collectors", "fileOpsEnabled"]).unwrap_or(true);
+    let file_ops_mode = json_string(&config, &["collectors", "fileOpsMode"])
+        .unwrap_or_else(|| "powershell_primary".to_string());
 
     let worktime_bucket = get_bucket_health(
         &api_base,
@@ -4078,9 +4081,24 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
     }
 
     let task_defs = guard_task_definitions(&config);
-    if interactive_stale {
+    let missing_fileops_sessions =
+        if file_ops_enabled && file_ops_mode.eq_ignore_ascii_case("rust_primary") {
+            missing_rust_collector_sessions(
+                &process_snapshot.processes,
+                "file-operations-collector",
+                &["browser-domains-collector", "dlp-endpoint-collector"],
+            )
+        } else {
+            Vec::new()
+        };
+    let launch_needed = interactive_stale || !missing_fileops_sessions.is_empty();
+    if launch_needed {
         let active_legacy_collectors = active_legacy_collector_count(&process_snapshot.processes);
-        if active_legacy_collectors > 0 && process_snapshot.command_line_query_ok {
+        if interactive_stale
+            && missing_fileops_sessions.is_empty()
+            && active_legacy_collectors > 0
+            && process_snapshot.command_line_query_ok
+        {
             problems.push(
                 "interactive bucket stale but legacy collectors are already running; skip launch tasks to avoid duplicates"
                     .to_string(),
@@ -4092,6 +4110,14 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
                 "activeLegacyCollectors": active_legacy_collectors
             }));
         } else {
+            if !missing_fileops_sessions.is_empty() {
+                actions.push(json!({
+                    "action": "detect-missing-fileops",
+                    "applied": false,
+                    "mode": "diagnostic",
+                    "missingSessions": missing_fileops_sessions.clone()
+                }));
+            }
             for task in &task_defs {
                 if !task.task_name.starts_with("ActivityWatch Launch ") {
                     problems.push(format!("refuse non-allowlisted task {}", task.task_name));
@@ -4160,6 +4186,11 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
             "userId": task.user_id
         })).collect::<Vec<_>>(),
         "interactiveStale": interactive_stale,
+        "fileOperationsPresence": {
+            "enabled": file_ops_enabled,
+            "mode": file_ops_mode,
+            "missingSessions": missing_fileops_sessions
+        },
         "actions": actions,
         "problems": problems,
         "quarantine": runtime.quarantine.clone(),
@@ -4271,6 +4302,44 @@ fn active_legacy_collector_count(processes: &[ProcessInfo]) -> usize {
         .iter()
         .filter(|process| legacy_collector_kind(process).is_some())
         .count()
+}
+
+fn missing_rust_collector_sessions(
+    processes: &[ProcessInfo],
+    required_subcommand: &str,
+    peer_subcommands: &[&str],
+) -> Vec<u32> {
+    let required_sessions = rust_collector_sessions(processes, required_subcommand);
+    let mut expected_sessions = BTreeSet::new();
+    for subcommand in peer_subcommands {
+        expected_sessions.extend(rust_collector_sessions(processes, subcommand));
+    }
+    expected_sessions
+        .into_iter()
+        .filter(|session_id| !required_sessions.contains(session_id))
+        .collect()
+}
+
+fn rust_collector_sessions(processes: &[ProcessInfo], subcommand: &str) -> BTreeSet<u32> {
+    let subcommand = subcommand.to_ascii_lowercase();
+    processes
+        .iter()
+        .filter_map(|process| {
+            let name = process.name.as_deref().unwrap_or_default();
+            if !name.eq_ignore_ascii_case("aw-windows-telemetry.exe") {
+                return None;
+            }
+            let command_line = process
+                .command_line
+                .as_deref()
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            if !command_line.contains(&subcommand) {
+                return None;
+            }
+            process.session_id
+        })
+        .collect()
 }
 
 fn duplicate_legacy_collectors(processes: &[ProcessInfo]) -> Vec<LegacyCollectorDuplicate> {
@@ -6225,6 +6294,61 @@ SERVICE_NAME: AWatchRusCollectorGuard
         assert_eq!(duplicates[0].pid, 100);
         assert_eq!(duplicates[0].keep_pid, 200);
         assert_eq!(active_legacy_collector_count(&processes), 4);
+    }
+
+    #[test]
+    fn collector_guard_detects_missing_rust_fileops_by_session() {
+        let processes = vec![
+            ProcessInfo {
+                name: Some("aw-windows-telemetry.exe".to_string()),
+                pid: Some(100),
+                session_id: Some(2),
+                created_unix_seconds: Some(10),
+                command_line: Some(
+                    r#""C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe" browser-domains-collector --config-path C:\ProgramData\AWatch-rus\deployment-config.json"#
+                        .to_string(),
+                ),
+            },
+            ProcessInfo {
+                name: Some("aw-windows-telemetry.exe".to_string()),
+                pid: Some(101),
+                session_id: Some(2),
+                created_unix_seconds: Some(11),
+                command_line: Some(
+                    r#""C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe" dlp-endpoint-collector --config-path C:\ProgramData\AWatch-rus\deployment-config.json"#
+                        .to_string(),
+                ),
+            },
+            ProcessInfo {
+                name: Some("aw-windows-telemetry.exe".to_string()),
+                pid: Some(200),
+                session_id: Some(3),
+                created_unix_seconds: Some(20),
+                command_line: Some(
+                    r#""C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe" browser-domains-collector --config-path C:\ProgramData\AWatch-rus\deployment-config.json"#
+                        .to_string(),
+                ),
+            },
+            ProcessInfo {
+                name: Some("aw-windows-telemetry.exe".to_string()),
+                pid: Some(201),
+                session_id: Some(3),
+                created_unix_seconds: Some(21),
+                command_line: Some(
+                    r#""C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe" file-operations-collector --config-path C:\ProgramData\AWatch-rus\deployment-config.json"#
+                        .to_string(),
+                ),
+            },
+        ];
+
+        assert_eq!(
+            missing_rust_collector_sessions(
+                &processes,
+                "file-operations-collector",
+                &["browser-domains-collector", "dlp-endpoint-collector"],
+            ),
+            vec![2]
+        );
     }
 
     #[test]

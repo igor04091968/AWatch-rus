@@ -27,6 +27,12 @@ CLASSES_JSON="$BOOTSTRAP_DIR/settings/classes-worktime.json"
 WORKTIME_API_RUST_SRC="$BOOTSTRAP_DIR/worktime-api"
 WORKTIME_API_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-api.service"
 WORKTIME_ALIASES_SRC="$BOOTSTRAP_DIR/worktime-manager-aliases.example.json"
+WORKTIME_AUTOHEAL_RUST_SRC="$BOOTSTRAP_DIR/worktime-autoheal"
+WORKTIME_AUTOHEAL_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-autoheal.service"
+WORKTIME_AUTOHEAL_TIMER_SRC="$BOOTSTRAP_DIR/aw-worktime-autoheal.timer"
+WORKTIME_PREWARM_RUST_SRC="$BOOTSTRAP_DIR/worktime-prewarm"
+WORKTIME_PREWARM_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-prewarm.service"
+WORKTIME_PREWARM_TIMER_SRC="$BOOTSTRAP_DIR/aw-worktime-prewarm.timer"
 WORKTIME_UI_BRIDGE_RUST_SRC="$BOOTSTRAP_DIR/worktime-ui-bridge"
 WORKTIME_UI_BRIDGE_SERVICE_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.service"
 WORKTIME_UI_BRIDGE_TIMER_SRC="$BOOTSTRAP_DIR/aw-worktime-ui-bridge.timer"
@@ -117,6 +123,40 @@ if [[ -f "$WORKTIME_ALIASES_SRC" ]]; then
   if [[ ! -f /etc/activitywatch/worktime-manager-aliases.json ]]; then
     install -m 0644 "$WORKTIME_ALIASES_SRC" /etc/activitywatch/worktime-manager-aliases.json
   fi
+fi
+
+if [[ -f "$WORKTIME_AUTOHEAL_RUST_SRC" ]]; then
+  install -m 0755 "$WORKTIME_AUTOHEAL_RUST_SRC" /usr/local/bin/aw-worktime-autoheal-rust
+fi
+
+if [[ -f "$WORKTIME_AUTOHEAL_SERVICE_SRC" && -f /usr/local/bin/aw-worktime-autoheal-rust ]]; then
+  install -m 0644 "$WORKTIME_AUTOHEAL_SERVICE_SRC" /etc/systemd/system/aw-worktime-autoheal.service
+fi
+
+if [[ -f "$WORKTIME_AUTOHEAL_TIMER_SRC" && -f /usr/local/bin/aw-worktime-autoheal-rust ]]; then
+  install -m 0644 "$WORKTIME_AUTOHEAL_TIMER_SRC" /etc/systemd/system/aw-worktime-autoheal.timer
+  systemctl daemon-reload
+  systemctl enable aw-worktime-autoheal.timer
+  systemctl restart aw-worktime-autoheal.timer
+  systemctl start aw-worktime-autoheal.service || true
+  systemctl --no-pager --full status aw-worktime-autoheal.timer || true
+fi
+
+if [[ -f "$WORKTIME_PREWARM_RUST_SRC" ]]; then
+  install -m 0755 "$WORKTIME_PREWARM_RUST_SRC" /usr/local/bin/aw-worktime-prewarm-rust
+fi
+
+if [[ -f "$WORKTIME_PREWARM_SERVICE_SRC" && -f /usr/local/bin/aw-worktime-prewarm-rust ]]; then
+  install -m 0644 "$WORKTIME_PREWARM_SERVICE_SRC" /etc/systemd/system/aw-worktime-prewarm.service
+fi
+
+if [[ -f "$WORKTIME_PREWARM_TIMER_SRC" && -f /usr/local/bin/aw-worktime-prewarm-rust ]]; then
+  install -m 0644 "$WORKTIME_PREWARM_TIMER_SRC" /etc/systemd/system/aw-worktime-prewarm.timer
+  systemctl daemon-reload
+  systemctl enable aw-worktime-prewarm.timer
+  systemctl restart aw-worktime-prewarm.timer
+  systemctl start aw-worktime-prewarm.service || true
+  systemctl --no-pager --full status aw-worktime-prewarm.timer || true
 fi
 
 if [[ -f "$WORKTIME_UI_BRIDGE_RUST_SRC" ]]; then

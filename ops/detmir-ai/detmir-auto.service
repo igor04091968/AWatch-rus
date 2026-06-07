@@ -11,8 +11,10 @@ Environment=DETMIR_AUTO_HEAL=1
 Environment=DETMIR_AI_STATE_DIR=/var/lib/detmir-ai
 Environment=DETMIR_AI_RUN_DIR=/var/lib/detmir-ai/locks
 EnvironmentFile=-/etc/detmir/detmir-check.env
-ExecStart=/usr/local/bin/detmir-auto
-TimeoutStartSec=300
+Environment=no_proxy=localhost,127.0.0.1,198.51.100.18,192.0.2.13,192.0.2.2,192.0.2.0/24,198.51.100.0/24
+Environment=NO_PROXY=localhost,127.0.0.1,198.51.100.18,192.0.2.13,192.0.2.2,192.0.2.0/24,198.51.100.0/24
+ExecStart=/usr/local/bin/detmir-auto-rust --command-timeout-seconds 120 --report-timeout-seconds 60
+TimeoutStartSec=600
 Nice=5
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7

@@ -327,7 +327,7 @@ fn load_config() -> Config {
             .filter(|item| !item.is_empty())
             .collect(),
         events_cache_ttl_seconds: env_i64("AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS", 30).max(0),
-        worktime_events_limit: env_usize("AW_WORKTIME_EVENTS_LIMIT", 50_000).max(1000),
+        worktime_events_limit: env_usize("AW_WORKTIME_EVENTS_LIMIT", 50_000).clamp(100, 50_000),
         aw_http_timeout_seconds: env_f64("AW_WORKTIME_AW_HTTP_TIMEOUT_SECONDS", 8.0).max(0.5),
         source_http_timeout_seconds: env_f64("AW_WORKTIME_SOURCE_HTTP_TIMEOUT_SECONDS", 1.5)
             .max(0.25),
@@ -1771,11 +1771,34 @@ impl App {
         host: &str,
         interactive_required: bool,
     ) -> (Vec<Value>, Vec<Value>) {
+        let critical_max_age = self.config.manager_critical_source_max_age_seconds;
+        let rust_sessions_bucket = sessions_bucket(host);
+        let watcher_afk_bucket = format!("aw-watcher-afk_{host}");
+        let rust_sessions_fresh = self
+            .latest_bucket_event(&rust_sessions_bucket)
+            .and_then(|event| {
+                event
+                    .timestamp
+                    .as_deref()
+                    .and_then(parse_iso_utc)
+                    .map(|dt| (Utc::now() - dt).num_seconds().max(0) <= critical_max_age)
+            })
+            .unwrap_or(false);
+        let watcher_afk_fresh = self
+            .latest_bucket_event(&watcher_afk_bucket)
+            .and_then(|event| {
+                event
+                    .timestamp
+                    .as_deref()
+                    .and_then(parse_iso_utc)
+                    .map(|dt| (Utc::now() - dt).num_seconds().max(0) <= critical_max_age)
+            })
+            .unwrap_or(false);
         let specs = vec![
             (
                 "worktime_sessions",
                 "RDP worktime sessions",
-                sessions_bucket(host),
+                rust_sessions_bucket,
                 self.config.manager_critical_source_max_age_seconds,
                 true,
                 false,
@@ -1891,6 +1914,18 @@ impl App {
             } else {
                 format!("stale ({}s)", age.unwrap())
             };
+            let legacy_rdp_covered = legacy_rdp_covered_by_rust_sources(
+                source_id,
+                status,
+                rust_sessions_fresh,
+                watcher_afk_fresh,
+            );
+            let effective_required = required && !legacy_rdp_covered;
+            if legacy_rdp_covered {
+                status = "inactive";
+                summary =
+                    "legacy RDP source covered by fresh Rust worktime/watcher sources".to_string();
+            }
             if interactive_only && !interactive_required && status != "ok" {
                 status = "inactive";
                 summary = "inactive: no active interactive users".to_string();
@@ -1903,7 +1938,7 @@ impl App {
                 "bucket_id": bucket,
                 "timestamp": event.as_ref().and_then(|e| e.timestamp.clone()).unwrap_or_default(),
                 "age_seconds": age,
-                "required": required,
+                "required": effective_required,
                 "interactive_only": interactive_only,
                 "interactive_required": interactive_required,
                 "max_age_seconds": max_age,
@@ -1913,13 +1948,13 @@ impl App {
             if !matches!(status, "ok" | "inactive") {
                 actions.push(action(
                     "source_freshness_review",
-                    if required { "critical" } else { "medium" },
+                    if effective_required { "critical" } else { "medium" },
                     "ops",
-                    if required { "today" } else { "3d" },
+                    if effective_required { "today" } else { "3d" },
                     &format!("Источник '{label}' в состоянии {}: {}.", source_status_label(status), summary),
                     "Проверить collector/service, причину отставания и подтвердить, что управленческие выводы по данным ещё надёжны.",
                     "",
-                    json!({"source_id": source_id, "bucket_id": bucket, "age_seconds": age, "required": required}),
+                    json!({"source_id": source_id, "bucket_id": bucket, "age_seconds": age, "required": effective_required}),
                 ));
             }
             sources.push(source);
@@ -1973,6 +2008,18 @@ fn source_status_label(status: &str) -> &str {
         "inactive" => "inactive",
         _ => status,
     }
+}
+
+fn legacy_rdp_covered_by_rust_sources(
+    source_id: &str,
+    status: &str,
+    rust_sessions_fresh: bool,
+    watcher_afk_fresh: bool,
+) -> bool {
+    matches!(source_id, "rdp_window" | "rdp_afk")
+        && status != "ok"
+        && rust_sessions_fresh
+        && watcher_afk_fresh
 }
 
 fn source_summary(event: &AwEvent) -> String {
@@ -3457,6 +3504,31 @@ mod tests {
         assert_eq!(rollups.len(), 1);
         assert_eq!(rollups[0]["name"], "Руководитель");
         assert_eq!(rollups[0]["actions_count"], 1);
+    }
+
+    #[test]
+    fn stale_legacy_rdp_sources_are_covered_by_fresh_rust_sources() {
+        assert!(legacy_rdp_covered_by_rust_sources(
+            "rdp_window",
+            "fail",
+            true,
+            true
+        ));
+        assert!(legacy_rdp_covered_by_rust_sources(
+            "rdp_afk", "warn", true, true
+        ));
+        assert!(!legacy_rdp_covered_by_rust_sources(
+            "rdp_window",
+            "fail",
+            true,
+            false
+        ));
+        assert!(!legacy_rdp_covered_by_rust_sources(
+            "worktime_sessions",
+            "fail",
+            true,
+            true
+        ));
     }
 
     #[test]

@@ -1,9 +1,9 @@
 [Unit]
-Description=Run AW-RUS unified health orchestrator every 2 minutes
+Description=Run AW-RUS unified health orchestrator every 5 minutes
 
 [Timer]
-OnCalendar=*:0/2:25
-AccuracySec=15s
+OnCalendar=*:0/5:25
+AccuracySec=30s
 RandomizedDelaySec=15s
 Unit=aw-rus-healthd.service
 Persistent=false

@@ -1,9 +1,9 @@
 [Unit]
-Description=Run DetMir autonomous health loop every 15 minutes
+Description=Run DetMir autonomous health loop every 30 minutes
 
 [Timer]
 OnBootSec=2min
-OnUnitActiveSec=15min
+OnUnitActiveSec=30min
 AccuracySec=1min
 Persistent=true
 Unit=detmir-auto.service

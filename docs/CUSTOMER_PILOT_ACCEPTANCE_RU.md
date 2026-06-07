@@ -19,36 +19,41 @@
 
 Проверить применимость AWatch-rus для:
 
-- мониторинга активности рабочих мест;
-- управленческой аналитики Workforce;
-- технического аудита ИТ-контура;
-- фиксации DLP-lite/ИБ-событий;
-- просмотра evidence и отчетов в портале;
-- контроля готовности системы через signed readiness bundle.
+- Workforce Analytics: активность, подразделения, нагрузка и управленческий
+  Markdown-отчет;
+- Security Analytics: кандидаты на проверку, объяснимый risk score, события
+  безопасности и аудит решений;
+- Forensics: карточка расследования, timeline, evidence package и экспорт
+  Markdown-отчета;
+- Operations/Admin: качество данных, полнота данных, ClickHouse/fallback-статус
+  и ошибки сбора;
+- проверки ролевых ограничений на сервере, а не только в интерфейсе.
 
 ## 3. Состав поставки
 
 | Компонент | Проверка |
 |---|---|
-| AWatch-rus portal | вход, роли оператора/руководителя/владельца |
-| ActivityWatch telemetry | актуальность bucket/event данных |
-| Workforce analytics | индекс активности, веса приложений, drill-down |
-| DLP-lite incidents | USB/print/clipboard/file/email/browser signals, если включены |
-| Evidence workflow | preview/download/view audit |
-| Grafana dashboards | наличие данных и отсутствие query errors |
-| Readiness bundle | checksum/signature/fingerprint |
-| Prometheus alerts | readiness/signature alerts настроены |
+| AWatch-rus portal | вход, `/portal`, переключение ролей `executive` / `manager` / `security` / `forensics` / `admin` |
+| Executive Dashboard | главный вывод отображается первым, затем риски подразделений и краткий статус |
+| Workforce analytics | индекс активности, сравнение подразделений, тренды, перегруз/недогруз, Markdown-отчет |
+| Security analytics | кандидаты на проверку, UEBA Score v1, severity, аудит решений |
+| Forensics workflow | карточка расследования, timeline, evidence package, Markdown export |
+| Operations/Admin | полнота данных, качество данных, ClickHouse/fallback-статус, ошибки сбора |
+| pfSense readiness | только `contract_only`: contracts/fixtures/API-заготовка, без production ingestion |
 
 ## 4. Критерии приемки
 
 Пилот считается успешным, если:
 
 - портал доступен ответственным пользователям заказчика;
-- telemetry freshness находится в согласованных пределах;
-- readiness status = `OK` или все `WARN` имеют согласованный план устранения;
-- signed readiness bundle проходит проверку;
+- главный вывод в Executive View отображается первым;
+- роли ограничивают доступ на API-уровне;
+- качество и полнота данных имеют понятный статус;
 - не менее одного управленческого отчета сформировано и принято заказчиком;
-- не менее одного test incident/evidence workflow пройден end-to-end;
+- не менее одного security candidate / investigation / evidence workflow
+  пройден end-to-end;
+- UEBA Score v1 остается rule-based и не заявляет ML/LLM;
+- pfSense readiness остается `contract_only` и не заявляет production ingestion;
 - заказчик подтвердил, что состав данных и уведомлений соответствует правилам
   внутреннего контроля и локальным нормативным документам.
 
@@ -56,24 +61,31 @@
 
 | Проверка | Результат | Комментарий |
 |---|---|---|
-| Portal login | `<OK/WARN/FAIL>` | `<COMMENT>` |
-| Readiness bundle | `<OK/WARN/FAIL>` | `<COMMENT>` |
-| Workforce report | `<OK/WARN/FAIL>` | `<COMMENT>` |
-| DLP-lite incident | `<OK/WARN/FAIL>` | `<COMMENT>` |
-| Evidence preview/download | `<OK/WARN/FAIL>` | `<COMMENT>` |
-| Grafana dashboards | `<OK/WARN/FAIL>` | `<COMMENT>` |
-| Alerting | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Portal access | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Executive View | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Workforce / Manager View | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Security View | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Forensics View | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Operations/Admin View | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Role gates / API 403 | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| `/api/reports` JSON | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| `/api/pfsense` contract_only | `<OK/WARN/FAIL>` | `<COMMENT>` |
+| Demo data sanitization | `<OK/WARN/FAIL>` | `<COMMENT>` |
 
 ## 6. Ограничения пилота
 
 - AWatch-rus не заявляется как сертифицированная СЗИ, SIEM, EDR/XDR или
   enterprise DLP.
-- pfSense/network quarantine интеграции являются опциональным интеграционным
-  слоем и не входят в обязательный состав пилота.
-- Telegram runtime может использоваться как интеграционный канал уведомлений,
-  но не является ядром продукта.
+- pfSense readiness в Pilot v1 является `contract_only`: contracts, fixtures,
+  docs и API-заготовка без production ingestion, NAC, SOAR, quarantine и
+  изменения firewall/VPN/routing.
+- Grafana, Prometheus, Telegram и внешние интеграции могут использоваться в
+  отдельных эксплуатационных контурах, но не являются обязательной частью
+  приемки Pilot v1 demo pack.
 - Результаты Workforce analytics являются управленческими proxy-метриками и
   должны трактоваться с учетом ролей, весов приложений и локальных регламентов.
+- UEBA Score v1 ранжирует риск для ручной проверки и не принимает
+  автоматических решений.
 
 ## 7. Решение
 

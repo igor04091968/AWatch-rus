@@ -1,9 +1,10 @@
 # Network perimeter и pfSense
 
 Документ описывает роль pfSense в архитектуре AWatch-rus для
-коммерческих внедрений и экспертной оценки. pfSense рассматривается как
-опциональный интеграционный слой сетевого периметра, а не как обязательная
-часть продукта.
+коммерческих внедрений и экспертной оценки. Для Pilot v1 pfSense
+рассматривается только как `contract_only/readiness`: контракт данных, fixture
+и API-заготовка без заявления production ingestion или управления сетевыми
+политиками.
 
 ## 1. Позиция продукта
 
@@ -15,17 +16,18 @@ AWatch-rus поставляет:
 - DLP-lite/ИБ evidence workflow;
 - readiness checks и portal reporting.
 
-Сетевой шлюз, firewall, NAT, VPN и quarantine enforcement могут быть
-интегрированы с AWatch-rus, но не входят в минимальный состав продукта.
+Сетевой шлюз, firewall, NAT, VPN и quarantine enforcement являются внешним
+периметром. Их можно рассматривать как будущие интеграционные направления, но
+они не входят в приемочный контур Pilot v1 и не заявляются как реализованный
+runtime.
 
 ## 2. Роль pfSense
 
 pfSense может использоваться как:
 
-- источник сетевого контекста;
-- внешний policy enforcement point;
-- шлюз для ограничений VLAN/alias/rules;
-- источник логов для корреляции с endpoint activity.
+- будущий источник сетевого контекста;
+- будущий внешний policy enforcement point после отдельного change request;
+- будущий источник логов для корреляции с endpoint activity.
 
 AWatch-rus не требует pfSense для базовой работы портала, readiness, workforce,
 DLP-lite evidence и отчетов.
@@ -36,16 +38,19 @@ DLP-lite evidence и отчетов.
 |---|---|
 | Endpoint telemetry | обязательный слой AWatch-rus |
 | Server-side checks/readiness | обязательный слой AWatch-rus |
-| Portal/Grafana/Prometheus | обязательный слой AWatch-rus |
-| pfSense logs/context | опциональная интеграция |
-| pfSense policy enforcement | опциональная интеграция с отдельным решением |
+| Portal/API/report layer | обязательный слой Pilot v1 |
+| pfSense contracts/fixtures/API-заготовка | `contract_only/readiness` |
+| pfSense logs/context production ingestion | не заявляется для Pilot v1 |
+| pfSense policy enforcement | future, только с отдельным решением |
 | Автоматический quarantine | не включать без отдельного согласования |
 
 ## 4. Безопасный режим внедрения
 
-По умолчанию:
+По умолчанию в Pilot v1:
 
-- AWatch-rus только читает сетевой контекст, если интеграция включена;
+- AWatch-rus показывает только контрактный readiness-слой pfSense;
+- production ingestion, если он появится позже, должен включаться отдельным
+  решением после проверки источника, свежести данных и sanitization;
 - любые изменения firewall/NAT/VPN/quarantine запрещены без отдельного change
   request;
 - pfSense credentials хранятся вне Git и вне public release assets;
@@ -63,9 +68,10 @@ DLP-lite evidence и отчетов.
 
 Корректная формулировка:
 
-> AWatch-rus поддерживает интеграцию с сетевым периметром заказчика, включая
-> pfSense-compatible gateways, как внешний источник контекста и опциональную
-> точку применения политик.
+> AWatch-rus архитектурно предусматривает интеграцию с сетевым периметром
+> заказчика, включая pfSense-compatible gateways. В Pilot v1 этот слой имеет
+> статус `contract_only/readiness` и не является production ingestion или
+> механизмом изменения сетевых политик.
 
 ## 6. Будущий roadmap
 

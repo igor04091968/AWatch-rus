@@ -12,6 +12,12 @@ aw_server_inventory_host: "{{ (groups['aw_server'] | default([]) | first) | defa
 aw_server_public_host: "{{ (hostvars[aw_server_inventory_host].ansible_host | default(aw_server_inventory_host, true)) if (aw_server_inventory_host | length) > 0 else 'aw-server' }}"
 aw_worktime_report_base: "http://{{ aw_server_public_host }}:5610"
 aw_worktime_timezone: "Europe/Moscow"
+aw_worktime_events_limit: 250
+aw_worktime_aw_http_timeout_seconds: 6
+aw_worktime_events_cache_ttl_seconds: 300
+aw_worktime_report_cache_ttl_seconds: 300
+aw_worktime_report_stale_ttl_seconds: 3600
+aw_worktime_report_disk_stale_ttl_seconds: 86400
 aw_worktime_influx_enabled: true
 aw_worktime_influx_url: "http://192.0.2.10:8086"
 aw_worktime_influx_org: "proxmox"

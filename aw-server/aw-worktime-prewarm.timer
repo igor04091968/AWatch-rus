@@ -2,7 +2,7 @@
 Description=Run AW Worktime Report Cache Prewarm
 
 [Timer]
-OnCalendar=*:2/5:40
+OnCalendar=*:0/15:40
 AccuracySec=30s
 Persistent=false
 Unit=aw-worktime-prewarm.service

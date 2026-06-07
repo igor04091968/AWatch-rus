@@ -1,9 +1,9 @@
 [Unit]
-Description=Run AW Worktime UI bridge every 30 seconds
+Description=Run AW Worktime UI bridge every 5 minutes
 
 [Timer]
-OnCalendar=*:0/1:15
-AccuracySec=10s
+OnCalendar=*:0/5:15
+AccuracySec=15s
 Unit=aw-worktime-ui-bridge.service
 Persistent=false
 

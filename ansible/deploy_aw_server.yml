@@ -725,6 +725,12 @@
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
               AW_WORKTIME_TZ={{ aw_worktime_timezone }}
               AW_WORKTIME_HOST={{ aw_effective_worktime_host | default(aw_effective_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
+              AW_WORKTIME_EVENTS_LIMIT={{ aw_worktime_events_limit | default(250) }}
+              AW_WORKTIME_AW_HTTP_TIMEOUT_SECONDS={{ aw_worktime_aw_http_timeout_seconds | default(6) }}
+              AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS={{ aw_worktime_events_cache_ttl_seconds | default(300) }}
+              AW_WORKTIME_REPORT_CACHE_TTL_SECONDS={{ aw_worktime_report_cache_ttl_seconds | default(300) }}
+              AW_WORKTIME_REPORT_STALE_TTL_SECONDS={{ aw_worktime_report_stale_ttl_seconds | default(3600) }}
+              AW_WORKTIME_REPORT_DISK_STALE_TTL_SECONDS={{ aw_worktime_report_disk_stale_ttl_seconds | default(86400) }}
               AW_DLP_IOC_DIR={{ aw_dlp_ioc_workdir }}/output
               AW_DLP_POLICY_ENGINE_BIND_HOST={{ aw_dlp_policy_engine_bind_host }}
               AW_DLP_POLICY_ENGINE_PORT={{ aw_dlp_policy_engine_port }}
