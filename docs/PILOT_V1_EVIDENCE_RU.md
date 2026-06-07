@@ -19,6 +19,11 @@ contracts, UEBA Score v1 и pfSense readiness.
 | pfSense | [PFSENSE_INTEGRATION_RU.md](PFSENSE_INTEGRATION_RU.md) | readiness=`contract_only`, без SIEM/ingestion claims |
 | Demo сценарий | [CUSTOMER_DEMO_SCENARIO_RU.md](CUSTOMER_DEMO_SCENARIO_RU.md) | 10-минутный показ заказчику |
 | Pilot v1 demo | [PILOT_DEMO_SCENARIO_RU.md](PILOT_DEMO_SCENARIO_RU.md) | воспроизводимый demo-pack по ролям |
+| Demo Executive | [demo/DEMO_SCENARIO_EXECUTIVE_RU.md](demo/DEMO_SCENARIO_EXECUTIVE_RU.md) | сценарий руководителя |
+| Demo Security | [demo/DEMO_SCENARIO_SECURITY_RU.md](demo/DEMO_SCENARIO_SECURITY_RU.md) | сценарий ИБ |
+| Demo Forensics | [demo/DEMO_SCENARIO_FORENSICS_RU.md](demo/DEMO_SCENARIO_FORENSICS_RU.md) | сценарий расследований |
+| Demo report | [DEMO_REPORT_EXAMPLE_RU.md](DEMO_REPORT_EXAMPLE_RU.md) | пример итогового Markdown-отчета |
+| Pilot value | [PILOT_VALUE_PROPOSITION_RU.md](PILOT_VALUE_PROPOSITION_RU.md) | ценность пилота для заказчика |
 | Преддемо | [DEMO_RUNBOOK_RU.md](DEMO_RUNBOOK_RU.md) | прогрев и порядок проверки перед показом |
 | Gap analysis | [PILOT_GAP_ANALYSIS_RU.md](PILOT_GAP_ANALYSIS_RU.md) | известные риски и остаточные ограничения |
 
@@ -52,12 +57,18 @@ contracts, UEBA Score v1 и pfSense readiness.
 - `docs/screenshots/05-investigation-pack.png`;
 - `docs/screenshots/06-markdown-report.png`;
 - `docs/screenshots/07-product-architecture.png`;
-- `docs/fixtures/pfsense-demo-events.json`.
+- `docs/fixtures/pfsense-demo-events.json`;
 - `docs/fixtures/pilot-v1-demo/demo-seed-data.json`;
 - `docs/fixtures/pilot-v1-demo/evidence-pack/executive-summary.md`;
 - `docs/fixtures/pilot-v1-demo/evidence-pack/security-technical-summary.md`;
 - `docs/fixtures/pilot-v1-demo/evidence-pack/investigation-report.md`;
-- `docs/fixtures/pilot-v1-demo/evidence-pack/investigation-contract.json`.
+- `docs/fixtures/pilot-v1-demo/evidence-pack/investigation-contract.json`;
+- `docs/demo/DEMO_SCENARIO_EXECUTIVE_RU.md`;
+- `docs/demo/DEMO_SCENARIO_SECURITY_RU.md`;
+- `docs/demo/DEMO_SCENARIO_FORENSICS_RU.md`;
+- `docs/demo/DEMO_PACK_ACCEPTANCE_CHECKLIST_RU.md`;
+- `docs/DEMO_REPORT_EXAMPLE_RU.md`;
+- `docs/PILOT_VALUE_PROPOSITION_RU.md`.
 
 Требования:
 

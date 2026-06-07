@@ -11,6 +11,14 @@
 2. Выполнить обязательный преддемо-прогрев.
 3. Убедиться, что smoke-тест прошел успешно.
 4. Открыть портал на `/portal`.
+5. Держать рядом [PILOT_VALUE_PROPOSITION_RU.md](PILOT_VALUE_PROPOSITION_RU.md)
+   и [DEMO_REPORT_EXAMPLE_RU.md](DEMO_REPORT_EXAMPLE_RU.md).
+
+Ролевые подсказки:
+
+- [Руководитель](demo/DEMO_SCENARIO_EXECUTIVE_RU.md);
+- [ИБ](demo/DEMO_SCENARIO_SECURITY_RU.md);
+- [Расследования](demo/DEMO_SCENARIO_FORENSICS_RU.md).
 
 ## Показ
 

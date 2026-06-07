@@ -211,3 +211,44 @@ docs/PILOT_VALUE_PROPOSITION_RU.md
 5. Demo dataset.
 6. Проверки.
 7. Ограничения.
+
+## Выполнение
+
+Статус: done.
+
+Добавленные документы:
+
+- `docs/demo/DEMO_SCENARIO_EXECUTIVE_RU.md`;
+- `docs/demo/DEMO_SCENARIO_SECURITY_RU.md`;
+- `docs/demo/DEMO_SCENARIO_FORENSICS_RU.md`;
+- `docs/demo/DEMO_PACK_ACCEPTANCE_CHECKLIST_RU.md`;
+- `docs/DEMO_REPORT_EXAMPLE_RU.md`;
+- `docs/PILOT_VALUE_PROPOSITION_RU.md`.
+
+Обновленные документы и материалы:
+
+- `README.md`;
+- `docs/DEMO_RUNBOOK_RU.md`;
+- `docs/PILOT_DEMO_SCENARIO_RU.md`;
+- `docs/PILOT_V1_EVIDENCE_RU.md`;
+- `docs/fixtures/pilot-v1-demo/README_RU.md`;
+- `docs/fixtures/pilot-v1-demo/demo-seed-data.json`.
+- `scripts/detmir-pilot-demo-smoke.mjs`.
+
+Demo dataset:
+
+- синтетический;
+- покрывает нормальную работу, снижение активности, рост удаленных сессий,
+  повышенный UEBA, incident candidate и низкое покрытие агентами;
+- использует только demo identifiers и TEST-NET адреса.
+
+Demo screenshots:
+
+- существующие PNG проверены как реальные изображения, не заглушки;
+- обновление PNG не потребовалось.
+
+Ограничения:
+
+- новая функциональность, API, агенты, ML, LLM не добавлялись;
+- SIEM/DLP/EDR claims не добавлялись;
+- planned/future не описаны как implemented.

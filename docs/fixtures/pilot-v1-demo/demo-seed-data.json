@@ -6,12 +6,56 @@
     "real_personal_data": false,
     "real_customer_hosts": false,
     "real_customer_networks": false,
+    "real_domains": false,
+    "real_logins": false,
+    "personal_data": false,
     "allowed_network_examples": [
       "192.0.2.0/24",
       "198.51.100.0/24",
       "203.0.113.0/24"
     ]
   },
+  "scenario_coverage": [
+    {
+      "scenario": "normal_work",
+      "covered_by": [
+        "dept-sales-demo",
+        "activity event normal_activity"
+      ]
+    },
+    {
+      "scenario": "activity_drop",
+      "covered_by": [
+        "dept-warehouse-demo",
+        "activity event low_activity"
+      ]
+    },
+    {
+      "scenario": "remote_session_growth",
+      "covered_by": [
+        "remote_session_summary",
+        "rdp-session activity events"
+      ]
+    },
+    {
+      "scenario": "elevated_ueba",
+      "covered_by": [
+        "ueba_score_examples sec-demo-004"
+      ]
+    },
+    {
+      "scenario": "incident_candidate",
+      "covered_by": [
+        "investigation case-demo-004"
+      ]
+    },
+    {
+      "scenario": "low_agent_coverage",
+      "covered_by": [
+        "agent_coverage"
+      ]
+    }
+  ],
   "departments": [
     {
       "department_id": "dept-sales-demo",
@@ -107,14 +151,37 @@
       "duration_minutes": 8
     },
     {
+      "timestamp": "2026-06-06T18:25:00Z",
+      "user_ref": "demo-user-003",
+      "host": "HOST-DEMO-03",
+      "app": "rdp-session",
+      "kind": "remote_session_activity",
+      "duration_minutes": 31
+    },
+    {
       "timestamp": "2026-06-06T21:40:00Z",
       "user_ref": "demo-user-005",
       "host": "HOST-DEMO-05",
       "app": "admin-tool-demo.exe",
       "kind": "night_access_anomaly",
       "duration_minutes": 24
+    },
+    {
+      "timestamp": "2026-06-06T21:42:00Z",
+      "user_ref": "demo-user-005",
+      "host": "HOST-DEMO-05",
+      "app": "rdp-session",
+      "kind": "remote_session_activity",
+      "duration_minutes": 27
     }
   ],
+  "remote_session_summary": {
+    "baseline_sessions_7d_avg": 2,
+    "demo_period_sessions": 6,
+    "growth_percent": 200,
+    "risk_signal": "remote_session_growth",
+    "explanation": "В демонстрационном периоде число удаленных сессий выше базового уровня."
+  },
   "security_events": [
     {
       "event_id": "sec-demo-001",
@@ -206,6 +273,115 @@
         "time_anomaly",
         "network_anomaly",
         "history_anomaly"
+      ]
+    }
+  ],
+  "agent_coverage": {
+    "expected_agents": 6,
+    "active_agents": 4,
+    "stale_agents": 1,
+    "missing_agents": 1,
+    "coverage_percent": 67,
+    "sla_status": "WARNING",
+    "demo_impact": "KPI требует осторожной интерпретации из-за неполного покрытия."
+  },
+  "workforce_kpi_example": {
+    "kpi_score": 64,
+    "confidence": "medium",
+    "coverage": {
+      "agent_coverage_percent": 67,
+      "data_freshness": "fresh",
+      "missing_sources": [
+        "HOST-DEMO-06"
+      ]
+    },
+    "factors": [
+      {
+        "name": "productive_activity",
+        "label": "Полезная активность",
+        "impact": "+28",
+        "explanation": "Рабочие приложения присутствуют в дневном периоде."
+      },
+      {
+        "name": "idle_time",
+        "label": "Простой",
+        "impact": "-9",
+        "explanation": "Есть периоды низкой активности в рабочее время."
+      },
+      {
+        "name": "remote_session_activity",
+        "label": "Удаленные сессии",
+        "impact": "-11",
+        "explanation": "Удаленные сессии выросли относительно демонстрационной базы."
+      },
+      {
+        "name": "data_coverage",
+        "label": "Полнота данных",
+        "impact": "-7",
+        "explanation": "Покрытие агентами ниже целевого уровня."
+      }
+    ]
+  },
+  "risk_narrative_example": {
+    "risk_level": "high",
+    "risk_score": 78,
+    "title": "Рост операционного риска требует ручной проверки",
+    "summary": "Снижение активности в одном подразделении совпало с ростом удаленных сессий, повышенным UEBA и неполным покрытием агентами.",
+    "why": [
+      "Workforce KPI ниже целевого уровня",
+      "Есть рост удаленных сессий",
+      "UEBA Score v1 повышен до critical на демонстрационном кандидате",
+      "Покрытие агентами ниже целевого уровня"
+    ],
+    "limitations": [
+      "Risk Narrative является rule-based выводом",
+      "pfSense readiness находится в contract_only режиме",
+      "Данные демонстрационные и не являются production ingestion"
+    ]
+  },
+  "recommended_actions": [
+    {
+      "priority": "high",
+      "title": "Проверить подразделение с низким индексом активности",
+      "summary": "Просадка активности требует управленческого разбора причины.",
+      "owner_role": "manager",
+      "recommended_deadline": "24h",
+      "reason_codes": [
+        "LOW_WORKFORCE_KPI",
+        "HIGH_REMOTE_ACTIVITY"
+      ],
+      "evidence": [
+        "Workforce KPI demo score: 64%",
+        "Рост удаленных сессий: +200%"
+      ]
+    },
+    {
+      "priority": "high",
+      "title": "Передать кандидата в контур ИБ",
+      "summary": "UEBA Score v1 повышен; требуется ручная проверка специалистом ИБ.",
+      "owner_role": "security",
+      "recommended_deadline": "24h",
+      "reason_codes": [
+        "HIGH_UEBA",
+        "INCIDENT_CANDIDATE"
+      ],
+      "evidence": [
+        "sec-demo-004 severity critical",
+        "Связка activity/app/network readiness"
+      ]
+    },
+    {
+      "priority": "high",
+      "title": "Проверить покрытие агентами",
+      "summary": "Неполное покрытие снижает доверие к KPI и должно быть проверено эксплуатацией.",
+      "owner_role": "admin",
+      "recommended_deadline": "24h",
+      "reason_codes": [
+        "LOW_COVERAGE"
+      ],
+      "evidence": [
+        "Покрытие агентами: 67%",
+        "Один агент stale, один отсутствует"
       ]
     }
   ],

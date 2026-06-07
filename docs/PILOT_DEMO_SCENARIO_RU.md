@@ -174,11 +174,17 @@ SIEM, классическом DLP, ML/LLM или готовом pfSense ingesti
 
 Демонстрационные материалы:
 
+- [demo-сценарий руководителя](demo/DEMO_SCENARIO_EXECUTIVE_RU.md);
+- [demo-сценарий ИБ](demo/DEMO_SCENARIO_SECURITY_RU.md);
+- [demo-сценарий расследований](demo/DEMO_SCENARIO_FORENSICS_RU.md);
+- [приемочный checklist demo-pack](demo/DEMO_PACK_ACCEPTANCE_CHECKLIST_RU.md);
 - [demo-seed-data.json](fixtures/pilot-v1-demo/demo-seed-data.json);
 - [executive-summary.md](fixtures/pilot-v1-demo/evidence-pack/executive-summary.md);
 - [security-technical-summary.md](fixtures/pilot-v1-demo/evidence-pack/security-technical-summary.md);
 - [investigation-report.md](fixtures/pilot-v1-demo/evidence-pack/investigation-report.md);
-- [investigation-contract.json](fixtures/pilot-v1-demo/evidence-pack/investigation-contract.json).
+- [investigation-contract.json](fixtures/pilot-v1-demo/evidence-pack/investigation-contract.json);
+- [пример итогового отчета](DEMO_REPORT_EXAMPLE_RU.md);
+- [ценность пилота для заказчика](PILOT_VALUE_PROPOSITION_RU.md).
 
 Все материалы demo-only. Для сетевых примеров используются только RFC 5737
 адреса `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`.

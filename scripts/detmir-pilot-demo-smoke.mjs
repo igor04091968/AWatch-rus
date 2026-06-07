@@ -57,7 +57,15 @@ async function fetchText(baseUrl, relativePath, role = "executive") {
 
 function readDemoFiles() {
   const files = [
+    "docs/DEMO_RUNBOOK_RU.md",
+    "docs/CUSTOMER_DEMO_SCENARIO_RU.md",
     "docs/PILOT_DEMO_SCENARIO_RU.md",
+    "docs/DEMO_REPORT_EXAMPLE_RU.md",
+    "docs/PILOT_VALUE_PROPOSITION_RU.md",
+    "docs/demo/DEMO_SCENARIO_EXECUTIVE_RU.md",
+    "docs/demo/DEMO_SCENARIO_SECURITY_RU.md",
+    "docs/demo/DEMO_SCENARIO_FORENSICS_RU.md",
+    "docs/demo/DEMO_PACK_ACCEPTANCE_CHECKLIST_RU.md",
     "docs/fixtures/pilot-v1-demo/README_RU.md",
     "docs/fixtures/pilot-v1-demo/demo-seed-data.json",
     "docs/fixtures/pilot-v1-demo/evidence-pack/executive-summary.md",
@@ -69,6 +77,80 @@ function readDemoFiles() {
     file,
     text: fs.readFileSync(path.join(root, file), "utf8"),
   }));
+}
+
+function validateDemoDataset() {
+  const file = "docs/fixtures/pilot-v1-demo/demo-seed-data.json";
+  const data = JSON.parse(fs.readFileSync(path.join(root, file), "utf8"));
+  const scenarios = new Set((data.scenario_coverage || []).map((item) => item.scenario));
+  const required = [
+    "normal_work",
+    "activity_drop",
+    "remote_session_growth",
+    "elevated_ueba",
+    "incident_candidate",
+    "low_agent_coverage",
+  ];
+  const missing = required.filter((name) => !scenarios.has(name));
+  return {
+    ok: data.demo_only === true
+      && data.privacy?.real_personal_data === false
+      && data.privacy?.real_customer_hosts === false
+      && data.privacy?.real_customer_networks === false
+      && data.privacy?.real_domains === false
+      && data.privacy?.real_logins === false
+      && data.privacy?.personal_data === false
+      && missing.length === 0,
+    missing,
+    scenarios: [...scenarios].sort(),
+  };
+}
+
+function validateDemoScreenshots() {
+  const files = [
+    "docs/screenshots/01-executive-overview.png",
+    "docs/screenshots/02-risk-heatmap.png",
+    "docs/screenshots/03-security-view.png",
+    "docs/screenshots/04-operations-view.png",
+    "docs/screenshots/05-investigation-pack.png",
+    "docs/screenshots/06-markdown-report.png",
+    "docs/screenshots/07-product-architecture.png",
+  ];
+  const missing = [];
+  for (const file of files) {
+    const fullPath = path.join(root, file);
+    if (!fs.existsSync(fullPath)) {
+      missing.push({ file, reason: "missing" });
+      continue;
+    }
+    const bytes = fs.readFileSync(fullPath);
+    if (bytes.length <= 1000 || !bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+      missing.push({ file, reason: "not_png_or_too_small", size: bytes.length });
+    }
+  }
+  return { ok: missing.length === 0, missing, count: files.length };
+}
+
+function validateDemoMarkdownLinks() {
+  const findings = [];
+  const linkPattern = /!?\[[^\]]+\]\(([^)]+)\)/g;
+  for (const item of readDemoFiles()) {
+    let match = null;
+    while ((match = linkPattern.exec(item.text)) !== null) {
+      const raw = String(match[1] || "").trim();
+      const target = raw.split(/\s+/)[0].replace(/^<|>$/g, "");
+      if (!target || target.startsWith("#") || target.startsWith("http://") || target.startsWith("https://") || target.startsWith("mailto:")) {
+        continue;
+      }
+      const withoutAnchor = target.split("#", 1)[0];
+      if (!withoutAnchor) continue;
+      const resolved = path.resolve(root, path.dirname(item.file), withoutAnchor);
+      if (!fs.existsSync(resolved)) {
+        findings.push({ file: item.file, target });
+      }
+    }
+  }
+  return { ok: findings.length === 0, findings };
 }
 
 function scanDemoFiles() {
@@ -100,6 +182,13 @@ function pass(checks, name, ok, details = {}) {
 async function main() {
   const baseUrl = normalizeBaseUrl(env("DETMIR_PORTAL_SMOKE_URL", "http://127.0.0.1:8720/portal/"));
   const checks = [];
+
+  const dataset = validateDemoDataset();
+  pass(checks, "demo_dataset_loads_and_covers_required_scenarios", dataset.ok, dataset);
+  const screenshots = validateDemoScreenshots();
+  pass(checks, "demo_screenshots_exist_and_are_png", screenshots.ok, screenshots);
+  const markdownLinks = validateDemoMarkdownLinks();
+  pass(checks, "demo_markdown_links_valid", markdownLinks.ok, markdownLinks);
 
   const html = await fetchText(baseUrl, "", "executive");
   pass(checks, "portal_html_available", html.ok && contains(html.text, "AWatch-rus"), {

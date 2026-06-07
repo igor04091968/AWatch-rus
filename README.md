@@ -82,8 +82,13 @@ Security Analytics + Forensics для ролей `executive`, `manager`, `securi
 Демо-материалы:
 
 - [сценарий Pilot v1 demo](docs/PILOT_DEMO_SCENARIO_RU.md);
+- [сценарий руководителя](docs/demo/DEMO_SCENARIO_EXECUTIVE_RU.md);
+- [сценарий ИБ](docs/demo/DEMO_SCENARIO_SECURITY_RU.md);
+- [сценарий расследований](docs/demo/DEMO_SCENARIO_FORENSICS_RU.md);
 - [demo seed data](docs/fixtures/pilot-v1-demo/demo-seed-data.json);
 - [demo evidence pack](docs/fixtures/pilot-v1-demo/evidence-pack/);
+- [пример итогового demo-отчета](docs/DEMO_REPORT_EXAMPLE_RU.md);
+- [ценность пилота для заказчика](docs/PILOT_VALUE_PROPOSITION_RU.md);
 - [преддемо-runbook](docs/DEMO_RUNBOOK_RU.md).
 
 Границы показа:
@@ -195,6 +200,11 @@ collectors.
 - [Пакет пилота для заказчика](docs/CUSTOMER_PILOT_PACK_RU.md)
 - [Pilot v1.0](docs/PILOT_V1_RU.md)
 - [Pilot v1 demo](docs/PILOT_DEMO_SCENARIO_RU.md)
+- [Demo scenario: руководитель](docs/demo/DEMO_SCENARIO_EXECUTIVE_RU.md)
+- [Demo scenario: ИБ](docs/demo/DEMO_SCENARIO_SECURITY_RU.md)
+- [Demo scenario: расследования](docs/demo/DEMO_SCENARIO_FORENSICS_RU.md)
+- [Demo report example](docs/DEMO_REPORT_EXAMPLE_RU.md)
+- [Pilot value proposition](docs/PILOT_VALUE_PROPOSITION_RU.md)
 - [Pilot v1.0 acceptance checklist](docs/PILOT_V1_ACCEPTANCE_CHECKLIST_RU.md)
 - [Pilot v1.0 evidence](docs/PILOT_V1_EVIDENCE_RU.md)
 - [Production readiness портала](docs/PRODUCTION_READINESS_RU.md)

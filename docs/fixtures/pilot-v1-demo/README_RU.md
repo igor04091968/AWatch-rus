@@ -6,7 +6,8 @@ AWatch-rus Pilot v1.
 Состав:
 
 - `demo-seed-data.json` - демонстрационный набор сигналов Workforce, Security,
-  Forensics, UEBA и pfSense readiness;
+  Forensics, UEBA, remote-session growth, low agent coverage и pfSense
+  readiness;
 - `evidence-pack/executive-summary.md` - краткий управленческий вывод;
 - `evidence-pack/security-technical-summary.md` - техническая сводка для ИБ;
 - `evidence-pack/investigation-report.md` - Markdown-отчет расследования;
@@ -23,3 +24,12 @@ AWatch-rus Pilot v1.
 
 В demo fixtures запрещены реальные IP-адреса, hostname, логины, ФИО,
 подразделения заказчика и реальные события безопасности.
+
+Покрытые demo-сценарии:
+
+- нормальная работа;
+- снижение активности;
+- рост удаленных сессий;
+- повышенный UEBA;
+- incident candidate;
+- низкое покрытие агентами.
