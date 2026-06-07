@@ -279,3 +279,81 @@ docs/RISK_NARRATIVE_RU.md
 7. Добавленные тесты.
 8. Результаты fmt/clippy/test/build/smoke.
 9. Известные ограничения.
+
+---
+
+## Выполнение
+
+Статус: выполнено для Pilot v1.
+
+Краткое описание:
+
+- добавлен rule-based Risk Narrative layer;
+- добавлен endpoint `GET /api/risk/narrative`;
+- risk score связывает Workforce KPI, Explainable KPI, UEBA, coverage,
+  security correlation, incident candidates и pfSense `contract_only`
+  limitation;
+- Executive UI показывает блок `Риск-нарратив`;
+- Security UI проверяет ИБ-релевантную связь рисков и активности;
+- Markdown-отчет содержит раздел `## Риск-нарратив`;
+- OpenAPI и TypeScript contracts обновлены;
+- создана отдельная документация `docs/RISK_NARRATIVE_RU.md`.
+
+Ключевые файлы:
+
+- `adk-rust/crates/detmir-portal/src/risk_narrative.rs`;
+- `adk-rust/crates/detmir-portal/src/static/app.js`;
+- `adk-rust/crates/detmir-portal/src/contracts/openapi.json`;
+- `adk-rust/crates/detmir-portal/src/contracts/typescript.d.ts`;
+- `docs/RISK_NARRATIVE_RU.md`;
+- `scripts/browser-conformance-smoke.mjs`;
+- `scripts/detmir-portal-tabs-smoke.mjs`.
+
+Risk scoring rules:
+
+- `0-24` - `low`;
+- `25-49` - `guarded`;
+- `50-74` - `medium`;
+- `75-89` - `high`;
+- `90-100` - `critical`.
+
+Сигналы:
+
+- low Workforce KPI;
+- low KPI confidence;
+- low agent coverage;
+- increased UEBA severity;
+- incident candidates count;
+- high security correlation;
+- missing data;
+- afterhours/remote activity;
+- pfSense `contract_only` limitation.
+
+UI-блоки:
+
+- Executive: `Риск-нарратив`, `Почему`, `Подтверждения`, `Дальше`,
+  `Ограничения`;
+- Security: `Связь рисков и активности`, `Требует проверки`,
+  `Рекомендуемые действия ИБ`;
+- Forensics: расследования, timeline, материалы расследования и аудит.
+
+Проверки:
+
+- unit tests для risk narrative scenarios;
+- OpenAPI/TypeScript contract smoke;
+- `node scripts/browser-conformance-smoke.mjs`;
+- `node scripts/detmir-portal-tabs-smoke.mjs`;
+- `cargo fmt --all --check`;
+- `cargo clippy --all-targets --all-features -- -D warnings`;
+- `cargo test --all`;
+- `cargo build --release`;
+- `git diff --check`.
+
+Известные ограничения:
+
+- Risk Narrative не является ML/LLM/predictive analytics;
+- Risk Narrative не подтверждает нарушение без ручной проверки;
+- нет auto-remediation;
+- pfSense не заявляется как ingestion/SIEM, пока это не пройдет отдельную
+  приемку;
+- live customer-stand validation остается отдельным шагом Demo Freeze v1.

@@ -155,6 +155,6 @@ Rollback-critical данные:
 - `docs/OPERATOR_GUIDE_RU.md`
 - `docs/INSTALL_RU.md`
 - `docs/ARCHITECTURE_RU.md`
-- `docs/DETMIR_THREAT_MODEL_RU.md`
-- `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`
+- `docs/THREAT_MODEL_RU.md`
+- `docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`
 - `adk-rust/RUNBOOK.md`

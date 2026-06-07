@@ -50,8 +50,8 @@ git grep -n -E 'SHARKON2025|10\.10\.10|dm\.iri|/home/igor|/root' -- \
 ```text
 adk-rust/crates/verify-innosetup-installer/src/main.rs:260:        let root = std::path::Path::new("/tmp/root");
 docs/ARCHITECTURE_RU.md:116:- canonical path/root allowlist;
-docs/DETMIR_THREAT_MODEL_RU.md:168:- canonical path/root allowlist;
-docs/DETMIR_THREAT_MODEL_RU.md:223:| T05 | Прямая выдача файлов по path traversal | Canonical path/root allowlist, no raw path route. |
+docs/THREAT_MODEL_RU.md:168:- canonical path/root allowlist;
+docs/THREAT_MODEL_RU.md:223:| T05 | Прямая выдача файлов по path traversal | Canonical path/root allowlist, no raw path route. |
 proxmox/tsj_guardian_bot.py:960:            base_pat += r"|lxc-usernsexec.*(/var/lib/lxc/" + guest_pat + r"/rootfs|/run/lxc/)"
 ```
 

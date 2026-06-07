@@ -38,8 +38,8 @@
 
 ## 4. Документация
 
-- [x] Модель угроз: `docs/DETMIR_THREAT_MODEL_RU.md`.
-- [x] Позиционирование: `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`.
+- [x] Модель угроз: `docs/THREAT_MODEL_RU.md`.
+- [x] Позиционирование: `docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`.
 - [x] Руководство администратора: `docs/ADMIN_GUIDE_RU.md`.
 - [x] Руководство оператора: `docs/OPERATOR_GUIDE_RU.md`.
 - [x] Установка: `docs/INSTALL_RU.md`.

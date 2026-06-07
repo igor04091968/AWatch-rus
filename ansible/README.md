@@ -92,8 +92,8 @@ ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
 Важно:
 
 - `WinRM` здесь остаётся транспортом для `Ansible deploy` и `validation`;
-- для интерактивной PowerShell-работы из Linux/Codex по DetMir используйте project MCP-over-SSH путь, а не `WSMan`;
-- каноника лежит в `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md` и `scripts/install_detmir_powershell_mcp.sh`.
+- для интерактивной PowerShell-работы из Linux/Codex по AWatch-rus используйте project MCP-over-SSH путь, а не `WSMan`;
+- каноника лежит в `docs/POWERSHELL_MCP_REMOTE_RU.md` и `scripts/install_detmir_powershell_mcp.sh`.
 
 1. Подготовьте inventory и vars:
    - `cp ansible/inventory.example.ini ansible/inventory.ini`
@@ -232,9 +232,9 @@ Playbook:
 
 По умолчанию импортируются:
 
-- `DetMir: Работа пользователей в RDP`
-- `DetMir: DLP и ИБ обзор`
-- `DetMir: ИБ сводка для руководства`
+- `AWatch-rus: Работа пользователей в RDP`
+- `AWatch-rus: DLP и ИБ обзор`
+- `AWatch-rus: ИБ сводка для руководства`
 - `AW-rus: DLP обзор`
 
 Подробная документация: `docs/GRAFANA_DASHBOARDS_RU.md`

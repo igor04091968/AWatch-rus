@@ -305,5 +305,5 @@ stale/dead buckets для обязательных источников.
 - `docs/ARCHITECTURE_RU.md` - архитектура.
 - `docs/ADMIN_GUIDE_RU.md` - руководство администратора.
 - `docs/OPERATOR_GUIDE_RU.md` - руководство оператора.
-- `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` - стратегия
+- `docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` - стратегия
   позиционирования.

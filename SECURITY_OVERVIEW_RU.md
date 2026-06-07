@@ -337,7 +337,7 @@ Collector и server-side сервисы проектировались так, �
 
 ### MCP / PowerShell remote для AWatch-rus
 
-Документ: `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md`
+Документ: `docs/POWERSHELL_MCP_REMOTE_RU.md`
 
 Реализует:
 

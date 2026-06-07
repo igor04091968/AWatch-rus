@@ -147,8 +147,8 @@ AWatch-rus не заявляется как сертифицированная �
 
 ## 9. Связанные документы
 
-- `docs/DETMIR_UNIFIED_OPERATING_MODEL_RU.md`
-- `docs/DETMIR_THREAT_MODEL_RU.md`
+- `docs/UNIFIED_OPERATING_MODEL_RU.md`
+- `docs/THREAT_MODEL_RU.md`
 - `docs/ADMIN_GUIDE_RU.md`
 - `docs/OPERATOR_GUIDE_RU.md`
 - `docs/GRAFANA_DASHBOARDS_RU.md`

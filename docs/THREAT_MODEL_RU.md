@@ -314,7 +314,7 @@
 
 ## 12. Связанные документы
 
-- `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`
+- `docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`
 - `docs/ADMIN_GUIDE_RU.md`
 - `docs/OPERATOR_GUIDE_RU.md`
 - `docs/INSTALL_RU.md`
@@ -322,8 +322,8 @@
 - `docs/OWNERSHIP_RU.md`
 - `docs/THIRD_PARTY_LICENSES_RU.md`
 - `docs/REGISTRY_CHECKLIST_RU.md`
-- `docs/DETMIR_UNIFIED_OPERATING_MODEL_RU.md`
-- `docs/DETMIR_PORTAL_GUI_PLAN_RU.md`
+- `docs/UNIFIED_OPERATING_MODEL_RU.md`
+- `docs/PORTAL_GUI_PLAN_RU.md`
 - `docs/dlp-security-functional-spec-ru.md`
 - `docs/dlp-gap-analysis.md`
 - `docs/dlp-production-plan-windows-10-19.md`

@@ -539,7 +539,7 @@ detmir-win-shell
 
 Канонический документ:
 
-- `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md`
+- `docs/POWERSHELL_MCP_REMOTE_RU.md`
 
 Правило:
 

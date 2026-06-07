@@ -194,9 +194,9 @@ Grafana/portal-аналитику, Telegram-оповещения, runbook automa
 
 Уже есть сильная база:
 
-- `docs/DETMIR_THREAT_MODEL_RU.md`;
-- `docs/DETMIR_UNIFIED_OPERATING_MODEL_RU.md`;
-- `docs/DETMIR_PORTAL_GUI_PLAN_RU.md`;
+- `docs/THREAT_MODEL_RU.md`;
+- `docs/UNIFIED_OPERATING_MODEL_RU.md`;
+- `docs/PORTAL_GUI_PLAN_RU.md`;
 - `docs/dlp-security-functional-spec-ru.md`;
 - `docs/dlp-gap-analysis.md`;
 - `docs/GRAFANA_DASHBOARDS_RU.md`;

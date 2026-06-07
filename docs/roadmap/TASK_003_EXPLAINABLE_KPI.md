@@ -310,3 +310,71 @@ docs/EXPLAINABLE_KPI_RU.md
 6. Добавленные тесты.
 7. Результаты проверок.
 8. Известные ограничения.
+
+---
+
+## Выполнение
+
+Статус: выполнено для Pilot v1.
+
+Краткое описание:
+
+- добавлен explainability-контракт Workforce KPI;
+- добавлен endpoint `GET /api/workforce/kpi/explain`;
+- добавлена детерминированная rule-based модель факторов;
+- добавлен confidence level `high` / `medium` / `low`;
+- UI показывает блок `Почему такой индекс активности?`;
+- Markdown-отчет содержит explainability-раздел;
+- OpenAPI и TypeScript contracts включают explain model;
+- employee-level детализация не добавлена без отдельного безопасного контракта.
+
+Ключевые файлы:
+
+- `adk-rust/crates/detmir-portal/src/workforce_kpi_explain.rs`;
+- `adk-rust/crates/detmir-portal/src/static/app.js`;
+- `adk-rust/crates/detmir-portal/src/contracts/openapi.json`;
+- `adk-rust/crates/detmir-portal/src/contracts/typescript.d.ts`;
+- `docs/EXPLAINABLE_KPI_RU.md`.
+
+API endpoint:
+
+- `GET /api/workforce/kpi/explain`.
+
+Модель explainability:
+
+- `kpi_score`;
+- `confidence`;
+- `coverage`;
+- `factors`;
+- `top_applications`;
+- `warnings`;
+- `recommendations`.
+
+Минимальные факторы:
+
+- `productive_activity`;
+- `business_app_usage`;
+- `idle_time`;
+- `afterhours_activity`;
+- `remote_session_activity`;
+- `data_coverage`;
+- `missing_data`;
+- `trend_change`.
+
+Проверки:
+
+- unit tests для explainability-модели и confidence;
+- role-filtering smoke;
+- markdown/report smoke;
+- `cargo fmt --all --check`;
+- `cargo clippy --all-targets --all-features -- -D warnings`;
+- `cargo test --all`;
+- `cargo build --release`;
+- portal smoke.
+
+Известные ограничения:
+
+- не используется ML, LLM или predictive scoring;
+- KPI не является HR-дисциплинарной оценкой;
+- персональная explainability-модель в Pilot v1 не включена;
+- качество объяснения зависит от свежести и полноты источников.

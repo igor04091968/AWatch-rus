@@ -22,7 +22,7 @@
 Система не является полноценной DLP-платформой enterprise-класса с нативной аутентификацией, RBAC, аппаратной изоляцией и криптографической подписью политик. Это важно учитывать при ИБ-оценке.
 
 Текущая модель угроз для всего контура AWatch-rus зафиксирована отдельно:
-`docs/DETMIR_THREAT_MODEL_RU.md`. В ней DLP-функции рассматриваются как часть
+`docs/THREAT_MODEL_RU.md`. В ней DLP-функции рассматриваются как часть
 платформы операционного контроля и технического аудита, а не как заявление о
 сертифицированной DLP/СЗИ.
 
@@ -604,7 +604,7 @@ python3 scripts/dlp-admin-cli.py cases list --limit 50
 
 ## 21. Связанные документы
 
-- `docs/DETMIR_THREAT_MODEL_RU.md`
+- `docs/THREAT_MODEL_RU.md`
 - `docs/dlp-policy-engine.md`
 - `docs/dlp-integrations.md`
 - `docs/dlp-enforcement.md`
