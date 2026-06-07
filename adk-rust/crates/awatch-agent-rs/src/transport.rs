@@ -363,17 +363,27 @@ fn sanitize_file_part(value: &str) -> String {
 }
 
 pub fn spool_health(spool_dir: &Path) -> serde_json::Value {
-    let queued = fs::read_dir(spool_dir)
+    let telemetry_queued = count_spool_json_files(spool_dir);
+    let worktime_spool_dir = spool_dir.join("aw-worktime");
+    let worktime_queued = count_spool_json_files(&worktime_spool_dir);
+    serde_json::json!({
+        "generated_at_utc": Utc::now(),
+        "spool_dir": spool_dir.display().to_string(),
+        "worktime_spool_dir": worktime_spool_dir.display().to_string(),
+        "queued": telemetry_queued,
+        "telemetry_queued": telemetry_queued,
+        "worktime_queued": worktime_queued,
+        "total_queued": telemetry_queued + worktime_queued,
+    })
+}
+
+fn count_spool_json_files(spool_dir: &Path) -> usize {
+    fs::read_dir(spool_dir)
         .ok()
         .into_iter()
         .flat_map(|entries| entries.filter_map(|entry| entry.ok()))
         .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
-        .count();
-    serde_json::json!({
-        "generated_at_utc": Utc::now(),
-        "spool_dir": spool_dir.display().to_string(),
-        "queued": queued,
-    })
+        .count()
 }
 
 #[cfg(test)]
@@ -432,6 +442,40 @@ mod tests {
     }
 
     #[test]
+    fn send_or_spool_preserves_record_when_server_is_unavailable() {
+        let dir = tempdir().unwrap();
+        let config = AgentConfig {
+            server_url: "http://127.0.0.1:9/api/telemetry".to_string(),
+            retry_attempts: 1,
+            timeout_seconds: 1,
+            spool_dir: dir.path().to_path_buf(),
+            ..AgentConfig::default()
+        };
+        let transport = TelemetryTransport::new(&config);
+        assert!(transport.send_or_spool(&record()).is_err());
+        let queued = fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "json"))
+            .count();
+        assert_eq!(queued, 1);
+    }
+
+    #[test]
+    fn flush_spool_keeps_record_when_sender_fails() {
+        let dir = tempdir().unwrap();
+        let config = AgentConfig {
+            spool_dir: dir.path().to_path_buf(),
+            ..AgentConfig::default()
+        };
+        let transport = TelemetryTransport::new(&config);
+        let path = transport.spool(&record()).unwrap();
+        let result = flush_spool_dir(dir.path(), |_| anyhow::bail!("transport down"));
+        assert!(result.is_err());
+        assert!(path.exists());
+    }
+
+    #[test]
     fn session_id_number_extracts_numeric_id() {
         let session = SessionInfo {
             session_id: "rdp-12-user".to_string(),
@@ -487,5 +531,26 @@ mod tests {
         let path = publisher.spool(&record()).unwrap();
         assert!(path.starts_with(dir.path().join("aw-worktime")));
         assert!(path.is_file());
+    }
+
+    #[test]
+    fn spool_health_reports_telemetry_and_worktime_backlog() {
+        let dir = tempdir().unwrap();
+        let config = AgentConfig {
+            aw_api_base: Some("http://127.0.0.1:9/api/0".to_string()),
+            aw_worktime_enabled: true,
+            spool_dir: dir.path().to_path_buf(),
+            ..AgentConfig::default()
+        };
+        let transport = TelemetryTransport::new(&config);
+        let publisher = AwWorktimePublisher::new(&config).unwrap();
+        transport.spool(&record()).unwrap();
+        publisher.spool(&record()).unwrap();
+
+        let health = spool_health(dir.path());
+        assert_eq!(health["queued"].as_u64(), Some(1));
+        assert_eq!(health["telemetry_queued"].as_u64(), Some(1));
+        assert_eq!(health["worktime_queued"].as_u64(), Some(1));
+        assert_eq!(health["total_queued"].as_u64(), Some(2));
     }
 }

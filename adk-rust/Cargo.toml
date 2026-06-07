@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/aw-1c-ingest",
     "crates/aw-windows-telemetry",
+    "crates/awatch-agent",
     "crates/awatch-agent-rs",
     "crates/detmir-auto",
     "crates/detmir-aw-client",

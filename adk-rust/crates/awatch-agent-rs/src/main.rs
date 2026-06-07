@@ -87,8 +87,20 @@ fn run() -> Result<i32> {
     let transport = TelemetryTransport::new(&config);
     let aw_worktime = AwWorktimePublisher::new(&config);
     if cli.flush_spool {
-        let flushed = transport.flush_spool()?;
-        println!("{}", serde_json::json!({"ok": true, "flushed": flushed}));
+        let telemetry_flushed = transport.flush_spool()?;
+        let worktime_flushed = match aw_worktime.as_ref() {
+            Some(publisher) => publisher.flush_spool()?,
+            None => 0,
+        };
+        println!(
+            "{}",
+            serde_json::json!({
+                "ok": true,
+                "flushed": telemetry_flushed + worktime_flushed,
+                "telemetry_flushed": telemetry_flushed,
+                "worktime_flushed": worktime_flushed,
+            })
+        );
         return Ok(0);
     }
 

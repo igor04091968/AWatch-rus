@@ -1,4 +1,4 @@
-.docs/roadmap/TASK_005_RUST_AGENT_BASELINE.md
+# TASK 005: Rust Agent Baseline
 
 Рекомендуемые параметры
 
@@ -184,3 +184,26 @@ docs/RUST_AGENT_BASELINE_RU.md
 7. Результаты проверок.
 8. Известные ограничения.
 
+## Выполнение
+
+Статус: done.
+
+Файлы:
+
+- `adk-rust/crates/awatch-agent/` - новый baseline crate без мониторинга
+  пользователя;
+- `docs/RUST_AGENT_BASELINE_RU.md` - архитектура, envelope, spool, retry,
+  heartbeat, health, logging и metrics;
+- `README.md` - ссылка на Rust Agent baseline;
+- `adk-rust/crates/awatch-agent-rs/` - совместимое усиление текущего
+  проверенного runtime: отдельные поля telemetry/worktime backlog и flush;
+- `docs/roadmap/TASK_005_RUST_AGENT_BASELINE.md` - зафиксирован статус.
+
+Границы:
+
+- `awatch-agent` не собирает активность пользователя, процессы, clipboard,
+  screenshots, пакеты сети или документы;
+- `awatch-agent-rs` остается текущим проверенным Windows worktime/session
+  runtime;
+- новые collectors, EDR/DLP/ML/LLM и production claims по неподтвержденным ОС
+  не добавлялись.
