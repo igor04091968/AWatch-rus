@@ -203,3 +203,67 @@ scripts/deployment-readiness-smoke.*
 7. Acceptance checklist.
 8. Проверки.
 9. Ограничения.
+
+## Выполнение
+
+Статус: done.
+
+Созданные документы:
+
+- `docs/ENTERPRISE_DEPLOYMENT_GUIDE_RU.md`;
+- `docs/DEPLOYMENT_TOPOLOGIES_RU.md`;
+- `docs/SIZING_GUIDE_RU.md`;
+- `docs/BACKUP_AND_RECOVERY_RU.md`;
+- `docs/OPERATIONS_RUNBOOK_RU.md`;
+- `docs/SECURITY_HARDENING_RU.md`;
+- `docs/ENTERPRISE_ACCEPTANCE_CHECKLIST_RU.md`.
+
+Созданный smoke:
+
+- `scripts/deployment-readiness-smoke.mjs`.
+
+Обновленные документы:
+
+- `README.md`;
+- `docs/roadmap/TASK_009_ENTERPRISE_DEPLOYMENT_GUIDE.md`.
+
+Deployment scenarios:
+
+- standalone;
+- pilot;
+- small company;
+- medium company;
+- enterprise.
+
+Sizing assumptions:
+
+- до 50 пользователей;
+- до 250 пользователей;
+- до 1000 пользователей;
+- более 1000 пользователей;
+- все оценки требуют проверки на инфраструктуре заказчика.
+
+Backup model:
+
+- config backup;
+- reports/state backup;
+- evidence metadata backup where used;
+- restore test;
+- rollback after upgrade.
+
+Runbook:
+
+- `/healthz`;
+- `/readyz`;
+- `/metrics`;
+- smoke;
+- logs;
+- типовые сбои;
+- диагностика.
+
+Ограничения:
+
+- новый продуктовый код, API, агенты и UI не добавлялись;
+- ML/LLM не добавлялись;
+- новые security claims не добавлялись;
+- sizing не заявлен как гарантия без валидации.

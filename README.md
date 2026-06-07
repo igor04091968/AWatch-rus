@@ -187,6 +187,15 @@ collectors.
 
 ## Поставка и регистрация
 
+- Enterprise deployment documentation:
+  [deployment guide](docs/ENTERPRISE_DEPLOYMENT_GUIDE_RU.md),
+  [topologies](docs/DEPLOYMENT_TOPOLOGIES_RU.md),
+  [sizing](docs/SIZING_GUIDE_RU.md),
+  [backup and recovery](docs/BACKUP_AND_RECOVERY_RU.md),
+  [operations runbook](docs/OPERATIONS_RUNBOOK_RU.md),
+  [security hardening](docs/SECURITY_HARDENING_RU.md),
+  [acceptance checklist](docs/ENTERPRISE_ACCEPTANCE_CHECKLIST_RU.md).
+
 - Registry readiness documentation:
   [product passport](docs/REGISTRY_PRODUCT_PASSPORT_RU.md),
   [architecture](docs/REGISTRY_ARCHITECTURE_RU.md),
@@ -214,6 +223,13 @@ collectors.
 - [Коммерческие модули AWatch-rus](docs/DETMIR_COMMERCIAL_MODULES_RU.md)
 - [Архитектурный baseline](docs/ARCHITECTURE_BASELINE_RU.md)
 - [Пакет пилота для заказчика](docs/CUSTOMER_PILOT_PACK_RU.md)
+- [Enterprise deployment guide](docs/ENTERPRISE_DEPLOYMENT_GUIDE_RU.md)
+- [Deployment topologies](docs/DEPLOYMENT_TOPOLOGIES_RU.md)
+- [Sizing guide](docs/SIZING_GUIDE_RU.md)
+- [Backup and recovery](docs/BACKUP_AND_RECOVERY_RU.md)
+- [Operations runbook](docs/OPERATIONS_RUNBOOK_RU.md)
+- [Security hardening](docs/SECURITY_HARDENING_RU.md)
+- [Enterprise acceptance checklist](docs/ENTERPRISE_ACCEPTANCE_CHECKLIST_RU.md)
 - [Pilot v1.0](docs/PILOT_V1_RU.md)
 - [Pilot v1 demo](docs/PILOT_DEMO_SCENARIO_RU.md)
 - [Demo scenario: руководитель](docs/demo/DEMO_SCENARIO_EXECUTIVE_RU.md)
