@@ -158,3 +158,60 @@ scripts/pilot-validation-smoke.mjs
 3. Основные риски пилота.
 4. Конкурентное позиционирование.
 5. Проверки.
+
+---
+
+## Выполнение
+
+Статус: выполнено.
+
+Созданы документы:
+
+- `docs/PILOT_VALIDATION_CHECKLIST_RU.md`
+- `docs/PILOT_GAP_ANALYSIS_RU.md`
+- `docs/CUSTOMER_DISCOVERY_QUESTIONS_RU.md`
+- `docs/PILOT_SUCCESS_CRITERIA_RU.md`
+- `docs/COMPETITIVE_POSITIONING_RU.md`
+
+Добавлен smoke:
+
+- `scripts/pilot-validation-smoke.mjs`
+
+Обновлен README:
+
+- добавлены ссылки на pilot validation пакет рядом с demo, registry и
+  deployment материалами.
+
+Выявленные пробелы:
+
+- нужен live smoke на целевом стенде заказчика;
+- нужно подтвердить покрытие источников данных и freshness;
+- нужен контрольный backup and recovery тест;
+- нужно проверить reverse proxy, TLS, авторизацию и внешнюю доступность портала;
+- нужно закрепить владельцев действий по Recommended Actions.
+
+Основные риски пилота:
+
+- целевой стенд может отличаться от локального demo-стенда;
+- неполное покрытие источников снизит confidence KPI;
+- заказчик может ошибочно ожидать DLP/SIEM/EDR, если заранее не проговорить
+  границы пилота;
+- без владельцев действий управленческие рекомендации останутся отчетом без
+  исполнения.
+
+Конкурентное позиционирование:
+
+- AWatch-rus позиционируется как Workforce Analytics + Security Analytics +
+  Forensics;
+- продукт не заявляется как замена ActivityWatch, Стахановец, StaffCop,
+  SearchInform или InfoWatch;
+- сравнение сделано честно: зрелые DLP/SIEM/employee monitoring продукты
+  сильнее в глубине политик, сертификации и ширине enterprise-функций;
+- сильная сторона AWatch-rus в пилоте: explainable KPI, Risk Narrative,
+  role-based сценарии и прозрачные ограничения.
+
+Проверки:
+
+- `node --check scripts/pilot-validation-smoke.mjs`
+- `node scripts/pilot-validation-smoke.mjs`
+- `git diff --check`

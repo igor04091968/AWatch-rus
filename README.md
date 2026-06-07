@@ -91,6 +91,14 @@ Security Analytics + Forensics для ролей `executive`, `manager`, `securi
 - [ценность пилота для заказчика](docs/PILOT_VALUE_PROPOSITION_RU.md);
 - [преддемо-runbook](docs/DEMO_RUNBOOK_RU.md).
 
+Pilot validation:
+
+- [чеклист проверки пилота](docs/PILOT_VALIDATION_CHECKLIST_RU.md);
+- [gap analysis пилота](docs/PILOT_GAP_ANALYSIS_RU.md);
+- [вопросы для discovery с заказчиком](docs/CUSTOMER_DISCOVERY_QUESTIONS_RU.md);
+- [критерии успеха пилота](docs/PILOT_SUCCESS_CRITERIA_RU.md);
+- [конкурентное позиционирование](docs/COMPETITIVE_POSITIONING_RU.md).
+
 Границы показа:
 
 - pfSense показывается только как `contract_only/readiness`, без заявления
@@ -239,6 +247,11 @@ collectors.
 - [Pilot value proposition](docs/PILOT_VALUE_PROPOSITION_RU.md)
 - [Pilot v1.0 acceptance checklist](docs/PILOT_V1_ACCEPTANCE_CHECKLIST_RU.md)
 - [Pilot v1.0 evidence](docs/PILOT_V1_EVIDENCE_RU.md)
+- [Pilot validation checklist](docs/PILOT_VALIDATION_CHECKLIST_RU.md)
+- [Pilot gap analysis](docs/PILOT_GAP_ANALYSIS_RU.md)
+- [Customer discovery questions](docs/CUSTOMER_DISCOVERY_QUESTIONS_RU.md)
+- [Pilot success criteria](docs/PILOT_SUCCESS_CRITERIA_RU.md)
+- [Competitive positioning](docs/COMPETITIVE_POSITIONING_RU.md)
 - [Production readiness портала](docs/PRODUCTION_READINESS_RU.md)
 - [Explainable Workforce KPI](docs/EXPLAINABLE_KPI_RU.md)
 - [Executive Action Center](docs/EXECUTIVE_ACTION_CENTER_RU.md)
