@@ -7,6 +7,7 @@ const state = {
   operatorData: null,
   reports: null,
   cases: null,
+  kpiExplain: null,
   pendingScrollSelector: null,
   load: {
     status: "LOADING",
@@ -1242,6 +1243,7 @@ function renderExecutiveView(report, incidents) {
   return `
     ${renderRiskNarrative(report)}
     ${renderExecutiveDashboard(report)}
+    ${renderKpiExplain(report?.workforce_kpi_explain)}
     ${renderSecurityEventsSummary(report?.security_events_summary, { compact: true })}
     ${renderBusinessRisk(report?.business_risk)}
     ${renderRiskHeatmap(report?.risk_heatmap)}
@@ -1268,6 +1270,7 @@ function renderSecurityView(data, report, extras = {}) {
 function renderManagerView(report) {
   return `
     ${renderExecutiveDashboard(report)}
+    ${renderKpiExplain(report?.workforce_kpi_explain)}
     ${renderDepartmentRanking(report)}
     ${renderDepartmentHeatMap(report)}
     ${renderOverviewAnalytics(report)}
@@ -1465,7 +1468,7 @@ function renderOverviewAnalytics(report) {
   `;
 }
 
-function renderManager(data, policyExplain) {
+function renderManager(data, policyExplain, kpiExplain) {
   const workforceIndex = workforceIndexText(data.users_count, data.total_active_seconds);
   return `
     <div class="page-head">
@@ -1495,6 +1498,7 @@ function renderManager(data, policyExplain) {
         `).join("")}</div>
       </section>
     </div>
+    ${renderKpiExplain(kpiExplain)}
     ${renderWorkforceIndexExplanation(policyExplain)}
     <h3 class="section-title">Сотрудники без активности и с аномалиями</h3>
     <div class="list">${(data.users || []).map(user => `
@@ -1538,7 +1542,7 @@ function renderDepartments(report) {
   `;
 }
 
-function renderEmployees(data, policyExplain) {
+function renderEmployees(data, policyExplain, kpiExplain) {
   const employees = Array.isArray(policyExplain?.employee_details) ? policyExplain.employee_details : [];
   const users = Array.isArray(data.users) ? data.users : [];
   const selected = users.slice(0, 12);
@@ -1552,6 +1556,7 @@ function renderEmployees(data, policyExplain) {
     </div>
     ${renderDailyDetailNotice()}
     <div class="employee-card-grid">${selected.map(user => renderEmployeeCard(user, employees)).join("") || `<p class="muted">Сотрудники пока не найдены.</p>`}</div>
+    ${renderKpiExplain(kpiExplain)}
     ${renderWorkforceIndexExplanation(policyExplain)}
   `;
 }
@@ -1608,6 +1613,87 @@ function pctText(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return "0%";
   return `${Math.round(n * 100)}%`;
+}
+
+function renderKpiExplain(explain) {
+  if (!explain || explain.ok === false) return "";
+  const coverage = explain.coverage || {};
+  const factors = Array.isArray(explain.factors) ? explain.factors : [];
+  const positive = factors.filter(item => String(item.impact || "").startsWith("+"));
+  const negative = factors.filter(item => String(item.impact || "").startsWith("-"));
+  const apps = Array.isArray(explain.top_applications) ? explain.top_applications.slice(0, 6) : [];
+  const warnings = Array.isArray(explain.warnings) ? explain.warnings : [];
+  const recommendations = Array.isArray(explain.recommendations) ? explain.recommendations : [];
+  return `
+    <section class="card kpi-explain-card">
+      <div class="section-head">
+        <div>
+          <h3>Почему такой индекс активности?</h3>
+          <p class="muted">Детерминированное объяснение: активность, рабочие приложения, простой, полнота и свежесть данных.</p>
+        </div>
+        <span class="badge ${confidenceStatusClass(explain.confidence)}">confidence ${ui(explain.confidence || "low")}</span>
+      </div>
+      <div class="index-metrics">
+        <div><span class="muted">KPI</span><strong>${ui(explain.kpi_score ?? 0)}%</strong></div>
+        <div><span class="muted">Покрытие</span><strong>${ui(coverage.agent_coverage_percent ?? 0)}%</strong></div>
+        <div><span class="muted">Свежесть</span><strong>${ui(coverage.data_freshness || "missing")}</strong></div>
+        <div><span class="muted">Пропуски</span><strong>${ui((coverage.missing_sources || []).length)}</strong></div>
+      </div>
+      <div class="grid-2">
+        <section class="soft-panel">
+          <h4>Что повышает индекс</h4>
+          <div class="list compact-list">${renderKpiFactorRows(positive, "Положительных факторов нет.")}</div>
+        </section>
+        <section class="soft-panel">
+          <h4>Что снижает индекс</h4>
+          <div class="list compact-list">${renderKpiFactorRows(negative, "Отрицательных факторов нет.")}</div>
+        </section>
+      </div>
+      ${apps.length ? `
+        <div class="list compact-list kpi-app-list">
+          ${apps.map(app => `
+            <div class="row compact-row">
+              <strong>${ui(app.name || "Приложение")}</strong>
+              <span class="muted">${ui(app.category || "other")} · ${ui(app.active_minutes ?? 0)} мин.</span>
+              <span class="badge ${app.contribution === "positive" ? "status-ok" : "status-unknown"}">${ui(app.contribution || "neutral")}</span>
+            </div>
+          `).join("")}
+        </div>
+      ` : ""}
+      ${renderKpiNotes("Предупреждения", warnings)}
+      ${renderKpiNotes("Рекомендации", recommendations)}
+    </section>
+  `;
+}
+
+function confidenceStatusClass(confidence) {
+  const value = String(confidence || "low").toLowerCase();
+  if (value === "high") return "status-ok";
+  if (value === "medium") return "status-warn";
+  return "status-degraded";
+}
+
+function renderKpiFactorRows(items, emptyText) {
+  if (!items.length) {
+    return `<div class="row compact-row"><strong>Нет</strong><span class="muted">${ui(emptyText)}</span><span></span></div>`;
+  }
+  return items.map(item => `
+    <div class="row compact-row">
+      <strong>${ui(item.label || item.name || "Фактор")}</strong>
+      <span class="muted">${ui(item.explanation || "")}</span>
+      <span class="badge ${String(item.impact || "").startsWith("-") ? "status-warn" : "status-ok"}">${ui(item.impact || "0")}</span>
+    </div>
+  `).join("");
+}
+
+function renderKpiNotes(title, items) {
+  if (!items.length) return "";
+  return `
+    <div class="audit-note">
+      <strong>${ui(title)}</strong>
+      <span class="muted">${items.map(item => ui(item)).join(" · ")}</span>
+    </div>
+  `;
 }
 
 function renderWorkforceIndexExplanation(policy) {
@@ -2824,6 +2910,7 @@ function renderReports(data) {
     </div>
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
+    ${renderKpiExplain(data.workforce_kpi_explain)}
     ${renderAgentQuality(data.agent_quality, data.agent_quality_explain)}
     ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
@@ -2944,7 +3031,9 @@ async function loadCurrentTab() {
   if (state.tab === "manager") {
     const data = await loadJson("/manager");
     const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
-    return { data, policyExplain, html: renderManager(data, policyExplain) };
+    const kpiExplain = await loadJson("/workforce/kpi/explain").catch(() => null);
+    state.kpiExplain = kpiExplain;
+    return { data, policyExplain, kpiExplain, html: renderManager(data, policyExplain, kpiExplain) };
   }
   if (state.tab === "departments") {
     const data = await loadJson("/reports");
@@ -2955,7 +3044,9 @@ async function loadCurrentTab() {
   if (state.tab === "employees") {
     const data = await loadJson("/manager");
     const policyExplain = await loadJson("/workforce/policy/explain").catch(() => null);
-    return { data, policyExplain, html: renderEmployees(data, policyExplain) };
+    const kpiExplain = await loadJson("/workforce/kpi/explain").catch(() => null);
+    state.kpiExplain = kpiExplain;
+    return { data, policyExplain, kpiExplain, html: renderEmployees(data, policyExplain, kpiExplain) };
   }
   if (state.tab === "owner") {
     const data = await loadJson("/owner");

@@ -197,6 +197,8 @@ collectors.
 - [Pilot v1 demo](docs/PILOT_DEMO_SCENARIO_RU.md)
 - [Pilot v1.0 acceptance checklist](docs/PILOT_V1_ACCEPTANCE_CHECKLIST_RU.md)
 - [Pilot v1.0 evidence](docs/PILOT_V1_EVIDENCE_RU.md)
+- [Production readiness портала](docs/PRODUCTION_READINESS_RU.md)
+- [Explainable Workforce KPI](docs/EXPLAINABLE_KPI_RU.md)
 - [Итог production-расследования 2026-06-07](docs/PRODUCTION_INCIDENT_REPORT_2026-06-07_RU.md)
 - [Runbook восстановления worktime reports](docs/OPERATIONS_RUNBOOK_WORKTIME_RU.md)
 - [Позиционирование продукта](docs/PRODUCT_POSITIONING_RU.md)

@@ -979,7 +979,8 @@ h1 {
   min-height: 180px;
 }
 
-.index-explain-card {
+.index-explain-card,
+.kpi-explain-card {
   margin: 12px 0;
 }
 
@@ -1013,6 +1014,23 @@ h1 {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #f8fafc;
+}
+
+.soft-panel {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.soft-panel h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.kpi-app-list {
+  margin-top: 10px;
 }
 
 .app-weight-list {

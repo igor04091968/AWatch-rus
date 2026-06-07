@@ -766,6 +766,67 @@
           }
         }
       }
+    },
+    "/workforce/kpi/explain": {
+      "get": {
+        "tags": [
+          "workforce"
+        ],
+        "summary": "Rule-based Workforce KPI explanation",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "owner",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PortalRole"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Explainable Workforce KPI payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkforceKpiExplain"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Query limits rejected"
+          },
+          "403": {
+            "description": "Role denied"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1169,6 +1230,118 @@
             "items": {
               "$ref": "#/components/schemas/JsonObject"
             }
+          }
+        },
+        "additionalProperties": true
+      },
+      "WorkforceKpiExplainFactor": {
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "impact",
+          "explanation"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "impact": {
+            "type": "string"
+          },
+          "explanation": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "WorkforceKpiExplain": {
+        "type": "object",
+        "required": [
+          "ok",
+          "kpi_score",
+          "confidence",
+          "coverage",
+          "factors",
+          "top_applications",
+          "warnings",
+          "recommendations"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "role_context": {
+            "$ref": "#/components/schemas/RoleContext"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "kpi_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "kpi_status": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "agent_coverage_percent": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "data_freshness": {
+                "type": "string"
+              },
+              "missing_sources": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": true
+          },
+          "factors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkforceKpiExplainFactor"
+            }
+          },
+          "top_applications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model": {
+            "$ref": "#/components/schemas/JsonObject"
           }
         },
         "additionalProperties": true

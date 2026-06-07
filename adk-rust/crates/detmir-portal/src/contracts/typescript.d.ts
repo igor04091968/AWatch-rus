@@ -88,6 +88,35 @@ export interface AgentCoverageSla {
   [key: string]: unknown;
 }
 
+export interface WorkforceKpiExplainFactor {
+  name: string;
+  label: string;
+  impact: string;
+  explanation: string;
+  [key: string]: unknown;
+}
+
+export interface WorkforceKpiExplainResponse {
+  ok: boolean;
+  role_context?: RoleContext;
+  scope?: "aggregate" | string;
+  kpi_score: number;
+  kpi_status?: string;
+  confidence: "high" | "medium" | "low" | string;
+  coverage: {
+    agent_coverage_percent: number;
+    data_freshness: "fresh" | "stale" | "missing" | string;
+    missing_sources: string[];
+    [key: string]: unknown;
+  };
+  factors: WorkforceKpiExplainFactor[];
+  top_applications: JsonObject[];
+  warnings: string[];
+  recommendations: string[];
+  model?: JsonObject;
+  [key: string]: unknown;
+}
+
 export interface BusinessRiskItem {
   department?: string;
   trust_score?: number;
@@ -263,4 +292,10 @@ export interface DetMirPortalApi {
   getReadinessBundle(): Promise<JsonObject>;
   verifyReadiness(): Promise<JsonObject>;
   getWorkforcePolicyExplain(options?: { anonymize?: boolean }): Promise<JsonObject>;
+  getWorkforceKpiExplain(options?: {
+    date?: string;
+    department?: string;
+    owner?: string;
+    role?: PortalRole;
+  }): Promise<WorkforceKpiExplainResponse>;
 }

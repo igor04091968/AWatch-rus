@@ -10,6 +10,115 @@
 - реальную запись в InfluxDB;
 - health Grafana datasource.
 
+## Portal production hardening
+
+Портал AWatch-rus дополнен отдельным production-hardening слоем. Он не заменяет
+`detmir-readiness`, а закрывает HTTP/API надежность портала: liveness,
+readiness, version metadata, Prometheus metrics, request id/correlation id,
+bounded payload/query limits и role-gate smoke.
+
+### HTTP endpoints
+
+| Endpoint | Назначение | Внешние зависимости |
+| --- | --- | --- |
+| `GET /healthz` | Liveness процесса; возвращает `200 OK`, если процесс отвечает. | Не проверяет |
+| `GET /readyz` | Готовность приложения обслуживать запросы. | Только реально настроенные локальные зависимости |
+| `GET /version` | Версия приложения, schema version, build metadata. | Не проверяет |
+| `GET /metrics` | Prometheus text format. | Не проверяет |
+
+`/readyz` не заявляет SIEM, DLP ingestion или pfSense ingestion. pfSense
+отображается как `contract_only`: контрактная готовность, не реальный
+полноценный сборщик.
+
+### Конфигурация и лимиты
+
+Портал валидирует конфигурацию при старте и завершает работу с понятной
+ошибкой, если значение небезопасно или некорректно. Секреты в ошибку не
+попадают.
+
+| Параметр | Env | Назначение |
+| --- | --- | --- |
+| `--bind` | `DETMIR_PORTAL_BIND` | `host:port` HTTP-сервера |
+| `--max-page-size` | `AWATCH_PORTAL_MAX_PAGE_SIZE` | Верхний предел `page_size`/`limit` |
+| `--default-page-size` | `AWATCH_PORTAL_DEFAULT_PAGE_SIZE` | Значение по умолчанию для страниц |
+| `--max-report-date-range-days` | `AWATCH_PORTAL_MAX_REPORT_DATE_RANGE_DAYS` | Максимальный диапазон отчетов |
+| `--request-timeout-seconds` | `AWATCH_PORTAL_REQUEST_TIMEOUT_SECONDS` | Целевой timeout запроса/операции |
+| `--max-request-body-bytes` | `AWATCH_PORTAL_MAX_REQUEST_BODY_BYTES` | Общий лимит тела запроса |
+| `--slow-request-log-ms` | `AWATCH_PORTAL_SLOW_REQUEST_LOG_MS` | Порог медленного запроса для логов |
+| `--environment` | `AWATCH_PORTAL_ENVIRONMENT` | Безопасное имя окружения |
+| `--enabled-modules` | `AWATCH_PORTAL_ENABLED_MODULES` | Разрешенные модули портала |
+
+Ограничения применяются к тяжелым API:
+
+- `/api/reports`;
+- `/api/executive`;
+- `/api/workforce`;
+- `/api/security`;
+- `/api/forensics`;
+- `/api/ueba`;
+- `/api/pfsense`;
+- `/api/workforce/kpi/explain`.
+
+Поведение:
+
+- слишком большой `page_size` или `limit` возвращает `400`;
+- слишком широкий диапазон `date_from/date_to`, `from/to`, `start/end`
+  возвращает `400`;
+- слишком большое тело запроса возвращает `413`;
+- role gate возвращает `403`.
+
+### Request ID, logs и metrics
+
+Портал принимает `X-Request-Id` и `X-Correlation-Id`. Если заголовки не
+переданы, `X-Request-Id` генерируется сервером, а `X-Correlation-Id` получает
+то же значение. Оба заголовка возвращаются в ответе.
+
+HTTP-ответы пишутся в stderr как JSON-строки с полями:
+
+- `timestamp`;
+- `level`;
+- `request_id`;
+- `correlation_id`;
+- `method`;
+- `path` без query params;
+- `route`;
+- `status`;
+- `latency_ms`;
+- `user_role`;
+- `module`;
+- `error_code`;
+- `response_bytes`.
+
+В логах не должно быть токенов, тел запросов, IP-адресов клиента,
+`employee_id`, сырых query params или персональных данных.
+
+`GET /metrics` возвращает:
+
+- `awatch_http_requests_total`;
+- `awatch_http_request_duration_seconds`;
+- `awatch_reports_generated_total`;
+- `awatch_ingestion_records_total`;
+- `awatch_ingestion_rejected_total`;
+- `awatch_role_denied_total`;
+- `awatch_readyz_status`.
+
+Labels ограничены низкой кардинальностью: `method`, `route`, `status`,
+`module`. Запрещены high-cardinality labels: `user_id`, `employee_id`, IP, raw
+URL, query params.
+
+### Portal smoke
+
+Минимальный smoke:
+
+```bash
+AWATCH_PORTAL_SMOKE_URL=http://127.0.0.1:8720 \
+  node scripts/awatch-production-hardening-smoke.mjs
+```
+
+Smoke проверяет `/healthz`, `/readyz`, `/version`, `/metrics`, возврат
+`X-Request-Id`, reject слишком большого `page_size`, reject слишком широкого
+report range, role gates и `/api/workforce/kpi/explain`.
+
 ## Базовый запуск
 
 На AW server:
