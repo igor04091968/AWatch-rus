@@ -58,12 +58,32 @@ export interface ExecutiveDashboard {
 }
 
 export interface RiskNarrative {
-  status?: "NORMAL" | "ATTENTION" | "HIGH_RISK" | "CRITICAL" | string;
-  title?: string;
-  summary?: string;
-  main_reason?: string;
-  recommendation?: string;
-  supporting_layers?: JsonObject[];
+  ok: boolean;
+  role_context?: RoleContext;
+  scope?: "aggregate" | "department" | string;
+  query?: {
+    date?: string | null;
+    department?: string | null;
+    module?: string | null;
+    employee_id_supported: false;
+    [key: string]: unknown;
+  };
+  risk_level: "low" | "guarded" | "medium" | "high" | "critical" | string;
+  risk_score: number;
+  title: string;
+  summary: string;
+  why: string[];
+  evidence: Array<{
+    source: string;
+    label: string;
+    value: string;
+    severity: "low" | "medium" | "high" | "critical" | string;
+    [key: string]: unknown;
+  }>;
+  recommended_actions: string[];
+  limitations: string[];
+  model?: JsonObject;
+  generated_at_utc?: ISODateTime;
   [key: string]: unknown;
 }
 
@@ -277,6 +297,12 @@ export interface DetMirPortalApi {
   getSecurity(options?: { role?: PortalRole }): Promise<ReportsResponse>;
   getForensics(options?: { role?: PortalRole }): Promise<ReportsResponse>;
   getUeba(options?: { role?: PortalRole }): Promise<UebaResponse>;
+  getRiskNarrative(options?: {
+    date?: string;
+    department?: string;
+    module?: string;
+    role?: PortalRole;
+  }): Promise<RiskNarrative>;
   getPfsense(options?: { role?: PortalRole }): Promise<PfsenseReadinessResponse>;
   getIncidents(): Promise<JsonObject>;
   getCases(): Promise<CaseListResponse>;

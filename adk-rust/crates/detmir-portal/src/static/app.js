@@ -671,6 +671,53 @@ function renderExecutiveDashboard(report) {
 }
 
 function renderRiskNarrative(report) {
+  const narrative = report?.risk_narrative;
+  if (narrative) {
+    const why = Array.isArray(narrative.why) ? narrative.why.slice(0, 5) : [];
+    const evidence = Array.isArray(narrative.evidence) ? narrative.evidence.slice(0, 6) : [];
+    const actions = Array.isArray(narrative.recommended_actions) ? narrative.recommended_actions.slice(0, 4) : [];
+    const limitations = Array.isArray(narrative.limitations) ? narrative.limitations.slice(0, 3) : [];
+    return `
+      <section class="card risk-narrative-card">
+        <div class="section-head">
+          <div>
+            <h3 ${tooltip("Управленческий вывод: что происходит, насколько это рискованно, почему система так считает и что делать дальше.")}>Риск-нарратив</h3>
+            <p class="muted">${ui(narrative.summary || "Система связывает показатели активности, полноту данных, оценку риска и очередь проверки.")}</p>
+          </div>
+          <span class="badge ${statusClass(narrative.risk_level)}">${ui(narrative.risk_level || "low")} · ${ui(narrative.risk_score ?? 0)}/100</span>
+        </div>
+        <div class="risk-narrative-grid">
+          <div>
+            <span class="muted">Главный вывод</span>
+            <strong>${ui(narrative.title || "Риск не рассчитан")}</strong>
+          </div>
+          <div>
+            <span class="muted">Модель</span>
+            <strong>${ui(narrative.model?.type || "rule_based")}</strong>
+          </div>
+          <div>
+            <span class="muted">Уровень</span>
+            <strong>${ui(narrative.risk_level || "low")}</strong>
+          </div>
+        </div>
+        <div class="risk-narrative-columns">
+          <div>
+            <h4>Почему</h4>
+            <ul>${(why.length ? why : ["Существенных негативных признаков не выявлено"]).map(item => `<li>${ui(item)}</li>`).join("")}</ul>
+          </div>
+          <div>
+            <h4>Подтверждения</h4>
+            <ul>${evidence.map(item => `<li><strong>${ui(item.label || item.source || "-")}</strong>: ${ui(item.value || "-")} <span class="badge ${statusClass(item.severity)}">${ui(item.severity || "low")}</span></li>`).join("") || "<li>Подтверждающие сигналы пока не рассчитаны</li>"}</ul>
+          </div>
+          <div>
+            <h4>Дальше</h4>
+            <ul>${actions.map(item => `<li>${ui(item)}</li>`).join("") || "<li>Продолжить наблюдение</li>"}</ul>
+          </div>
+        </div>
+        ${limitations.length ? `<p class="muted small">Ограничения: ${limitations.map(ui).join(" · ")}</p>` : ""}
+      </section>
+    `;
+  }
   const dashboard = report?.executive_dashboard;
   const summary = dashboard?.summary || {};
   const narrativeStatus = summary.risk_narrative_status || executiveDashboardStatus(dashboard || {});

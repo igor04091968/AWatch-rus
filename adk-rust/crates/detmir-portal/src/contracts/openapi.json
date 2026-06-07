@@ -37,6 +37,9 @@
       "name": "ueba"
     },
     {
+      "name": "risk"
+    },
+    {
       "name": "pfsense"
     },
     {
@@ -827,6 +830,67 @@
           }
         }
       }
+    },
+    "/risk/narrative": {
+      "get": {
+        "tags": [
+          "risk"
+        ],
+        "summary": "Rule-based executive risk narrative",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "department",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "module",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PortalRole"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Risk narrative payload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RiskNarrative"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Query limits rejected"
+          },
+          "403": {
+            "description": "Role denied"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -958,7 +1022,7 @@
             "$ref": "#/components/schemas/JsonObject"
           },
           "risk_narrative": {
-            "$ref": "#/components/schemas/JsonObject"
+            "$ref": "#/components/schemas/RiskNarrative"
           },
           "agent_quality": {
             "$ref": "#/components/schemas/JsonObject"
@@ -986,6 +1050,121 @@
             "items": {
               "$ref": "#/components/schemas/JsonObject"
             }
+          }
+        },
+        "additionalProperties": true
+      },
+      "RiskNarrativeEvidence": {
+        "type": "object",
+        "required": [
+          "source",
+          "label",
+          "value",
+          "severity"
+        ],
+        "properties": {
+          "source": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "RiskNarrative": {
+        "type": "object",
+        "required": [
+          "ok",
+          "risk_level",
+          "risk_score",
+          "title",
+          "summary",
+          "why",
+          "evidence",
+          "recommended_actions",
+          "limitations",
+          "model"
+        ],
+        "properties": {
+          "ok": {
+            "type": "boolean"
+          },
+          "role_context": {
+            "$ref": "#/components/schemas/RoleContext"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "aggregate",
+              "department"
+            ]
+          },
+          "query": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "risk_level": {
+            "type": "string",
+            "enum": [
+              "low",
+              "guarded",
+              "medium",
+              "high",
+              "critical"
+            ]
+          },
+          "risk_score": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "title": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "why": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RiskNarrativeEvidence"
+            }
+          },
+          "recommended_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "limitations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "model": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "generated_at_utc": {
+            "type": "string"
           }
         },
         "additionalProperties": true

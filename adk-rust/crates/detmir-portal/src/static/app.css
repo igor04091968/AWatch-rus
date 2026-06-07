@@ -984,6 +984,53 @@ h1 {
   margin: 12px 0;
 }
 
+.risk-narrative-card {
+  margin: 12px 0;
+}
+
+.risk-narrative-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.risk-narrative-grid > div {
+  display: grid;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--soft);
+}
+
+.risk-narrative-grid strong {
+  overflow-wrap: anywhere;
+}
+
+.risk-narrative-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.risk-narrative-columns h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+}
+
+.risk-narrative-columns ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.risk-narrative-columns li {
+  overflow-wrap: anywhere;
+}
+
 .ueba-risk-card {
   margin: 12px 0;
 }
@@ -1226,6 +1273,7 @@ pre {
   .anomaly-panel,
   .risk-panel { grid-column: auto; }
   .leader-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .risk-narrative-columns { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 640px) {
@@ -1253,6 +1301,8 @@ pre {
   .band-head { flex-direction: column; align-items: flex-start; }
   .row { grid-template-columns: 1fr; }
   .executive-grid { grid-template-columns: 1fr; }
+  .risk-narrative-grid { grid-template-columns: 1fr; }
+  .risk-narrative-columns { grid-template-columns: 1fr; }
   .analytics-grid { grid-template-columns: 1fr; }
   .incident-row { grid-template-columns: 1fr; }
   .evidence-row { grid-template-columns: 1fr; }

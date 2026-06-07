@@ -24,6 +24,7 @@ use sha2::{Digest, Sha256};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 mod production;
+mod risk_narrative;
 mod workforce_kpi_explain;
 
 use production::{
@@ -31,6 +32,9 @@ use production::{
     log_http_request, mark_request_started, record_http_metric, record_ingestion_accepted,
     record_ingestion_rejected, record_report_generated, render_prometheus_metrics,
     validate_api_query_limits, validate_portal_config,
+};
+use risk_narrative::{
+    RiskNarrativeInputs, RiskNarrativeQuery, build_risk_narrative, build_risk_narrative_from_report,
 };
 use workforce_kpi_explain::{KpiExplainQuery, build_workforce_kpi_explain};
 
@@ -1302,6 +1306,7 @@ struct ReportMarkdownContext<'a> {
     executive_dashboard: &'a ExecutiveDashboard,
     workforce_policy: &'a Value,
     workforce_kpi_explain: &'a Value,
+    risk_narrative: &'a Value,
     ueba_risk: &'a Value,
     business_risk: &'a [BusinessRiskItem],
     business_risk_history: &'a [BusinessRiskHistoryItem],
@@ -1546,6 +1551,14 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
                 &build_workforce_kpi_explain(&snapshot, &policy_explain, role, &query, anonymize),
             )
         }
+        "/api/risk/narrative" => {
+            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let query = RiskNarrativeQuery::from_url(&url);
+            respond_json(
+                request,
+                &build_risk_narrative_from_report(&report, role, &query),
+            )
+        }
         "/api/owner" => {
             if !role.can_access("security") {
                 return respond_forbidden(request, role, "security");
@@ -1752,7 +1765,8 @@ fn api_contract_summary() -> Value {
             {"method": "GET", "path": "/api/dlp/evidence", "purpose": "DLP evidence list"},
             {"method": "GET", "path": "/api/readiness/latest", "purpose": "latest readiness status"},
             {"method": "GET", "path": "/api/workforce/policy/explain", "purpose": "workforce policy explanation"},
-            {"method": "GET", "path": "/api/workforce/kpi/explain", "purpose": "rule-based Workforce KPI explanation"}
+            {"method": "GET", "path": "/api/workforce/kpi/explain", "purpose": "rule-based Workforce KPI explanation"},
+            {"method": "GET", "path": "/api/risk/narrative", "purpose": "rule-based executive risk narrative"}
         ]
     })
 }
@@ -3306,6 +3320,21 @@ fn build_reports(
         &ueba_baseline,
         ueba_policy_path,
     );
+    let risk_narrative = build_risk_narrative(
+        RiskNarrativeInputs {
+            snapshot,
+            workforce_kpi_explain: &workforce_kpi_explain,
+            ueba_risk: &ueba_risk,
+            agent_coverage_sla: &agent_coverage_sla,
+            risk_heatmap: &risk_heatmap,
+            security_correlation: &security_correlation,
+            risk_incident_candidates: &risk_incident_candidates,
+            executive_dashboard: &executive_dashboard,
+            security_events_summary: &security_events_summary,
+        },
+        PortalRole::Executive,
+        &RiskNarrativeQuery::default(),
+    );
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
         "Контур DetMir работает штатно, критичных действий не требуется"
@@ -3413,6 +3442,7 @@ fn build_reports(
             executive_dashboard: &executive_dashboard,
             workforce_policy: &workforce_policy_explain,
             workforce_kpi_explain: &workforce_kpi_explain,
+            risk_narrative: &risk_narrative,
             ueba_risk: &ueba_risk,
             business_risk: &business_risk,
             business_risk_history: &business_risk_history,
@@ -3433,6 +3463,7 @@ fn build_reports(
         "headline": headline,
         "executive_points": executive_points,
         "executive_dashboard": executive_dashboard,
+        "risk_narrative": risk_narrative,
         "kpis": [
             report_kpi("Оценка риска", format!("{}/100", ueba_risk.get("score").and_then(Value::as_u64).unwrap_or(0)), ueba_risk.get("status").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(), ueba_risk.get("summary").and_then(Value::as_str).unwrap_or("оценка риска")),
             report_kpi("Качество данных", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
@@ -3595,6 +3626,7 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
             for key in [
                 "executive_points",
                 "executive_dashboard",
+                "risk_narrative",
                 "kpis",
                 "business_risk",
                 "business_risk_history_summary",
@@ -3615,6 +3647,7 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
         PortalRole::Manager => {
             for key in [
                 "executive_dashboard",
+                "risk_narrative",
                 "kpis",
                 "business_risk",
                 "risk_heatmap",
@@ -3634,10 +3667,12 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
         PortalRole::Security => {
             for key in [
                 "ueba_risk",
+                "risk_narrative",
                 "ueba_baseline",
                 "security_events_summary",
                 "security_correlation",
                 "risk_incident_candidates",
+                "risk_narrative",
                 "incident_review_audit_summary",
                 "business_risk",
                 "risk_heatmap",
@@ -7141,6 +7176,7 @@ fn render_report_markdown(
     text.push_str("# DetMir оперативный отчет\n\n");
     text.push_str(&format!("Дата снимка: {}\n\n", snapshot.generated_at_utc));
     text.push_str(&format!("Итог: {headline}\n\n"));
+    append_risk_narrative_markdown(&mut text, context.risk_narrative);
     append_linked_risk_narrative_markdown(
         &mut text,
         context.risk_heatmap,
@@ -7248,6 +7284,76 @@ fn render_report_markdown(
     append_workforce_policy_markdown(&mut text, context.workforce_policy);
     text.push_str("\nПримечание: сигналы проверки и расследования являются расчетными выводами и требуют регламентной валидации перед подачей как подтвержденные инциденты.\n");
     text
+}
+
+fn append_risk_narrative_markdown(text: &mut String, narrative: &Value) {
+    text.push_str("\n## Риск-нарратив\n\n");
+    text.push_str(&format!(
+        "- Уровень риска: {}\n",
+        narrative
+            .get("risk_level")
+            .and_then(Value::as_str)
+            .unwrap_or("low")
+    ));
+    text.push_str(&format!(
+        "- Risk score: {}/100\n",
+        narrative
+            .get("risk_score")
+            .and_then(Value::as_u64)
+            .unwrap_or(0)
+    ));
+    text.push_str(&format!(
+        "- Вывод: {}\n",
+        narrative
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("Риск не рассчитан")
+    ));
+    text.push_str(&format!(
+        "- Что происходит: {}\n",
+        narrative
+            .get("summary")
+            .and_then(Value::as_str)
+            .unwrap_or("нет данных")
+    ));
+    append_string_list_markdown(
+        text,
+        "### Почему система так считает",
+        narrative.get("why").and_then(Value::as_array),
+        "существенных причин не выявлено",
+    );
+    text.push_str("\n### Подтверждающие сигналы\n\n");
+    for item in narrative
+        .get("evidence")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .take(12)
+    {
+        text.push_str(&format!(
+            "- {}: {} ({})\n",
+            item.get("label").and_then(Value::as_str).unwrap_or("-"),
+            item.get("value").and_then(Value::as_str).unwrap_or("-"),
+            item.get("severity")
+                .and_then(Value::as_str)
+                .unwrap_or("low")
+        ));
+    }
+    append_string_list_markdown(
+        text,
+        "### Что делать дальше",
+        narrative
+            .get("recommended_actions")
+            .and_then(Value::as_array),
+        "продолжить наблюдение",
+    );
+    append_string_list_markdown(
+        text,
+        "### Ограничения вывода",
+        narrative.get("limitations").and_then(Value::as_array),
+        "ограничения не указаны",
+    );
+    text.push('\n');
 }
 
 fn append_executive_dashboard_markdown(text: &mut String, dashboard: &ExecutiveDashboard) {
@@ -10549,6 +10655,7 @@ mod tests {
             "/executive",
             "/workforce",
             "/workforce/kpi/explain",
+            "/risk/narrative",
             "/security",
             "/forensics",
             "/ueba",
@@ -10570,6 +10677,7 @@ mod tests {
             "UebaResponse",
             "PfsenseReadinessResponse",
             "WorkforceKpiExplainResponse",
+            "RiskNarrative",
             "CaseListResponse",
             "IncidentReviewRequest",
             "export interface DetMirPortalApi",
@@ -12105,7 +12213,30 @@ mod tests {
             report["markdown"]
                 .as_str()
                 .unwrap()
+                .contains("## Риск-нарратив")
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap()
                 .contains("## Объяснение индекса активности")
+        );
+        assert!(report["risk_narrative"].is_object());
+        assert_eq!(report["risk_narrative"]["ok"], true);
+        assert_eq!(report["risk_narrative"]["model"]["type"], "rule_based");
+        assert_eq!(report["risk_narrative"]["model"]["ml"], false);
+        assert_eq!(report["risk_narrative"]["model"]["llm"], false);
+        assert_eq!(
+            report["risk_narrative"]["query"]["employee_id_supported"],
+            false
+        );
+        assert!(report["risk_narrative"]["risk_score"].as_u64().unwrap() <= 100);
+        assert!(
+            report["risk_narrative"]["why"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item.as_str().unwrap().contains("Карта рисков"))
         );
         assert!(report["workforce_kpi_explain"].is_object());
         assert_eq!(report["workforce_policy"]["configured"], false);

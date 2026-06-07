@@ -73,6 +73,13 @@ async function main() {
   assert(Array.isArray(kpiExplain.json?.factors), "KPI explain must include factors");
   assert(kpiExplain.json.factors.some((item) => item.name === "productive_activity"), "KPI explain factors must be deterministic");
 
+  const riskNarrative = await request("/api/risk/narrative?role=executive");
+  assert(riskNarrative.response.status === 200, "Risk narrative must return 200");
+  assert(typeof riskNarrative.json?.risk_score === "number", "Risk narrative must include risk_score");
+  assert(["low", "guarded", "medium", "high", "critical"].includes(riskNarrative.json?.risk_level), "Risk narrative must include stable risk_level");
+  assert(Array.isArray(riskNarrative.json?.why), "Risk narrative must include why list");
+  assert(riskNarrative.json?.model?.type === "rule_based", "Risk narrative must be rule-based");
+
   console.log(JSON.stringify({
     ok: true,
     baseUrl,
@@ -84,6 +91,7 @@ async function main() {
       "query limits",
       "role gates",
       "/api/workforce/kpi/explain",
+      "/api/risk/narrative",
     ],
   }, null, 2));
 }
