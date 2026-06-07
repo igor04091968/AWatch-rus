@@ -152,7 +152,7 @@ struct CachedSnapshot {
 }
 
 #[derive(Clone, Debug, Parser)]
-#[command(about = "Read-only DetMir operator/manager/owner web portal")]
+#[command(about = "Read-only AWatch-rus operator/manager/owner web portal")]
 struct Cli {
     #[arg(long, default_value = "127.0.0.1:8720", env = "DETMIR_PORTAL_BIND")]
     bind: String,
@@ -3357,11 +3357,11 @@ fn build_reports(
     let recommended_actions = actions_from_center(&action_center);
     let headline = if summary.operator_ok && summary.severity == "OK" && metrics.open_incidents == 0
     {
-        "Контур DetMir работает штатно, критичных действий не требуется"
+        "AWatch-rus работает штатно, критичных действий не требуется"
     } else if metrics.open_incidents > 0 {
-        "Контур DetMir работает, есть открытые вопросы для оператора"
+        "AWatch-rus работает, есть открытые вопросы для оператора"
     } else {
-        "Контур DetMir требует технической проверки"
+        "AWatch-rus требует технической проверки"
     };
     let mut executive_points = Vec::new();
     executive_points.push(format!(
@@ -3505,7 +3505,7 @@ fn build_reports(
             {
                 "title": "Надежность контура",
                 "items": [
-                    report_item("DetMir status", snapshot.detmir_status.status.clone(), snapshot.detmir_status.summary.clone()),
+                    report_item("AWatch-rus status", snapshot.detmir_status.status.clone(), snapshot.detmir_status.summary.clone()),
                     report_item("Сбор данных", collection.status.clone(), collection.text.clone()),
                     report_item("Качество данных", agent_quality.quality_status.clone(), format!("источник={}, сессии={}, активные={}, удаленные={}", agent_quality.collector_source, agent_quality.sessions_collected_total, agent_quality.active_sessions_total, agent_quality.rdp_sessions_total)),
                     report_item("Достоверность показателей", agent_quality_explain.status.clone(), format!("участвует в показателях={}, {}", agent_quality_explain.kpi_accepted, agent_quality_explain.recommendation)),
@@ -7201,7 +7201,7 @@ fn render_report_markdown(
     context: ReportMarkdownContext<'_>,
 ) -> String {
     let mut text = String::new();
-    text.push_str("# DetMir оперативный отчет\n\n");
+    text.push_str("# AWatch-rus оперативный отчет\n\n");
     text.push_str(&format!("Дата снимка: {}\n\n", snapshot.generated_at_utc));
     text.push_str(&format!("Итог: {headline}\n\n"));
     append_risk_narrative_markdown(&mut text, context.risk_narrative);

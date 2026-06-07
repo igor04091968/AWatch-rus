@@ -252,6 +252,7 @@ collectors.
 - [Customer discovery questions](docs/CUSTOMER_DISCOVERY_QUESTIONS_RU.md)
 - [Pilot success criteria](docs/PILOT_SUCCESS_CRITERIA_RU.md)
 - [Competitive positioning](docs/COMPETITIVE_POSITIONING_RU.md)
+- [Roadmap conformance audit](docs/ROADMAP_CONFORMANCE_AUDIT_RU.md)
 - [Production readiness портала](docs/PRODUCTION_READINESS_RU.md)
 - [Explainable Workforce KPI](docs/EXPLAINABLE_KPI_RU.md)
 - [Executive Action Center](docs/EXECUTIVE_ACTION_CENTER_RU.md)

@@ -26,7 +26,8 @@ AWATCH_PORTAL_SMOKE_URL=http://127.0.0.1:8720 node scripts/awatch-production-har
 
 ## Цель
 
-Проверить, что фактически работающий DetMir/AWatch-rus соответствует текущему roadmap, документации, заявленным контрактам и демо-сценариям.
+Проверить, что фактически работающий AWatch-rus соответствует текущему roadmap,
+документации, заявленным контрактам и демо-сценариям.
 
 Не добавлять новую функциональность.
 
@@ -386,3 +387,53 @@ docs/ROADMAP_CONFORMANCE_AUDIT_RU.md
 6. Исправленные claims/links, если были.
 7. Результаты проверок.
 8. Рекомендованные следующие задачи.
+
+---
+
+## Выполнение
+
+Статус: выполнено.
+
+Создан итоговый аудит:
+
+- `docs/ROADMAP_CONFORMANCE_AUDIT_RU.md`
+
+Исправлен найденный claim:
+
+- человеко-читаемый runtime output приведен к публичному названию `AWatch-rus`:
+  заголовок Markdown-отчета, headline, KPI label и CLI help.
+
+Обновлен README:
+
+- добавлена ссылка на `docs/ROADMAP_CONFORMANCE_AUDIT_RU.md`.
+
+Подтвержденные блоки:
+
+- Production hardening;
+- Explainable KPI;
+- Risk Narrative;
+- Executive Action Center;
+- Rust Agent Baseline;
+- Demo Pack;
+- Registry Readiness;
+- Enterprise Deployment Guide;
+- Pilot Validation readiness.
+
+Выявленные gaps:
+
+- TASK_001-TASK_004 не имеют явной секции `Выполнение`;
+- для Risk Narrative нет отдельного `docs/RISK_NARRATIVE_RU.md`;
+- нужен отдельный visual/browser conformance smoke перед customer-facing freeze;
+- live customer-stand validation остается отдельным acceptance шагом;
+- старые GitHub-facing документы требуют отдельной naming hygiene cleanup.
+
+Проверки:
+
+- `cargo fmt --all --check` - OK;
+- `cargo clippy --all-targets --all-features -- -D warnings` - OK;
+- `cargo test --all` - OK;
+- `cargo build --release` - OK;
+- `node scripts/deployment-readiness-smoke.mjs` - OK;
+- `node scripts/pilot-validation-smoke.mjs` - OK;
+- `AWATCH_PORTAL_SMOKE_URL=http://127.0.0.1:8720 node scripts/awatch-production-hardening-smoke.mjs` - OK;
+- `git diff --check` - OK.
