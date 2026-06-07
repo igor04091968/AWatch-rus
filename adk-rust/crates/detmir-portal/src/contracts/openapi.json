@@ -1265,6 +1265,24 @@
             "minimum": 0,
             "maximum": 100
           },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "unknown"
+            ]
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "confirmed_risk",
+              "likely_risk",
+              "needs_investigation",
+              "insufficient_data"
+            ]
+          },
           "title": {
             "type": "string"
           },
@@ -1310,6 +1328,8 @@
           "ok",
           "score",
           "severity",
+          "confidence",
+          "classification",
           "score_components",
           "reason_codes",
           "model"
@@ -1337,6 +1357,54 @@
               "medium",
               "high",
               "critical"
+            ]
+          },
+          "confidence": {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "unknown"
+            ]
+          },
+          "confidence_score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "classification": {
+            "type": "string",
+            "enum": [
+              "confirmed_risk",
+              "likely_risk",
+              "needs_investigation",
+              "insufficient_data"
+            ]
+          },
+          "classification_reason": {
+            "type": "string"
+          },
+          "confidence_reasons": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "confidence_contributors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
+          },
+          "evidence_status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "not_available"
             ]
           },
           "score_components": {

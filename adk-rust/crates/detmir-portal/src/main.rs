@@ -3765,6 +3765,16 @@ fn build_ueba_api_payload(report: &Value, role: PortalRole) -> Value {
         "score": report.pointer("/ueba_risk/score").cloned().unwrap_or(Value::Null),
         "severity": report.pointer("/ueba_risk/level").cloned().unwrap_or_else(|| json!("normal")),
         "status": report.pointer("/ueba_risk/status").cloned().unwrap_or_else(|| json!("OK")),
+        "confidence": report.pointer("/ueba_risk/confidence_level").cloned().unwrap_or_else(|| json!("unknown")),
+        "confidence_score": report.pointer("/ueba_risk/confidence_score")
+            .or_else(|| report.pointer("/ueba_risk/confidence"))
+            .cloned()
+            .unwrap_or(Value::Null),
+        "classification": report.pointer("/ueba_risk/classification").cloned().unwrap_or_else(|| json!("insufficient_data")),
+        "classification_reason": report.pointer("/ueba_risk/classification_reason").cloned().unwrap_or_else(|| json!("confidence_unknown")),
+        "confidence_reasons": report.pointer("/ueba_risk/confidence_reasons").cloned().unwrap_or_else(|| json!([])),
+        "confidence_contributors": report.pointer("/ueba_risk/confidence_contributors").cloned().unwrap_or_else(|| json!([])),
+        "evidence_status": report.pointer("/ueba_risk/evidence_status").cloned().unwrap_or_else(|| json!("not_available")),
         "score_components": report.pointer("/ueba_risk/score_components").cloned().unwrap_or_else(|| json!({
             "activity_anomaly": 0,
             "time_anomaly": 0,
@@ -6370,6 +6380,288 @@ fn ueba_confidence(
     (confidence.clamp(0.0, 1.0) * 100.0).round() / 100.0
 }
 
+fn confidence_contributor(
+    name: &str,
+    level: &str,
+    reason: &str,
+    detail: impl Into<String>,
+) -> Value {
+    json!({
+        "name": name,
+        "level": level,
+        "reason": reason,
+        "detail": detail.into(),
+    })
+}
+
+fn coverage_confidence_level(value: u8, expected_nodes: usize) -> &'static str {
+    if expected_nodes == 0 {
+        "unknown"
+    } else if value >= 80 {
+        "high"
+    } else if value >= 50 {
+        "medium"
+    } else {
+        "low"
+    }
+}
+
+fn ueba_evidence_status(metrics: &ReportMetrics) -> &'static str {
+    if metrics.evidence_screenshots > 0 || metrics.evidence_total > 0 {
+        "available"
+    } else {
+        "not_available"
+    }
+}
+
+fn ueba_confidence_guardrails(
+    snapshot: &Snapshot,
+    metrics: &ReportMetrics,
+    workforce_policy: &Value,
+    ueba_baseline: &Value,
+    reasons: &[Value],
+    score: u64,
+) -> (
+    String,
+    String,
+    String,
+    Vec<String>,
+    Vec<Value>,
+    &'static str,
+) {
+    let mut contributors = Vec::new();
+    let coverage = snapshot.agent_coverage_sla.coverage_pct;
+    let freshness = snapshot.agent_coverage_sla.freshness_pct;
+    let expected_nodes = snapshot.agent_coverage_sla.expected_nodes;
+    let coverage_level = coverage_confidence_level(coverage, expected_nodes);
+    contributors.push(confidence_contributor(
+        "agent_coverage",
+        coverage_level,
+        if expected_nodes == 0 {
+            "expected_nodes_not_configured"
+        } else if coverage < 80 {
+            "coverage_below_target"
+        } else {
+            "coverage_ok"
+        },
+        format!("coverage={coverage}%, expected_nodes={expected_nodes}"),
+    ));
+
+    let freshness_level = coverage_confidence_level(freshness, expected_nodes);
+    contributors.push(confidence_contributor(
+        "data_freshness",
+        freshness_level,
+        if expected_nodes == 0 {
+            "freshness_scope_unknown"
+        } else if freshness < 80 {
+            "freshness_below_target"
+        } else {
+            "fresh_data"
+        },
+        format!("freshness={freshness}%"),
+    ));
+
+    let default_weight_apps = workforce_policy
+        .get("policy_audit")
+        .and_then(|audit| audit.get("default_weight_applications"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let telemetry_gaps = [
+        !snapshot.worktime.ok,
+        !snapshot.worktime_management.ok,
+        metrics.users_count == 0,
+        metrics.apps_count == 0,
+        default_weight_apps > 0,
+    ]
+    .into_iter()
+    .filter(|gap| *gap)
+    .count();
+    let telemetry_level = if telemetry_gaps == 0 {
+        "high"
+    } else if telemetry_gaps <= 2 {
+        "medium"
+    } else {
+        "low"
+    };
+    contributors.push(confidence_contributor(
+        "telemetry_completeness",
+        telemetry_level,
+        if telemetry_gaps == 0 {
+            "telemetry_complete"
+        } else {
+            "telemetry_missing_or_unclassified"
+        },
+        format!("gap_count={telemetry_gaps}, default_weight_apps={default_weight_apps}"),
+    ));
+
+    let evidence_status = ueba_evidence_status(metrics);
+    let evidence_level = if metrics.evidence_screenshots > 0 {
+        "high"
+    } else if metrics.evidence_total > 0 {
+        "medium"
+    } else if score >= 70 {
+        "low"
+    } else {
+        "medium"
+    };
+    contributors.push(confidence_contributor(
+        "evidence_presence",
+        evidence_level,
+        if evidence_status == "available" {
+            "evidence_available"
+        } else {
+            "evidence_not_available"
+        },
+        format!(
+            "items={}, screenshots={}",
+            metrics.evidence_total, metrics.evidence_screenshots
+        ),
+    ));
+
+    let baseline_samples = ueba_baseline
+        .get("baseline_samples")
+        .and_then(Value::as_object)
+        .and_then(|items| items.get("total"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let user_baseline = ueba_baseline
+        .get("user_baseline_available")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let department_baseline = ueba_baseline
+        .get("department_baseline_available")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let history_level = if user_baseline && department_baseline && baseline_samples >= 6 {
+        "high"
+    } else if (user_baseline || department_baseline) && baseline_samples >= 3 {
+        "medium"
+    } else if baseline_samples > 0 {
+        "low"
+    } else {
+        "unknown"
+    };
+    contributors.push(confidence_contributor(
+        "history_depth",
+        history_level,
+        if baseline_samples == 0 {
+            "baseline_missing"
+        } else if history_level == "high" {
+            "baseline_ready"
+        } else {
+            "baseline_limited"
+        },
+        format!(
+            "samples={baseline_samples}, user_baseline={user_baseline}, department_baseline={department_baseline}"
+        ),
+    ));
+
+    let mut sources = Vec::new();
+    for reason in reasons {
+        if let Some(source) = reason.get("source").and_then(Value::as_str) {
+            if !sources.iter().any(|item| item == source) {
+                sources.push(source.to_string());
+            }
+        }
+    }
+    let has_dlp = reasons.iter().any(|reason| {
+        reason
+            .get("source")
+            .and_then(Value::as_str)
+            .is_some_and(|source| source == "dlp")
+    });
+    let has_workforce = sources.iter().any(|source| source == "workforce");
+    let has_history = sources
+        .iter()
+        .any(|source| source == "baseline" || source == "incidents");
+    let signal_level = if has_dlp && has_workforce && has_history {
+        "high"
+    } else if sources.len() >= 2 && evidence_status == "available" {
+        "medium"
+    } else if score >= 70 && has_workforce && has_history {
+        "low"
+    } else if sources.is_empty() {
+        "unknown"
+    } else {
+        "medium"
+    };
+    contributors.push(confidence_contributor(
+        "signal_consistency",
+        signal_level,
+        match signal_level {
+            "high" => "multiple_corroborating_signals",
+            "medium" => "partial_corroboration",
+            "low" => "weak_corroboration",
+            _ => "signals_missing",
+        },
+        format!(
+            "source_count={}, sources={}",
+            sources.len(),
+            sources.join(",")
+        ),
+    ));
+
+    let levels = contributors
+        .iter()
+        .filter_map(|item| item.get("level").and_then(Value::as_str))
+        .collect::<Vec<_>>();
+    let confidence_level = if levels.iter().all(|level| *level == "unknown") {
+        "unknown"
+    } else if levels.contains(&"low") {
+        "low"
+    } else if levels
+        .iter()
+        .any(|level| *level == "medium" || *level == "unknown")
+    {
+        "medium"
+    } else {
+        "high"
+    };
+
+    let classification =
+        if confidence_level == "unknown" || (score == 0 && confidence_level == "low") {
+            "insufficient_data"
+        } else if confidence_level == "low" && score >= 70 {
+            "needs_investigation"
+        } else if confidence_level == "high" && score >= 70 {
+            "confirmed_risk"
+        } else if score >= 15 {
+            "likely_risk"
+        } else {
+            "insufficient_data"
+        };
+
+    let mut confidence_reasons = contributors
+        .iter()
+        .filter(|item| {
+            item.get("level")
+                .and_then(Value::as_str)
+                .is_some_and(|level| level == "low" || level == "unknown")
+        })
+        .filter_map(|item| {
+            let name = item.get("name").and_then(Value::as_str)?;
+            let reason = item.get("reason").and_then(Value::as_str)?;
+            Some(format!("{name}:{reason}"))
+        })
+        .collect::<Vec<_>>();
+    if confidence_reasons.is_empty() {
+        confidence_reasons.push("confidence_inputs_acceptable".to_string());
+    }
+    let classification_reason = confidence_reasons
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "confidence_inputs_acceptable".to_string());
+
+    (
+        confidence_level.to_string(),
+        classification.to_string(),
+        classification_reason,
+        confidence_reasons,
+        contributors,
+        evidence_status,
+    )
+}
+
 fn risk_sources(reasons: &[Value]) -> Vec<String> {
     let mut out = Vec::new();
     for reason in reasons {
@@ -6578,6 +6870,21 @@ fn build_ueba_risk(
     let (level, status) = ueba_risk_level(score);
     let score_components = ueba_score_components(&reasons, score);
     let reason_codes = ueba_reason_codes(&reasons);
+    let (
+        confidence_level,
+        classification,
+        classification_reason,
+        confidence_reasons,
+        confidence_contributors,
+        evidence_status,
+    ) = ueba_confidence_guardrails(
+        snapshot,
+        metrics,
+        workforce_policy,
+        ueba_baseline,
+        &reasons,
+        score,
+    );
     let calculated_from = ueba_calculated_from(
         metrics,
         workforce_policy,
@@ -6598,6 +6905,13 @@ fn build_ueba_risk(
         "score_components": score_components,
         "reason_codes": reason_codes,
         "confidence": confidence,
+        "confidence_score": confidence,
+        "confidence_level": confidence_level,
+        "classification": classification,
+        "classification_reason": classification_reason,
+        "confidence_reasons": confidence_reasons,
+        "confidence_contributors": confidence_contributors,
+        "evidence_status": evidence_status,
         "risk_sources": risk_sources,
         "baseline_status": ueba_baseline
             .get("baseline_status")
@@ -7330,6 +7644,20 @@ fn append_risk_narrative_markdown(text: &mut String, narrative: &Value) {
             .get("risk_score")
             .and_then(Value::as_u64)
             .unwrap_or(0)
+    ));
+    text.push_str(&format!(
+        "- Уверенность: {}\n",
+        narrative
+            .get("confidence")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+    ));
+    text.push_str(&format!(
+        "- Классификация: {}\n",
+        narrative
+            .get("classification")
+            .and_then(Value::as_str)
+            .unwrap_or("insufficient_data")
     ));
     text.push_str(&format!(
         "- Вывод: {}\n",
@@ -8095,6 +8423,18 @@ fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
             * 100.0
     ));
     text.push_str(&format!(
+        "- Уровень уверенности: {}\n",
+        risk.get("confidence_level")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+    ));
+    text.push_str(&format!(
+        "- Классификация: {}\n",
+        risk.get("classification")
+            .and_then(Value::as_str)
+            .unwrap_or("insufficient_data")
+    ));
+    text.push_str(&format!(
         "- Обычный профиль: {}\n",
         risk.get("baseline_status")
             .and_then(Value::as_str)
@@ -8130,6 +8470,37 @@ fn append_ueba_risk_markdown(text: &mut String, risk: &Value) {
     if let Some(note) = risk.get("note").and_then(Value::as_str) {
         text.push_str(&format!("- Примечание: {note}\n"));
     }
+    text.push_str("\n## UEBA Confidence\n\n");
+    text.push_str(&format!(
+        "- Severity: {}\n",
+        risk.get("level")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+    ));
+    text.push_str(&format!(
+        "- Confidence: {}\n",
+        risk.get("confidence_level")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+    ));
+    text.push_str(&format!(
+        "- Classification: {}\n",
+        risk.get("classification")
+            .and_then(Value::as_str)
+            .unwrap_or("insufficient_data")
+    ));
+    text.push_str(&format!(
+        "- Evidence status: {}\n",
+        risk.get("evidence_status")
+            .and_then(Value::as_str)
+            .unwrap_or("not_available")
+    ));
+    append_string_list_markdown(
+        text,
+        "### Confidence reasons",
+        risk.get("confidence_reasons").and_then(Value::as_array),
+        "confidence reasons are not available",
+    );
     text.push_str("\n### Причины риска\n\n");
     let reasons = risk
         .get("reasons")
@@ -10953,6 +11324,9 @@ mod tests {
         let ueba = build_ueba_api_payload(&report, PortalRole::Security);
         assert_eq!(ueba["score"], 55);
         assert_eq!(ueba["severity"], "medium");
+        assert_eq!(ueba["confidence"], "unknown");
+        assert_eq!(ueba["classification"], "insufficient_data");
+        assert!(ueba["confidence_reasons"].as_array().unwrap().is_empty());
         assert_eq!(ueba["score_components"]["activity_anomaly"], 15);
         assert_eq!(ueba["score_components"]["application_anomaly"], 20);
         assert_eq!(ueba["reason_codes"][0], "activity_anomaly");
@@ -10968,6 +11342,96 @@ mod tests {
         assert!(text.contains("198.51.100."));
         assert!(!text.contains("10.10."));
         assert!(!text.contains("192.168."));
+    }
+
+    #[test]
+    fn ueba_confidence_guardrails_separate_severity_from_confirmation() {
+        fn ok_source() -> SourceStatus {
+            SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: "ok".to_string(),
+                error: None,
+                payload: None,
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let policy_path = dir.path().join("ueba-policy.yaml");
+        let snapshot = Snapshot {
+            generated_at_utc: "2026-06-07T10:00:00Z".to_string(),
+            detmir_status: ok_source(),
+            detmir_check: ok_source(),
+            failed_units: ok_source(),
+            worktime: ok_source(),
+            worktime_management: ok_source(),
+            one_c: ok_source(),
+            one_c_overview: ok_source(),
+            agent_quality: AgentQuality::default(),
+            agent_quality_history: Vec::new(),
+            agent_quality_history_summary: AgentQualityHistorySummary::default(),
+            agent_quality_nodes: Vec::new(),
+            agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
+            agent_coverage_sla: AgentCoverageSla {
+                expected_nodes: 1,
+                reporting_nodes_24h: 0,
+                stale_nodes: 1,
+                missing_nodes: 0,
+                coverage_pct: 0,
+                freshness_pct: 0,
+                sla_status: "CRITICAL".to_string(),
+                problem_nodes: Vec::new(),
+            },
+            security_events_summary: SecurityEventsSummary::disabled(),
+        };
+        let metrics = ReportMetrics {
+            users_count: 1,
+            active_seconds: 0,
+            apps_count: 0,
+            dlp_ok: 0,
+            dlp_warn: 0,
+            dlp_fail: 0,
+            evidence_total: 0,
+            evidence_screenshots: 0,
+            open_incidents: 1,
+            acknowledged_incidents: 0,
+            workforce_index: Some(0),
+        };
+        let insights = (0..8)
+            .map(|_| json!({"status": "WARN", "label": "Просадка активности", "value": "drop"}))
+            .collect::<Vec<_>>();
+        let risk = build_ueba_risk(
+            &snapshot,
+            &metrics,
+            &json!({"configured": true, "policy_audit": {"default_weight_applications": 0}}),
+            &insights,
+            &json!({
+                "baseline_window_days": 30,
+                "user_baseline_available": true,
+                "department_baseline_available": false,
+                "deviation_score": 15,
+                "baseline_samples": {"users": 19, "departments": 21, "total": 40}
+            }),
+            &policy_path,
+        );
+        assert_eq!(risk["score"], 100);
+        assert_eq!(risk["level"], "critical");
+        assert_eq!(risk["confidence_level"], "low");
+        assert_eq!(risk["classification"], "needs_investigation");
+        assert_eq!(risk["evidence_status"], "not_available");
+        assert!(
+            risk["confidence_reasons"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| {
+                    item.as_str()
+                        .unwrap()
+                        .contains("agent_coverage:coverage_below_target")
+                })
+        );
+        assert_eq!(risk["score_components"]["network_anomaly"], 0);
+        assert_eq!(risk["score_components"]["application_anomaly"], 0);
     }
 
     #[test]

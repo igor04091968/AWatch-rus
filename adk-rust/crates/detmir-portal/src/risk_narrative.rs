@@ -39,6 +39,8 @@ pub(crate) struct RiskNarrativeInputs<'a> {
 struct NarrativeSignal {
     score: u8,
     level: &'static str,
+    confidence: String,
+    classification: String,
     why: Vec<String>,
     evidence: Vec<Value>,
     recommended_actions: Vec<String>,
@@ -62,6 +64,8 @@ pub(crate) fn build_risk_narrative(
     let mut signal = NarrativeSignal {
         score: 0,
         level: "low",
+        confidence: "unknown".to_string(),
+        classification: "insufficient_data".to_string(),
         why: Vec::new(),
         evidence: Vec::new(),
         recommended_actions: Vec::new(),
@@ -74,6 +78,7 @@ pub(crate) fn build_risk_narrative(
 
     add_workforce_kpi_signal(&mut signal, inputs.workforce_kpi_explain);
     add_ueba_signal(&mut signal, inputs.ueba_risk);
+    add_ueba_confidence_guardrails(&mut signal, inputs.ueba_risk);
     add_coverage_signal(
         &mut signal,
         inputs.agent_coverage_sla,
@@ -105,6 +110,8 @@ pub(crate) fn build_risk_narrative_from_report(
     let mut signal = NarrativeSignal {
         score: 0,
         level: "low",
+        confidence: "unknown".to_string(),
+        classification: "insufficient_data".to_string(),
         why: Vec::new(),
         evidence: Vec::new(),
         recommended_actions: Vec::new(),
@@ -122,6 +129,7 @@ pub(crate) fn build_risk_narrative_from_report(
         report.get("workforce_kpi_explain").unwrap_or(&Value::Null),
     );
     add_ueba_signal(&mut signal, report.get("ueba_risk").unwrap_or(&Value::Null));
+    add_ueba_confidence_guardrails(&mut signal, report.get("ueba_risk").unwrap_or(&Value::Null));
     add_coverage_from_report_signal(&mut signal, report);
     let selected_heatmap = select_heatmap_value(
         report.get("risk_heatmap").and_then(Value::as_array),
@@ -329,6 +337,36 @@ fn add_ueba_signal(signal: &mut NarrativeSignal, risk: &Value) {
             _ => "low",
         },
     ));
+}
+
+fn add_ueba_confidence_guardrails(signal: &mut NarrativeSignal, risk: &Value) {
+    let confidence = risk
+        .get("confidence_level")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let classification = risk
+        .get("classification")
+        .and_then(Value::as_str)
+        .unwrap_or("insufficient_data");
+    signal.confidence = confidence.to_string();
+    signal.classification = classification.to_string();
+    if matches!(confidence, "low" | "unknown") {
+        push_unique(&mut signal.why, "Уверенность в выводе ниже целевого уровня");
+        push_unique(
+            &mut signal.recommended_actions,
+            "Проверить полноту данных до управленческого вывода",
+        );
+        push_unique(
+            &mut signal.limitations,
+            "Низкая уверенность не подтверждает инцидент без ручной проверки",
+        );
+    }
+    if classification == "needs_investigation" {
+        push_unique(
+            &mut signal.recommended_actions,
+            "Зафиксировать статус Needs Investigation и передать на ручной разбор",
+        );
+    }
 }
 
 fn add_coverage_signal(
@@ -773,6 +811,8 @@ fn narrative_payload(
         },
         "risk_level": signal.level,
         "risk_score": signal.score,
+        "confidence": signal.confidence,
+        "classification": signal.classification,
         "title": risk_title(signal.level),
         "summary": risk_summary(signal.level, signal.department.as_deref(), &signal.why),
         "why": signal.why,

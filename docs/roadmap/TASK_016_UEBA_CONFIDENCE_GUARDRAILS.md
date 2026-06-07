@@ -441,3 +441,72 @@ git diff --check
 7. Документация.
 8. Результаты проверок.
 9. Подтверждение, что scoring/weights/thresholds не менялись.
+
+---
+
+## Выполнение
+
+Дата выполнения: 2026-06-07.
+
+Статус: выполнено.
+
+Добавлено:
+
+* UEBA confidence layer;
+* confidence contributors:
+  * `agent_coverage`;
+  * `data_freshness`;
+  * `telemetry_completeness`;
+  * `evidence_presence`;
+  * `history_depth`;
+  * `signal_consistency`;
+* classification layer:
+  * `confirmed_risk`;
+  * `likely_risk`;
+  * `needs_investigation`;
+  * `insufficient_data`;
+* поля `/api/ueba`:
+  * `confidence`;
+  * `confidence_score`;
+  * `classification`;
+  * `classification_reason`;
+  * `confidence_reasons`;
+  * `confidence_contributors`;
+  * `evidence_status`;
+* поля Risk Narrative:
+  * `confidence`;
+  * `classification`;
+* Action Center guardrail:
+  * `Проверить полноту данных` при low/unknown UEBA confidence или
+    `needs_investigation`;
+* Markdown section:
+  * `UEBA Confidence`;
+* документация:
+  * `docs/UEBA_CONFIDENCE_MODEL_RU.md`.
+
+Не менялось:
+
+* UEBA score calculation;
+* UEBA weights;
+* UEBA thresholds;
+* severity rules;
+* Risk Narrative scoring;
+* Action Center scoring;
+* ML/LLM/DLP/SIEM claims не добавлялись.
+
+Ключевая интерпретация:
+
+```text
+Severity = сила аномалии
+Confidence = качество данных для вывода
+Classification = как трактовать severity с учетом confidence
+```
+
+Для случая `critical + low confidence` результат:
+
+```text
+classification = needs_investigation
+```
+
+Это защищает от неверной трактовки `critical` как автоматически подтвержденного
+ИБ-инцидента.

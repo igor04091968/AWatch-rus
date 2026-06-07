@@ -692,6 +692,14 @@ function renderRiskNarrative(report) {
             <strong>${ui(narrative.title || "Риск не рассчитан")}</strong>
           </div>
           <div>
+            <span class="muted">Уверенность</span>
+            <strong>${ui(narrative.confidence || "unknown")}</strong>
+          </div>
+          <div>
+            <span class="muted">Классификация</span>
+            <strong>${ui(narrative.classification || "insufficient_data")}</strong>
+          </div>
+          <div>
             <span class="muted">Модель</span>
             <strong>${ui(narrative.model?.type || "rule_based")}</strong>
           </div>
@@ -2216,7 +2224,10 @@ function renderUebaRisk(risk) {
   const reasons = Array.isArray(risk.reasons) ? risk.reasons.slice(0, 12) : [];
   const sources = Array.isArray(risk.risk_sources) ? risk.risk_sources.join(", ") : "-";
   const confidence = Number.isFinite(Number(risk.confidence)) ? `${Math.round(Number(risk.confidence) * 100)}%` : "0%";
-  const baselineReady = `user: ${risk.user_baseline_available ? "yes" : "no"} · dept: ${risk.department_baseline_available ? "yes" : "no"}`;
+  const confidenceLevel = risk.confidence_level || "unknown";
+  const classification = risk.classification || "insufficient_data";
+  const evidenceStatus = risk.evidence_status || "not_available";
+  const baselineReady = `пользователь: ${risk.user_baseline_available ? "да" : "нет"} · подразделение: ${risk.department_baseline_available ? "да" : "нет"}`;
   return `
     <section class="card ueba-risk-card">
       <div class="section-head">
@@ -2229,6 +2240,13 @@ function renderUebaRisk(risk) {
         </div>
         <span class="badge ${statusClass(risk.status)}">${escapeHtml(risk.level || "unknown")} · ${escapeHtml(risk.score ?? 0)}/100</span>
       </div>
+      <div class="quality-grid">
+        <div><span class="muted">Уровень</span><strong>${ui(risk.level || "unknown")}</strong></div>
+        <div><span class="muted">Уверенность</span><strong>${ui(confidenceLevel)}</strong></div>
+        <div><span class="muted">Классификация</span><strong>${ui(classification)}</strong></div>
+        <div><span class="muted">Материалы</span><strong>${ui(evidenceStatus === "available" ? "доступны" : "нет")}</strong></div>
+      </div>
+      ${(Array.isArray(risk.confidence_reasons) && risk.confidence_reasons.length) ? `<p class="muted small">Причины уверенности: ${risk.confidence_reasons.slice(0, 4).map(ui).join(" · ")}</p>` : ""}
       <div class="list compact-list">${reasons.length ? reasons.map(item => `
         <div class="row compact-row">
           <strong>${ui(item.label || item.code || "-")}</strong>

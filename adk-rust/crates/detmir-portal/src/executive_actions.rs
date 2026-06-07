@@ -88,6 +88,7 @@ fn generate_actions(report: &Value) -> Vec<ExecutiveAction> {
     let mut actions = Vec::new();
     add_workforce_kpi_action(report, &mut actions);
     add_coverage_action(report, &mut actions);
+    add_ueba_confidence_action(report, &mut actions);
     add_ueba_action(report, &mut actions);
     add_security_correlation_action(report, &mut actions);
     add_incident_candidate_action(report, &mut actions);
@@ -183,6 +184,68 @@ fn add_coverage_action(report: &Value, actions: &mut Vec<ExecutiveAction>) {
             format!("Покрытие агентов: {coverage}%"),
             format!("SLA полноты данных: {sla_status}"),
         ],
+    });
+}
+
+fn add_ueba_confidence_action(report: &Value, actions: &mut Vec<ExecutiveAction>) {
+    let score = report
+        .pointer("/ueba_risk/score")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    let explicit_confidence = report
+        .pointer("/ueba_risk/confidence_level")
+        .and_then(Value::as_str);
+    let explicit_classification = report
+        .pointer("/ueba_risk/classification")
+        .and_then(Value::as_str);
+    if score < 70 && explicit_confidence.is_none() && explicit_classification.is_none() {
+        return;
+    }
+    let confidence = report
+        .pointer("/ueba_risk/confidence_level")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown");
+    let classification = report
+        .pointer("/ueba_risk/classification")
+        .and_then(Value::as_str)
+        .unwrap_or("insufficient_data");
+    if score < 70 && !matches!(classification, "needs_investigation" | "insufficient_data") {
+        return;
+    }
+    if !matches!(confidence, "low" | "unknown")
+        && !matches!(classification, "needs_investigation" | "insufficient_data")
+    {
+        return;
+    }
+    let reasons = report
+        .pointer("/ueba_risk/confidence_reasons")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .take(3)
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let mut evidence = vec![
+        format!("UEBA confidence: {confidence}"),
+        format!("UEBA classification: {classification}"),
+    ];
+    evidence.extend(reasons);
+    actions.push(ExecutiveAction {
+        priority: ActionPriority::Critical,
+        title: "Проверить полноту данных".to_string(),
+        summary: "Перед жестким выводом по UEBA нужно подтвердить покрытие, свежесть и полноту телеметрии"
+            .to_string(),
+        owner_role: ActionOwnerRole::Admin,
+        recommended_deadline: "4h".to_string(),
+        reason_codes: vec![
+            "LOW_UEBA_CONFIDENCE".to_string(),
+            "CHECK_DATA_COMPLETENESS".to_string(),
+        ],
+        evidence,
     });
 }
 
@@ -388,6 +451,13 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|code| code == "LOW_WORKFORCE_KPI")
+        }));
+        assert!(actions.iter().any(|item| {
+            item["reason_codes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|code| code == "LOW_UEBA_CONFIDENCE")
         }));
         assert!(actions.iter().any(|item| item["priority"] == "critical"));
     }
