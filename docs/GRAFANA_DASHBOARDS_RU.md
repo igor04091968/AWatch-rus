@@ -52,6 +52,15 @@ labels: `user1`, `user4`, `user5`, `Администратор`. Bad labels list
 пустым для `USER*`, `SHARKON2025$`, `администратор`, `�` и labels, начинающихся
 с `\`.
 
+Owner-facing aggregate panel должен называться явно:
+
+- title: `Все сотрудники: активное время по дням`;
+- legend: `Все сотрудники`;
+- field label: `Все сотрудники, ч`.
+
+Не используйте `Команда` для этой панели: для владельца это выглядит как имя
+отдельного пользователя или непонятной группы.
+
 ## Доступ владельца из портала
 
 На production-контуре DetMir переход из `/portal` к Grafana dashboard'ам
@@ -136,6 +145,29 @@ DB fallback: после backup `/var/lib/grafana/grafana.db` заменить т
 ```text
 /var/lib/grafana/grafana.db.bak.20260609T013605Z
 ```
+
+Для production rename `Команда` -> `Все сотрудники` на `2026-06-09` были
+обновлены DB-записи:
+
+- `detmir-rdp-user-activity`;
+- `detmir-aw-main`.
+
+Backup перед изменением:
+
+```text
+/var/lib/grafana/grafana.db.bak.20260609T020225Z
+```
+
+Контроль через gateway Grafana API:
+
+- старый title count: `0`;
+- новый title count: `1`;
+- старая legend count: `0`;
+- новая legend count: `1`;
+- dashboard page: HTTP `200`, title `Grafana`.
+
+Если после этого в уже открытой вкладке всё ещё видно `Команда`, сначала
+сделайте hard refresh: это старое состояние браузера, а не старая DB-запись.
 
 ## Переменные
 
