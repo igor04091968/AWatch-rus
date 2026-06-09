@@ -45,7 +45,7 @@ curl -sS --max-time 5 http://<AW_SERVER_HOST>:5610/health | jq
 
 ```bash
 curl -sS --max-time 8 \
-  "http://<AW_SERVER_HOST>:5610/reports/worktime/management?format=json&host=HOST-EXAMPLE&allow_stale=1" \
+  "http://<AW_SERVER_HOST>:5610/reports/worktime/management?format=json&host=SHARKON2025&allow_stale=1" \
   | jq '.status,.stale,.runtime'
 ```
 
@@ -62,7 +62,7 @@ curl -sS --max-time 12 "http://<PORTAL_HOST>/portal/api/reports?role=executive" 
 
 ```bash
 curl -sS --max-time 5 \
-  http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-worktime-sessions_HOST-EXAMPLE \
+  http://<AW_SERVER_HOST>:5600/api/0/buckets/aw-worktime-sessions_SHARKON2025 \
   | jq '.metadata.end'
 ```
 
@@ -76,6 +76,88 @@ curl -sS --max-time 5 http://<AW_SERVER_HOST>:5600/api/0/buckets | jq 'keys'
 events или временная недоступность ActivityWatch API. Не запускайте повторные
 тяжелые запросы вручную без лимитов `--max-time`.
 
+## Дубли пользователей в Grafana/Influx
+
+Симптом: панели Grafana показывают одного сотрудника несколькими строками,
+например `USER5` и `user5`, `Администратор` и `администратор`, или показывают
+служебные/битые метки вроде `SHARKON2025$` и строк с `�`.
+
+Причина: старые версии worktime exporter писали raw `username`/`userId` в tag
+`user`, а Grafana группировала Influx series по этому сырому tag. Поэтому
+варианты регистра, machine account и поврежденная OEM/Unicode строка становились
+разными series. После исправления exporter пишет canonical tags, но старые
+series остаются в диапазоне Grafana до истечения retention/range, поэтому Flux
+queries должны фильтровать и схлопывать их.
+
+Текущая canonical policy для DetMir RDP host:
+
+- `USER1/user1`, `USER4/user4`, `USER5/user5` -> `user1`, `user4`, `user5`;
+- `администратор` -> `Администратор`;
+- users с suffix `$` исключаются;
+- users, содержащие Unicode replacement char `�`, исключаются.
+
+Кодовые точки, где должна сохраняться одинаковая нормализация:
+
+- `adk-rust/crates/worktime-api/src/main.rs`;
+- `adk-rust/crates/worktime-influx-exporter/src/main.rs`.
+
+Проверка перед deploy:
+
+```bash
+cd <REPO_ROOT>/adk-rust
+cargo fmt --all --check
+cargo test -p worktime-api -p worktime-influx-exporter
+cargo build --release -p worktime-api -p worktime-influx-exporter
+```
+
+Минимальный deploy с backup бинарников:
+
+```bash
+cd <REPO_ROOT>/ansible
+export no_proxy="localhost,127.0.0.1,10.10.10.13,10.10.10.2,10.10.10.0/24"
+export NO_PROXY="$no_proxy"
+
+ts=$(date -u +%Y%m%dT%H%M%SZ)
+ansible -i inventory.ini aw_server -m shell -a "set -e; sudo cp -a /usr/local/bin/aw-worktime-api-rust /usr/local/bin/aw-worktime-api-rust.bak.${ts}; sudo cp -a /usr/local/bin/aw-worktime-influx-exporter-rust /usr/local/bin/aw-worktime-influx-exporter-rust.bak.${ts}"
+ansible -i inventory.ini aw_server -m copy -a "src=/home/igor/.cache/detmir-adk-rust-target/release/worktime-api dest=/tmp/aw-worktime-api-rust.new mode=0755"
+ansible -i inventory.ini aw_server -m copy -a "src=/home/igor/.cache/detmir-adk-rust-target/release/worktime-influx-exporter dest=/tmp/aw-worktime-influx-exporter-rust.new mode=0755"
+ansible -i inventory.ini aw_server -m shell -a 'set -e; sudo install -o root -g root -m 0755 /tmp/aw-worktime-api-rust.new /usr/local/bin/aw-worktime-api-rust; sudo install -o root -g root -m 0755 /tmp/aw-worktime-influx-exporter-rust.new /usr/local/bin/aw-worktime-influx-exporter-rust'
+ansible -i inventory.ini aw_server -m shell -a 'set -e; sudo systemctl restart aw-worktime-api; sudo systemctl start aw-worktime-influx-exporter.service; systemctl is-active aw-worktime-api'
+```
+
+Grafana cleanup для старых Influx series:
+
+- dashboard JSON: `grafana/detmir-rdp-user-activity-dashboard.json` и
+  `grafana/detmir-aw-main-dashboard.json`;
+- Flux должен фильтровать `user_id !~ /\$$/` и `user_id !~ /�/`;
+- известные текущие accounts должны мапиться в canonical labels до grouping;
+- grouping должен быть по `report_date,user` или `_time,user`;
+- для схлопывания duplicate series использовать `max(column: "_value")`, чтобы
+  не удваивать часы.
+
+Если Grafana API import возвращает `403`, используйте provisioning/DB fallback:
+
+```bash
+scp grafana/detmir-aw-main-dashboard.json grafana/detmir-rdp-user-activity-dashboard.json igor@10.10.10.2:~/codex-dashboard-import/
+ssh igor@10.10.10.2 'sudo pct push 201 /home/igor/codex-dashboard-import/detmir-aw-main-dashboard.json /etc/grafana/provisioning/dashboards/aw/detmir-aw-main.json --perms 0644'
+ssh igor@10.10.10.2 'sudo pct push 201 /home/igor/codex-dashboard-import/detmir-rdp-user-activity-dashboard.json /etc/grafana/provisioning/dashboards/aw/detmir-rdp-user-activity.json --perms 0644'
+ssh igor@10.10.10.2 'sudo pct exec 201 -- bash -lc "cp -a /var/lib/grafana/grafana.db /var/lib/grafana/grafana.db.bak.$(date -u +%Y%m%dT%H%M%SZ); systemctl restart grafana-server"'
+```
+
+Если provisioning не перезаписал существующие DB dashboards, перед изменением
+сделать backup `/var/lib/grafana/grafana.db`, затем заменить только
+`dashboard.data` rows по uid `detmir-aw-main` и `detmir-rdp-user-activity`.
+
+Проверка после deploy:
+
+- live panel `Вчера: активность по сотрудникам` возвращает только labels
+  `user1`, `user4`, `user5`, `Администратор`;
+- bad labels list пуст для `USER*`, `SHARKON2025$`, `администратор`, `�` и
+  labels, начинающихся с `\`;
+- Grafana dashboard открывается с HTTP `200`, HTML title содержит `Grafana`;
+- `aw-worktime-api`, `grafana-server` и `aw-worktime-influx-exporter.timer`
+  активны.
+
 ## Проверка лимитов
 
 Проверить системные настройки:
@@ -88,6 +170,10 @@ grep '^AW_WORKTIME_' /etc/activitywatch/aw-server.env
 Ключевые параметры:
 
 - `AW_WORKTIME_EVENTS_LIMIT` - верхний лимит чтения events из ActivityWatch.
+  Для дневной управленческой аналитики значение должно покрывать рабочий день
+  по всем активным сессиям. Для пилотного контура используется `5000`; малые
+  значения вроде `250` допустимы только для аварийного degraded-smoke, иначе
+  отчет будет построен по последнему хвосту событий, а не по полному дню.
 - `AW_WORKTIME_AW_HTTP_TIMEOUT_SECONDS` - timeout запросов к ActivityWatch API.
 - `AW_WORKTIME_SOURCE_HTTP_TIMEOUT_SECONDS` - timeout внешних source-запросов.
 - `AW_WORKTIME_REPORT_CACHE_TTL_SECONDS` - TTL fresh report cache.
@@ -129,7 +215,7 @@ systemctl restart aw-worktime-api
 
 ```bash
 curl -sS --max-time 12 \
-  "http://<AW_SERVER_HOST>:5610/reports/worktime/management?format=json&host=HOST-EXAMPLE&allow_stale=1" \
+  "http://<AW_SERVER_HOST>:5610/reports/worktime/management?format=json&host=SHARKON2025&allow_stale=1" \
   | jq '.status,.stale,.runtime'
 ```
 
@@ -170,6 +256,13 @@ systemctl restart aw-worktime-api
 
 Перед rollback убедитесь, что backup-файлы действительно относятся к предыдущей
 рабочей версии.
+
+Последний production rollback set после исправления canonical users
+`2026-06-09`:
+
+- `/var/lib/grafana/grafana.db.bak.20260609T013605Z`;
+- `/usr/local/bin/aw-worktime-api-rust.bak.20260609T011956Z`;
+- `/usr/local/bin/aw-worktime-influx-exporter-rust.bak.20260609T011956Z`.
 
 ## Признаки успешного восстановления
 
