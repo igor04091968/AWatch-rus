@@ -22,6 +22,12 @@
 Главное правило: система считается развернутой только когда есть свежие данные,
 открываются интерфейсы, проходят health checks и есть понятный rollback.
 
+Второе главное правило: agent может читать private/ignored файлы только для
+проверки факта и типа секрета. Значения паролей, токенов, host credentials и
+private URL нельзя переносить в markdown, audit, terminal summary, commit или
+handoff. В отчете писать так: `ansible/inventory.ini содержит plaintext
+credentials; значения не фиксировались; нужна ротация`.
+
 ## 2. Простая модель системы
 
 Представь систему как цепочку:
@@ -235,6 +241,20 @@ Grafana должна показывать:
 - DLP management dashboard;
 - overview dashboard для владельца.
 
+Структура в репозитории разделена на три разных контура:
+
+- `grafana/` — плоские version-controlled JSON dashboards основного
+  AWatch-rus контура. Их импортирует `ansible/deploy_grafana_dashboards.yml`,
+  а проверяет `ansible/deploy_grafana_check.yml`.
+- `grafana-1c/` — отдельный docker-compose стек для SQL-readable 1C
+  MSSQL/Postgres dashboards.
+- `clickhouse-1c/grafana/provisioning/` — provisioning ClickHouse/file-1C
+  dashboards и datasource.
+
+Не путать эти каталоги. Если меняется основной dashboard, править `grafana/*.json`
+и прогонять dashboard deploy/check. Если меняется ClickHouse 1C dashboard,
+смотреть `clickhouse-1c/grafana/provisioning/`.
+
 ### 5.2 Deploy order
 
 1. Убедиться, что InfluxDB доступен.
@@ -254,6 +274,7 @@ journalctl -u aw-worktime-influx-exporter.service -n 50 --no-pager
 journalctl -u aw-dlp-influx-exporter.service -n 50 --no-pager
 
 cd ansible
+ansible-playbook -i inventory.ini deploy_grafana_dashboards.yml
 ansible-playbook -i inventory.ini deploy_grafana_check.yml
 ```
 
@@ -349,11 +370,37 @@ clickhouse-client --database analytics_1c --query "SELECT count() FROM detection
 | Rust runtime | `adk-rust/crates/*` | production binaries, checks, exporters, portal, ingest |
 | AW server | `aw-server/`, `ansible/deploy_aw_server.yml` | ActivityWatch, WebUI, worktime, DLP services |
 | Windows | `windows/`, `ansible/deploy_aw_windows.yml` | collectors, tasks, guard, validation |
-| Grafana/Influx | `grafana/`, `ansible/deploy_grafana_check.yml` | dashboards, freshness checks |
-| 1C/ClickHouse | `clickhouse-1c/` | file 1C analytics, detections, cases |
+| Grafana/Influx | `grafana/`, `ansible/deploy_grafana_dashboards.yml`, `ansible/deploy_grafana_check.yml` | flat dashboard JSON import, datasource/freshness checks |
+| SQL 1C Grafana | `grafana-1c/` | separate MSSQL/Postgres 1C Grafana stack |
+| 1C/ClickHouse | `clickhouse-1c/`, `clickhouse-1c/ai/`, `clickhouse-1c/grafana/provisioning/` | file 1C analytics, detections, cases, allowed Python AI helpers |
 | Portal | `adk-rust/crates/detmir-portal`, `docs/PORTAL_RU.md` | role views, reports, health |
 | Gateway | `ansible/deploy_proxmox_web_gateway.yml` | external protected routes |
 | Docs/runbooks | `docs/`, `adk-rust/RUNBOOK.md` | operating procedures |
+
+### 7.1 Ansible playbook map
+
+Перед deploy агент должен понимать назначение playbook, а не запускать их
+пакетом.
+
+| Playbook | Назначение |
+| --- | --- |
+| `deploy_aw_server.yml` | ActivityWatch server, WebUI, worktime/DLP server side |
+| `deploy_aw_windows.yml` | Windows/RDP collectors and validation artifacts |
+| `post_validate_aw_windows.yml` | post-deploy Windows validation |
+| `deploy_detmir_portal.yml` | portal service |
+| `deploy_proxmox_web_gateway.yml` | protected gateway routes |
+| `deploy_grafana_dashboards.yml` | import flat `grafana/*.json` dashboards |
+| `deploy_grafana_check.yml` | datasource/dashboard health checks |
+| `deploy_file_1c_windows_telemetry.yml` | file-1C Windows telemetry |
+| `deploy_file_1c_analytics.yml` | file-1C analytics layer |
+| `deploy_dlp_evidence_sync.yml` | DLP evidence artifact sync |
+| `deploy_dlp_full_stack.yml` | full DLP server-side stack |
+| `deploy_aw_pfsense_poller.yml` | pfSense poller integration |
+| `audit_cryptopro_windows.yml` | Windows CryptoPro audit |
+| `provision_proxmox_ct_and_deploy_aw.yml` | provision one Proxmox CT and deploy AW |
+| `provision_proxmox_ct_matrix_and_deploy_aw.yml` | provision CT matrix and deploy AW |
+| `deploy_tsj_guardian_bot_proxmox.yml` | Proxmox guardian bot |
+| `install_full_stack.yml` | broad full-stack install wrapper; use only with explicit scope |
 
 ## 8. Полный порядок развёртывания
 
@@ -382,7 +429,10 @@ git log --oneline -5
 - ClickHouse credentials;
 - 1C export paths.
 
-Нельзя коммитить реальные secrets.
+Нельзя коммитить реальные secrets. Нельзя вставлять значения из
+`ansible/inventory.ini`, private env, vault, runtime configs или host credentials
+в docs/audit. Разрешено писать только факт: где найдено, какой тип секрета, что
+сделать для remediation.
 
 ### Шаг 2. Собрать Rust
 
@@ -406,6 +456,7 @@ cd ansible
 ansible-playbook --syntax-check deploy_aw_server.yml
 ansible-playbook --syntax-check deploy_aw_windows.yml
 ansible-playbook --syntax-check deploy_detmir_portal.yml
+ansible-playbook --syntax-check deploy_grafana_dashboards.yml
 ansible-playbook --syntax-check deploy_grafana_check.yml
 ```
 
@@ -461,6 +512,7 @@ journalctl -u aw-dlp-influx-exporter.service -n 50 --no-pager
 ### Шаг 8. Развернуть Grafana dashboards/checks
 
 ```bash
+ansible-playbook -i inventory.ini deploy_grafana_dashboards.yml
 ansible-playbook -i inventory.ini deploy_grafana_check.yml
 ```
 
@@ -577,7 +629,9 @@ curl -fsS http://<PORTAL_HOST>:8720/api/reports | jq '.status,.sources'
 4. Перед изменением фиксировать `git status`.
 5. Перед deploy делать syntax/build checks.
 6. После deploy делать runtime checks.
-7. В ответе пользователю писать:
+7. Перед созданием docs/audit по private files проверять, что в текст не попали
+   значения credentials. Писать только sanitized факт и remediation.
+8. В ответе пользователю писать:
    - что изменено;
    - какие команды выполнены;
    - что проверено;
@@ -586,6 +640,8 @@ curl -fsS http://<PORTAL_HOST>:8720/api/reports | jq '.status,.sources'
 ## 11. Запреты
 
 - Не печатать secrets.
+- Не копировать значения secrets из private/ignored файлов в audit, markdown,
+  terminal summary, commit message или handoff.
 - Не коммитить private inventory/env.
 - Не править production Grafana только руками без отражения в repo.
 - Не перезапускать все сервисы подряд.

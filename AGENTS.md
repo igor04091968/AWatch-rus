@@ -8,6 +8,7 @@ Operational rules for OpenCode/Codex agents in AWatch-rus.
 - Root scripts (`check-aw-data.sh`, `check-aw-full.sh`, `scripts/prod_rollout.sh`, install-kit helpers) are Rust-first wrappers with legacy fallback.
 - Python is allowed only in `aw-server/dlp-content-analysis/`, `clickhouse-1c/ai/`, `clickhouse-1c/etl/`, `detmir-mcp/main.py`, `grafana-1c/`, `pfsense/`, `proxmox/tsj_guardian_bot.py`.
 - Never add real secrets from `secrets/`, private `.env`, or host credentials.
+- When auditing private/ignored files, report only path, secret type, and remediation. Never copy secret values into docs, logs, markdown, terminal summaries, commits, or handoff reports.
 
 ## Required Checks
 
@@ -24,6 +25,7 @@ Operational rules for OpenCode/Codex agents in AWatch-rus.
 - `ansible/`: deployment playbooks.
 - `proxmox/`: CT/gateway/bot automation.
 - `clickhouse-1c/`, `grafana-1c/`, `pfsense/`: integration stacks.
+- `grafana/`: flat version-controlled dashboard JSON; use Ansible to import/check it.
 
 ## Entrypoints
 
