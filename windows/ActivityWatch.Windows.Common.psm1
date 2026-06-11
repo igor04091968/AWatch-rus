@@ -883,11 +883,14 @@ function New-ActivityWatchDeploymentConfig {
         [Parameter(Mandatory = $true)]
         [string]$LogsRoot,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$CollectorScript,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$EndpointCollectorScript,
         [string]$PolicyClientScript,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$FileCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScript,

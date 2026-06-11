@@ -5,7 +5,7 @@
 #define AwDefaultServerHost "aw-server"
 #define AwDefaultServerPort "5600"
 #define AwDefaultWorktimeReportBase "http://aw-server:5610"
-#define AwDefaultWorktimeHost "HOST-EXAMPLE"
+#define AwDefaultWorktimeHost "SHARKON2025"
 #define AwDefaultUsers "user1,user2,user3,user4,user5"
 #define AwDefaultInstallRoot "C:\\Program Files\\AWatch-rus\\bin"
 #define AwDefaultStateRoot "C:\\ProgramData\\AWatch-rus"
@@ -13,7 +13,7 @@
 
 ; This installer wraps the standalone-service path.
 ; It is suitable for standalone/headless deployment and must not be treated
-; as the canonical multi-user RDP deployment path used on HOST-EXAMPLE.
+; as the canonical multi-user RDP deployment path used on SHARKON2025.
 
 [Setup]
 AppId={{6D6A1F74-0F4F-4A57-B5E3-1C2C2F56C0E9}
@@ -45,16 +45,12 @@ Source: "..\..\deploy-single-user.ps1"; DestDir: "{app}\windows"; Flags: ignorev
 Source: "..\..\deploy-domain-users.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\deploy-ensemble.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\AWatchRusCollectorGuardService.cs"; DestDir: "{app}\windows"; Flags: ignoreversion
-Source: "..\..\aw-collector-guard.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\install-collector-guard-service.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\..\adk-rust\target\x86_64-pc-windows-gnu\release\aw-windows-telemetry.exe"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\hardening-recovery.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\validate-deployment.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\migrate-awatch-rus-paths.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\worktime-session-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
-Source: "..\..\browser-domains-native-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
-Source: "..\..\dlp-endpoint-signals-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
-Source: "..\..\file-operations-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\email-outbound-collector.ps1"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\web-category-rules.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion
 Source: "..\..\dlp-policy.example.json"; DestDir: "{app}\windows"; Flags: ignoreversion

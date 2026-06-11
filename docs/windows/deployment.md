@@ -191,7 +191,7 @@ Ansible playbook `ansible/deploy_aw_windows.yml` выполняет этот mig
 .\windows\deploy-domain-users.ps1 `
   -ServerHost <AW_SERVER_HOST> `
   -ServerPort 5600 `
-  -Domain HOST-EXAMPLE `
+  -Domain SHARKON2025 `
   -Users user2,user3,user4,user5 `
   -InstallRoot 'C:\Program Files\AWatch-rus\bin' `
   -StateRoot 'C:\ProgramData\AWatch-rus' `
@@ -205,7 +205,7 @@ Single-user pilot в таком же стиле:
 .\windows\deploy-single-user.ps1 `
   -ServerHost <AW_SERVER_HOST> `
   -ServerPort 5600 `
-  -TargetUser 'HOST-EXAMPLE\user1' `
+  -TargetUser 'SHARKON2025\user1' `
   -InstallRoot 'C:\Program Files\AWatch-rus\bin' `
   -StateRoot 'C:\ProgramData\AWatch-rus' `
   -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json `

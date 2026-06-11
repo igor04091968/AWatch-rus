@@ -123,8 +123,13 @@ function Test-UserHasSession {
 function Get-CollectorProcesses {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$ScriptPath
     )
+
+    if ([string]::IsNullOrWhiteSpace($ScriptPath)) {
+        return @()
+    }
 
     return @(
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |

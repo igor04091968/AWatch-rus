@@ -66,9 +66,6 @@ $effectiveLogsRoot = if ($existingConfig) { [string]$existingConfig.paths.logsRo
 $effectiveConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $effectiveStateRoot 'deployment-config.json' }
 $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
 $effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
-$effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
-$effectiveEndpointCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$existingConfig.paths.endpointCollectorScript } else { Join-Path $effectiveStateRoot 'dlp-endpoint-signals-collector.ps1' }
-$effectiveFileCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$existingConfig.paths.fileCollectorScript } else { Join-Path $effectiveStateRoot 'file-operations-collector.ps1' }
 $effectiveSessionCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$existingConfig.paths.sessionCollectorScript } else { Join-Path $effectiveStateRoot 'worktime-session-collector.ps1' }
 $effectiveEvtxExportScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'evtxExportScript') { [string]$existingConfig.paths.evtxExportScript } else { Join-Path $effectiveStateRoot 'export-evtx-for-hayabusa.ps1' }
 $effectiveHayabusaUploadScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'hayabusaUploadScript') { [string]$existingConfig.paths.hayabusaUploadScript } else { Join-Path $effectiveStateRoot 'export-upload-hayabusa-to-aw-server.ps1' }
@@ -77,6 +74,18 @@ $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 $effectivePolicyClientScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$existingConfig.paths.policyClientScript } else { Join-Path $effectiveStateRoot 'dlp-policy-client.ps1' }
 $effectiveTelemetryExecutable = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.paths.file1cTelemetryExecutable)) { [string]$existingConfig.paths.file1cTelemetryExecutable } else { Join-Path $PSScriptRoot 'aw-windows-telemetry.exe' }
+
+function Resolve-OptionalExistingPath {
+    param([AllowEmptyString()][string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return ''
+    }
+    if (Test-Path -LiteralPath $Path) {
+        return $Path
+    }
+    return ''
+}
 
 $effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
 $effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
@@ -173,6 +182,10 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -StateRoot $effectiveStateRoot `
     -CustomRulesSource $CustomRulesPath `
     -CustomPolicySource $CustomPolicyPath
+
+$effectiveCollector = if (-not [string]::IsNullOrWhiteSpace([string]$assetResult.CollectorScript)) { [string]$assetResult.CollectorScript } elseif ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'collectorScript') { Resolve-OptionalExistingPath -Path ([string]$existingConfig.paths.collectorScript) } else { '' }
+$effectiveEndpointCollector = if (-not [string]::IsNullOrWhiteSpace([string]$assetResult.EndpointCollectorScript)) { [string]$assetResult.EndpointCollectorScript } elseif ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { Resolve-OptionalExistingPath -Path ([string]$existingConfig.paths.endpointCollectorScript) } else { '' }
+$effectiveFileCollector = if (-not [string]::IsNullOrWhiteSpace([string]$assetResult.FileCollectorScript)) { [string]$assetResult.FileCollectorScript } elseif ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { Resolve-OptionalExistingPath -Path ([string]$existingConfig.paths.fileCollectorScript) } else { '' }
 
 $taskDefinitions = New-ActivityWatchUserTaskDefinitions -Users $effectiveUsers
 Write-ActivityWatchLaunchScript -Path $effectiveLaunchScript -ConfigPath $effectiveConfigPath

@@ -91,15 +91,42 @@ function Update-AWatchConfigPaths {
         [pscustomobject]$Config
     )
 
+    function Resolve-OptionalCollectorRuntimePath {
+        param([Parameter(Mandatory = $true)][string]$FileName)
+
+        $stateCandidate = Join-Path $NewStateRoot $FileName
+        if (Test-Path -LiteralPath $stateCandidate) {
+            return $stateCandidate
+        }
+
+        if (Test-Path -LiteralPath (Join-Path $ToolkitRoot $FileName)) {
+            return $stateCandidate
+        }
+
+        return ''
+    }
+
+    function Set-ConfigPathValue {
+        param(
+            [Parameter(Mandatory = $true)][string]$Name,
+            [AllowEmptyString()][string]$Value
+        )
+
+        if ($Config.paths.PSObject.Properties.Name -contains $Name) {
+            $Config.paths.PSObject.Properties[$Name].Value = $Value
+        }
+        else {
+            $Config.paths | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+        }
+    }
+
     $logsRoot = Join-Path $NewStateRoot 'logs'
     $Config.paths.installRoot = $NewInstallRoot
     $Config.paths.stateRoot = $NewStateRoot
     $Config.paths.logsRoot = $logsRoot
-    $Config.paths.collectorScript = Join-Path $NewStateRoot 'browser-domains-native-collector.ps1'
-    $Config.paths.endpointCollectorScript = Join-Path $NewStateRoot 'dlp-endpoint-signals-collector.ps1'
-    if ($Config.paths.PSObject.Properties.Name -contains 'fileCollectorScript') {
-        $Config.paths.fileCollectorScript = Join-Path $NewStateRoot 'file-operations-collector.ps1'
-    }
+    Set-ConfigPathValue -Name 'collectorScript' -Value (Resolve-OptionalCollectorRuntimePath -FileName 'browser-domains-native-collector.ps1')
+    Set-ConfigPathValue -Name 'endpointCollectorScript' -Value (Resolve-OptionalCollectorRuntimePath -FileName 'dlp-endpoint-signals-collector.ps1')
+    Set-ConfigPathValue -Name 'fileCollectorScript' -Value (Resolve-OptionalCollectorRuntimePath -FileName 'file-operations-collector.ps1')
     if ($Config.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable') {
         $Config.paths.file1cTelemetryExecutable = Join-Path $ToolkitRoot 'aw-windows-telemetry.exe'
     }
