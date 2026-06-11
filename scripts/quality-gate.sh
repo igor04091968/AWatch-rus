@@ -53,7 +53,11 @@ if command -v pwsh >/dev/null 2>&1; then
     [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "windows/ActivityWatch.Windows.Common.psm1"),[ref]$null,[ref]$null)
     [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "windows/ActivityWatch.Windows.Common.psd1"),[ref]$null,[ref]$null)
   '
-  pwsh -NoLogo -NoProfile -File windows/aw-collector-guard.ps1 -SelfTest >/dev/null
+  if [[ -f windows/aw-collector-guard.ps1 ]]; then
+    pwsh -NoLogo -NoProfile -File windows/aw-collector-guard.ps1 -SelfTest >/dev/null
+  else
+    echo "windows/aw-collector-guard.ps1 absent; Rust collector guard is the primary runtime."
+  fi
 else
   echo "pwsh not found, skipping."
 fi

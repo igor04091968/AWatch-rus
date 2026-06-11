@@ -25,8 +25,8 @@ $guardScriptPath = Join-Path $PSScriptRoot 'aw-collector-guard.ps1'
 $rustTelemetryPath = Join-Path $PSScriptRoot 'aw-windows-telemetry.exe'
 $serviceSourcePath = Join-Path $PSScriptRoot 'AWatchRusCollectorGuardService.cs'
 $serviceExePath = Join-Path $PSScriptRoot 'AWatchRusCollectorGuardService.exe'
-if (-not (Test-Path -LiteralPath $guardScriptPath)) {
-    throw "Collector guard script not found: $guardScriptPath"
+if (-not (Test-Path -LiteralPath $rustTelemetryPath) -and -not (Test-Path -LiteralPath $guardScriptPath)) {
+    throw "Neither Rust collector guard nor PowerShell fallback was found: $rustTelemetryPath ; $guardScriptPath"
 }
 if (-not (Test-Path -LiteralPath $serviceSourcePath)) {
     throw "Collector guard service source not found: $serviceSourcePath"
@@ -70,6 +70,9 @@ if (Test-Path -LiteralPath $rustTelemetryPath) {
     $binPath = "`"$serviceExePath`" --service-name `"$ServiceName`" --exec `"$rustTelemetryPath`" --args `"$rustArgs`" --log `"$serviceLogPath`""
 }
 else {
+    if (-not (Test-Path -LiteralPath $guardScriptPath)) {
+        throw "Collector guard script not found: $guardScriptPath"
+    }
     $binPath = "`"$serviceExePath`" --service-name `"$ServiceName`" --script `"$guardScriptPath`" --config `"$ConfigPath`" --mode $Mode --loop $LoopSeconds --log `"$serviceLogPath`""
 }
 

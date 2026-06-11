@@ -76,6 +76,7 @@ $effectiveFile1CTelemetryScript = if ($existingConfig -and $existingConfig.paths
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 $effectivePolicyClientScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$existingConfig.paths.policyClientScript } else { Join-Path $effectiveStateRoot 'dlp-policy-client.ps1' }
+$effectiveTelemetryExecutable = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.paths.file1cTelemetryExecutable)) { [string]$existingConfig.paths.file1cTelemetryExecutable } else { Join-Path $PSScriptRoot 'aw-windows-telemetry.exe' }
 
 $effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
 $effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
@@ -116,6 +117,9 @@ $effectiveFile1CAutoUploadTaskName = if ($existingConfig -and $existingConfig.PS
 $effectiveFile1CAutoUploadRunAsUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'runAsUser') { [string]$existingConfig.analytics.file1cAutomation.runAsUser } else { '' }
 $effectiveFile1CTargetHost = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetHost') { [string]$existingConfig.analytics.file1cAutomation.targetHost } else { '' }
 $effectiveFile1CTargetUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetUser') { [string]$existingConfig.analytics.file1cAutomation.targetUser } else { 'igor' }
+$effectiveBrowserCollectorMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'browserCollectorMode') { [string]$existingConfig.collectors.browserCollectorMode } else { 'rust_primary' }
+$effectiveDlpEndpointMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'dlpEndpointMode') { [string]$existingConfig.collectors.dlpEndpointMode } else { 'rust_primary' }
+$effectiveFileOpsMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'fileOpsMode') { [string]$existingConfig.collectors.fileOpsMode } else { 'rust_primary' }
 
 if ([string]::IsNullOrWhiteSpace($effectiveFile1CTargetHost)) {
     $file1cLogPath = Join-Path $effectiveLogsRoot 'file1c-telemetry.log'
@@ -231,6 +235,11 @@ $config = New-ActivityWatchDeploymentConfig `
     -RecoveryScriptPath $effectiveRecoveryScript `
     -UserTasks $taskDefinitions `
     -PackageVersion $effectiveVersion
+
+$config.paths.file1cTelemetryExecutable = $effectiveTelemetryExecutable
+$config.collectors.browserCollectorMode = $effectiveBrowserCollectorMode
+$config.collectors.dlpEndpointMode = $effectiveDlpEndpointMode
+$config.collectors.fileOpsMode = $effectiveFileOpsMode
 
 Write-ActivityWatchDeploymentConfig -Config $config -Path $effectiveConfigPath
 Remove-LegacyActivityWatchEntries
