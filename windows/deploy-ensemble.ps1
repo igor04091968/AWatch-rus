@@ -46,6 +46,7 @@ param(
     [int]$HayabusaAutoUploadHoursBack = 6,
     [string]$HayabusaAutoUploadMode = 'incident',
     [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
+    [string]$HayabusaAutoUploadRunAsUser,
     [bool]$File1CAutoUploadEnabled = $true,
     [int]$File1CAutoUploadIntervalHours = 6,
     [int]$File1CAutoUploadIntervalMinutes = 15,
@@ -118,6 +119,7 @@ if (-not (Test-Path -LiteralPath $deployScript)) {
     -HayabusaAutoUploadHoursBack $HayabusaAutoUploadHoursBack `
     -HayabusaAutoUploadMode $HayabusaAutoUploadMode `
     -HayabusaAutoUploadTaskName $HayabusaAutoUploadTaskName `
+    -HayabusaAutoUploadRunAsUser $HayabusaAutoUploadRunAsUser `
     -File1CAutoUploadEnabled $File1CAutoUploadEnabled `
     -File1CAutoUploadIntervalHours $File1CAutoUploadIntervalHours `
     -File1CAutoUploadIntervalMinutes $File1CAutoUploadIntervalMinutes `

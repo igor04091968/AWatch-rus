@@ -113,19 +113,36 @@ detect_host_from_manifest() {
 extract_zip_normalized() {
   local package_path="$1"
   local dest_dir="$2"
-  command -v zipinfo >/dev/null 2>&1 || fail "zipinfo is required to inspect ${package_path}"
-  command -v unzip >/dev/null 2>&1 || fail "unzip is required to extract ${package_path}"
+  command -v python3 >/dev/null 2>&1 || fail "python3 is required to extract ${package_path}"
   mkdir -p "${dest_dir}"
-  local entry normalized
-  while IFS= read -r entry; do
-    normalized="${entry//\\//}"
-    case "${normalized}" in
-      ""|.|/*|*"/../"*|../*|*"..")
-        fail "unsafe zip entry: ${entry}"
-        ;;
-    esac
-  done < <(zipinfo -1 "${package_path}")
-  unzip -q "${package_path}" -d "${dest_dir}"
+  python3 - "${package_path}" "${dest_dir}" <<'PY'
+import os
+import shutil
+import sys
+import zipfile
+
+package_path = sys.argv[1]
+dest_dir = os.path.abspath(sys.argv[2])
+
+with zipfile.ZipFile(package_path) as archive:
+    for info in archive.infolist():
+        name = info.filename.replace("\\", "/")
+        is_dir = info.is_dir() or name.endswith("/")
+        if is_dir:
+            name = name.rstrip("/")
+        parts = [part for part in name.split("/") if part]
+        if not parts or name.startswith("/") or any(part in (".", "..") for part in parts):
+            raise SystemExit(f"unsafe zip entry: {info.filename}")
+        target_path = os.path.abspath(os.path.join(dest_dir, *parts))
+        if os.path.commonpath([dest_dir, target_path]) != dest_dir:
+            raise SystemExit(f"unsafe zip entry: {info.filename}")
+        if is_dir:
+            os.makedirs(target_path, exist_ok=True)
+            continue
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        with archive.open(info) as src, open(target_path, "wb") as dst:
+            shutil.copyfileobj(src, dst)
+PY
 }
 
 write_package_manifest() {

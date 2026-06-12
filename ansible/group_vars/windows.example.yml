@@ -9,6 +9,7 @@ aw_windows_hayabusa_auto_upload_interval_hours: 6
 aw_windows_hayabusa_auto_upload_hours_back: 6
 aw_windows_hayabusa_auto_upload_mode: "incident"
 aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"
+aw_windows_hayabusa_auto_upload_run_as_user: ""
 aw_windows_package_version: "v0.13.2"
 aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
 aw_windows_package_zip_path: ""

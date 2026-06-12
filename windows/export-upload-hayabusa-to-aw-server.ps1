@@ -16,6 +16,25 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+$LogDir = Join-Path (Split-Path -Parent $ConfigPath) 'logs'
+$LogPath = Join-Path $LogDir 'hayabusa-upload.log'
+New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+
+function Write-RunLog {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    $line = '{0} {1}' -f ([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')), $Message
+    Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
+}
+
+trap {
+    Write-RunLog ("ERROR: " + ($_ | Out-String).Trim())
+    exit 1
+}
+
 function New-TemporarySshKeyCopy {
     param(
         [Parameter(Mandatory = $true)]
@@ -27,9 +46,20 @@ function New-TemporarySshKeyCopy {
     $tempKeyPath = Join-Path $tempDir 'awops_ed25519'
     Copy-Item -LiteralPath $SourceKeyPath -Destination $tempKeyPath -Force
 
+    $currentIdentity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    $grantPrincipals = @(
+        ('*' + $currentIdentity.User.Value),
+        '*S-1-5-18',
+        '*S-1-5-32-544'
+    ) |
+        Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } |
+        Select-Object -Unique
+
     & icacls.exe $tempKeyPath /inheritance:r | Out-Null
-    & icacls.exe $tempKeyPath /grant:r "$($env:USERNAME):(F)" | Out-Null
-    & icacls.exe $tempKeyPath /remove:g 'Users' 'Authenticated Users' 'Everyone' 'BUILTIN\Users' 'BUILTIN\Administrators' 'NT AUTHORITY\SYSTEM' 2>$null | Out-Null
+    foreach ($principal in $grantPrincipals) {
+        & icacls.exe $tempKeyPath /grant:r "$principal`:(F)" | Out-Null
+    }
+    & icacls.exe $tempKeyPath /remove:g 'Users' 'Authenticated Users' 'Everyone' 'BUILTIN\Users' 2>$null | Out-Null
 
     return $tempKeyPath
 }
@@ -41,6 +71,8 @@ if (-not (Test-Path -LiteralPath $exportScript)) {
 if (-not (Test-Path -LiteralPath $RemoteKeyPath)) {
     throw "SSH private key not found: $RemoteKeyPath"
 }
+
+Write-RunLog ("start hoursBack={0} daysBack={1} mode={2} serverHost={3} runRemote={4}" -f $HoursBack, $DaysBack, $Mode, $ServerHost, [bool]$RunRemote)
 
 $config = Get-Content -Raw -LiteralPath $ConfigPath | ConvertFrom-Json
 if ([string]::IsNullOrWhiteSpace($ServerHost)) {
@@ -81,7 +113,8 @@ try {
     if ($null -ne $CaseId) {
         $meta.case_id = [int]$CaseId
     }
-    $meta | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $metaPath -Encoding UTF8
+    $metaJson = $meta | ConvertTo-Json -Depth 6
+    [System.IO.File]::WriteAllText($metaPath, $metaJson, [System.Text.UTF8Encoding]::new($false))
     & scp.exe -i $effectiveKeyPath -o StrictHostKeyChecking=no -o UserKnownHostsFile=NUL $metaPath $remoteTarget
     if ($LASTEXITCODE -ne 0) {
         throw "scp meta upload failed with rc=$LASTEXITCODE"
@@ -97,6 +130,7 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "scp upload failed with rc=$LASTEXITCODE"
     }
+    Write-RunLog ("upload complete zip={0} remote={1}" -f $zipPath, $remoteTarget)
 }
 finally {
     Remove-Item -LiteralPath $effectiveKeyPath -Force -ErrorAction SilentlyContinue

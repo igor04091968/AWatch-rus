@@ -83,6 +83,16 @@ This wrapper:
 - uploads `.meta.json`;
 - uploads the `zip` to the AW-server drop directory.
 
+Scheduled production upload on `SHARKON2025`:
+
+- task: `ActivityWatch Hayabusa Upload`
+- principal: `Администратор`, interactive, highest privileges
+- interval: `6` hours
+- lookback: `6` hours
+- success: `LastTaskResult=0` and a new line in `C:\ProgramData\AWatch-rus\logs\hayabusa-upload.log`
+
+`LastTaskResult=3221225794` (`0xC0000142`) with no new upload log means Task Scheduler failed to start `powershell.exe`; keep this task on the interactive administrator principal for this host.
+
 ## Boundaries
 
 - output stays outside standard AW buckets

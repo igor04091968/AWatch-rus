@@ -92,7 +92,8 @@ fn decode_optional_json(body: String) -> Result<Value> {
 
 pub fn read_json_file(path: &Path) -> Result<Value> {
     let text = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
-    serde_json::from_str(&text).with_context(|| format!("decode {}", path.display()))
+    serde_json::from_str(text.trim_start_matches('\u{feff}'))
+        .with_context(|| format!("decode {}", path.display()))
 }
 
 pub fn write_json_pretty(value: &Value) -> Result<String> {

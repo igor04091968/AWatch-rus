@@ -2591,6 +2591,22 @@
             - /opt/activitywatch/aw-rus-ops/ansible
             - /opt/activitywatch/aw-rus-ops/drop
 
+        - name: Проверить наличие upload user awops для Hayabusa drop-zone
+          ansible.builtin.command:
+            cmd: id -u awops
+          register: aw_hayabusa_drop_upload_user
+          changed_when: false
+          failed_when: false
+
+        - name: Разрешить awops писать в Hayabusa drop-zone
+          ansible.builtin.file:
+            path: /opt/activitywatch/aw-rus-ops/drop
+            state: directory
+            owner: awops
+            group: awops
+            mode: "0750"
+          when: aw_hayabusa_drop_upload_user.rc == 0
+
         - name: Положить исходный wrapper в server-side ops bundle
           ansible.builtin.copy:
             src: "{{ aw_repo_root }}/aw-server/hayabusa/aw-hayabusa.sh"

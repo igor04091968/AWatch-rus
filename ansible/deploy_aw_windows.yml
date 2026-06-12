@@ -41,6 +41,7 @@
     aw_windows_hayabusa_auto_upload_hours_back: 6
     aw_windows_hayabusa_auto_upload_mode: "incident"
     aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"
+    aw_windows_hayabusa_auto_upload_run_as_user: ""
     aw_windows_file_1c_auto_upload_enabled: true
     aw_windows_file_1c_auto_upload_interval_minutes: 15
     aw_windows_file_1c_auto_upload_task_name: "ActivityWatch File1C Upload"
@@ -311,6 +312,7 @@
             HayabusaAutoUploadHoursBack = {{ aw_windows_hayabusa_auto_upload_hours_back | int }}
             HayabusaAutoUploadMode = "{{ aw_windows_hayabusa_auto_upload_mode }}"
             HayabusaAutoUploadTaskName = "{{ aw_windows_hayabusa_auto_upload_task_name }}"
+            HayabusaAutoUploadRunAsUser = "{{ aw_windows_hayabusa_auto_upload_run_as_user }}"
             File1CAutoUploadEnabled = {{ '$true' if (aw_windows_file_1c_auto_upload_enabled | bool) else '$false' }}
             File1CAutoUploadIntervalMinutes = {{ aw_windows_file_1c_auto_upload_interval_minutes | int }}
             File1CAutoUploadTaskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"

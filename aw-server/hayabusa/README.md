@@ -105,4 +105,17 @@ Server-side prerequisite for user `awops`:
 printf '%s\n' 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILoFWQmgoUJj1P7mp1/fB5aBkI3fVgjPme9jmK8Gh9jr igor@snb-live' | sudo tee /var/lib/awops/.ssh/authorized_keys >/dev/null
 sudo chown awops:awops /var/lib/awops/.ssh/authorized_keys
 sudo chmod 600 /var/lib/awops/.ssh/authorized_keys
+sudo chown awops:awops /opt/activitywatch/aw-rus-ops/drop
+sudo chmod 0750 /opt/activitywatch/aw-rus-ops/drop
 ```
+
+Production scheduled task on `SHARKON2025`:
+
+- task name: `ActivityWatch Hayabusa Upload`
+- action: `C:\ProgramData\AWatch-rus\export-upload-hayabusa-to-aw-server.ps1 -HoursBack 6 -Mode incident`
+- principal: `Администратор`, `LogonType=Interactive`, `RunLevel=Highest`
+- normal `LastTaskResult`: `0`
+
+Do not switch this task back to `SYSTEM` on the current RDP host: Task Scheduler starts `powershell.exe` under `SYSTEM`, but the process exits with `0xC0000142` before the upload script starts.
+
+Server-side processing accepts Windows zip packages with backslash path separators and UTF-8 BOM in sidecar JSON. `aw-hayabusa-autoprocess` processes the full incoming queue after accepting a drop package, so stale incoming files from an earlier failed run are drained before the latest intake is recorded.

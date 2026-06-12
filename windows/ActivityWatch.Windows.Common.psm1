@@ -942,6 +942,7 @@ function New-ActivityWatchDeploymentConfig {
         [int]$HayabusaAutoUploadHoursBack = 6,
         [string]$HayabusaAutoUploadMode = 'incident',
         [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
+        [string]$HayabusaAutoUploadRunAsUser,
         [bool]$File1CAutoUploadEnabled = $true,
         [int]$File1CAutoUploadIntervalHours = 6,
         [int]$File1CAutoUploadIntervalMinutes = 15,
@@ -1037,6 +1038,7 @@ function New-ActivityWatchDeploymentConfig {
                 hoursBack = $HayabusaAutoUploadHoursBack
                 mode = $HayabusaAutoUploadMode
                 taskName = $HayabusaAutoUploadTaskName
+                runAsUser = $HayabusaAutoUploadRunAsUser
             }
         }
         analytics = [pscustomobject]@{
@@ -2531,11 +2533,16 @@ function Register-ActivityWatchHayabusaAutoUploadTask {
     $intervalHours = [Math]::Max(1, [int]$automation.intervalHours)
     $hoursBack = [Math]::Max(1, [int]$automation.hoursBack)
     $mode = if ($automation.PSObject.Properties.Name -contains 'mode' -and -not [string]::IsNullOrWhiteSpace([string]$automation.mode)) { [string]$automation.mode } else { 'incident' }
+    $runAsUser = if ($automation.PSObject.Properties.Name -contains 'runAsUser' -and -not [string]::IsNullOrWhiteSpace([string]$automation.runAsUser)) { [string]$automation.runAsUser } else { '' }
     $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`" -HoursBack $hoursBack -Mode `"$mode`""
 
     Remove-ActivityWatchScheduledTask -TaskName $taskName
-    & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    if ($runAsUser) {
+        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU $runAsUser /IT /RL HIGHEST /F | Out-Null
+    } else {
+        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Не удалось создать scheduled task $taskName через schtasks.exe"
     }
