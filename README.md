@@ -5,21 +5,17 @@ AWatch-rus - программный комплекс операционного 
 корпоративной ИТ-инфраструктуры на базе ActivityWatch, Rust-сервисов
 автоматизации, Grafana/Prometheus-витрин и модулей расследования инцидентов.
 
-Проект не позиционируется как сертифицированная DLP/SIEM/EDR/XDR/СЗИ. DLP,
-evidence и Hayabusa используются как прикладные модули внутри платформы
-операционного контроля и технического аудита.
+Проект не позиционируется как сертифицированная DLP/SIEM/EDR/XDR/СЗИ,хотя DLP,evidence и Hayabusa используются в проекте.
 
 ## Назначение
 
 - AWatch-rus Workforce: активность сотрудников, загрузка, RDP/1C/рабочие
   приложения и управленческие отчеты для владельца бизнеса.
-- AWatch-rus Security: DLP-сигналы, evidence, очередь кейсов и audit действий
-  оператора без заявления продукта как сертифицированной СЗИ.
-- AWatch-rus Forensics: цепочки событий, Hayabusa/offline-разбор и материалы для
-  внутреннего расследования.
+- AWatch-rus Security: DLP-сигналы, evidence, очередь кейсов и audit действий оператора без заявления продукта как сертифицированной СЗИ.
+- AWatch-rus Forensics: цепочки событий, Hayabusa/offline-разбор и материалы для внутреннего расследования.
 - Контроль доступности и свежести данных ActivityWatch.
-- Учет активного времени, RDP-сессий, окон, приложений и рабочих интервалов.
-- Витрины Grafana для администратора, оператора ИБ и руководителя.
+- Учет активного времени, Windows RDP-сессий окон, приложений и рабочих интервалов  а также активности пользователей в  Linux/Unix системах.
+- витрины Grafana для администратора, оператора ИБ и руководителя(dashboards).
 - Автоматизация runbook-проверок, health-check, SLO и безопасного auto-heal.
 - Сбор evidence по инцидентам и аудит действий оператора.
 
@@ -28,18 +24,17 @@ evidence и Hayabusa используются как прикладные мод
 Основной серверный runtime AWatch-rus переведен на Rust: status/check/auto-heal,
 SLO, worktime, DLP server-side helpers, evidence и install-kit tooling.
 
-Python в репозитории остается для вспомогательных направлений: Telegram bot
-runtime, OCR/content-analysis, 1C/AI/ETL integration и MCP/dev helpers. Эти
-части не являются ядром Rust-first runtime.
+Python, присутствующий в коде репозитория, остается для вспомогательных направлений: Telegram bot
+runtime(для оперативного оповещения), OCR/content-analysis, 1C/AI/ETL integration и MCP/dev helpers. Эти части не являются ядром Rust-first runtime.
 
 Портальный слой зафиксирован как Rust server-rendered HTML + HTMX-compatible
 JSON API, OpenAPI и TypeScript declarations. Dioxus не используется и не
 рассматривается для Pilot v1.0. React, Tauri и Electron также не входят в
-текущий основной UI.
+текущий основной UI, но возможна их интеграция в проект.
 
 ## Product Evolution
 
-AWatch-rus уже является рабочей платформой Workforce + Security + Forensics.
+AWatch-rus является рабочей платформой Workforce + Security + Forensics.
 Архитектура предусматривает расширение на агентные и agentless-источники
 данных. Planned/Future элементы ниже не являются реализованной функциональностью
 и не должны трактоваться как готовые collectors или integrations.
