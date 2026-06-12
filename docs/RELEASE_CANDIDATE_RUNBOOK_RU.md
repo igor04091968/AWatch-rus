@@ -4,6 +4,10 @@
 
 Release Candidate не равен юридической готовности к подаче в реестр и не заменяет финальную процедуру релиза.
 
+## Evidence pack
+
+Финальная проверка RC-процесса для ветки `hardening/pilot-v1-defects-cleanup` зафиксирована в `docs/RC_EVIDENCE_PACK_PILOT_V1_RU.md`.
+
 ## Запуск
 
 Команда выполняется из корня репозитория:
@@ -33,7 +37,7 @@ Preflight проверяет наличие команд `git`, `cargo`, `bash`,
 Рекомендуемый запуск для такого контура:
 
 ```bash
-CARGO_TARGET_DIR=/home/igor/.cache/aw-rus-hardening-target bash scripts/build_release_candidate.sh v1.0.2-rc1
+CARGO_TARGET_DIR=$HOME/.cache/aw-rus-hardening-target bash scripts/build_release_candidate.sh v1.0.2-rc1
 ```
 
 Это не обход проверок. Все `cargo fmt`, `cargo test`, `cargo clippy`, `cargo build`, `quality-gate`, private-config guard, OpenAPI contract guard и SBOM generation продолжают выполняться. Меняется только место, куда cargo складывает build artifacts.
