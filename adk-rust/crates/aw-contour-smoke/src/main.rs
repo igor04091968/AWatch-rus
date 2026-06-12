@@ -116,7 +116,7 @@ fn run_proxmox_remote() -> Result<i32> {
     check_tcp(&mut counts, "nginx http", "127.0.0.1", 80);
     check_tcp(&mut counts, "nginx https", "127.0.0.1", 443);
     check_tcp(&mut counts, "proxmox web", "127.0.0.1", 8006);
-    check_tcp(&mut counts, "1C company API", "192.0.2.2", 8710);
+    check_tcp(&mut counts, "1C company API", "10.10.10.2", 8710);
     check_tcp(&mut counts, "clickhouse native", "127.0.0.1", 9000);
     check_tcp(&mut counts, "clickhouse http", "127.0.0.1", 8123);
     if let Ok(out) = command_output("ss", &["-tulpn"]) {
@@ -135,29 +135,26 @@ fn run_proxmox_remote() -> Result<i32> {
         "https://127.0.0.1/healthz",
         &[200],
     );
-    check_http_redirect(
+    check_http_code(
         &mut counts,
-        &no_redirect_http,
-        "go proxmox gui",
+        &http,
+        "go proxmox gui protected",
         "https://127.0.0.1/go/proxmox-gui",
-        &[301, 302, 307, 308],
-        Some("https://192.0.2.2:8006/"),
+        &[401],
     );
-    check_http_redirect(
+    check_http_code(
         &mut counts,
-        &no_redirect_http,
-        "go file1c brief",
+        &http,
+        "go file1c brief protected",
         "https://127.0.0.1/go/file1c-brief",
-        &[301, 302, 307, 308],
-        Some("http://192.0.2.2:8710/manager/brief"),
+        &[401],
     );
-    check_http_redirect(
+    check_http_code(
         &mut counts,
-        &no_redirect_http,
-        "go file1c actions",
+        &http,
+        "go file1c actions protected",
         "https://127.0.0.1/go/file1c-actions",
-        &[301, 302, 307, 308],
-        Some("http://192.0.2.2:8710/manager/actions"),
+        &[401],
     );
 
     section("1C Company API");
@@ -165,24 +162,24 @@ fn run_proxmox_remote() -> Result<i32> {
         &mut counts,
         &no_redirect_http,
         "1C root redirect",
-        "http://192.0.2.2:8710/",
+        "http://10.10.10.2:8710/",
         &[307],
     );
     for (name, url) in [
-        ("1C /health", "http://192.0.2.2:8710/health"),
-        ("1C /api/health", "http://192.0.2.2:8710/api/health"),
-        ("1C manager brief", "http://192.0.2.2:8710/manager/brief"),
+        ("1C /health", "http://10.10.10.2:8710/health"),
+        ("1C /api/health", "http://10.10.10.2:8710/api/health"),
+        ("1C manager brief", "http://10.10.10.2:8710/manager/brief"),
         (
             "1C manager actions",
-            "http://192.0.2.2:8710/manager/actions",
+            "http://10.10.10.2:8710/manager/actions",
         ),
         (
             "1C manager recovery",
-            "http://192.0.2.2:8710/manager/recovery",
+            "http://10.10.10.2:8710/manager/recovery",
         ),
         (
             "1C weekly digest",
-            "http://192.0.2.2:8710/manager/digest/weekly",
+            "http://10.10.10.2:8710/manager/digest/weekly",
         ),
     ] {
         check_http_code(&mut counts, &http, name, url, &[200]);
@@ -339,39 +336,6 @@ fn check_http_code(counts: &mut Counts, client: &Client, name: &str, url: &str, 
                 if let Ok(text) = response.text() {
                     print_indented(&text, 40);
                 }
-            }
-        }
-        Err(err) => counts.fail(format!("{name} HTTP error {url}: {err}")),
-    }
-}
-
-fn check_http_redirect(
-    counts: &mut Counts,
-    client: &Client,
-    name: &str,
-    url: &str,
-    expected: &[u16],
-    expected_location: Option<&str>,
-) {
-    match client.head(url).send() {
-        Ok(response) => {
-            let code = response.status().as_u16();
-            let location = response
-                .headers()
-                .get(reqwest::header::LOCATION)
-                .and_then(|value| value.to_str().ok())
-                .unwrap_or("");
-            let location_ok = expected_location.is_none_or(|expected| location.contains(expected));
-            if expected.contains(&code) && location_ok {
-                counts.pass(format!(
-                    "{name} HTTP {code} {}",
-                    if location.is_empty() { url } else { location }
-                ));
-            } else {
-                counts.fail(format!(
-                    "{name} HTTP {code} {}",
-                    if location.is_empty() { url } else { location }
-                ));
             }
         }
         Err(err) => counts.fail(format!("{name} HTTP error {url}: {err}")),
