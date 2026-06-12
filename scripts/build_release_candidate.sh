@@ -4,11 +4,98 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+print_cargo_target_dir() {
+  if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+    echo "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+  else
+    echo "CARGO_TARGET_DIR is not set; cargo default target dir will be used"
+  fi
+}
+
+preflight_ok() {
+  echo "[OK] $1"
+}
+
+preflight_fail() {
+  echo "[FAIL] $1" >&2
+  PREFLIGHT_FAILED=1
+}
+
+check_command() {
+  local command_name="$1"
+  if command -v "$command_name" >/dev/null 2>&1; then
+    preflight_ok "command available: $command_name"
+  else
+    preflight_fail "missing command: $command_name"
+  fi
+}
+
+check_file() {
+  local path="$1"
+  if [[ -f "$path" ]]; then
+    preflight_ok "required file exists: $path"
+  else
+    preflight_fail "required file is missing: $path"
+  fi
+}
+
+run_preflight() {
+  PREFLIGHT_FAILED=0
+
+  echo "release candidate preflight"
+  print_cargo_target_dir
+
+  check_command git
+  check_command cargo
+  check_command bash
+  check_command node
+  check_command sha256sum
+
+  check_file scripts/generate_release_sbom_v0_2.sh
+  check_file scripts/check_private_config_guard.sh
+  check_file scripts/check_portal_contract_sync.mjs
+
+  if command -v git >/dev/null 2>&1; then
+    if git check-ignore -q dist/release-candidate/.preflight-probe; then
+      preflight_ok "dist/ is ignored by git"
+    else
+      preflight_fail "dist/ is not ignored by git"
+    fi
+  else
+    preflight_fail "cannot verify git ignore rules without git"
+  fi
+
+  case "$ROOT_DIR" in
+    /mnt/*|/media/*)
+      cat <<'EOF'
+[HINT] Project is under /mnt or /media. If cargo fails on the mount with Operation not permitted, run the full RC build with a writable target dir:
+       CARGO_TARGET_DIR=/home/igor/.cache/aw-rus-hardening-target bash scripts/build_release_candidate.sh v1.0.2-rc1
+EOF
+      ;;
+  esac
+
+  if [[ "$PREFLIGHT_FAILED" -ne 0 ]]; then
+    echo "release candidate preflight: FAIL" >&2
+    return 1
+  fi
+
+  echo "release candidate preflight: OK"
+}
+
+if [[ "${1:-}" == "--preflight" ]]; then
+  run_preflight
+  exit $?
+fi
+
+print_cargo_target_dir
+
 RC_NAME="${1:-}"
 if [[ -z "$RC_NAME" ]]; then
   cat >&2 <<'EOF'
 usage: bash scripts/build_release_candidate.sh <rc-name>
 example: bash scripts/build_release_candidate.sh v1.0.2-rc1
+
+preflight: bash scripts/build_release_candidate.sh --preflight
 EOF
   exit 2
 fi

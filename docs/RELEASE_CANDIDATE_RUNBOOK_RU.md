@@ -16,6 +16,30 @@ bash scripts/build_release_candidate.sh v1.0.2-rc1
 
 Перед сборкой рабочее дерево git должно быть чистым. Если есть незакоммиченные, staged или untracked файлы, скрипт завершится с ошибкой. Это защищает RC от незафиксированного состояния.
 
+## Preflight
+
+Перед полной RC-сборкой можно проверить локальные предпосылки без создания каталога release candidate и без запуска cargo build/test:
+
+```bash
+bash scripts/build_release_candidate.sh --preflight
+```
+
+Preflight проверяет наличие команд `git`, `cargo`, `bash`, `node`, `sha256sum`, наличие обязательных внутренних скриптов, а также то, что `dist/` игнорируется git. Этот режим не требует чистого git tree, не создает артефакты и не заменяет полную RC-сборку.
+
+## Если проект лежит на USB/HDD mount
+
+На локальном контуре проект может лежать под `/mnt/` или `/media/`. В таком случае cargo build artifacts в стандартном `adk-rust/target` могут падать на filesystem-ограничениях mount, например на `libsqlite3-sys` с `Operation not permitted`.
+
+Рекомендуемый запуск для такого контура:
+
+```bash
+CARGO_TARGET_DIR=/home/igor/.cache/aw-rus-hardening-target bash scripts/build_release_candidate.sh v1.0.2-rc1
+```
+
+Это не обход проверок. Все `cargo fmt`, `cargo test`, `cargo clippy`, `cargo build`, `quality-gate`, private-config guard, OpenAPI contract guard и SBOM generation продолжают выполняться. Меняется только место, куда cargo складывает build artifacts.
+
+`dist/` по-прежнему не коммитится. Требование чистого git tree для настоящей RC-сборки также остается обязательным.
+
 ## Проверки
 
 Скрипт выполняет обязательные проверки и сборку Rust workspace:
