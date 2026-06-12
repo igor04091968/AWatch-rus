@@ -55,6 +55,41 @@ function Start-CollectorIfNeeded {
     Write-ServiceLog ("started collector: {0}" -f $ScriptPath)
 }
 
+function Test-RustCollectorRunning {
+    param([string]$Subcommand)
+    if ([string]::IsNullOrWhiteSpace($Subcommand)) { return $false }
+    return [bool](
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Name -ieq 'aw-windows-telemetry.exe' -and
+                $_.CommandLine -and
+                $_.CommandLine -match [Regex]::Escape($Subcommand)
+            } |
+            Select-Object -First 1
+    )
+}
+
+function Start-RustCollectorIfNeeded {
+    param(
+        [string]$ExePath,
+        [string]$Subcommand,
+        [string]$ConfigPath
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ExePath) -or [string]::IsNullOrWhiteSpace($Subcommand)) {
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $ExePath)) {
+        return $false
+    }
+    if (Test-RustCollectorRunning -Subcommand $Subcommand) {
+        return $true
+    }
+    Start-Process -FilePath $ExePath -ArgumentList @($Subcommand, '--config-path', $ConfigPath, '--mode', 'enforce') -WindowStyle Hidden | Out-Null
+    Write-ServiceLog ("started rust collector: {0}" -f $Subcommand)
+    return $true
+}
+
 $cfg = Get-Config -Path $ConfigPath
 $stateRoot = if ($cfg.paths -and $cfg.paths.stateRoot) { [string]$cfg.paths.stateRoot } else { 'C:\ProgramData\AWatch-rus' }
 $logsRoot = Join-Path $stateRoot 'logs'
@@ -70,6 +105,7 @@ while ($true) {
         $cfg = Get-Config -Path $ConfigPath
         $paths = $cfg.paths
         $collectors = $cfg.collectors
+        $telemetryExe = if ($paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable' -and -not [string]::IsNullOrWhiteSpace([string]$paths.file1cTelemetryExecutable)) { [string]$paths.file1cTelemetryExecutable } else { Join-Path $PSScriptRoot 'aw-windows-telemetry.exe' }
         $isSession0 = ([System.Diagnostics.Process]::GetCurrentProcess().SessionId -eq 0)
 
         # In Session 0 (SYSTEM) collectors that depend on interactive desktop/user profile
@@ -78,10 +114,14 @@ while ($true) {
         $startFileOps = $true
         $startEmail   = $true
         $startWorktime = $true
+        $dlpEndpointMode = 'rust_primary'
+        $fileOpsMode = 'rust_primary'
         if ($collectors) {
             if ($collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { $startFileOps = [bool]$collectors.fileOpsEnabled }
             if ($collectors.PSObject.Properties.Name -contains 'emailEnabled')   { $startEmail   = [bool]$collectors.emailEnabled }
             if ($collectors.PSObject.Properties.Name -contains 'worktimeSessionEnabled') { $startWorktime = [bool]$collectors.worktimeSessionEnabled }
+            $dlpEndpointMode = if ($collectors.PSObject.Properties.Name -contains 'dlpEndpointMode') { [string]$collectors.dlpEndpointMode } else { 'rust_primary' }
+            $fileOpsMode = if ($collectors.PSObject.Properties.Name -contains 'fileOpsMode') { [string]$collectors.fileOpsMode } else { 'rust_primary' }
             $worktimeSessionMode = if ($collectors.PSObject.Properties.Name -contains 'worktimeSessionMode') { [string]$collectors.worktimeSessionMode } else { 'powershell_primary' }
             $worktimeLegacyFallbackEnabled = if ($collectors.PSObject.Properties.Name -contains 'worktimeLegacyFallbackEnabled') { [bool]$collectors.worktimeLegacyFallbackEnabled } else { $true }
             if ($worktimeSessionMode -ieq 'rust_primary') {
@@ -98,9 +138,23 @@ while ($true) {
         if ($startBrowser) {
             Start-CollectorIfNeeded -ScriptPath ([string]$paths.collectorScript) -ConfigPath $ConfigPath
         }
-        Start-CollectorIfNeeded -ScriptPath ([string]$paths.endpointCollectorScript) -ConfigPath $ConfigPath
+        if ($dlpEndpointMode -ieq 'rust_primary') {
+            if (-not (Start-RustCollectorIfNeeded -ExePath $telemetryExe -Subcommand 'dlp-endpoint-collector' -ConfigPath $ConfigPath)) {
+                Start-CollectorIfNeeded -ScriptPath ([string]$paths.endpointCollectorScript) -ConfigPath $ConfigPath
+            }
+        }
+        else {
+            Start-CollectorIfNeeded -ScriptPath ([string]$paths.endpointCollectorScript) -ConfigPath $ConfigPath
+        }
         if ($startFileOps) {
-            Start-CollectorIfNeeded -ScriptPath ([string]$paths.fileCollectorScript) -ConfigPath $ConfigPath
+            if ($fileOpsMode -ieq 'rust_primary') {
+                if (-not (Start-RustCollectorIfNeeded -ExePath $telemetryExe -Subcommand 'file-operations-collector' -ConfigPath $ConfigPath)) {
+                    Start-CollectorIfNeeded -ScriptPath ([string]$paths.fileCollectorScript) -ConfigPath $ConfigPath
+                }
+            }
+            else {
+                Start-CollectorIfNeeded -ScriptPath ([string]$paths.fileCollectorScript) -ConfigPath $ConfigPath
+            }
         }
         if ($paths.PSObject.Properties.Name -contains 'emailCollectorScript') {
             if ($startEmail) {

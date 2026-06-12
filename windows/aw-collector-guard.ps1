@@ -322,18 +322,18 @@ function Invoke-GuardSelfTest {
 
     $oldComputerName = $env:COMPUTERNAME
     try {
-        $env:COMPUTERNAME = 'HOST-EXAMPLE'
+        $env:COMPUTERNAME = 'SHARKON2025'
         $sessionRecords = @(
             [pscustomobject]@{ SessionName = 'USER5'; UserName = 'USER5'; SessionId = 2; State = 'Disc'; IsLive = $false },
             [pscustomobject]@{ SessionName = 'console'; UserName = ''; SessionId = 1; State = 'Conn'; IsLive = $true }
         )
         $taskDefs = @(
-            [pscustomobject]@{ taskName = 'ActivityWatch Launch [HOST-EXAMPLE_user5]'; userId = 'HOST-EXAMPLE\user5' }
+            [pscustomobject]@{ taskName = 'ActivityWatch Launch [SHARKON2025_user5]'; userId = 'SHARKON2025\user5' }
         )
-        if (-not (Test-ActivityWatchUserHasManagedSession -UserId 'HOST-EXAMPLE\user5' -SessionRecords $sessionRecords -IncludeDisconnected)) {
+        if (-not (Test-ActivityWatchUserHasManagedSession -UserId 'SHARKON2025\user5' -SessionRecords $sessionRecords -IncludeDisconnected)) {
             throw 'expected disconnected managed session to match task user'
         }
-        if (Test-ActivityWatchUserHasManagedSession -UserId 'HOST-EXAMPLE\user5' -SessionRecords $sessionRecords -IncludeLive) {
+        if (Test-ActivityWatchUserHasManagedSession -UserId 'SHARKON2025\user5' -SessionRecords $sessionRecords -IncludeLive) {
             throw 'disconnected managed session should not match live-only filter'
         }
         $managed = @(Get-ActivityWatchManagedInteractiveSessions -TaskDefinitions $taskDefs -SessionRecords $sessionRecords -IncludeDisconnected)

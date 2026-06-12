@@ -3,7 +3,7 @@
 Дата фиксации: `2026-06-03`.
 
 Документ фиксирует audit-facing решение по классу подачи AWatch-rus.
-Он дополняет `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`.
+Он дополняет `docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md`.
 
 ## 1. Рекомендованный класс
 

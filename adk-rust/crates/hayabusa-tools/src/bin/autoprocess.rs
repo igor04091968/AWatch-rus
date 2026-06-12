@@ -120,8 +120,6 @@ fn process_one(zip_path: &Path) -> Result<ProcessResult> {
             "process-inbox".to_string(),
             "--mode".to_string(),
             mode.clone(),
-            "--limit".to_string(),
-            "1".to_string(),
         ],
     )?;
     let latest = read_json_file(Path::new(LATEST_INTAKE))?;

@@ -7,6 +7,16 @@ cd "$ROOT_DIR"
 TARGET_ROOT="${CARGO_TARGET_DIR:-$ROOT_DIR/adk-rust/target}"
 RUST_BIN="${QUALITY_GATE_RUST:-}"
 
+echo "[preflight] Private-config guard"
+bash scripts/check_private_config_guard.sh
+
+echo "[preflight] Portal contract sync guard"
+if command -v node >/dev/null 2>&1; then
+  node scripts/check_portal_contract_sync.mjs
+else
+  echo "node not found, skipping portal contract sync guard."
+fi
+
 rust_candidates=()
 if [[ -n "$RUST_BIN" ]]; then
   rust_candidates+=("$RUST_BIN")
@@ -39,6 +49,7 @@ fi
 echo "[3/6] Node syntax check (if node available)"
 if command -v node >/dev/null 2>&1; then
   node --check scripts/aw-webui-browser-smoke.mjs >/dev/null
+  node --check scripts/check_portal_contract_sync.mjs >/dev/null
 else
   echo "node not found, skipping."
 fi
@@ -53,7 +64,11 @@ if command -v pwsh >/dev/null 2>&1; then
     [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "windows/ActivityWatch.Windows.Common.psm1"),[ref]$null,[ref]$null)
     [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "windows/ActivityWatch.Windows.Common.psd1"),[ref]$null,[ref]$null)
   '
-  pwsh -NoLogo -NoProfile -File windows/aw-collector-guard.ps1 -SelfTest >/dev/null
+  if [[ -f windows/aw-collector-guard.ps1 ]]; then
+    pwsh -NoLogo -NoProfile -File windows/aw-collector-guard.ps1 -SelfTest >/dev/null
+  else
+    echo "windows/aw-collector-guard.ps1 absent; Rust collector guard is the primary runtime."
+  fi
 else
   echo "pwsh not found, skipping."
 fi

@@ -303,7 +303,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns: [\"user\"])\n  |> sort(columns: [\"_time\"])\n  |> tail(n: 2)\n  |> first()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> filter(fn: (r) => r.user_id !~ /\\$$/ and r.user_id !~ /�/)\n  |> map(fn: (r) => ({ r with user: if r.user_id =~ /(?i)\\\\user1$/ then \"user1\" else if r.user_id =~ /(?i)\\\\user4$/ then \"user4\" else if r.user_id =~ /(?i)\\\\user5$/ then \"user5\" else if r.user_id =~ /(?i)\\\\администратор$/ then \"Администратор\" else r.user }))\n  |> group(columns: [\"report_date\", \"user\"])\n  |> max(column: \"_value\")\n  |> group(columns: [\"user\"])\n  |> sort(columns: [\"_time\"])\n  |> tail(n: 2)\n  |> first()\n  |> map(fn: (r) => ({ r with user_id: \"${host}\\\\\" + r.user, _value: float(v: r._value) / 3600.0 }))",
           "refId": "A"
         }
       ],
@@ -349,7 +349,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns: [\"user\"])\n  |> last()\n  |> filter(fn:(r)=>r._value > 0)\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -3d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> filter(fn: (r) => r.user_id !~ /\\$$/ and r.user_id !~ /�/)\n  |> map(fn: (r) => ({ r with user: if r.user_id =~ /(?i)\\\\user1$/ then \"user1\" else if r.user_id =~ /(?i)\\\\user4$/ then \"user4\" else if r.user_id =~ /(?i)\\\\user5$/ then \"user5\" else if r.user_id =~ /(?i)\\\\администратор$/ then \"Администратор\" else r.user }))\n  |> group(columns: [\"report_date\", \"user\"])\n  |> max(column: \"_value\")\n  |> group(columns: [\"user\"])\n  |> last()\n  |> filter(fn:(r)=>r._value > 0)\n  |> map(fn: (r) => ({ r with user_id: \"${host}\\\\\" + r.user, _value: float(v: r._value) / 3600.0 }))",
           "refId": "A"
         }
       ],
@@ -371,7 +371,7 @@
             "showPoints": "never"
           },
           "decimals": 1,
-          "displayName": "Команда",
+          "displayName": "Все сотрудники",
           "unit": "suffix: ч"
         },
         "overrides": []
@@ -400,7 +400,7 @@
           "refId": "A"
         }
       ],
-      "title": "Команда: активное время по дням",
+      "title": "Все сотрудники: активное время по дням",
       "type": "timeseries"
     },
     {
@@ -442,7 +442,7 @@
       },
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -48h)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_hourly\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))\n  |> group(columns: [\"user\"])",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -48h)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_hourly\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> filter(fn: (r) => r.user_id !~ /\\$$/ and r.user_id !~ /�/)\n  |> map(fn: (r) => ({ r with user: if r.user_id =~ /(?i)\\\\user1$/ then \"user1\" else if r.user_id =~ /(?i)\\\\user4$/ then \"user4\" else if r.user_id =~ /(?i)\\\\user5$/ then \"user5\" else if r.user_id =~ /(?i)\\\\администратор$/ then \"Администратор\" else r.user }))\n  |> group(columns: [\"_time\", \"user\"])\n  |> max(column: \"_value\")\n  |> group(columns: [\"user\"])\n  |> map(fn: (r) => ({ r with user_id: \"${host}\\\\\" + r.user, _value: float(v: r._value) / 3600.0 }))",
           "refId": "A"
         }
       ],
@@ -500,7 +500,7 @@
       ],
       "targets": [
         {
-          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> group(columns:[\"report_date\",\"user\"])\n  |> last()\n  |> sort(columns:[\"report_date\",\"user\"], desc:true)\n  |> map(fn:(r)=>({ r with _value: float(v:r._value) / 3600.0 }))\n  |> group()\n  |> keep(columns:[\"report_date\",\"user\",\"user_id\",\"_value\"])\n  |> rename(columns:{report_date:\"Дата\", user:\"Пользователь\", user_id:\"Учётная запись\", _value:\"Часы\"})",
+          "query": "from(bucket: \"aw_metrics\")\n  |> range(start: -14d)\n  |> filter(fn: (r) => r._measurement == \"aw_rdp_worktime_daily\" and r._field == \"active_seconds\" and r.host == \"${host}\")\n  |> filter(fn: (r) => r.user_id !~ /\\$$/ and r.user_id !~ /�/)\n  |> map(fn: (r) => ({ r with user: if r.user_id =~ /(?i)\\\\user1$/ then \"user1\" else if r.user_id =~ /(?i)\\\\user4$/ then \"user4\" else if r.user_id =~ /(?i)\\\\user5$/ then \"user5\" else if r.user_id =~ /(?i)\\\\администратор$/ then \"Администратор\" else r.user }))\n  |> group(columns:[\"report_date\",\"user\"])\n  |> max(column: \"_value\")\n  |> sort(columns:[\"report_date\",\"user\"], desc:true)\n  |> map(fn:(r)=>({ r with user_id: \"${host}\\\\\" + r.user, _value: float(v:r._value) / 3600.0 }))\n  |> group()\n  |> keep(columns:[\"report_date\",\"user\",\"user_id\",\"_value\"])\n  |> rename(columns:{report_date:\"Дата\", user:\"Пользователь\", user_id:\"Учётная запись\", _value:\"Часы\"})",
           "refId": "A"
         }
       ],
@@ -724,8 +724,8 @@
       {
         "current": {
           "selected": false,
-          "text": "HOST-EXAMPLE",
-          "value": "HOST-EXAMPLE"
+          "text": "SHARKON2025",
+          "value": "SHARKON2025"
         },
         "datasource": {
           "type": "influxdb",

@@ -73,10 +73,24 @@ async function main() {
   assert(Array.isArray(kpiExplain.json?.factors), "KPI explain must include factors");
   assert(kpiExplain.json.factors.some((item) => item.name === "productive_activity"), "KPI explain factors must be deterministic");
 
+  const ueba = await request("/api/ueba?role=security");
+  assert(ueba.response.status === 200, "UEBA API must return 200");
+  assert(["high", "medium", "low", "unknown"].includes(ueba.json?.confidence), "UEBA must include confidence level");
+  assert(
+    ["confirmed_risk", "likely_risk", "needs_investigation", "insufficient_data"].includes(ueba.json?.classification),
+    "UEBA must include stable classification",
+  );
+  assert(Array.isArray(ueba.json?.confidence_reasons), "UEBA must include confidence reasons");
+
   const riskNarrative = await request("/api/risk/narrative?role=executive");
   assert(riskNarrative.response.status === 200, "Risk narrative must return 200");
   assert(typeof riskNarrative.json?.risk_score === "number", "Risk narrative must include risk_score");
   assert(["low", "guarded", "medium", "high", "critical"].includes(riskNarrative.json?.risk_level), "Risk narrative must include stable risk_level");
+  assert(["high", "medium", "low", "unknown"].includes(riskNarrative.json?.confidence), "Risk narrative must include confidence");
+  assert(
+    ["confirmed_risk", "likely_risk", "needs_investigation", "insufficient_data"].includes(riskNarrative.json?.classification),
+    "Risk narrative must include classification",
+  );
   assert(Array.isArray(riskNarrative.json?.why), "Risk narrative must include why list");
   assert(riskNarrative.json?.model?.type === "rule_based", "Risk narrative must be rule-based");
 
@@ -97,6 +111,7 @@ async function main() {
       "query limits",
       "role gates",
       "/api/workforce/kpi/explain",
+      "/api/ueba",
       "/api/risk/narrative",
       "/api/actions",
     ],

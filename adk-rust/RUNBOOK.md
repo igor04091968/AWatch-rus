@@ -1,9 +1,9 @@
-# Runbook: перевод DetMir на Rust / ADK-Rust
+# Runbook: перевод AWatch-rus на Rust / ADK-Rust
 
 Дата фиксации: `2026-06-01`
 
 Цель: постепенно заменить хрупкие Python/shell operational scripts на
-самодостаточные Rust-бинарники, не ломая текущий production-контур DetMir.
+самодостаточные Rust-бинарники, не ломая текущий production-контур AWatch-rus.
 
 Этот runbook является рабочим планом миграции. Если фактический runtime
 расходится с этим документом, сначала фиксируется baseline, затем обновляется
@@ -1543,7 +1543,7 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
     - production binary доставлен на AW server, но `--apply` не запускался;
     - production dry-run: `apply=false`, `ok=true`, `missing=0`,
       `executed=0`, `steps=25`;
-    - final production gates: AW failed units `0`, DetMir status OK with
+    - final production gates: AW failed units `0`, `detmir-status` OK with
       `service_warnings=0`, `dlp_counts={ok:22,warn:0,fail:0}`,
       `ok_for_operator=true`;
     - gates: `cargo fmt --all -- --check`, `cargo test -p
@@ -1707,15 +1707,15 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       Grafana check `ok=true` with `fail=0`, `detmir-auto --no-heal` rc `0`,
       portal health `true`, `detmir-status` `OK / ok_for_operator=true`, and
       failed units `0`.
-    - `docs/DETMIR_THREAT_MODEL_RU.md` added as the current working threat
-      model for DetMir. It records the product as an operational
+    - `docs/THREAT_MODEL_RU.md` added as the current working threat
+      model for AWatch-rus. It records the product as an operational
       control and technical audit platform, not a certified DLP/SIEM/EDR/XDR
       or FSTEC SZI. It also records Igor as the declared product owner, lists
       assets, trust zones, attacker/operator-failure classes, implemented
       evidence controls, residual risks, and the hardening roadmap.
-    - `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` added as the
-      registry/product positioning note. Current decision: lead with DetMir as
-      an operational control and IT infrastructure management platform, use
+    - `docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` added as the
+      registry/product positioning note. Current decision: lead with AWatch-rus
+      as an operational control and IT infrastructure management platform, use
       `09.10` as the primary Russian software registry class target, keep
       DLP/security/evidence/Hayabusa as applied modules, and prepare website,
       operator/admin docs, ownership package, screenshots, and dependency
@@ -1724,17 +1724,18 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       `docs/ADMIN_GUIDE_RU.md`, `docs/OPERATOR_GUIDE_RU.md`,
       `docs/INSTALL_RU.md`, `docs/ARCHITECTURE_RU.md`,
       `docs/OWNERSHIP_RU.md`, `docs/THIRD_PARTY_LICENSES_RU.md`, and
-      `docs/REGISTRY_CHECKLIST_RU.md`. Naming decision fixed across the docs:
-      `DetMir` is the product, `AWatch-rus` is the repository/technical base,
-      and the external formula is `DetMir, программный комплекс на базе
-      AWatch-rus`.
+      `docs/REGISTRY_CHECKLIST_RU.md`. Current naming decision for public
+      materials: `AWatch-rus` is the product and repository name. Legacy
+      `detmir-*` service, crate and environment identifiers remain technical
+      runtime identifiers until a separate compatibility-safe migration is
+      approved.
 
 Отложить:
 
 - post-MVP развитие `detmir-portal`: role-aware views, safe check-now action,
   daily owner report, historical trends, AI summary with strict source
   citations, action buttons with allowlist and audit log. Детальный план:
-  `docs/DETMIR_PORTAL_GUI_PLAN_RU.md`;
+  `docs/PORTAL_GUI_PLAN_RU.md`;
 - перенос Telegram bot runtime снят с плана: Python остается постоянным
   runtime, Rust используется только для backend helpers;
 - перенос оставшихся install/runtime scripts на Rust;

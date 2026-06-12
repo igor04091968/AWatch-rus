@@ -66,9 +66,6 @@ $effectiveLogsRoot = if ($existingConfig) { [string]$existingConfig.paths.logsRo
 $effectiveConfigPath = if ($ConfigPath) { $ConfigPath } else { Join-Path $effectiveStateRoot 'deployment-config.json' }
 $effectiveLaunchScript = Join-Path $effectiveStateRoot 'launch-watchers.ps1'
 $effectiveRecoveryScript = Join-Path $effectiveStateRoot 'recovery-loop.ps1'
-$effectiveCollector = Join-Path $effectiveStateRoot 'browser-domains-native-collector.ps1'
-$effectiveEndpointCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$existingConfig.paths.endpointCollectorScript } else { Join-Path $effectiveStateRoot 'dlp-endpoint-signals-collector.ps1' }
-$effectiveFileCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$existingConfig.paths.fileCollectorScript } else { Join-Path $effectiveStateRoot 'file-operations-collector.ps1' }
 $effectiveSessionCollector = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$existingConfig.paths.sessionCollectorScript } else { Join-Path $effectiveStateRoot 'worktime-session-collector.ps1' }
 $effectiveEvtxExportScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'evtxExportScript') { [string]$existingConfig.paths.evtxExportScript } else { Join-Path $effectiveStateRoot 'export-evtx-for-hayabusa.ps1' }
 $effectiveHayabusaUploadScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'hayabusaUploadScript') { [string]$existingConfig.paths.hayabusaUploadScript } else { Join-Path $effectiveStateRoot 'export-upload-hayabusa-to-aw-server.ps1' }
@@ -76,6 +73,19 @@ $effectiveFile1CTelemetryScript = if ($existingConfig -and $existingConfig.paths
 $effectiveRules = Join-Path $effectiveStateRoot 'web-category-rules.json'
 $effectivePolicy = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$existingConfig.paths.policyPath } else { Join-Path $effectiveStateRoot 'dlp-policy.json' }
 $effectivePolicyClientScript = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'policyClientScript') { [string]$existingConfig.paths.policyClientScript } else { Join-Path $effectiveStateRoot 'dlp-policy-client.ps1' }
+$effectiveTelemetryExecutable = if ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable' -and -not [string]::IsNullOrWhiteSpace([string]$existingConfig.paths.file1cTelemetryExecutable)) { [string]$existingConfig.paths.file1cTelemetryExecutable } else { Join-Path $PSScriptRoot 'aw-windows-telemetry.exe' }
+
+function Resolve-OptionalExistingPath {
+    param([AllowEmptyString()][string]$Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return ''
+    }
+    if (Test-Path -LiteralPath $Path) {
+        return $Path
+    }
+    return ''
+}
 
 $effectiveServerHost = if ($ServerHost) { $ServerHost } elseif ($existingConfig) { [string]$existingConfig.server.host } else { $null }
 $effectiveServerPort = if ($PSBoundParameters.ContainsKey('ServerPort')) { $ServerPort } elseif ($existingConfig) { [int]$existingConfig.server.port } else { 5600 }
@@ -109,6 +119,7 @@ $effectiveHayabusaAutoUploadIntervalHours = if ($existingConfig -and $existingCo
 $effectiveHayabusaAutoUploadHoursBack = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'hoursBack') { [int]$existingConfig.forensics.hayabusaAutomation.hoursBack } else { 6 }
 $effectiveHayabusaAutoUploadMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'mode') { [string]$existingConfig.forensics.hayabusaAutomation.mode } else { 'incident' }
 $effectiveHayabusaAutoUploadTaskName = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'taskName') { [string]$existingConfig.forensics.hayabusaAutomation.taskName } else { 'ActivityWatch Hayabusa Upload' }
+$effectiveHayabusaAutoUploadRunAsUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'forensics' -and $existingConfig.forensics.PSObject.Properties.Name -contains 'hayabusaAutomation' -and $existingConfig.forensics.hayabusaAutomation.PSObject.Properties.Name -contains 'runAsUser') { [string]$existingConfig.forensics.hayabusaAutomation.runAsUser } else { '' }
 $effectiveFile1CAutoUploadEnabled = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'enabled') { [bool]$existingConfig.analytics.file1cAutomation.enabled } else { $true }
 $effectiveFile1CAutoUploadIntervalHours = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'intervalHours') { [int]$existingConfig.analytics.file1cAutomation.intervalHours } else { 6 }
 $effectiveFile1CAutoUploadIntervalMinutes = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'intervalMinutes') { [int]$existingConfig.analytics.file1cAutomation.intervalMinutes } else { [Math]::Max(1, $effectiveFile1CAutoUploadIntervalHours) * 60 }
@@ -116,6 +127,9 @@ $effectiveFile1CAutoUploadTaskName = if ($existingConfig -and $existingConfig.PS
 $effectiveFile1CAutoUploadRunAsUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'runAsUser') { [string]$existingConfig.analytics.file1cAutomation.runAsUser } else { '' }
 $effectiveFile1CTargetHost = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetHost') { [string]$existingConfig.analytics.file1cAutomation.targetHost } else { '' }
 $effectiveFile1CTargetUser = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'analytics' -and $existingConfig.analytics.PSObject.Properties.Name -contains 'file1cAutomation' -and $existingConfig.analytics.file1cAutomation.PSObject.Properties.Name -contains 'targetUser') { [string]$existingConfig.analytics.file1cAutomation.targetUser } else { 'igor' }
+$effectiveBrowserCollectorMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'browserCollectorMode') { [string]$existingConfig.collectors.browserCollectorMode } else { 'rust_primary' }
+$effectiveDlpEndpointMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'dlpEndpointMode') { [string]$existingConfig.collectors.dlpEndpointMode } else { 'rust_primary' }
+$effectiveFileOpsMode = if ($existingConfig -and $existingConfig.PSObject.Properties.Name -contains 'collectors' -and $existingConfig.collectors.PSObject.Properties.Name -contains 'fileOpsMode') { [string]$existingConfig.collectors.fileOpsMode } else { 'rust_primary' }
 
 if ([string]::IsNullOrWhiteSpace($effectiveFile1CTargetHost)) {
     $file1cLogPath = Join-Path $effectiveLogsRoot 'file1c-telemetry.log'
@@ -170,6 +184,10 @@ $assetResult = Copy-ActivityWatchCollectorAssets `
     -CustomRulesSource $CustomRulesPath `
     -CustomPolicySource $CustomPolicyPath
 
+$effectiveCollector = if (-not [string]::IsNullOrWhiteSpace([string]$assetResult.CollectorScript)) { [string]$assetResult.CollectorScript } elseif ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'collectorScript') { Resolve-OptionalExistingPath -Path ([string]$existingConfig.paths.collectorScript) } else { '' }
+$effectiveEndpointCollector = if (-not [string]::IsNullOrWhiteSpace([string]$assetResult.EndpointCollectorScript)) { [string]$assetResult.EndpointCollectorScript } elseif ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { Resolve-OptionalExistingPath -Path ([string]$existingConfig.paths.endpointCollectorScript) } else { '' }
+$effectiveFileCollector = if (-not [string]::IsNullOrWhiteSpace([string]$assetResult.FileCollectorScript)) { [string]$assetResult.FileCollectorScript } elseif ($existingConfig -and $existingConfig.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { Resolve-OptionalExistingPath -Path ([string]$existingConfig.paths.fileCollectorScript) } else { '' }
+
 $taskDefinitions = New-ActivityWatchUserTaskDefinitions -Users $effectiveUsers
 Write-ActivityWatchLaunchScript -Path $effectiveLaunchScript -ConfigPath $effectiveConfigPath
 Write-ActivityWatchRecoveryScript -Path $effectiveRecoveryScript -ConfigPath $effectiveConfigPath
@@ -220,6 +238,7 @@ $config = New-ActivityWatchDeploymentConfig `
     -HayabusaAutoUploadHoursBack $effectiveHayabusaAutoUploadHoursBack `
     -HayabusaAutoUploadMode $effectiveHayabusaAutoUploadMode `
     -HayabusaAutoUploadTaskName $effectiveHayabusaAutoUploadTaskName `
+    -HayabusaAutoUploadRunAsUser $effectiveHayabusaAutoUploadRunAsUser `
     -File1CAutoUploadEnabled $effectiveFile1CAutoUploadEnabled `
     -File1CAutoUploadIntervalHours $effectiveFile1CAutoUploadIntervalHours `
     -File1CAutoUploadIntervalMinutes $effectiveFile1CAutoUploadIntervalMinutes `
@@ -231,6 +250,11 @@ $config = New-ActivityWatchDeploymentConfig `
     -RecoveryScriptPath $effectiveRecoveryScript `
     -UserTasks $taskDefinitions `
     -PackageVersion $effectiveVersion
+
+$config.paths.file1cTelemetryExecutable = $effectiveTelemetryExecutable
+$config.collectors.browserCollectorMode = $effectiveBrowserCollectorMode
+$config.collectors.dlpEndpointMode = $effectiveDlpEndpointMode
+$config.collectors.fileOpsMode = $effectiveFileOpsMode
 
 Write-ActivityWatchDeploymentConfig -Config $config -Path $effectiveConfigPath
 Remove-LegacyActivityWatchEntries

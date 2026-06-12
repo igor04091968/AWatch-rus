@@ -5,6 +5,7 @@
 ## Что уже работает
 
 - Windows-хост раз в `6` часов делает `EVTX export + upload`
+- production scheduled task: `ActivityWatch Hayabusa Upload`, principal `Администратор`, `LogonType=Interactive`, `RunLevel=Highest`
 - `AW-server` автоматически подхватывает пакет из `drop`
 - `aw-hayabusa` строит forensic-отчёт
 - `aw-hayabusa-case-alert` считает severity и score
@@ -22,10 +23,15 @@ powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-up
 На сервере для проверки:
 
 ```bash
+systemctl is-active aw-hayabusa-drop.path
+systemctl is-failed aw-hayabusa-drop.service || true
+aw-hayabusa inventory
 cat /opt/hayabusa/state/latest-intake.json
 journalctl -u aw-hayabusa-drop.service -n 80 --no-pager
 curl -fsS http://127.0.0.1:5602/api/0/dlp/cases/30
 ```
+
+Ожидаемо: `drop` и `incoming` пустые, `latest-intake.json` имеет `status=ok`, `host=SHARKON2025`, а `LastTaskResult` Windows-задачи равен `0`.
 
 ## Что получает оператор
 

@@ -134,5 +134,5 @@ AWatch-rus помогает контролировать и расследова
 
 - `docs/ADMIN_GUIDE_RU.md`
 - `docs/GRAFANA_DASHBOARDS_RU.md`
-- `docs/DETMIR_THREAT_MODEL_RU.md`
+- `docs/THREAT_MODEL_RU.md`
 - `docs/dlp-security-functional-spec-ru.md`

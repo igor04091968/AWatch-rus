@@ -312,7 +312,7 @@ function Get-ActivityWatchBuiltInAdministratorName {
     catch {
     }
 
-    if ([string]$env:COMPUTERNAME -ieq 'HOST-EXAMPLE') {
+    if ([string]$env:COMPUTERNAME -ieq 'SHARKON2025') {
         $script:ActivityWatchBuiltInAdministratorName = 'Администратор'
         return $script:ActivityWatchBuiltInAdministratorName
     }
@@ -803,12 +803,18 @@ function Copy-ActivityWatchCollectorAssets {
     $examplePolicyTarget = Join-Path $StateRoot 'dlp-policy.example.json'
     $policyTarget = Join-Path $StateRoot 'dlp-policy.json'
 
-    Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
-    Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
+    if ($CollectorScriptSource -and (Test-Path -LiteralPath $CollectorScriptSource)) {
+        Copy-Item -LiteralPath $CollectorScriptSource -Destination $collectorTarget -Force
+    }
+    if ($EndpointCollectorScriptSource -and (Test-Path -LiteralPath $EndpointCollectorScriptSource)) {
+        Copy-Item -LiteralPath $EndpointCollectorScriptSource -Destination $endpointCollectorTarget -Force
+    }
     if ($PolicyClientScriptSource -and (Test-Path -LiteralPath $PolicyClientScriptSource)) {
         Copy-Item -LiteralPath $PolicyClientScriptSource -Destination $policyClientTarget -Force
     }
-    Copy-Item -LiteralPath $FileCollectorScriptSource -Destination $fileCollectorTarget -Force
+    if ($FileCollectorScriptSource -and (Test-Path -LiteralPath $FileCollectorScriptSource)) {
+        Copy-Item -LiteralPath $FileCollectorScriptSource -Destination $fileCollectorTarget -Force
+    }
     Copy-Item -LiteralPath $SessionCollectorScriptSource -Destination $sessionCollectorTarget -Force
     if ($EvtxExportScriptSource -and (Test-Path -LiteralPath $EvtxExportScriptSource)) {
         Copy-Item -LiteralPath $EvtxExportScriptSource -Destination $evtxExportTarget -Force
@@ -841,11 +847,15 @@ function Copy-ActivityWatchCollectorAssets {
         Copy-Item -LiteralPath $examplePolicyTarget -Destination $policyTarget -Force
     }
 
+    $effectiveCollectorTarget = if (Test-Path -LiteralPath $collectorTarget) { $collectorTarget } else { '' }
+    $effectiveEndpointCollectorTarget = if (Test-Path -LiteralPath $endpointCollectorTarget) { $endpointCollectorTarget } else { '' }
+    $effectiveFileCollectorTarget = if (Test-Path -LiteralPath $fileCollectorTarget) { $fileCollectorTarget } else { '' }
+
     return [pscustomobject]@{
-        CollectorScript         = $collectorTarget
-        EndpointCollectorScript = $endpointCollectorTarget
+        CollectorScript         = $effectiveCollectorTarget
+        EndpointCollectorScript = $effectiveEndpointCollectorTarget
         PolicyClientScript      = $policyClientTarget
-        FileCollectorScript     = $fileCollectorTarget
+        FileCollectorScript     = $effectiveFileCollectorTarget
         SessionCollectorScript  = $sessionCollectorTarget
         EvtxExportScript        = $evtxExportTarget
         HayabusaUploadScript    = $hayabusaUploadTarget
@@ -873,11 +883,14 @@ function New-ActivityWatchDeploymentConfig {
         [Parameter(Mandatory = $true)]
         [string]$LogsRoot,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$CollectorScript,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$EndpointCollectorScript,
         [string]$PolicyClientScript,
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$FileCollectorScript,
         [Parameter(Mandatory = $true)]
         [string]$SessionCollectorScript,
@@ -929,6 +942,7 @@ function New-ActivityWatchDeploymentConfig {
         [int]$HayabusaAutoUploadHoursBack = 6,
         [string]$HayabusaAutoUploadMode = 'incident',
         [string]$HayabusaAutoUploadTaskName = 'ActivityWatch Hayabusa Upload',
+        [string]$HayabusaAutoUploadRunAsUser,
         [bool]$File1CAutoUploadEnabled = $true,
         [int]$File1CAutoUploadIntervalHours = 6,
         [int]$File1CAutoUploadIntervalMinutes = 15,
@@ -960,6 +974,7 @@ function New-ActivityWatchDeploymentConfig {
     if ($File1CAutoUploadEnabled -and [string]::IsNullOrWhiteSpace($File1CTargetHost)) {
         throw 'File1CTargetHost is required when File1CAutoUploadEnabled is true.'
     }
+    $toolkitRoot = Join-Path (Split-Path -Parent $InstallRoot) 'windows'
 
     return [pscustomobject]@{
         version  = 1
@@ -983,7 +998,7 @@ function New-ActivityWatchDeploymentConfig {
             evtxExportScript = $EvtxExportScript
             hayabusaUploadScript = $HayabusaUploadScript
             file1cTelemetryScript = $File1CTelemetryScript
-            file1cTelemetryExecutable = if ([string]::IsNullOrWhiteSpace($File1CTelemetryScript)) { '' } else { Join-Path (Split-Path -Parent $File1CTelemetryScript) 'aw-windows-telemetry.exe' }
+            file1cTelemetryExecutable = Join-Path $toolkitRoot 'aw-windows-telemetry.exe'
             rulesPath      = $RulesPath
             policyPath     = $PolicyPath
             launchScript   = $LaunchScriptPath
@@ -998,6 +1013,9 @@ function New-ActivityWatchDeploymentConfig {
             windowEnabled = $WindowEnabled
             fileOpsEnabled = $FileOpsEnabled
             emailEnabled = $false
+            browserCollectorMode = 'rust_primary'
+            dlpEndpointMode = 'rust_primary'
+            fileOpsMode = 'rust_primary'
             worktimeSessionEnabled = $true
             worktimeSessionMode = 'powershell_primary'
             worktimeLegacyFallbackEnabled = $true
@@ -1020,6 +1038,7 @@ function New-ActivityWatchDeploymentConfig {
                 hoursBack = $HayabusaAutoUploadHoursBack
                 mode = $HayabusaAutoUploadMode
                 taskName = $HayabusaAutoUploadTaskName
+                runAsUser = $HayabusaAutoUploadRunAsUser
             }
         }
         analytics = [pscustomobject]@{
@@ -1446,19 +1465,20 @@ function Start-RustCollectorIfNeeded {
     )
 
     if ([string]::IsNullOrWhiteSpace(`$ExePath) -or [string]::IsNullOrWhiteSpace(`$Subcommand)) {
-        return
+        return `$false
     }
 
     if (-not (Test-Path -LiteralPath `$ExePath)) {
-        return
+        return `$false
     }
 
     if (Test-RustCollectorRunning -Subcommand `$Subcommand -SessionId `$SessionId) {
-        return
+        return `$true
     }
 
     `$argumentList = @(`$Subcommand, '--config-path', `$ConfigPath, '--mode', 'enforce')
     Start-Process -FilePath `$ExePath -ArgumentList `$argumentList -WindowStyle Hidden
+    return `$true
 }
 
 `$config = Get-DeploymentConfig -Path `$ConfigPath
@@ -1466,6 +1486,9 @@ function Start-RustCollectorIfNeeded {
 `$installRoot = [string]`$config.paths.installRoot
 `$stateRoot = [string]`$config.paths.stateRoot
 `$deployRoot = if (`$config.paths.PSObject.Properties.Name -contains 'deployRoot' -and -not [string]::IsNullOrWhiteSpace([string]`$config.paths.deployRoot)) { [string]`$config.paths.deployRoot } elseif (`$config.paths.PSObject.Properties.Name -contains 'toolkitRoot' -and -not [string]::IsNullOrWhiteSpace([string]`$config.paths.toolkitRoot)) { [string]`$config.paths.toolkitRoot } else { `$installRoot }
+if ((Split-Path -Path `$deployRoot -Leaf) -ieq 'bin') {
+    `$deployRoot = Split-Path -Path `$deployRoot -Parent
+}
 `$script:ApiBase = '{0}://{1}:{2}/api/0' -f [string]`$config.server.scheme, [string]`$config.server.host, [string]`$config.server.port
 `$script:Hostname = if (`$config.PSObject.Properties.Name -contains 'awHostname' -and -not [string]::IsNullOrWhiteSpace([string]`$config.awHostname)) { [string]`$config.awHostname } else { `$env:COMPUTERNAME }
 `$script:KnownBuckets = @{}
@@ -1481,9 +1504,9 @@ function Start-RustCollectorIfNeeded {
 `$afkEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]`$config.collectors.afkEnabled } else { `$true }
 `$windowEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]`$config.collectors.windowEnabled } else { `$true }
 `$fileOpsEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]`$config.collectors.fileOpsEnabled } else { `$true }
-`$browserCollectorMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'browserCollectorMode') { [string]`$config.collectors.browserCollectorMode } else { 'powershell_primary' }
-`$dlpEndpointMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'dlpEndpointMode') { [string]`$config.collectors.dlpEndpointMode } else { 'powershell_primary' }
-`$fileOpsMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsMode') { [string]`$config.collectors.fileOpsMode } else { 'powershell_primary' }
+`$browserCollectorMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'browserCollectorMode') { [string]`$config.collectors.browserCollectorMode } else { 'rust_primary' }
+`$dlpEndpointMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'dlpEndpointMode') { [string]`$config.collectors.dlpEndpointMode } else { 'rust_primary' }
+`$fileOpsMode = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'fileOpsMode') { [string]`$config.collectors.fileOpsMode } else { 'rust_primary' }
 `$emailEnabled = if (`$config.PSObject.Properties.Name -contains 'collectors' -and `$config.collectors.PSObject.Properties.Name -contains 'emailEnabled') { [bool]`$config.collectors.emailEnabled } else { `$false }
 `$emailCollectorScript = if (`$config.paths.PSObject.Properties.Name -contains 'emailCollectorScript') { [string]`$config.paths.emailCollectorScript } else { Join-Path `$stateRoot 'email-outbound-collector.ps1' }
 `$launchLockPath = New-LaunchLock -StateRoot `$stateRoot -SessionId `$sessionId
@@ -1514,18 +1537,24 @@ try {
     catch {
     }
     if (`$browserCollectorMode -ieq 'rust_primary') {
-        Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'browser-domains-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId
+        if (-not (Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'browser-domains-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId)) {
+            Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+        }
     } else {
         Start-CollectorScriptIfNeeded -ScriptPath `$collectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     }
     if (`$dlpEndpointMode -ieq 'rust_primary') {
-        Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'dlp-endpoint-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId
+        if (-not (Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'dlp-endpoint-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId)) {
+            Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+        }
     } else {
         Start-CollectorScriptIfNeeded -ScriptPath `$endpointCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
     }
     if (`$fileOpsEnabled) {
         if (`$fileOpsMode -ieq 'rust_primary') {
-            Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'file-operations-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId
+            if (-not (Start-RustCollectorIfNeeded -ExePath `$telemetryExe -Subcommand 'file-operations-collector' -ConfigPath `$ConfigPath -SessionId `$sessionId)) {
+                Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
+            }
         } else {
             Start-CollectorScriptIfNeeded -ScriptPath `$fileCollectorScript -ConfigPath `$ConfigPath -PowerShellExe `$powershellExe -SessionId `$sessionId
         }
@@ -2504,11 +2533,16 @@ function Register-ActivityWatchHayabusaAutoUploadTask {
     $intervalHours = [Math]::Max(1, [int]$automation.intervalHours)
     $hoursBack = [Math]::Max(1, [int]$automation.hoursBack)
     $mode = if ($automation.PSObject.Properties.Name -contains 'mode' -and -not [string]::IsNullOrWhiteSpace([string]$automation.mode)) { [string]$automation.mode } else { 'incident' }
+    $runAsUser = if ($automation.PSObject.Properties.Name -contains 'runAsUser' -and -not [string]::IsNullOrWhiteSpace([string]$automation.runAsUser)) { [string]$automation.runAsUser } else { '' }
     $powerShellExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
     $taskCommand = "`"$powerShellExe`" -NoProfile -ExecutionPolicy Bypass -File `"$uploadScript`" -ConfigPath `"$ConfigPath`" -HoursBack $hoursBack -Mode `"$mode`""
 
     Remove-ActivityWatchScheduledTask -TaskName $taskName
-    & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    if ($runAsUser) {
+        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU $runAsUser /IT /RL HIGHEST /F | Out-Null
+    } else {
+        & schtasks.exe /Create /TN $taskName /TR $taskCommand /SC HOURLY /MO $intervalHours /ST 00:00 /RU SYSTEM /RL HIGHEST /F | Out-Null
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Не удалось создать scheduled task $taskName через schtasks.exe"
     }

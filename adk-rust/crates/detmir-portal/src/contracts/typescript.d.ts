@@ -70,6 +70,8 @@ export interface RiskNarrative {
   };
   risk_level: "low" | "guarded" | "medium" | "high" | "critical" | string;
   risk_score: number;
+  confidence?: "high" | "medium" | "low" | "unknown" | string;
+  classification?: "confirmed_risk" | "likely_risk" | "needs_investigation" | "insufficient_data" | string;
   title: string;
   summary: string;
   why: string[];
@@ -257,6 +259,13 @@ export interface UebaResponse {
   score: number | null;
   severity: "normal" | "low" | "medium" | "high" | "critical" | string;
   status?: string;
+  confidence: "high" | "medium" | "low" | "unknown" | string;
+  confidence_score?: number | null;
+  classification: "confirmed_risk" | "likely_risk" | "needs_investigation" | "insufficient_data" | string;
+  classification_reason?: string;
+  confidence_reasons: string[];
+  confidence_contributors?: JsonObject[];
+  evidence_status?: "available" | "not_available" | string;
   score_components: {
     activity_anomaly: number;
     time_anomaly: number;

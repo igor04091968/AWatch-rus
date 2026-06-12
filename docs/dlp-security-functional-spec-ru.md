@@ -22,7 +22,7 @@
 Система не является полноценной DLP-платформой enterprise-класса с нативной аутентификацией, RBAC, аппаратной изоляцией и криптографической подписью политик. Это важно учитывать при ИБ-оценке.
 
 Текущая модель угроз для всего контура AWatch-rus зафиксирована отдельно:
-`docs/DETMIR_THREAT_MODEL_RU.md`. В ней DLP-функции рассматриваются как часть
+`docs/THREAT_MODEL_RU.md`. В ней DLP-функции рассматриваются как часть
 платформы операционного контроля и технического аудита, а не как заявление о
 сертифицированной DLP/СЗИ.
 
@@ -153,10 +153,16 @@ Deployment/tooling:
 
 Сценарии и артефакты:
 
-- `scripts/extract_ioc_from_sigma.py`
-  Извлечение IOC из Sigma/Hayabusa rules.
+- `adk-rust/crates/extract-ioc-from-sigma`
+  Production Rust extractor для извлечения IOC из Sigma/Hayabusa rules.
+- `/usr/local/bin/aw-extract-ioc-from-sigma`
+  Установленный production binary на AW server.
 - `scripts/build_dlp_ioc_from_hayabusa.sh`
-  Построение JSON/CSV/SQL артефактов IOC.
+  Локальный/manual wrapper для построения JSON/CSV/SQL артефактов IOC.
+- `aw-dlp-ioc-refresh.service` / `aw-dlp-ioc-refresh.timer`
+  Автоматическое пополнение IOC из upstream `Yamato-Security/hayabusa-rules`.
+
+Подробный runtime contract: `docs/dlp-ioc-enrichment.md`.
 
 ### 2.9 Health / autoheal / operations
 
@@ -478,11 +484,18 @@ Policy Engine поддерживает:
 
 ## 15. IOC enrichment через Hayabusa / Sigma
 
-Реализован вспомогательный pipeline:
+Реализован автоматический pipeline пополнения DLP IOC/сигнатур:
 
-- разбор Sigma/YAML правил;
+- источник: GitHub ruleset `Yamato-Security/hayabusa-rules`;
+- deployment variable: `aw_dlp_ioc_rules_zip_url`;
+- расписание: `aw-dlp-ioc-refresh.timer`, по умолчанию каждые `6h`;
+- production extractor: Rust binary `/usr/local/bin/aw-extract-ioc-from-sigma`;
+- разбор Sigma/YAML правил из `hayabusa-rules`;
 - извлечение IOC-полей;
-- выгрузка в `json/csv/sql`.
+- выгрузка в `ioc_blacklist.json`, `ioc_blacklist.csv`, `ioc_blacklist.sql`;
+- публикация через `aw-worktime-api` на `/dlp-ioc/ioc_blacklist.*`;
+- потребление Windows DLP policy через `ioc.source` и формат
+  `hayabusa_sigma_v1`.
 
 Извлекаемые типы:
 
@@ -494,6 +507,15 @@ Policy Engine поддерживает:
 Назначение:
 
 - preload blacklist/indicator данных для DLP и смежной аналитики.
+- автоматическое обогащение DLP rules без ручного редактирования endpoint JSON.
+
+Границы:
+
+- DLP Policy Engine управляет жизненным циклом политик
+  (`draft/approve/deploy/rollback`), но не является источником upstream
+  сигнатур.
+- Hayabusa/Sigma IOC enrichment не равен Hayabusa EVTX forensics runner; это
+  отдельный контур пополнения IOC blacklist.
 
 ## 16. Health-check, autoheal и эксплуатационная устойчивость
 
@@ -604,7 +626,7 @@ python3 scripts/dlp-admin-cli.py cases list --limit 50
 
 ## 21. Связанные документы
 
-- `docs/DETMIR_THREAT_MODEL_RU.md`
+- `docs/THREAT_MODEL_RU.md`
 - `docs/dlp-policy-engine.md`
 - `docs/dlp-integrations.md`
 - `docs/dlp-enforcement.md`

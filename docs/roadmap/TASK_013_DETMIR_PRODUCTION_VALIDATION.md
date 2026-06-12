@@ -370,3 +370,89 @@ git diff --check
 7. Какие scripts добавлены.
 8. Результаты проверок.
 9. Рекомендованные следующие задачи.
+
+---
+
+## Выполнение
+
+Статус: выполнено как production validation / operational audit.
+
+Создан документ:
+
+- `docs/DETMIR_PRODUCTION_VALIDATION_RU.md`.
+
+Проверено без коммита реальных payload/logs/screenshots:
+
+- gateway и portal runtime;
+- ActivityWatch API;
+- portal API reports;
+- portal tabs и role views через browser/tabs smoke;
+- Workforce/KPI report structure;
+- UEBA endpoint;
+- Risk Narrative endpoint availability;
+- Executive Action Center endpoint availability;
+- Windows/RDP agent runtime;
+- AW server service state;
+- bucket freshness summary;
+- production-hardening endpoint availability;
+- sensitive data hygiene.
+
+Подтверждено работающее:
+
+- gateway-level health;
+- portal UI на фактическом gateway-local port;
+- `/portal/api/health`;
+- `/portal/api/reports` по ролям;
+- Security events backend;
+- `/portal/api/ueba`;
+- Forensics view;
+- базовые portal tabs;
+- server role gates в существующем tabs smoke;
+- ActivityWatch API и свежие buckets;
+- текущий Windows runtime с `awatch-agent-rs` и watchers.
+
+Найдены gaps:
+
+- live portal runtime отстает от Demo Freeze v1;
+- `/portal/api/workforce/kpi/explain`, `/portal/api/risk/narrative`,
+  `/portal/api/actions` на live-контуре возвращают `404`;
+- `/healthz`, `/readyz`, `/version`, `/metrics` не доступны на фактическом
+  portal port;
+- request id / correlation id headers не возвращаются live portal API;
+- Executive visual conformance smoke не проходит на live runtime;
+- UEBA `critical` требует ручной проверки evidence, чтобы исключить шум.
+
+Scripts:
+
+- новые scripts не добавлялись;
+- использованы существующие `scripts/browser-conformance-smoke.mjs`,
+  `scripts/detmir-portal-tabs-smoke.mjs`,
+  `scripts/awatch-production-hardening-smoke.mjs`,
+  `scripts/deployment-readiness-smoke.mjs`,
+  `scripts/pilot-validation-smoke.mjs`.
+
+Результаты проверок:
+
+- `cargo fmt --all --check` - OK;
+- `cargo clippy --all-targets --all-features -- -D warnings` - OK;
+- `cargo test --all` - OK;
+- `cargo build --release` - OK;
+- `node scripts/deployment-readiness-smoke.mjs` - OK;
+- `node scripts/pilot-validation-smoke.mjs` - OK;
+- live `scripts/browser-conformance-smoke.mjs` - FAIL для Executive,
+  Workforce, Security; OK для Forensics;
+- live `scripts/detmir-portal-tabs-smoke.mjs` - FAIL только на Executive
+  freeze-layer checks; базовые tabs, role gates, security/forensics/admin OK;
+- live `scripts/awatch-production-hardening-smoke.mjs` - FAIL:
+  `/healthz` на live portal base не возвращает `200`;
+- `git diff --check` - OK;
+- sensitive scan по добавленным/измененным файлам - OK после исключения
+  терминологических false positives.
+
+Итог:
+
+- live-контур пригоден для controlled internal review;
+- расширять пилот нельзя, пока не закрыт deployment/version drift и не повторен
+  live smoke после controlled deploy;
+- новых claims, API, UI, collectors, ML/LLM и SIEM/DLP/EDR заявлений не
+  добавлялось.

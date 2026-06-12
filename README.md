@@ -208,7 +208,7 @@ collectors.
   [commercial positioning](docs/REGISTRY_COMMERCIAL_POSITIONING_RU.md),
   [readiness checklist](docs/REGISTRY_READINESS_CHECKLIST_RU.md).
 
-- [Позиционирование для реестра российского ПО](docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
+- [Позиционирование для реестра российского ПО](docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)
 - [Registry product passport](docs/REGISTRY_PRODUCT_PASSPORT_RU.md)
 - [Registry architecture](docs/REGISTRY_ARCHITECTURE_RU.md)
@@ -223,7 +223,7 @@ collectors.
 - [Сценарий экспертной проверки](docs/EXPERT_TEST_SCENARIO_RU.md)
 - [Release manifest 2026-06](docs/RELEASE_MANIFEST_2026-06.md)
 - [Эксплуатационный профиль](docs/OPERATIONAL_PROOF_PROFILE_RU.md)
-- [Коммерческие модули AWatch-rus](docs/DETMIR_COMMERCIAL_MODULES_RU.md)
+- [Коммерческие модули AWatch-rus](docs/COMMERCIAL_MODULES_RU.md)
 - [Архитектурный baseline](docs/ARCHITECTURE_BASELINE_RU.md)
 - [Пакет пилота для заказчика](docs/CUSTOMER_PILOT_PACK_RU.md)
 - [Enterprise deployment guide](docs/ENTERPRISE_DEPLOYMENT_GUIDE_RU.md)
@@ -251,6 +251,7 @@ collectors.
 - [Browser conformance smoke](docs/BROWSER_CONFORMANCE_RU.md)
 - [Production readiness портала](docs/PRODUCTION_READINESS_RU.md)
 - [Explainable Workforce KPI](docs/EXPLAINABLE_KPI_RU.md)
+- [Risk Narrative](docs/RISK_NARRATIVE_RU.md)
 - [Executive Action Center](docs/EXECUTIVE_ACTION_CENTER_RU.md)
 - [Rust Agent baseline](docs/RUST_AGENT_BASELINE_RU.md)
 - [Итог production-расследования 2026-06-07](docs/PRODUCTION_INCIDENT_REPORT_2026-06-07_RU.md)

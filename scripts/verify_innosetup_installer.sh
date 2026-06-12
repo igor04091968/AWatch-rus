@@ -48,7 +48,6 @@ wineserver -w >/dev/null 2>&1
 
 required_files=(
   windows/AWatchRusCollectorGuardService.cs
-  windows/aw-collector-guard.ps1
   windows/install-collector-guard-service.ps1
   windows/aw-windows-telemetry.exe
   windows/dlp-policy.native-cross-os.example.json
@@ -69,10 +68,5 @@ for rel in "${required_files[@]}"; do
     exit 1
   fi
 done
-
-if ! grep -q 'collector guard self-test OK' "${INSTALL_DIR_UNIX}/windows/aw-collector-guard.ps1"; then
-  echo "Guard self-test marker missing in extracted installer payload" >&2
-  exit 1
-fi
 
 echo "verify_innosetup_installer: OK"

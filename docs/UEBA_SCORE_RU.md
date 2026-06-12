@@ -42,11 +42,17 @@ activity anomaly
 
 - `score` - число 0-100;
 - `severity` - `normal`, `low`, `medium`, `high` или `critical`;
+- `confidence` - уровень уверенности `high`, `medium`, `low` или `unknown`;
+- `classification` - интерпретация `confirmed_risk`, `likely_risk`,
+  `needs_investigation` или `insufficient_data`;
+- `confidence_reasons` - причины снижения уверенности;
 - `score_components` - пять компонент формулы;
 - `reason_codes` - коды сработавших правил;
 - `explanation` - человекочитаемое объяснение;
 - `model.ml_used=false`;
 - `model.llm_used=false`.
+
+Подробнее: [UEBA_CONFIDENCE_MODEL_RU.md](UEBA_CONFIDENCE_MODEL_RU.md).
 
 ## Ограничения
 

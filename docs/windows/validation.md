@@ -43,7 +43,7 @@ Get-ScheduledTask -TaskName 'ActivityWatch*' |
 Точечная проверка:
 
 ```powershell
-Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Launch [HOST-EXAMPLE_user1]'
+Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Launch [SHARKON2025_user1]'
 Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Recovery'
 ```
 

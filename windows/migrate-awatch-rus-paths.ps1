@@ -91,18 +91,68 @@ function Update-AWatchConfigPaths {
         [pscustomobject]$Config
     )
 
+    function Resolve-OptionalCollectorRuntimePath {
+        param([Parameter(Mandatory = $true)][string]$FileName)
+
+        $stateCandidate = Join-Path $NewStateRoot $FileName
+        if (Test-Path -LiteralPath $stateCandidate) {
+            return $stateCandidate
+        }
+
+        if (Test-Path -LiteralPath (Join-Path $ToolkitRoot $FileName)) {
+            return $stateCandidate
+        }
+
+        return ''
+    }
+
+    function Set-ConfigPathValue {
+        param(
+            [Parameter(Mandatory = $true)][string]$Name,
+            [AllowEmptyString()][string]$Value
+        )
+
+        if ($Config.paths.PSObject.Properties.Name -contains $Name) {
+            $Config.paths.PSObject.Properties[$Name].Value = $Value
+        }
+        else {
+            $Config.paths | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+        }
+    }
+
     $logsRoot = Join-Path $NewStateRoot 'logs'
     $Config.paths.installRoot = $NewInstallRoot
     $Config.paths.stateRoot = $NewStateRoot
     $Config.paths.logsRoot = $logsRoot
-    $Config.paths.collectorScript = Join-Path $NewStateRoot 'browser-domains-native-collector.ps1'
-    $Config.paths.endpointCollectorScript = Join-Path $NewStateRoot 'dlp-endpoint-signals-collector.ps1'
+    Set-ConfigPathValue -Name 'collectorScript' -Value (Resolve-OptionalCollectorRuntimePath -FileName 'browser-domains-native-collector.ps1')
+    Set-ConfigPathValue -Name 'endpointCollectorScript' -Value (Resolve-OptionalCollectorRuntimePath -FileName 'dlp-endpoint-signals-collector.ps1')
+    Set-ConfigPathValue -Name 'fileCollectorScript' -Value (Resolve-OptionalCollectorRuntimePath -FileName 'file-operations-collector.ps1')
+    if ($Config.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable') {
+        $Config.paths.file1cTelemetryExecutable = Join-Path $ToolkitRoot 'aw-windows-telemetry.exe'
+    }
+    else {
+        $Config.paths | Add-Member -NotePropertyName 'file1cTelemetryExecutable' -NotePropertyValue (Join-Path $ToolkitRoot 'aw-windows-telemetry.exe')
+    }
     if ($Config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') {
         $Config.paths.sessionCollectorScript = Join-Path $NewStateRoot 'worktime-session-collector.ps1'
     }
     $Config.paths.rulesPath = Join-Path $NewStateRoot 'web-category-rules.json'
     if ($Config.paths.PSObject.Properties.Name -contains 'policyPath') {
         $Config.paths.policyPath = Join-Path $NewStateRoot 'dlp-policy.json'
+    }
+    if ($Config.PSObject.Properties.Name -contains 'collectors') {
+        foreach ($entry in @(
+                @{ Name = 'browserCollectorMode'; Value = 'rust_primary' },
+                @{ Name = 'dlpEndpointMode'; Value = 'rust_primary' },
+                @{ Name = 'fileOpsMode'; Value = 'rust_primary' }
+            )) {
+            if ($Config.collectors.PSObject.Properties.Name -contains $entry.Name) {
+                $Config.collectors.PSObject.Properties[$entry.Name].Value = $entry.Value
+            }
+            else {
+                $Config.collectors | Add-Member -NotePropertyName $entry.Name -NotePropertyValue $entry.Value
+            }
+        }
     }
     $Config.paths.launchScript = Join-Path $NewStateRoot 'launch-watchers.ps1'
     $Config.paths.recoveryScript = Join-Path $NewStateRoot 'recovery-loop.ps1'
@@ -194,7 +244,9 @@ if ($PSCmdlet.ShouldProcess($env:COMPUTERNAME, 'Миграция ActivityWatch W
     foreach ($file in @(
             'browser-domains-native-collector.ps1',
             'dlp-endpoint-signals-collector.ps1',
+            'file-operations-collector.ps1',
             'worktime-session-collector.ps1',
+            'aw-windows-telemetry.exe',
             'web-category-rules.example.json',
             'dlp-policy.example.json'
         )) {

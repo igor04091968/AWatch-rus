@@ -16,6 +16,7 @@ $collectorScript = [string]$config.paths.collectorScript
 $endpointCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'endpointCollectorScript') { [string]$config.paths.endpointCollectorScript } else { Join-Path $stateRoot 'dlp-endpoint-signals-collector.ps1' }
 $fileCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'fileCollectorScript') { [string]$config.paths.fileCollectorScript } else { Join-Path $stateRoot 'file-operations-collector.ps1' }
 $sessionCollectorScript = if ($config.paths.PSObject.Properties.Name -contains 'sessionCollectorScript') { [string]$config.paths.sessionCollectorScript } else { Join-Path $stateRoot 'worktime-session-collector.ps1' }
+$telemetryExecutable = if ($config.paths.PSObject.Properties.Name -contains 'file1cTelemetryExecutable' -and -not [string]::IsNullOrWhiteSpace([string]$config.paths.file1cTelemetryExecutable)) { [string]$config.paths.file1cTelemetryExecutable } else { Join-Path (Join-Path ([System.Environment]::GetFolderPath('ProgramFiles')) 'AWatch-rus\windows') 'aw-windows-telemetry.exe' }
 $evtxExportScript = if ($config.paths.PSObject.Properties.Name -contains 'evtxExportScript') { [string]$config.paths.evtxExportScript } else { Join-Path $stateRoot 'export-evtx-for-hayabusa.ps1' }
 $rulesPath = [string]$config.paths.rulesPath
 $policyPath = if ($config.paths.PSObject.Properties.Name -contains 'policyPath') { [string]$config.paths.policyPath } else { Join-Path $stateRoot 'dlp-policy.json' }
@@ -36,6 +37,9 @@ $queueMaxDepth = 1000
 $afkExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'afkEnabled') { [bool]$config.collectors.afkEnabled } else { $true }
 $windowExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'windowEnabled') { [bool]$config.collectors.windowEnabled } else { $true }
 $fileOpsExpected = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'fileOpsEnabled') { [bool]$config.collectors.fileOpsEnabled } else { $true }
+$browserCollectorMode = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'browserCollectorMode') { [string]$config.collectors.browserCollectorMode } else { 'rust_primary' }
+$dlpEndpointMode = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'dlpEndpointMode') { [string]$config.collectors.dlpEndpointMode } else { 'rust_primary' }
+$fileOpsMode = if ($config.PSObject.Properties.Name -contains 'collectors' -and $config.collectors.PSObject.Properties.Name -contains 'fileOpsMode') { [string]$config.collectors.fileOpsMode } else { 'rust_primary' }
 $sessionEventsConfig = if ($config.PSObject.Properties.Name -contains 'sessionEvents') { $config.sessionEvents } else { $null }
 $sessionLogonEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'logonEnabled') { [bool]$sessionEventsConfig.logonEnabled } else { $false }
 $sessionProcessEventsEnabled = if ($sessionEventsConfig -and $sessionEventsConfig.PSObject.Properties.Name -contains 'processEventsEnabled') { [bool]$sessionEventsConfig.processEventsEnabled } else { $false }
@@ -119,8 +123,13 @@ function Test-UserHasSession {
 function Get-CollectorProcesses {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$ScriptPath
     )
+
+    if ([string]::IsNullOrWhiteSpace($ScriptPath)) {
+        return @()
+    }
 
     return @(
         Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
@@ -438,8 +447,6 @@ function Get-TaskSnapshot {
 }
 
 $requiredFiles = @(
-    $collectorScript,
-    $endpointCollectorScript,
     $sessionCollectorScript,
     $evtxExportScript,
     $rulesPath,
@@ -449,7 +456,16 @@ $requiredFiles = @(
     $recoveryScript,
     $ConfigPath
 )
-if ($fileOpsExpected) {
+if ($browserCollectorMode -ieq 'rust_primary' -or $dlpEndpointMode -ieq 'rust_primary' -or ($fileOpsExpected -and $fileOpsMode -ieq 'rust_primary')) {
+    $requiredFiles += $telemetryExecutable
+}
+if ($browserCollectorMode -ine 'rust_primary') {
+    $requiredFiles += $collectorScript
+}
+if ($dlpEndpointMode -ine 'rust_primary') {
+    $requiredFiles += $endpointCollectorScript
+}
+if ($fileOpsExpected -and $fileOpsMode -ine 'rust_primary') {
     $requiredFiles += $fileCollectorScript
 }
 if ($afkExpected) {
@@ -477,6 +493,15 @@ $sessionCollectorProcesses = @(Get-CollectorProcesses -ScriptPath $sessionCollec
 $endpointCollectorProcesses = @(Get-CollectorProcesses -ScriptPath $endpointCollectorScript)
 $fileCollectorProcesses = if ($fileOpsExpected) { @(Get-CollectorProcesses -ScriptPath $fileCollectorScript) } else { @() }
 $browserCollectorProcesses = @(Get-CollectorProcesses -ScriptPath $collectorScript)
+$rustCollectorProcesses = @(
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -ieq 'aw-windows-telemetry.exe' -and
+            $_.CommandLine -and
+            ($_.CommandLine -match 'browser-domains-collector' -or $_.CommandLine -match 'dlp-endpoint-collector' -or $_.CommandLine -match 'file-operations-collector')
+        } |
+        Select-Object @{ Name = 'Name'; Expression = { $_.Name } }, @{ Name = 'Id'; Expression = { [int]$_.ProcessId } }, @{ Name = 'SessionId'; Expression = { [int]$_.SessionId } }, @{ Name = 'CommandLine'; Expression = { [string]$_.CommandLine } }
+)
 
 $liveLoggedOnUsers = Get-LoggedOnUsers
 $interactiveUsers = Get-LoggedOnUsers -IncludeDisconnected $true
@@ -611,6 +636,12 @@ $result = [ordered]@{
         endpointCollectorDuplicates = @($endpointCollectorDuplicates)
         fileCollectors = @($fileCollectorProcesses)
         fileCollectorDuplicates = @($fileCollectorDuplicates)
+        rustCollectors = @($rustCollectorProcesses)
+        collectorModes = [ordered]@{
+            browser = $browserCollectorMode
+            endpoint = $dlpEndpointMode
+            fileOps = $fileOpsMode
+        }
         ok = [bool](
             $watcherCountsOk -and
             $sessionCollectorOk -and

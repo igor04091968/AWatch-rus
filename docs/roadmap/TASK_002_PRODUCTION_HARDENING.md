@@ -381,3 +381,72 @@ Smoke должен проверять:
 7. Результаты команд проверки.
 8. Результат smoke.
 9. Известные ограничения
+
+---
+
+## Выполнение
+
+Статус: выполнено для Pilot v1 production-hardening слоя портала.
+
+Краткое описание:
+
+- добавлены production endpoints `/healthz`, `/readyz`, `/version`, `/metrics`;
+- добавлены request id / correlation id headers;
+- добавлены structured JSON HTTP logs;
+- добавлены bounded query/body limits для тяжелых API;
+- добавлена валидация production-конфигурации;
+- role gates сохранены и проверяются smoke;
+- pfSense остается `contract_only`, без заявления ingestion/SIEM.
+
+Ключевые файлы:
+
+- `adk-rust/crates/detmir-portal/src/production/`;
+- `adk-rust/crates/detmir-portal/src/main.rs`;
+- `docs/PRODUCTION_READINESS_RU.md`;
+- `scripts/awatch-production-hardening-smoke.mjs`.
+
+Endpoints:
+
+- `GET /healthz`;
+- `GET /readyz`;
+- `GET /version`;
+- `GET /metrics`;
+- защищенные Pilot v1 API: `/api/reports`, `/api/executive`,
+  `/api/workforce`, `/api/security`, `/api/forensics`, `/api/ueba`,
+  `/api/pfsense`, `/api/workforce/kpi/explain`.
+
+Лимиты и защита:
+
+- max request body size;
+- max/default page size;
+- max report date range;
+- request timeout и slow request logging threshold;
+- отказ `400` для слишком большого `page_size` или диапазона отчета;
+- отказ `413` для слишком большого body;
+- отказ `403` по role gate.
+
+Метрики:
+
+- `awatch_http_requests_total`;
+- `awatch_http_request_duration_seconds`;
+- `awatch_reports_generated_total`;
+- `awatch_ingestion_records_total`;
+- `awatch_ingestion_rejected_total`;
+- `awatch_role_denied_total`;
+- `awatch_readyz_status`.
+
+Проверки:
+
+- `cargo fmt --all --check`;
+- `cargo clippy --all-targets --all-features -- -D warnings`;
+- `cargo test --all`;
+- `cargo build --release`;
+- `AWATCH_PORTAL_SMOKE_URL=http://127.0.0.1:8720 node scripts/awatch-production-hardening-smoke.mjs`;
+- `git diff --check`.
+
+Известные ограничения:
+
+- production-hardening smoke не заменяет live acceptance;
+- `/readyz` отражает только реально настроенные зависимости;
+- contract-only интеграции не считаются работающими сборщиками;
+- freeze-фаза допускает только исправление дефектов и уточнение документации.

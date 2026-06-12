@@ -29,6 +29,20 @@ function Ensure-Dir {
     }
 }
 
+function Copy-IfExists {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Source,
+        [Parameter(Mandatory = $true)]
+        [string]$Destination
+    )
+    if (Test-Path -LiteralPath $Source) {
+        Copy-Item -LiteralPath $Source -Destination $Destination -Force
+        return $Destination
+    }
+    return ''
+}
+
 Assert-Admin
 
 $logsRoot = Join-Path $StateRoot 'logs'
@@ -40,14 +54,15 @@ $endpointCollectorScript = Join-Path $StateRoot 'dlp-endpoint-signals-collector.
 $fileCollectorScript = Join-Path $StateRoot 'file-operations-collector.ps1'
 $emailCollectorScript = Join-Path $StateRoot 'email-outbound-collector.ps1'
 $sessionCollectorScript = Join-Path $StateRoot 'worktime-session-collector.ps1'
+$telemetryExecutable = Join-Path $PSScriptRoot 'aw-windows-telemetry.exe'
 $rulesPath = Join-Path $StateRoot 'web-category-rules.json'
 $policyPath = Join-Path $StateRoot 'dlp-policy.json'
 $configPath = Join-Path $StateRoot 'deployment-config.json'
 $serviceScriptPath = Join-Path $PSScriptRoot 'aw-standalone-service.ps1'
 
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') -Destination $collectorScript -Force
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') -Destination $endpointCollectorScript -Force
-Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'file-operations-collector.ps1') -Destination $fileCollectorScript -Force
+$collectorScript = Copy-IfExists -Source (Join-Path $PSScriptRoot 'browser-domains-native-collector.ps1') -Destination $collectorScript
+$endpointCollectorScript = Copy-IfExists -Source (Join-Path $PSScriptRoot 'dlp-endpoint-signals-collector.ps1') -Destination $endpointCollectorScript
+$fileCollectorScript = Copy-IfExists -Source (Join-Path $PSScriptRoot 'file-operations-collector.ps1') -Destination $fileCollectorScript
 if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'email-outbound-collector.ps1')) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'email-outbound-collector.ps1') -Destination $emailCollectorScript -Force
 }
@@ -82,6 +97,7 @@ $config = [pscustomobject]@{
         fileCollectorScript = $fileCollectorScript
         emailCollectorScript = $emailCollectorScript
         sessionCollectorScript = $sessionCollectorScript
+        file1cTelemetryExecutable = $telemetryExecutable
         rulesPath = $rulesPath
         policyPath = $policyPath
     }
@@ -94,6 +110,9 @@ $config = [pscustomobject]@{
         windowEnabled = $false
         fileOpsEnabled = $true
         emailEnabled = $true
+        browserCollectorMode = 'rust_primary'
+        dlpEndpointMode = 'rust_primary'
+        fileOpsMode = 'rust_primary'
         worktimeSessionEnabled = $true
         worktimeSessionMode = 'powershell_primary'
         worktimeLegacyFallbackEnabled = $true

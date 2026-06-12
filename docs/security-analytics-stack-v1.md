@@ -34,15 +34,20 @@ Core outcomes:
   - `.meta.json`
   - optional `.caseid`
 - `ActivityWatch Hayabusa Upload` scheduled task runs every 6 hours
+- on `SHARKON2025` the task runs as interactive/highest `Администратор`; `SYSTEM` PowerShell tasks fail with `0xC0000142` before the script starts
+- sidecar JSON is written as UTF-8 without BOM; server-side readers also tolerate BOM for older files
 
 ### Server side
 
 - `aw-hayabusa-drop.path` watches `/opt/activitywatch/aw-rus-ops/drop`
 - `aw-hayabusa-drop.service` runs `aw-hayabusa-autoprocess`
+- `/opt/activitywatch/aw-rus-ops/drop` is writable by `awops` and processed by root-owned systemd units
 - `aw-hayabusa` performs:
   - accept
   - process-inbox
   - report generation
+- Windows zip entries with backslash separators are normalized during extraction
+- autoprocess drains the incoming queue after accepting a drop package, preventing stale failed-run packages from being linked to a newer drop upload
 - `aw-hayabusa-case-alert` performs:
   - severity scoring from `timeline.jsonl`
   - optional auto-case creation

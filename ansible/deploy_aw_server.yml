@@ -12,6 +12,7 @@
     aw_release_install_dir: "{{ aw_release_root }}/aw-server-rust-{{ aw_server_version }}"
     aw_ru_patch_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-ru-patch.js') | hash('sha1') | truncate(12, true, '') }}"
     aw_sw_cleanup_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-sw-cleanup.js') | hash('sha1') | truncate(12, true, '') }}"
+    aw_host_sanitize_cache_bust: "{{ lookup('file', aw_repo_root + '/aw-server/aw-host-sanitize.js') | hash('sha1') | truncate(12, true, '') }}"
     aw_worktime_classes: "{{ lookup('file', aw_repo_root + '/aw-server/settings/classes-worktime.json') | from_json }}"
     aw_default_views: "{{ lookup('file', aw_repo_root + '/aw-server/settings/views-default.json') | from_json }}"
     aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
@@ -448,6 +449,7 @@
           loop:
             - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "{{ aw_server_webui_dir }}/js/ru-patch-v5.js", mode: "0644" }
             - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "{{ aw_server_webui_dir }}/js/sw-cleanup.js", mode: "0644" }
+            - { src: "{{ aw_repo_root }}/aw-server/aw-host-sanitize.js", dest: "{{ aw_server_webui_dir }}/js/aw-host-sanitize.js", mode: "0644" }
             - { src: "{{ aw_repo_root }}/aw-server/aw-worktime-panel.js", dest: "{{ aw_server_webui_dir }}/js/aw-worktime-panel.js", mode: "0644" }
             - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "{{ aw_server_webui_dir }}/js/aw-host-groups.json", mode: "0644" }
 
@@ -465,6 +467,7 @@
           loop:
             - { src: "{{ aw_repo_root }}/aw-server/aw-ru-patch.js", dest: "/opt/detmir/bootstrap/aw-ru-patch.js", mode: "0644" }
             - { src: "{{ aw_repo_root }}/aw-server/aw-sw-cleanup.js", dest: "/opt/detmir/bootstrap/aw-sw-cleanup.js", mode: "0644" }
+            - { src: "{{ aw_repo_root }}/aw-server/aw-host-sanitize.js", dest: "/opt/detmir/bootstrap/aw-host-sanitize.js", mode: "0644" }
             - { src: "{{ aw_repo_root }}/aw-server/aw-worktime-panel.js", dest: "/opt/detmir/bootstrap/aw-worktime-panel.js", mode: "0644" }
             - { src: "{{ aw_repo_root }}/aw-server/aw-host-groups.json", dest: "/opt/detmir/bootstrap/aw-host-groups.json", mode: "0644" }
 
@@ -615,7 +618,7 @@
                 (aw_monitored_windows_host | default('') | string)
                 if (
                   (aw_monitored_windows_host | default('') | string | length) > 0
-                  and (aw_monitored_windows_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+                  and (aw_monitored_windows_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|WINDOWS_USER_EXAMPLE')) is none
                 )
                 else aw_existing_monitored_windows_host
               }}
@@ -624,7 +627,7 @@
                 (aw_monitored_windows_hostname | default('') | string)
                 if (
                   (aw_monitored_windows_hostname | default('') | string | length) > 0
-                  and (aw_monitored_windows_hostname | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+                  and (aw_monitored_windows_hostname | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|WINDOWS_USER_EXAMPLE')) is none
                 )
                 else aw_existing_monitored_windows_hostname
               }}
@@ -637,7 +640,7 @@
                 (aw_worktime_host | default('') | string)
                 if (
                   (aw_worktime_host | default('') | string | length) > 0
-                  and (aw_worktime_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+                  and (aw_worktime_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|WINDOWS_USER_EXAMPLE')) is none
                 )
                 else aw_effective_monitored_windows_hostname
               }}
@@ -647,11 +650,11 @@
           ansible.builtin.assert:
             that:
               - (aw_effective_monitored_windows_host | default('') | string | length) > 0
-              - (aw_effective_monitored_windows_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+              - (aw_effective_monitored_windows_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|WINDOWS_USER_EXAMPLE')) is none
               - (aw_effective_monitored_windows_hostname | default('') | string | length) > 0
-              - (aw_effective_monitored_windows_hostname | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+              - (aw_effective_monitored_windows_hostname | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|WINDOWS_USER_EXAMPLE')) is none
               - (aw_effective_worktime_host | default('') | string | length) > 0
-              - (aw_effective_worktime_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|HOST-EXAMPLE|WINDOWS_USER_EXAMPLE')) is none
+              - (aw_effective_worktime_host | default('') | string | regex_search('192\\.0\\.2\\.|198\\.51\\.100\\.|203\\.0\\.113\\.|<|>|WINDOWS_USER_EXAMPLE')) is none
             fail_msg: "aw-rus-healthd получил public example/TEST-NET Windows target. Задайте live значения в private inventory/env или сохраните их в runtime /etc/activitywatch/aw-server.env."
           when: aw_server_post_deploy_health_check_enabled | default(true) | bool
 
@@ -685,7 +688,6 @@
               - (aw_worktime_influx_bucket | default('') | string | length) > 0
               - (aw_worktime_influx_bucket | default('') | string | lower | regex_search('example|change_me|changeme|replace-me|replace_me|your_|<|>')) is none
               - (aw_worktime_influx_hosts | default('') | string | length) > 0
-              - "'HOST-EXAMPLE' not in (aw_worktime_influx_hosts | default('') | string)"
               - "'WINDOWS_USER_EXAMPLE' not in (aw_worktime_influx_hosts | default('') | string)"
             fail_msg: "aw_worktime_influx_enabled=true, но URL/org/bucket/hosts похожи на public example/TEST-NET значения. Задайте live значения в private inventory/env, не в public repo."
           when: aw_worktime_influx_enabled | default(false) | bool
@@ -702,7 +704,6 @@
               - (aw_dlp_influx_bucket | default('') | string | length) > 0
               - (aw_dlp_influx_bucket | default('') | string | lower | regex_search('example|change_me|changeme|replace-me|replace_me|your_|<|>')) is none
               - (aw_dlp_influx_hosts | default('') | string | length) > 0
-              - "'HOST-EXAMPLE' not in (aw_dlp_influx_hosts | default('') | string)"
               - "'WINDOWS_USER_EXAMPLE' not in (aw_dlp_influx_hosts | default('') | string)"
             fail_msg: "aw_dlp_influx_enabled=true, но URL/org/bucket/hosts похожи на public example/TEST-NET значения. Задайте live значения в private inventory/env, не в public repo."
           when: aw_dlp_influx_enabled | default(false) | bool
@@ -724,8 +725,8 @@
               AW_SERVER_GROUP={{ aw_server_group }}
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
               AW_WORKTIME_TZ={{ aw_worktime_timezone }}
-              AW_WORKTIME_HOST={{ aw_effective_worktime_host | default(aw_effective_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
-              AW_WORKTIME_EVENTS_LIMIT={{ aw_worktime_events_limit | default(250) }}
+              AW_WORKTIME_HOST={{ aw_effective_worktime_host | default(aw_effective_monitored_windows_hostname | default('SHARKON2025')) }}
+              AW_WORKTIME_EVENTS_LIMIT={{ aw_worktime_events_limit | default(5000) }}
               AW_WORKTIME_AW_HTTP_TIMEOUT_SECONDS={{ aw_worktime_aw_http_timeout_seconds | default(6) }}
               AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS={{ aw_worktime_events_cache_ttl_seconds | default(300) }}
               AW_WORKTIME_REPORT_CACHE_TTL_SECONDS={{ aw_worktime_report_cache_ttl_seconds | default(300) }}
@@ -747,7 +748,7 @@
               AW_WORKTIME_INFLUX_URL={{ aw_worktime_influx_url | default('') }}
               AW_WORKTIME_INFLUX_ORG={{ aw_worktime_influx_org | default('proxmox') }}
               AW_WORKTIME_INFLUX_BUCKET={{ aw_worktime_influx_bucket | default('aw_metrics') }}
-              AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default('HOST-EXAMPLE') }}
+              AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default('SHARKON2025') }}
               AW_WORKTIME_INFLUX_DAYS={{ aw_worktime_influx_days | default('today,yesterday') }}
               AW_WORKTIME_INFLUX_TOKEN={{ aw_effective_worktime_influx_token | default('') }}
               AW_WORKTIME_MANAGEMENT_HISTORY_DIR={{ aw_worktime_management_history_dir | default(aw_server_data_dir ~ '/worktime-management-history') }}
@@ -762,7 +763,7 @@
               AW_DLP_INFLUX_URL={{ aw_dlp_influx_url | default('') }}
               AW_DLP_INFLUX_ORG={{ aw_dlp_influx_org | default('proxmox') }}
               AW_DLP_INFLUX_BUCKET={{ aw_dlp_influx_bucket | default('aw_metrics') }}
-              AW_DLP_INFLUX_HOSTS={{ aw_dlp_influx_hosts | default('HOST-EXAMPLE') }}
+              AW_DLP_INFLUX_HOSTS={{ aw_dlp_influx_hosts | default('SHARKON2025') }}
               AW_DLP_INFLUX_LOOKBACK_DAYS={{ aw_dlp_influx_lookback_days | default(30) }}
               AW_DLP_INFLUX_EVENT_LIMIT={{ aw_dlp_influx_event_limit | default(2000) }}
               AW_DLP_INFLUX_TOKEN={{ aw_effective_dlp_influx_token | default('') }}
@@ -1940,7 +1941,7 @@
         - name: Удалить старые теги RU patch из index.html
           ansible.builtin.replace:
             path: "{{ aw_server_webui_dir }}/index.html"
-            regexp: '<script[^>]+(?:ru-patch-v5\.js|sw-cleanup\.js|aw-ru-patch\.js|aw-sw-cleanup\.js)[^>]*></script>'
+            regexp: '<script[^>]+(?:ru-patch-v5\.js|sw-cleanup\.js|aw-host-sanitize\.js|aw-ru-patch\.js|aw-sw-cleanup\.js)[^>]*></script>'
             replace: ''
 
         - name: Добавить cleanup script RU patch в index.html
@@ -1948,6 +1949,12 @@
             path: "{{ aw_server_webui_dir }}/index.html"
             regexp: '</head>'
             replace: '<script src="/js/sw-cleanup.js?v={{ aw_sw_cleanup_cache_bust }}"></script></head>'
+
+        - name: Добавить ранний guard hostname перед WebUI bundle
+          ansible.builtin.replace:
+            path: "{{ aw_server_webui_dir }}/index.html"
+            regexp: '(<script defer="defer" src="/js/chunk-vendors[^"]+"></script>)'
+            replace: '<script src="/js/aw-host-sanitize.js?v={{ aw_host_sanitize_cache_bust }}"></script>\1'
 
         - name: Добавить загрузчик RU patch перед закрытием body
           ansible.builtin.replace:
@@ -2583,6 +2590,22 @@
             - /opt/activitywatch/aw-rus-ops/hayabusa
             - /opt/activitywatch/aw-rus-ops/ansible
             - /opt/activitywatch/aw-rus-ops/drop
+
+        - name: Проверить наличие upload user awops для Hayabusa drop-zone
+          ansible.builtin.command:
+            cmd: id -u awops
+          register: aw_hayabusa_drop_upload_user
+          changed_when: false
+          failed_when: false
+
+        - name: Разрешить awops писать в Hayabusa drop-zone
+          ansible.builtin.file:
+            path: /opt/activitywatch/aw-rus-ops/drop
+            state: directory
+            owner: awops
+            group: awops
+            mode: "0750"
+          when: aw_hayabusa_drop_upload_user.rc == 0
 
         - name: Положить исходный wrapper в server-side ops bundle
           ansible.builtin.copy:

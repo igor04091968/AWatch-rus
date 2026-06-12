@@ -8,12 +8,12 @@
 
 Если старые документы расходятся с этим файлом по адресам или runtime-ролям, для текущей эксплуатации приоритет у этого файла.
 
-Связанная security-основа: `docs/DETMIR_THREAT_MODEL_RU.md` фиксирует текущую
+Связанная security-основа: `docs/THREAT_MODEL_RU.md` фиксирует текущую
 операционную модель угроз. Это рабочая модель для платформы операционного
 контроля и технического аудита, а не формальная сертификационная модель ФСТЭК.
 
 Связанное продуктовое позиционирование:
-`docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` фиксирует безопасный
+`docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` фиксирует безопасный
 заход для реестра российского ПО: AWatch-rus как платформа операционного контроля и
 управления ИТ-инфраструктурой, с ориентиром на класс `09.10`, без заявления
 сертифицированной DLP/SIEM/EDR/XDR/СЗИ.
@@ -422,8 +422,8 @@ Telegram bot `DetMirAuto` обязан покрывать:
 | `SECURITY.md` | security findings по risky фазам |
 | `UAT.md` | операторская приемка |
 | `docs/runbook.md` | живая эксплуатация |
-| `docs/DETMIR_THREAT_MODEL_RU.md` | рабочая модель угроз и границы security-позиционирования |
-| `docs/DETMIR_RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` | стратегия позиционирования для реестра российского ПО |
+| `docs/THREAT_MODEL_RU.md` | рабочая модель угроз и границы security-позиционирования |
+| `docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md` | стратегия позиционирования для реестра российского ПО |
 | `docs/ADMIN_GUIDE_RU.md` | руководство администратора |
 | `docs/OPERATOR_GUIDE_RU.md` | руководство оператора |
 | `docs/INSTALL_RU.md` | установка и первичная проверка |

@@ -84,6 +84,21 @@ IOC-слой позволяет подтягивать внешние индик
 - `format`
 - `refreshMinutes`
 
+В production-контуре DetMir этот слой заполняется автоматически через
+`DLP IOC Enrichment from Hayabusa/Sigma`:
+
+- upstream ruleset: `Yamato-Security/hayabusa-rules`;
+- Ansible URL: `aw_dlp_ioc_rules_zip_url`;
+- refresh: `aw-dlp-ioc-refresh.service` / `aw-dlp-ioc-refresh.timer`;
+- extractor: Rust binary `/usr/local/bin/aw-extract-ioc-from-sigma`;
+- published feed: `/dlp-ioc/ioc_blacklist.json`;
+- policy format: `hayabusa_sigma_v1`;
+- endpoint health field: `iocRulesLoaded`.
+
+Это не ручной ввод сигнатур в endpoint JSON. Endpoint policy только указывает
+`ioc.source`, а сами IOC blacklist artifacts генерируются на сервере из
+Hayabusa/Sigma rules.
+
 ## Действия
 
 На практике используются:
@@ -102,6 +117,7 @@ IOC-слой позволяет подтягивать внешние индик
 ## Канонические документы
 
 - [Пример policy](../../windows/dlp-policy.example.json)
+- [DLP IOC Enrichment from Hayabusa/Sigma](../dlp-ioc-enrichment.md)
 - [DLP Endpoint Monitoring](DLP-Endpoint-Monitoring)
 - [Email Outbound Monitoring](Email-Outbound-Monitoring)
 - [Категоризация сайтов](Web-Categorization)

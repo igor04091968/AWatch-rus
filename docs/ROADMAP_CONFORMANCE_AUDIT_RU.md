@@ -21,19 +21,27 @@ baseline, demo pack, registry readiness package, enterprise deployment package
 генерируемый отчет теперь начинается с `# AWatch-rus оперативный отчет`, а
 headline, KPI label и CLI help используют публичное название AWatch-rus.
 
-Главные остаточные gaps:
+Закрытые housekeeping gaps Demo Freeze v1:
 
-- TASK_001-TASK_004 не имеют явной секции `Выполнение`, хотя артефакты по ним
-  в коде и документации присутствуют.
-- Для Risk Narrative нет отдельного `docs/RISK_NARRATIVE_RU.md`; функциональность
-  подтверждена кодом, OpenAPI, TypeScript, UI и Markdown, но документация
-  распределена по связанным материалам.
-- Portal verification в TASK_011 выполнен через код, статические UI-маркеры и
-  production smoke; отдельный полноценный Playwright visual run не входил в
-  обязательный список команд TASK_011.
+- TASK_001-TASK_004 получили явные секции `Выполнение` с артефактами,
+  проверками и ограничениями.
+- Для Risk Narrative создан отдельный документ `docs/RISK_NARRATIVE_RU.md`.
+- Добавлен browser-level conformance smoke с Playwright и screenshots runtime
+  artifacts.
+
+Оставшиеся acceptance gaps после TASK_014:
+
 - Полная production-приемка требует live validation на стенде заказчика:
   доступность, TLS/reverse proxy, источники данных, backup/restore и ownership
   действий.
+- TASK_013 live validation выявил deployment/version drift, но TASK_014 закрыл
+  его controlled deploy актуального portal binary и повторным live smoke.
+- TASK_015 выполнил ручной разбор UEBA `critical`: классификация
+  `Needs Investigation`, security interpretation - `Operational Risk confirmed;
+  Security Risk unknown`.
+- Перед расширением пилота остается проверить agent coverage/missing application
+  data и закрепить операционный ownership за deploy parity, rollback и
+  регулярными smoke.
 
 ## Overall Status
 

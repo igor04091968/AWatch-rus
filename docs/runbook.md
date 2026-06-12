@@ -276,6 +276,10 @@ powershell.exe -ExecutionPolicy Bypass -File C:\ProgramData\AWatch-rus\export-up
 3. Проверить результат:
 
 ```bash
+systemctl is-active aw-hayabusa-drop.path
+systemctl is-failed aw-hayabusa-drop.service || true
+aw-hayabusa doctor
+aw-hayabusa inventory
 cat /opt/hayabusa/state/latest-intake.json
 journalctl -u aw-hayabusa-drop.service -n 80 --no-pager
 curl -fsS http://127.0.0.1:5602/api/0/dlp/cases/30
@@ -287,6 +291,27 @@ curl -fsS http://127.0.0.1:5602/api/0/dlp/cases/30
 - `drop` после обработки пустой;
 - в case есть `forensics.hayabusa`;
 - Telegram alert уже уходит в операторский чат.
+
+Production scheduled task на `SHARKON2025`:
+
+- `ActivityWatch Hayabusa Upload`
+- principal `Администратор`, `LogonType=Interactive`, `RunLevel=Highest`
+- период `6` часов, lookback `6` часов
+- нормальный `LastTaskResult=0`
+
+Если `LastTaskResult=3221225794` (`0xC0000142`) и в `C:\ProgramData\AWatch-rus\logs\hayabusa-upload.log` нет новой строки, скрипт не стартовал. На текущем RDP-хосте это воспроизводится даже минимальной SYSTEM-задачей с `powershell.exe`; пересоздать Hayabusa task как interactive/highest от `Администратор`, не от `SYSTEM`.
+
+Если upload прошёл, но сервер не обработал пакет:
+
+```bash
+sudo systemctl reset-failed aw-hayabusa-drop.path aw-hayabusa-drop.service
+sudo systemctl start aw-hayabusa-drop.path
+sudo systemctl start aw-hayabusa-drop.service
+find /opt/activitywatch/aw-rus-ops/drop -maxdepth 1 -type f -ls
+find /opt/hayabusa/inbox/incoming -maxdepth 1 -type f -ls
+```
+
+`drop` и `incoming` после успешной обработки должны быть пустыми; latest intake должен указывать на последний пакет `SHARKON2025`.
 
 ### Hayabusa: manual fallback / production validation end-to-end
 
@@ -539,7 +564,7 @@ detmir-win-shell
 
 Канонический документ:
 
-- `docs/DETMIR_POWERSHELL_MCP_REMOTE_RU.md`
+- `docs/POWERSHELL_MCP_REMOTE_RU.md`
 
 Правило:
 
