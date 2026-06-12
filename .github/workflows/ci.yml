@@ -23,6 +23,12 @@ jobs:
       - name: Run production inventory placeholder guard self-test
         run: bash scripts/check_production_inventory_placeholders.sh --self-test
 
+      - name: Run private-config guard
+        run: bash scripts/check_private_config_guard.sh
+
+      - name: Run portal contract sync guard
+        run: node scripts/check_portal_contract_sync.mjs
+
   rust-runtime-guard:
     runs-on: ubuntu-latest
     steps:

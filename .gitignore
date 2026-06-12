@@ -1,7 +1,11 @@
 # Local secrets
 /secrets/
-/private-config/*.env
-/private-config/*.local
+/private-config/*
+!/private-config/
+!/private-config/README.md
+!/private-config/.gitkeep
+!/private-config/*.example
+!/private-config/*.template
 /ansible/inventory.ini
 /codex_history.txt
 

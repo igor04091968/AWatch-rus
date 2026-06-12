@@ -1,4 +1,0 @@
-*.env
-*.local
-!.gitignore
-!*.example
