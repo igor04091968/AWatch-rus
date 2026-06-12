@@ -38,3 +38,82 @@
 Продукт относится к классу средств управления ИТ-службой,
 ИТ-инфраструктурой и ИТ-активами. Продукт не заявляется как
 сертифицированная DLP, SIEM, EDR/XDR или средство защиты информации.
+
+
+## Профессиональные сильные стороны проекта
+
+Ниже — краткая и профессиональная сводка ключевых преимуществ AWatch-rus,
+предназначенная для реестра программного обеспечения и технического аудитa.
+
+### 1. Архитектура и инженерный дизайн
+
+- Rust-first, модульная архитектура: более 40 специализированных крейтов в
+  workspace, четкая декомпозиция ответственности и воспроизводимые сборки
+  (Cargo.lock).
+- Разделение на логические уровни: endpoint -> серверные хранилища ->
+  processing -> operator -> automation, что упрощает тестирование и валидацию.
+- Четкие migration-runbooks для последовательного перехода legacy-python → Rust.
+
+### 2. Операционная зрелость
+
+- Полноценный Ansible-ensemble для end-to-end развёртывания (Proxmox, Linux,
+  централизованный Windows rollout по WinRM), включая retry-политику,
+  smoke-тесты и валидацию после деплоя.
+- Safe-run pattern: dry-run/apply planners, backup-before-delete, atomic
+  операции и conservative no-restart paths.
+- Набор модулей для диагностики и качества (detmir-*, aw-*, quality-gate,
+  smoke checks) обеспечивает fast feedback при внедрении.
+
+### 3. Безопасность и работа с evidence
+
+- Изолированный путь evidence: opaque IDs, bearer-upload, magic validation
+  для изображений, размерные лимиты, SHA-256 валидация, atomic write и audit
+  trails.
+- Security hardening guide: TLS по умолчанию, reverse-proxy, firewall
+  рекомендации, сервисные аккаунты и минимальные привилегии.
+- Ясные границы продукта: не позиционируется как сертифицированная СЗИ/DLP;
+  это снижает юридические риски при регистрации и аудите.
+
+### 4. Production-readiness и валидация пилота
+
+- Полный комплект acceptance и pilot-checklists (30-дневный pilot success
+  criteria) с метриками доступности, coverage, freshness и времени реакции.
+- Runbooks и операционная документация для восстановления, резервного копирования
+  и отката.
+
+### 5. Наблюдаемость и качество данных
+
+- Встроенные SLO/health monitoring, Prometheus/ Grafana витрины и
+  детализированные smoke/contour тесты.
+- Механизмы объяснимости: UEBA v1 rule-based с reason-codes и объяснениями KPI
+  coverage/confidence.
+
+### 6. Поддержка Windows/RDP и forensics
+
+- Централизованный Windows rollout и валидация (API smoke-checks для
+  aw-watcher-afk/aw-watcher-window).
+- Серверная автоматическая обработка Hayabusa: auto-upload, severity scoring,
+  case creation и уведомления (Telegram) с пороговой фильтрацией.
+
+### 7. Документированность и готовность к реестру
+
+- Полный набор документов для регистрации: product passport, architecture,
+  functional scope, dependency statement, deployment model и readiness checklist.
+- Демонстрационные сценарии и фикстуры, исключающие реальные персональные и
+  сетевые данные — соответствует требованиям для публичных материалов.
+
+### 8. Честное позиционирование и риски
+
+- Прозрачность ограничений (что реализовано, что planned/future) — важный
+  аспект при подаче в реестр и при взаимодействии с заказчиком.
+- Документированная gap-analysis и roadmap-conformance audit облегчают
+  процессы оценки соответствия и планирования доработок.
+
+
+---
+
+Если нужно, могу:
+- добавить этот раздел как отдельный файл в docs/ (например,
+  docs/PROFESSIONAL_HIGHLIGHTS_RU.md), либо
+- вставить в другой документ (например, в architecture или registry passport),
+- сгенерировать краткую выдержку на 1 страницу для подачи в реестр.
