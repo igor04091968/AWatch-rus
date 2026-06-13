@@ -1,5 +1,28 @@
 # Полная инструкция по развёртыванию и поддержке ActivityWatch-Russian
 
+«Статус документа: legacy / requires update.
+
+Этот документ частично отражает ранний этап проекта, когда Windows endpoint deployment и часть collector/recovery логики описывались через PowerShell-скрипты.
+
+Актуальная архитектура AWatch-rus — Rust-first:
+
+- основной backend/runtime реализуется на Rust;
+- endpoint agent реализуется на Rust;
+- портал реализован как Rust server-rendered HTML + HTMX-compatible JSON API;
+- operational-компоненты status/check/auto-heal/SLO/worktime/DLP helpers/evidence/install-kit tooling переведены на Rust;
+- PowerShell не является основным способом развёртывания, патчинга или эксплуатации;
+- PowerShell Provider, если упоминается, относится к planned/future provider-слою и не должен трактоваться как готовый production runtime.
+
+До полной переработки manual все разделы, где описаны "windows/*.ps1", "deploy-single-user.ps1", "deploy-domain-users.ps1", "deploy-ensemble.ps1", "validate-deployment.ps1", "hardening-recovery.ps1", "browser-domains-native-collector.ps1", "dlp-endpoint-signals-collector.ps1", а также требования PowerShell 5.1+, следует считать устаревшими legacy-инструкциями.
+
+Для актуального production/deployment flow использовать Rust-first порядок:
+
+source/release artifact
+→ cargo fmt / clippy / test / build
+→ установка или замена Rust binary
+→ systemd restart/reload нужного сервиса
+→ detmir-status / detmir-check / detmir-dlp / portal smoke
+→ rollback через предыдущий binary, symlink, drop-in или snapshot»
 Документ описывает полный цикл: Proxmox/LXC сервер, установка ActivityWatch Server, RU Web UI patch, развёртывание Windows-клиентов в другом AD-домене, валидация, сопровождение и rollback.
 
 ---
