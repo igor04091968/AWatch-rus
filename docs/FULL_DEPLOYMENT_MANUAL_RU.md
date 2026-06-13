@@ -1,422 +1,667 @@
-# Полная инструкция по развёртыванию и поддержке ActivityWatch-Russian
+Полная инструкция по развёртыванию и поддержке AWatch-rus
 
-Документ описывает полный цикл: Proxmox/LXC сервер, установка ActivityWatch Server, RU Web UI patch, развёртывание Windows-клиентов в другом AD-домене, валидация, сопровождение и rollback.
+Статус документа
 
----
+Этот документ описывает актуальный **Rust-fiWindows/PowerShell deployment flow больше не считается основным способом развёртывания, патчинга или эксплуатации. Если в репозитории остаются старые ".ps1"-файлы, они рассматриваются как legacy/history или как будущий provider-слой, но не как production runtime.
 
-## 0) Структура проекта (полные пути)
+0. Назначение
 
-- `<PROJECT_ROOT>/private-config/deploy.env`
-- `<PROJECT_ROOT>/proxmox/create-ct.sh`
-- `<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh`
-- `<PROJECT_ROOT>/aw-server/install_aw_server.sh`
-- `<PROJECT_ROOT>/aw-server/apply_webui_ru_patch.sh`
-- `<PROJECT_ROOT>/windows/deploy-single-user.ps1`
-- `<PROJECT_ROOT>/windows/deploy-domain-users.ps1`
-- `<PROJECT_ROOT>/windows/deploy-ensemble.ps1`
-- `<PROJECT_ROOT>/windows/hardening-recovery.ps1`
-- `<PROJECT_ROOT>/windows/validate-deployment.ps1`
-- `<PROJECT_ROOT>/windows/browser-domains-native-collector.ps1`
-- `<PROJECT_ROOT>/windows/dlp-endpoint-signals-collector.ps1`
-- `<PROJECT_ROOT>/ansible/deploy_aw_server.yml`
-- `<PROJECT_ROOT>/ansible/provision_proxmox_ct_and_deploy_aw.yml`
-- `<PROJECT_ROOT>/ansible/provision_proxmox_ct_matrix_and_deploy_aw.yml`
-- `<PROJECT_ROOT>/ansible/deploy_aw_windows.yml`
+AWatch-rus — программный комплекс операционного контроля, технического аудита, оценки трудоотдачи сотрудников и мониторинга корпоративной ИТ-инфраструктуры на базе:
 
----
+- Rust backend/runtime;
+- Rust Agent;
+- Rust server-rendered HTML + HTMX-compatible JSON API;
+- Grafana/Prometheus-витрин;
+- модулей Workforce, Security и Forensics;
+- evidence/reporting tooling;
+- ActivityWatch-compatible источников данных, где это применимо.
 
-## 1) Подготовка
+Проект не позиционируется как сертифицированная DLP/SIEM/EDR/XDR/СЗИ. DLP, evidence, UEBA и расследовательские функции используются как внутренние аналитические и операционные модули.
 
-### 1.1 Требования
+1. Актуальная архитектура
 
-- Proxmox VE 8/9, доступ root (или sudo с правами на `pct`).
-- Шаблон Debian 12 LXC на хосте Proxmox.
-- Windows хост(ы) с PowerShell 5.1+ и правами локального администратора.
-- Сетевой доступ Windows-клиентов до ActivityWatch Server (`5600/tcp`).
+1.1 Основной runtime
 
-### 1.2 Подготовка единого файла секретов
+Основной production runtime AWatch-rus — Rust-first:
 
-Скопируйте шаблон:
+- backend/runtime — Rust;
+- agent — Rust;
+- portal — Rust server-rendered HTML + HTMX-compatible JSON API;
+- operational status/check — Rust;
+- DLP server-side helpers — Rust;
+- worktime helpers/exporters/prewarm — Rust;
+- SLO/health/readiness helpers — Rust;
+- evidence/install-kit tooling — Rust;
+- auto-heal helpers — Rust, только в безопасном режиме.
 
-```bash
-cp <PROJECT_ROOT>/private-config/deploy.env.example \
-   <PROJECT_ROOT>/private-config/deploy.env
-```
+1.2 Что не является основным runtime
 
-Заполните в файле `<PROJECT_ROOT>/private-config/deploy.env`:
+Не считать основным production deployment flow:
 
-- все `CT_*` параметры контейнера;
-- все `AW_SERVER_*` параметры сервера;
-- `CT_PASSWORD` (реальный пароль).
+- PowerShell deployment;
+- старые Windows ".ps1" rollout scripts;
+- ручное исправление production-файлов без release/backup;
+- прямое редактирование Web UI в "/opt" без воспроизводимого патча;
+- Python/shell как основной operational runtime, если для компонента уже есть Rust-аналог.
 
-Важно: этот файл подхватывается автоматически скриптами Proxmox.
+Python, shell, Ansible или PowerShell могут оставаться в проекте только как:
 
----
+- legacy compatibility;
+- вспомогательные dev/test tools;
+- миграционные сценарии;
+- будущие provider-слои;
+- Telegram/OCR/AI/ETL/MCP helpers, если они явно не входят в Rust-first core.
 
-## 2) Развёртывание сервера в Proxmox
+2. Типовые роли узлов
 
-### 2.0 Ansible full-stack (создание CT + установка AW)
+2.1 Server node
 
-Подготовьте:
+Серверный узел содержит:
 
-- `<PROJECT_ROOT>/ansible/inventory.ini`
-- `<PROJECT_ROOT>/ansible/group_vars/all.yml`
-- `<PROJECT_ROOT>/ansible/group_vars/proxmox.yml`
+- AWatch-rus backend/runtime;
+- portal;
+- API;
+- exporters;
+- health/readiness/status tooling;
+- systemd units/timers;
+- Grafana/Prometheus integration;
+- evidence/reporting storage.
 
-Запуск:
+2.2 Agent node
 
-```bash
-cd <PROJECT_ROOT>/ansible
-ansible-playbook -i inventory.ini provision_proxmox_ct_and_deploy_aw.yml
-```
+Agent node содержит:
 
-Этот сценарий полностью закрывает:
+- Rust Agent;
+- локальную конфигурацию агента;
+- systemd service или другой штатный supervisor;
+- локальные логи;
+- буфер/очередь, если предусмотрено конфигурацией;
+- сетевой доступ до backend/API.
 
-- создание CT в Proxmox;
-- bootstrap пакетов в CT;
-- установку ActivityWatch Server;
-- применение RU Web UI patch;
-- проверку API.
+2.3 Monitoring node
 
-Для массового режима (несколько CT):
+Monitoring node может содержать:
 
-```bash
-cd <PROJECT_ROOT>/ansible
-ansible-playbook -i inventory.ini provision_proxmox_ct_matrix_and_deploy_aw.yml
-```
+- Prometheus;
+- Grafana;
+- dashboards;
+- alerting rules;
+- external logs/metrics storage.
 
-### 2.1 Создать LXC контейнер
+Monitoring node может совпадать с server node в пилотной установке.
 
-На узле Proxmox:
+3. Требования
 
-```bash
-cd <PROJECT_ROOT>
-<PROJECT_ROOT>/proxmox/create-ct.sh
-```
+3.1 Базовые требования
 
-По умолчанию читается:
+- Linux-сервер или LXC/VM.
+- Доступ администратора к systemd.
+- Rust toolchain для сборочного узла.
+- Сетевой доступ между agent node и server node.
+- Закрытый доступ к API и порталу через VPN, reverse proxy или внутренний контур.
+- Backup/snapshot перед любым production patch.
+
+3.2 Рекомендуемый production-подход
 
-- `<PROJECT_ROOT>/private-config/deploy.env`
+Для production не собирать проект прямо на боевом сервере, если есть отдельный build host.
 
-При необходимости можно передать другой путь:
+Рекомендуемый поток:
 
-```bash
-<PROJECT_ROOT>/proxmox/create-ct.sh /absolute/path/to/deploy.env
-```
+git checkout нужного commit/tag
+→ cargo fmt / clippy / test / build
+→ упаковка release artifacts
+→ перенос artifacts на сервер
+→ backup/snapshot
+→ остановка/перезапуск нужных services
+→ smoke tests
+→ фиксация версии
 
-### 2.2 Загрузить bootstrap-артефакты и env внутрь CT
+4. Основные пути
 
-```bash
-cd <PROJECT_ROOT>
-<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh
-```
+Рекомендуемая структура на сервере:
 
-Скрипт загружает в CT:
+/opt/awatch-rus/
+  bin/
+  etc/
+  portal/
+  releases/
+  evidence/
+  reports/
+  logs/
 
-- `<CT_BOOTSTRAP_DIR>/install_aw_server.sh`
-- `<CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh`
-- `<CT_BOOTSTRAP_DIR>/activitywatch-server.service`
-- `<CT_BOOTSTRAP_DIR>/aw-ru-patch.js`
-- `<CT_BOOTSTRAP_DIR>/aw-sw-cleanup.js`
-- `/etc/activitywatch/aw-server.env` (из `AW_SERVER_*`)
+/etc/awatch-rus/
+  awatch-rus.env
+  agent.env
+  portal.env
 
-### 2.3 Установить ActivityWatch Server внутри CT
+/var/lib/awatch-rus/
+  data/
+  state/
+  cache/
+  evidence/
+  reports/
 
-```bash
-pct enter <CT_ID>
-bash <CT_BOOTSTRAP_DIR>/install_aw_server.sh
-```
+/var/log/awatch-rus/
+  backend.log
+  agent.log
+  portal.log
+  exporter.log
 
-### 2.4 Применить RU patch Web UI
+Рекомендуемые runtime binaries:
 
-```bash
-bash <CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh
-systemctl restart activitywatch-server.service
-```
+/usr/local/bin/detmir-status
+/usr/local/bin/detmir-check
+/usr/local/bin/detmir-dlp
+/usr/local/bin/detmir-auto
+/usr/local/bin/detmir-heal-safe
+/usr/local/bin/aw-rus-healthd
 
-После применения патча доступны:
+Имена конкретных бинарников должны соответствовать текущему "Cargo.toml" и фактически собранным artifacts. Если имя binary изменено, документация и systemd unit должны обновляться в том же commit.
 
-- верхнее меню `DLP` в Web UI;
-- DLP-страница bucket `aw-dlp-endpoint-signals_<HOST>`;
-- встроенный центр `DLP review и правила`;
-- служебные buckets `aw-dlp-review_<HOST>` и `aw-dlp-rules_<HOST>`.
+5. Конфигурация
 
-### 2.5 Проверка сервера
+5.1 Общие правила
 
-В CT:
+- Не хранить production secrets в публичном репозитории.
+- Не коммитить реальные hostnames, IP, логины, ФИО, токены, пароли.
+- Для production использовать "/etc/awatch-rus/*.env".
+- Для demo использовать только обезличенные fixtures.
+- Все параметры, влияющие на runtime, должны быть описаны в документации.
 
-```bash
-systemctl status activitywatch-server.service --no-pager
-curl -fsS http://127.0.0.1:5600/api/0/info
-ss -ltnp | grep 5600
-grep -n 'aw-ru-patch\|aw-sw-cleanup' /opt/activitywatch/webui-ru/index.html
-```
+5.2 Пример server env
 
-Ожидается:
+AWATCH_ENV=production
+AWATCH_BIND_ADDR=127.0.0.1
+AWATCH_PORT=5600
+AWATCH_DATA_DIR=/var/lib/awatch-rus/data
+AWATCH_LOG_DIR=/var/log/awatch-rus
+AWATCH_EVIDENCE_DIR=/var/lib/awatch-rus/evidence
+AWATCH_REPORTS_DIR=/var/lib/awatch-rus/reports
+RUST_LOG=info
 
-- сервис `active (running)`;
-- API отвечает JSON;
-- порт 5600 слушается;
-- в `index.html` присутствуют оба скрипта.
+5.3 Пример agent env
 
-Дополнительно после первого входа в Web UI:
+AWATCH_AGENT_ENV=production
+AWATCH_SERVER_URL=https://awatch.example.local
+AWATCH_AGENT_HOST_ID=HOSTNAME_OR_NODE_ID
+AWATCH_AGENT_DATA_DIR=/var/lib/awatch-rus/agent
+AWATCH_AGENT_LOG_DIR=/var/log/awatch-rus
+RUST_LOG=info
 
-- `#/home` должен показывать один корректный пункт `DLP`;
-- `#/buckets/aw-dlp-endpoint-signals_<HOST>` должен открываться без ошибок;
-- сохранение review/rule должно создавать buckets `aw-dlp-review_<HOST>` и `aw-dlp-rules_<HOST>`.
+6. Сборка
 
----
+6.1 Проверки перед сборкой
 
-## 3) Развёртывание Windows-клиентов (другой AD-домен)
+На build host:
 
-### 3.1 Подготовка на Windows-хосте
+cd /path/to/AWatch-rus
 
-Скопируйте каталог:
+git status --short
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 
-- `<PROJECT_ROOT>/windows`
+Если в репозитории есть проектные quality gates, выполнить их обязательно:
 
-например в:
+bash scripts/check_private_config_guard.sh
+bash scripts/quality-gate.sh
 
-- `C:\Program Files\AWatch-rus\windows`
+Если какой-то скрипт отсутствует в текущей ветке, не создавать фиктивную замену. Зафиксировать это в release notes.
 
-Откройте **elevated PowerShell**:
+6.2 Release build
 
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
-```
+cargo build --release --workspace
 
-### 3.2 Массовое доменное развёртывание (рекомендуется)
+Проверить artifacts:
 
-Если текущий production ещё работает в старых каталогах
-`C:\Program Files\ActivityWatch-Phase2` и `C:\ProgramData\ActivityWatch-Phase2`,
-сначала выполните безопасную миграцию:
+find target/release -maxdepth 1 -type f -executable -print
 
-```powershell
-C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1 -WhatIf
-C:\Program Files\AWatch-rus\windows\migrate-awatch-rus-paths.ps1
-```
+6.3 Упаковка artifacts
 
-Скрипт остановит `ActivityWatch Recovery`/`ActivityWatch Launch *`, создаст backup в
-`C:\ProgramData\AWatch-rus\migration-backups\...`, перенесёт файлы в единые пути,
-пересоздаст `deployment-config.json`/scheduled tasks и запустит validation.
+Рекомендуемый вариант:
 
-Пример со списком пользователей:
+mkdir -p dist/awatch-rus-release/bin
+cp target/release/detmir-status dist/awatch-rus-release/bin/ 2>/dev/null || true
+cp target/release/detmir-check dist/awatch-rus-release/bin/ 2>/dev/null || true
+cp target/release/detmir-dlp dist/awatch-rus-release/bin/ 2>/dev/null || true
+cp target/release/detmir-auto dist/awatch-rus-release/bin/ 2>/dev/null || true
+cp target/release/detmir-heal-safe dist/awatch-rus-release/bin/ 2>/dev/null || true
+cp target/release/aw-rus-healthd dist/awatch-rus-release/bin/ 2>/dev/null || true
 
-```powershell
-C:\Program Files\AWatch-rus\windows\deploy-domain-users.ps1 `
-  -ServerHost aw.example.local `
-  -ServerPort 5600 `
-  -Domain CONTOSO `
-  -UserListPath C:\Deploy\aw-users.txt `
-  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json
-```
+tar -C dist -czf awatch-rus-release.tar.gz awatch-rus-release
+sha256sum awatch-rus-release.tar.gz > awatch-rus-release.tar.gz.sha256
 
-Поддерживаемые варианты:
+Не использовать "cp ... || true" в CI без последующей проверки обязательных binaries. Для ручного production release список обязательных binaries должен быть проверен явно.
 
-- `-Users user01,user02`
-- `-Users 'CONTOSO\user01','CONTOSO\user02'`
-- `-UserListPath <txt|csv>`
+7. Первичное развёртывание server node
 
-### 3.2.1 Ensemble orchestration (рекомендуется для production)
+7.1 Создание каталогов
 
-```powershell
-C:\Program Files\AWatch-rus\windows\deploy-ensemble.ps1 `
-  -ServerHost aw.example.local `
-  -ServerPort 5600 `
-  -Domain CONTOSO `
-  -Users user1,user2,user3,user4,user5 `
-  -ValidateAfterDeploy
-```
+sudo mkdir -p /opt/awatch-rus/bin
+sudo mkdir -p /opt/awatch-rus/releases
+sudo mkdir -p /etc/awatch-rus
+sudo mkdir -p /var/lib/awatch-rus/data
+sudo mkdir -p /var/lib/awatch-rus/state
+sudo mkdir -p /var/lib/awatch-rus/evidence
+sudo mkdir -p /var/lib/awatch-rus/reports
+sudo mkdir -p /var/log/awatch-rus
 
-Отчёт сохраняется в:
+7.2 Установка binaries
 
-- `C:\ProgramData\AWatch-rus\ensemble-report-YYYYMMDD-HHMMSS.json`
+sudo install -m 0755 dist/awatch-rus-release/bin/* /opt/awatch-rus/bin/
 
-### 3.3 Single-user развёртывание
+Создать symlink для удобства:
 
-```powershell
-C:\Program Files\AWatch-rus\windows\deploy-single-user.ps1 `
-  -ServerHost aw.example.local `
-  -ServerPort 5600 `
-  -TargetUser 'CONTOSO\user01' `
-  -CustomRulesPath C:\Program Files\AWatch-rus\windows\web-category-rules.example.json
-```
+sudo ln -sf /opt/awatch-rus/bin/detmir-status /usr/local/bin/detmir-status
+sudo ln -sf /opt/awatch-rus/bin/detmir-check /usr/local/bin/detmir-check
+sudo ln -sf /opt/awatch-rus/bin/detmir-dlp /usr/local/bin/detmir-dlp
 
-### 3.4 Recovery / hardening
+Если binary отсутствует, не создавать пустой symlink. Сначала проверить фактический состав release artifact.
 
-```powershell
-C:\Program Files\AWatch-rus\windows\hardening-recovery.ps1 `
-  -ConfigPath C:\ProgramData\AWatch-rus\deployment-config.json
-```
+7.3 Конфигурация
 
-### 3.5 Валидация deployment-а (PowerShell report)
+sudo install -m 0640 awatch-rus.env /etc/awatch-rus/awatch-rus.env
 
-```powershell
-$report = C:\Program Files\AWatch-rus\windows\validate-deployment.ps1 `
-  -ConfigPath C:\ProgramData\AWatch-rus\deployment-config.json
-$report | ConvertTo-Json -Depth 12
-```
+Проверить права:
 
----
+sudo chown root:root /etc/awatch-rus/awatch-rus.env
+sudo chmod 0640 /etc/awatch-rus/awatch-rus.env
 
-## 4) Что должно появиться на Windows после установки
+8. systemd units
 
-- `C:\Program Files\AWatch-rus\bin`
-- `C:\ProgramData\AWatch-rus\deployment-config.json`
-- `C:\ProgramData\AWatch-rus\launch-watchers.ps1`
-- `C:\ProgramData\AWatch-rus\recovery-loop.ps1`
-- `C:\ProgramData\AWatch-rus\browser-domains-native-collector.ps1`
-- `C:\ProgramData\AWatch-rus\web-category-rules.json`
-- `C:\ProgramData\AWatch-rus\logs\`
+8.1 Пример backend service
 
-Задачи планировщика:
+[Unit]
+Description=AWatch-rus backend/runtime
+After=network-online.target
+Wants=network-online.target
 
-- `ActivityWatch Launch [<user>]` (per-user, при логоне)
-- `ActivityWatch Recovery` (system-level recovery)
+[Service]
+Type=simple
+EnvironmentFile=/etc/awatch-rus/awatch-rus.env
+ExecStart=/opt/awatch-rus/bin/awatch-rus-backend
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/opt/awatch-rus
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/awatch-rus /var/log/awatch-rus
 
----
+[Install]
+WantedBy=multi-user.target
 
-## 5) Полная валидация потока данных
+Если фактическое имя backend binary отличается, заменить "awatch-rus-backend" на актуальное имя из release artifact.
 
-### 5.1 На Windows-хосте
+8.2 Пример health service
 
-Проверить процессы:
+[Unit]
+Description=AWatch-rus health daemon
+After=network-online.target
+Wants=network-online.target
 
-```powershell
-Get-Process aw-watcher-afk,aw-watcher-window -ErrorAction SilentlyContinue
-Get-CimInstance Win32_Process | ? { $_.CommandLine -like '*browser-domains-native-collector.ps1*' } | select ProcessId,SessionId,CommandLine
-```
+[Service]
+Type=simple
+EnvironmentFile=/etc/awatch-rus/awatch-rus.env
+ExecStart=/opt/awatch-rus/bin/aw-rus-healthd
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/opt/awatch-rus
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/awatch-rus /var/log/awatch-rus
 
-Проверить задачи:
+[Install]
+WantedBy=multi-user.target
 
-```powershell
-Get-ScheduledTask | ? { $_.TaskName -like 'ActivityWatch*' } | select TaskName,State
-```
+8.3 Применение unit files
 
-### 5.2 На сервере ActivityWatch API
+sudo systemctl daemon-reload
+sudo systemctl enable --now awatch-rus-backend.service
+sudo systemctl enable --now aw-rus-healthd.service
 
-```bash
-curl -sS http://127.0.0.1:5600/api/0/buckets | jq 'keys'
-```
+Если конкретный unit не используется в текущей инсталляции, не создавать фиктивный сервис. Документировать фактический набор services.
 
-Ожидаемые bucket'ы:
+9. Развёртывание Rust Agent
 
-- `aw-watcher-afk_<HOST>`
-- `aw-watcher-window_<HOST>`
-- `aw-watcher-web-<browser>_<HOST>`
-- `aw-detmir-web-category_<HOST>` (категоризованный поток)
-- `aw-dlp-endpoint-signals_<HOST>` (endpoint сигналы)
-- `aw-dlp-review_<HOST>` (ручная классификация через UI)
-- `aw-dlp-rules_<HOST>` (suppress/rule записи через UI)
+9.1 Установка agent binary
 
-Проверка событий браузера:
+sudo mkdir -p /opt/awatch-rus/bin
+sudo mkdir -p /etc/awatch-rus
+sudo mkdir -p /var/lib/awatch-rus/agent
+sudo mkdir -p /var/log/awatch-rus
 
-```bash
-curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-watcher-web-edge_<HOST>/events?limit=5" | jq
-```
+sudo install -m 0755 awatch-rus-agent /opt/awatch-rus/bin/awatch-rus-agent
+sudo install -m 0640 agent.env /etc/awatch-rus/agent.env
 
-Проверка категоризации:
+9.2 Пример agent service
 
-```bash
-curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-detmir-web-category_<HOST>/events?limit=5" | jq
-```
+[Unit]
+Description=AWatch-rus Rust Agent
+After=network-online.target
+Wants=network-online.target
 
-Проверка DLP review/rules:
+[Service]
+Type=simple
+EnvironmentFile=/etc/awatch-rus/agent.env
+ExecStart=/opt/awatch-rus/bin/awatch-rus-agent
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/opt/awatch-rus
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/awatch-rus /var/log/awatch-rus
 
-```bash
-curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-dlp-review_<HOST>/events?limit=20" | jq
-curl -sS "http://127.0.0.1:5600/api/0/buckets/aw-dlp-rules_<HOST>/events?limit=20" | jq
-```
+[Install]
+WantedBy=multi-user.target
 
-Ожидаемые поля review:
+9.3 Запуск agent
 
-- `reviewId`
-- `signalType`
-- `verdict`
-- `category`
-- `comment`
-- `archived`
+sudo systemctl daemon-reload
+sudo systemctl enable --now awatch-rus-agent.service
+sudo systemctl status awatch-rus-agent.service --no-pager
 
-Ожидаемые поля rules:
+10. Развёртывание портала
 
-- `ruleId`
-- `signalType`
-- `match`
-- `category`
-- `comment`
-- `enabled`
+Портальный слой AWatch-rus зафиксирован как Rust server-rendered HTML + HTMX-compatible JSON API.
 
----
+10.1 Общий порядок
 
-## 6) Сопровождение (обязательно)
+build portal/backend binary
+→ install binary
+→ install templates/static assets, если они выделены отдельно
+→ update portal env
+→ restart portal service
+→ smoke check HTTP/API routes
 
-### 6.1 Backup перед любыми изменениями
+10.2 Проверка портала
 
-На Proxmox:
+curl -fsS http://127.0.0.1:5600/healthz
+curl -fsS http://127.0.0.1:5600/readyz
+curl -fsS http://127.0.0.1:5600/version
 
-```bash
+Если конкретные endpoints в текущей версии отличаются, использовать фактически реализованные health/readiness/version endpoints и обновить этот документ в том же commit.
+
+11. Патчи в развернутой среде
+
+11.1 Правило
+
+Любой production patch применяется только через контролируемый цикл:
+
+определить commit/tag
+→ собрать release artifact
+→ выполнить локальные проверки
+→ сделать backup/snapshot
+→ установить новые binaries/configs
+→ restart/reload services
+→ smoke tests
+→ зафиксировать результат
+→ сохранить rollback path
+
+11.2 Перед патчем
+
+git rev-parse HEAD
+git status --short
+
+Сохранить:
+
+дата/время
+commit/tag
+кто применяет
+какие services затрагиваются
+какой rollback path
+
+11.3 Backup перед патчем
+
+Если используется Proxmox/LXC:
+
 vzdump <CT_ID> --mode snapshot --compress zstd --storage <BACKUP_STORAGE>
-```
 
-Конфиги внутри CT:
+Внутри сервера:
 
-```bash
-pct exec <CT_ID> -- tar -C / -czf <PRIVATE_BACKUP_DIR>/activitywatch-config-backup.tgz \
-  etc/activitywatch \
-  etc/systemd/system/activitywatch-server.service \
-  opt/activitywatch/webui-ru \
-  opt/activitywatch/releases
-```
+sudo tar -C / -czf /root/awatch-rus-backup-$(date +%Y%m%d-%H%M%S).tgz \
+  etc/awatch-rus \
+  opt/awatch-rus \
+  var/lib/awatch-rus \
+  var/log/awatch-rus
 
-### 6.2 Обновление сервера
+Если данные большие, backup "/var/lib/awatch-rus" выполнять отдельной процедурой согласно backup policy.
 
-1. Обновить `AW_SERVER_VERSION` и `AW_SERVER_DOWNLOAD_URL` в  
-   `<PROJECT_ROOT>/private-config/deploy.env`
-2. Выполнить:
+11.4 Установка нового binary
 
-```bash
-<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh
-pct enter <CT_ID>
-bash <CT_BOOTSTRAP_DIR>/install_aw_server.sh
-bash <CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh
-systemctl restart activitywatch-server.service
-```
+Сохранить предыдущую версию:
 
-3. Повторить валидацию API/UI.
+sudo mkdir -p /opt/awatch-rus/releases/previous
+sudo cp -a /opt/awatch-rus/bin /opt/awatch-rus/releases/previous/bin-$(date +%Y%m%d-%H%M%S)
 
-### 6.3 Rollback
+Установить новый artifact:
 
-RU patch rollback:
+sudo install -m 0755 dist/awatch-rus-release/bin/* /opt/awatch-rus/bin/
 
-```bash
-cp /opt/activitywatch/webui-ru/index.html.bak.<timestamp> /opt/activitywatch/webui-ru/index.html
-systemctl restart activitywatch-server.service
-```
+11.5 Restart services
 
-Полный rollback:
+sudo systemctl daemon-reload
+sudo systemctl restart awatch-rus-backend.service
+sudo systemctl restart aw-rus-healthd.service
 
-- восстановить CT из snapshot/backup;
-- проверить API и Web UI;
-- проверить доступность для Windows-клиентов.
+Если патч касается только agent:
 
----
+sudo systemctl restart awatch-rus-agent.service
 
-## 7) Безопасность
+Если сервис в текущем контуре называется иначе, использовать фактическое имя systemd unit.
 
-- Не хранить реальные приватные параметры вне `<PROJECT_ROOT>/private-config/deploy.env`.
-- Не открывать `5600/tcp` в интернет напрямую.
-- Публиковать через VPN или reverse proxy с ограничением доступа.
-- Перед изменениями всегда делать backup.
+12. Smoke-тесты после патча
 
----
+12.1 Systemd
 
-## 8) Короткий чек-лист ввода в эксплуатацию
+systemctl --failed --no-pager
+systemctl status awatch-rus-backend.service --no-pager
+systemctl status aw-rus-healthd.service --no-pager
 
-1. Заполнен `<PROJECT_ROOT>/private-config/deploy.env`.
-2. Выполнен `<PROJECT_ROOT>/proxmox/create-ct.sh`.
-3. Выполнен `<PROJECT_ROOT>/proxmox/push-aw-artifacts.sh`.
-4. В CT выполнены `<CT_BOOTSTRAP_DIR>/install_aw_server.sh` и `<CT_BOOTSTRAP_DIR>/apply_webui_ru_patch.sh`.
-5. Сервер API/порт/UI проверены.
-6. На Windows выполнен `deploy-domain-users.ps1`.
-7. Проверены процессы, задачи и bucket'ы.
-8. Зафиксированы параметры и дата ввода.
+12.2 Rust operational checks
+
+detmir-status --json
+detmir-check --json
+detmir-dlp --json
+
+Если отдельная команда не установлена в данном контуре, это не считается ошибкой только при наличии документированного исключения.
+
+12.3 HTTP/API
+
+curl -fsS http://127.0.0.1:5600/healthz
+curl -fsS http://127.0.0.1:5600/readyz
+curl -fsS http://127.0.0.1:5600/version
+
+12.4 Portal smoke
+
+Проверить в браузере:
+
+/portal
+/portal/reports
+/portal/architecture
+
+Для Pilot v1 проверить роли:
+
+executive
+manager
+security
+forensics
+admin
+
+12.5 Data freshness
+
+Проверить, что витрины и отчёты не пустые из-за сбоя сбора:
+
+последние события поступают
+worktime reports обновляются
+DLP/security events отображаются, если включены
+evidence/reporting не падает
+Grafana dashboards открываются
+
+13. Rollback
+
+13.1 Быстрый rollback binary
+
+Найти предыдущий backup:
+
+ls -lah /opt/awatch-rus/releases/previous/
+
+Восстановить:
+
+sudo rsync -a --delete /opt/awatch-rus/releases/previous/bin-YYYYMMDD-HHMMSS/ /opt/awatch-rus/bin/
+sudo systemctl restart awatch-rus-backend.service
+sudo systemctl restart aw-rus-healthd.service
+
+13.2 Rollback конфигурации
+
+sudo cp /etc/awatch-rus/awatch-rus.env.bak /etc/awatch-rus/awatch-rus.env
+sudo systemctl restart awatch-rus-backend.service
+
+13.3 Rollback CT/VM
+
+Если повреждение затрагивает runtime, данные или systemd-конфигурацию:
+
+остановить сервисы
+восстановить snapshot/backup
+проверить health/readiness/version
+проверить портал
+проверить поступление данных
+зафиксировать incident note
+
+14. Monitoring
+
+14.1 Что должно контролироваться
+
+- service status;
+- process uptime;
+- API health/readiness;
+- latency;
+- error rate;
+- freshness данных;
+- заполненность диска;
+- размер логов;
+- успешность exporters;
+- SLO status;
+- agent coverage;
+- отсутствие failed systemd units.
+
+14.2 Grafana
+
+В Grafana должны быть разделены витрины:
+
+- executive dashboard;
+- security dashboard;
+- operations dashboard;
+- RDP/user activity dashboard;
+- data quality/freshness dashboard;
+- DLP/evidence dashboard, если модуль включён.
+
+14.3 Prometheus
+
+Prometheus scrape должен быть доступен только из внутреннего контура мониторинга. Не открывать metrics endpoints наружу.
+
+15. Security hardening
+
+Обязательные правила:
+
+- не публиковать API напрямую в интернет;
+- использовать VPN/reverse proxy/access control;
+- закрыть лишние порты;
+- хранить secrets вне git;
+- ограничить права systemd services;
+- использовать отдельного service user, если это поддерживается текущей установкой;
+- включить backup;
+- проверять логи после каждого патча;
+- не использовать demo fixtures как production data;
+- не смешивать реальные ФИО/IP/hostname с публичными demo screenshots.
+
+16. Проверка перед вводом в эксплуатацию
+
+Минимальный checklist:
+
+[ ] выбран commit/tag release
+[ ] cargo fmt прошёл
+[ ] cargo clippy прошёл
+[ ] cargo test прошёл
+[ ] cargo build --release прошёл
+[ ] private config guard прошёл
+[ ] backup/snapshot создан
+[ ] binaries установлены
+[ ] systemd services запущены
+[ ] health/readiness/version отвечают
+[ ] detmir-status/check/dlp работают
+[ ] portal открывается
+[ ] роли Pilot v1 проверены
+[ ] Grafana dashboards открываются
+[ ] данные поступают
+[ ] rollback path известен
+[ ] дата/commit/оператор зафиксированы
+
+17. Что больше не использовать как основной путь
+
+Не использовать как основной production flow:
+
+windows/deploy-single-user.ps1
+windows/deploy-domain-users.ps1
+windows/deploy-ensemble.ps1
+windows/validate-deployment.ps1
+windows/hardening-recovery.ps1
+windows/browser-domains-native-collector.ps1
+windows/dlp-endpoint-signals-collector.ps1
+
+Если эти файлы физически остаются в репозитории, они должны быть явно помечены как:
+
+legacy
+planned provider
+migration-only
+dev/test helper
+
+Они не должны описываться в основном deployment manual как обязательный production-путь.
+
+18. Короткий production runbook
+
+18.1 Развернуть
+
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+cargo build --release --workspace
+
+sudo install -m 0755 target/release/<binary> /opt/awatch-rus/bin/<binary>
+sudo systemctl daemon-reload
+sudo systemctl restart <service>.service
+
+18.2 Проверить
+
+systemctl --failed --no-pager
+detmir-status --json
+detmir-check --json
+curl -fsS http://127.0.0.1:5600/healthz
+curl -fsS http://127.0.0.1:5600/readyz
+curl -fsS http://127.0.0.1:5600/version
+
+18.3 Откатить
+
+sudo rsync -a --delete /opt/awatch-rus/releases/previous/bin-YYYYMMDD-HHMMSS/ /opt/awatch-rus/bin/
+sudo systemctl restart <service>.service
+
+19. Правило актуализации этого документа
+
+Если меняется:
+
+- имя binary;
+- имя systemd unit;
+- порт;
+- endpoint;
+- путь хранения данных;
+- способ сборки;
+- способ доставки artifacts;
+- smoke-test;
+- rollback procedure;
+
+то этот файл должен обновляться в том же commit, что и изменение кода или deployment-конфигурации.
