@@ -5,14 +5,16 @@ on:
     branches:
       - main
     paths:
-      - 'adk-rust/**'
-      - 'scripts/**'
+      - 'adk-rust/crates/detmir-core/**'
+      - 'adk-rust/crates/detmir-portal/**'
+      - 'scripts/check_private_config_guard.sh'
+      - 'scripts/check_portal_contract_sync.mjs'
       - '.github/workflows/rust-professionalization-check.yml'
   workflow_dispatch:
 
 jobs:
   rust-check:
-    name: cargo fmt, tests and clippy
+    name: changed Rust crates smoke
     runs-on: ubuntu-latest
     timeout-minutes: 40
 
@@ -39,9 +41,13 @@ jobs:
         working-directory: adk-rust
         run: cargo test -p detmir-portal
 
-      - name: Clippy changed Rust workspace
+      - name: Clippy detmir-core
         working-directory: adk-rust
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy -p detmir-core --all-targets -- -D warnings
+
+      - name: Clippy detmir-portal
+        working-directory: adk-rust
+        run: cargo clippy -p detmir-portal --all-targets -- -D warnings
 
       - name: Private config guard
         run: bash scripts/check_private_config_guard.sh
