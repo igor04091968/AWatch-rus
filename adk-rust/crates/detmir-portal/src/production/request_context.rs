@@ -1,8 +1,5 @@
 //! Request correlation and route classification for portal observability.
 //!
-//! This module derives a low-cardinality route name, business module and role
-//! label for each request. These fields are used by structured logs and metrics.
-//!
 //! CONTRACT: generated route names must not expose volatile identifiers such as
 //! case IDs, candidate IDs or evidence IDs; use route templates instead.
 
@@ -81,7 +78,7 @@ fn request_header(request: &Request, name: &str) -> Option<String> {
     request
         .headers()
         .iter()
-        .find(|header| header.field.to_string().eq_ignore_ascii_case(name))
+        .find(|header| header.field.equiv(name))
         .map(|header| header.value.as_str().to_string())
 }
 
@@ -101,9 +98,6 @@ fn resolve_request_ids(
 }
 
 fn sanitize_request_token(value: String) -> String {
-    // SECURITY: log correlation tokens are accepted from reverse proxies and
-    // clients, so strip control characters and path separators before they reach
-    // logs or metric labels. Truncation bounds accidental high-cardinality input.
     value
         .chars()
         .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.' | ':'))
