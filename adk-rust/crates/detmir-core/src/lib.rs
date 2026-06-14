@@ -1,19 +1,37 @@
+#![deny(unsafe_op_in_unsafe_fn)]
+
+//! Shared production primitives for AWatch-rus.
+//!
+//! This crate intentionally stays small and dependency-light. It contains the
+//! status, exit-code and runtime-configuration guardrails that are reused by
+//! operational binaries and health/check tooling. Keep business-specific portal,
+//! DLP or workforce logic out of this crate.
+
 use std::fmt;
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
+/// Normalized health/check status used by CLI tools, probes and JSON payloads.
+///
+/// CONTRACT: serialized values are uppercase and must remain stable because
+/// deployment scripts, smoke checks and dashboards can key off these strings.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum StatusLevel {
+    /// Component is healthy and the check passed.
     Ok,
+    /// Component works, but a risk or degraded condition needs attention.
     Warn,
+    /// Component check failed or a required dependency is unavailable.
     Fail,
+    /// Component did not provide enough information for a reliable status.
     Unknown,
 }
 
 impl StatusLevel {
+    /// Return the stable uppercase representation used in human and JSON output.
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Ok => "OK",
@@ -23,6 +41,10 @@ impl StatusLevel {
         }
     }
 
+    /// Map status to the process exit code expected by operational checks.
+    ///
+    /// CONTRACT: `WARN` exits as a failed check rather than success so that
+    /// automation does not silently ignore degraded production state.
     pub fn exit_code(self) -> i32 {
         match self {
             Self::Ok => exit_codes::OK,
@@ -48,23 +70,39 @@ impl From<&str> for StatusLevel {
     }
 }
 
+/// Stable process exit codes for AWatch-rus operational binaries.
+///
+/// CONTRACT: keep these numeric values stable. Shell scripts, systemd units,
+/// smoke tests and runbooks can depend on them.
 pub mod exit_codes {
+    /// Successful execution.
     pub const OK: i32 = 0;
+    /// Unexpected runtime or IO error.
     pub const ERROR: i32 = 1;
+    /// Health/check policy failed or returned a degraded status.
     pub const CHECK_FAILED: i32 = 2;
+    /// A safety policy denied a requested action.
     pub const POLICY_DENIED: i32 = 3;
 }
 
+/// Return the current UTC timestamp in compact RFC3339/Zulu format.
 pub fn now_utc_rfc3339() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
 }
 
+/// Parse an RFC3339 timestamp and normalize it to UTC.
 pub fn parse_utc_rfc3339(value: &str) -> Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(value)
         .with_context(|| format!("invalid RFC3339 timestamp: {value}"))
         .map(|ts| ts.with_timezone(&Utc))
 }
 
+/// Runtime configuration guardrails.
+///
+/// SECURITY: these helpers are deliberately conservative. They reject empty,
+/// documentation, TEST-NET and common placeholder values before a component is
+/// allowed to run in production mode. This prevents demo-safe examples from
+/// accidentally becoming live runtime configuration.
 pub mod runtime_guard {
     use anyhow::{Result, bail};
 
@@ -82,6 +120,11 @@ pub mod runtime_guard {
         "PASSWORD",
     ];
 
+    /// Return true when a value looks like a public/demo placeholder.
+    ///
+    /// RATIONALE: AWatch-rus documentation intentionally uses TEST-NET ranges
+    /// and HOST-EXAMPLE markers. Production binaries should fail closed when
+    /// such values reach runtime configuration.
     pub fn is_runtime_placeholder(value: &str) -> bool {
         let trimmed = value.trim();
         if trimmed.is_empty() {
@@ -106,6 +149,7 @@ pub mod runtime_guard {
             || (normalized.starts_with('<') && normalized.ends_with('>'))
     }
 
+    /// Return true when a value is unsafe for a secret-like configuration field.
     pub fn is_secret_placeholder(value: &str) -> bool {
         is_runtime_placeholder(value)
             || matches!(
@@ -114,6 +158,10 @@ pub mod runtime_guard {
             )
     }
 
+    /// Ensure a required runtime value is not empty or demo-only.
+    ///
+    /// SECURITY: callers should invoke this before opening network connections,
+    /// starting ingestion or enabling exporters in production mode.
     pub fn ensure_runtime_value(name: &str, value: &str, context: &str) -> Result<()> {
         if is_runtime_placeholder(value) {
             bail!("{name} contains an empty/example/TEST-NET value while {context}");
@@ -121,6 +169,7 @@ pub mod runtime_guard {
         Ok(())
     }
 
+    /// Ensure a required secret is not empty or an obvious placeholder.
     pub fn ensure_secret_value(name: &str, value: &str, context: &str) -> Result<()> {
         if is_secret_placeholder(value) {
             bail!("{name} contains an empty/example secret value while {context}");
@@ -128,6 +177,7 @@ pub mod runtime_guard {
         Ok(())
     }
 
+    /// Ensure an iterator of runtime values is non-empty and production-safe.
     pub fn ensure_runtime_values<'a>(
         name: &str,
         values: impl IntoIterator<Item = &'a String>,
@@ -144,6 +194,12 @@ pub mod runtime_guard {
         Ok(())
     }
 
+    /// Validate a complete InfluxDB exporter configuration block.
+    ///
+    /// CONTRACT: when an exporter is enabled, URL, org, bucket, token and host
+    /// list must all be real runtime values. A partial/demo exporter config is
+    /// more dangerous than a disabled exporter because it creates false
+    /// confidence in monitoring readiness.
     pub fn ensure_influx_runtime_config(
         prefix: &str,
         url: &str,
