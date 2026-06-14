@@ -1,3 +1,10 @@
+//! Configuration and request-bound validation for production portal routes.
+//!
+//! RATIONALE: the portal can aggregate reports, evidence and external service
+//! payloads. Query and body limits keep pilot installations responsive and make
+//! expensive report routes fail closed instead of exhausting memory or blocking
+//! the single-process runtime.
+
 use std::collections::BTreeSet;
 
 use anyhow::{Result, anyhow};
@@ -30,6 +37,10 @@ pub(crate) fn validate_portal_config(args: &Cli) -> Result<()> {
     if port == 0 {
         return Err(anyhow!("invalid config port: expected 1..65535"));
     }
+
+    // RATIONALE: page and date limits protect heavy report endpoints while
+    // preserving monthly pilot reporting. Hard upper bounds prevent accidental
+    // production overrides from turning the portal into an unbounded exporter.
     if args.max_page_size == 0 || args.max_page_size > MAX_ALLOWED_PAGE_SIZE {
         return Err(anyhow!(
             "invalid config max_page_size: expected 1..={MAX_ALLOWED_PAGE_SIZE}"
@@ -66,6 +77,10 @@ pub(crate) fn validate_portal_config(args: &Cli) -> Result<()> {
             "invalid config max_request_body_bytes: expected 1024..={MAX_ALLOWED_REQUEST_BODY_BYTES}"
         ));
     }
+
+    // SECURITY: environment and module names can reach metrics/log labels.
+    // Restrict them to short ASCII tokens to avoid label injection and runaway
+    // cardinality from free-form deployment names.
     if !is_safe_environment_name(&args.environment) {
         return Err(anyhow!(
             "invalid config environment: use 1..32 chars from A-Z, a-z, 0-9, _, -"
