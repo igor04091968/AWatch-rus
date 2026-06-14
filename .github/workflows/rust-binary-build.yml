@@ -1,0 +1,55 @@
+name: rust-binary-build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'rust-toolchain.toml'
+      - 'adk-rust/**'
+      - 'scripts/package_rust_release_binaries.py'
+      - '.github/workflows/rust-binary-build.yml'
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux-x86_64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.94.0
+          rustup show active-toolchain
+          cargo +1.94.0 --version
+          rustc +1.94.0 --version
+
+      - name: Build release binaries
+        run: cargo +1.94.0 build --manifest-path adk-rust/Cargo.toml --workspace --release
+
+      - name: Package release binaries
+        run: |
+          python3 scripts/package_rust_release_binaries.py \
+            --release-dir adk-rust/target/release \
+            --out-dir dist/awatch-rus-linux-x86_64 \
+            --archive dist/awatch-rus-linux-x86_64-release-binaries.tar.gz \
+            --target linux-x86_64
+
+      - name: Upload release binaries artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: awatch-rus-linux_x86_64-release-binaries
+          path: |
+            dist/awatch-rus-linux_x86_64-release-binaries.tar.gz
+            dist/awatch-rus-linux_x86_64-release-binaries.tar.gz.sha256
+            dist/awatch-rus-linux_x86_64/BINARIES.txt
+            dist/awatch-rus-linux_x86_64/SHA256SUMS.txt
+            dist/awatch-rus-linux_x86_64/BUILD_MANIFEST.json
+          if-no-files-found: error
+          retention-days: 30

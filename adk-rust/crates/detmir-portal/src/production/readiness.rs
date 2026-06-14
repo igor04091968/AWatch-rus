@@ -1,3 +1,10 @@
+//! Readiness probe payload.
+//!
+//! CONTRACT: `/readyz` checks whether the portal is safe to receive normal
+//! traffic. It must remain conservative: configuration errors and broken state
+//! storage make the process `not_ready`; optional integrations can report
+//! `disabled`, `not_required` or `contract_only` without failing the whole probe.
+
 use std::path::Path;
 
 use serde_json::{Value, json};

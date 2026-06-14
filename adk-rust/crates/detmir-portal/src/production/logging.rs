@@ -1,3 +1,10 @@
+//! Structured HTTP access logging for the portal runtime.
+//!
+//! CONTRACT: logs are emitted as single-line JSON to stderr so systemd/journald,
+//! container runtimes and log forwarders can parse them without scraping free
+//! text. Do not log raw request bodies, secrets, evidence bytes or personal
+//! payloads here.
+
 use serde_json::{Value, json};
 use tiny_http::StatusCode;
 
@@ -21,6 +28,10 @@ pub(crate) fn log_http_request(
     } else {
         Value::Null
     };
+
+    // SECURITY: include routing/correlation fields, but do not include query
+    // values, request body, headers or tokens. Those can contain employee data,
+    // screenshots, evidence references or API keys.
     eprintln!(
         "{}",
         json!({

@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   rust-workspace:
@@ -13,19 +14,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Rust 1.85
-        uses: dtolnay/rust-toolchain@1.85.0
-        with:
-          components: rustfmt, clippy
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.94.0
+          rustup show active-toolchain
+          cargo +1.94.0 --version
+          rustc +1.94.0 --version
 
       - name: Format
-        run: cargo fmt --manifest-path adk-rust/Cargo.toml --all -- --check
+        run: cargo +1.94.0 fmt --manifest-path adk-rust/Cargo.toml --all -- --check
 
       - name: Test
-        run: cargo test --manifest-path adk-rust/Cargo.toml --workspace
+        run: cargo +1.94.0 test --manifest-path adk-rust/Cargo.toml --workspace
 
       - name: Clippy
-        run: cargo clippy --manifest-path adk-rust/Cargo.toml --workspace --all-targets -- -D warnings
+        run: cargo +1.94.0 clippy --manifest-path adk-rust/Cargo.toml --workspace --all-targets -- -D warnings
 
       - name: Release build
-        run: cargo build --manifest-path adk-rust/Cargo.toml --workspace --release
+        run: cargo +1.94.0 build --manifest-path adk-rust/Cargo.toml --workspace --release

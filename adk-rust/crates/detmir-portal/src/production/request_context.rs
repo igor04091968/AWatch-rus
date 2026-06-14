@@ -1,3 +1,8 @@
+//! Request correlation and route classification for portal observability.
+//!
+//! CONTRACT: generated route names must not expose volatile identifiers such as
+//! case IDs, candidate IDs or evidence IDs; use route templates instead.
+
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
@@ -73,7 +78,7 @@ fn request_header(request: &Request, name: &str) -> Option<String> {
     request
         .headers()
         .iter()
-        .find(|header| header.field.to_string().eq_ignore_ascii_case(name))
+        .find(|header| header.field.as_str().as_str().eq_ignore_ascii_case(name))
         .map(|header| header.value.as_str().to_string())
 }
 

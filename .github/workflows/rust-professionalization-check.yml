@@ -1,0 +1,73 @@
+name: Rust professionalization check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'rust-toolchain.toml'
+      - 'adk-rust/crates/detmir-core/**'
+      - 'adk-rust/crates/detmir-portal/**'
+      - 'scripts/check_private_config_guard.sh'
+      - 'scripts/check_portal_contract_sync.mjs'
+      - '.github/workflows/rust-professionalization-check.yml'
+  workflow_dispatch:
+
+jobs:
+  rust-check:
+    name: changed Rust crates smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.94.0
+          rustup show active-toolchain
+          cargo +1.94.0 --version
+          rustc +1.94.0 --version
+
+      - name: Cargo fmt check
+        working-directory: adk-rust
+        run: cargo +1.94.0 fmt --all -- --check
+
+      - name: Test detmir-core
+        working-directory: adk-rust
+        run: cargo +1.94.0 test -p detmir-core
+
+      - name: Test detmir-portal
+        working-directory: adk-rust
+        run: cargo +1.94.0 test -p detmir-portal
+
+      - name: Clippy detmir-core
+        working-directory: adk-rust
+        run: cargo +1.94.0 clippy -p detmir-core --all-targets -- -D warnings
+
+      - name: Clippy detmir-portal with captured log
+        working-directory: adk-rust
+        run: |
+          set +e
+          cargo +1.94.0 clippy -p detmir-portal --all-targets -- -D warnings > ../detmir-portal-clippy.log 2>&1
+          status=$?
+          echo "clippy_exit_status=${status}" > ../detmir-portal-clippy-status.txt
+          tail -n 80 ../detmir-portal-clippy.log
+          exit ${status}
+
+      - name: Upload detmir-portal clippy log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detmir-portal-clippy-log
+          path: |
+            detmir-portal-clippy.log
+            detmir-portal-clippy-status.txt
+
+      - name: Private config guard
+        run: bash scripts/check_private_config_guard.sh
+
+      - name: Portal contract sync
+        run: node scripts/check_portal_contract_sync.mjs
