@@ -3,7 +3,6 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -32,6 +31,7 @@ mod production;
 mod readiness_api;
 mod risk_narrative;
 mod role_access;
+mod snapshot_cache;
 mod workforce_kpi_explain;
 
 use api_contracts::api_contract_summary;
@@ -54,6 +54,9 @@ use risk_narrative::{
     RiskNarrativeInputs, RiskNarrativeQuery, build_risk_narrative, build_risk_narrative_from_report,
 };
 use role_access::{portal_role_from_request, respond_forbidden, role_envelope};
+use snapshot_cache::{
+    SnapshotCache, build_fast_health, cached_snapshot, clone_snapshot_cache, new_snapshot_cache,
+};
 use workforce_kpi_explain::{KpiExplainQuery, build_workforce_kpi_explain};
 
 const INDEX_HTML: &str = include_str!("static/index.html");
@@ -63,7 +66,6 @@ const APP_JS: &str = include_str!("static/app.js");
 const API_CONTRACT_OPENAPI: &str = include_str!("contracts/openapi.json");
 const API_CONTRACT_TYPESCRIPT: &str = include_str!("contracts/typescript.d.ts");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
-const SNAPSHOT_CACHE_TTL: Duration = Duration::from_secs(120);
 const DEFAULT_DEPARTMENT_LABEL: &str = "Не привязано к подразделению";
 const LEGACY_UNASSIGNED_DEPARTMENT_LABEL: &str = "Без подразделения";
 const PORTAL_SCHEMA_VERSION: &str = "pilot-v1";
@@ -85,14 +87,6 @@ const SIGKILL: i32 = 9;
 unsafe extern "C" {
     fn setpgid(pid: i32, pgid: i32) -> i32;
     fn kill(pid: i32, sig: i32) -> i32;
-}
-
-type SnapshotCache = Arc<Mutex<Option<CachedSnapshot>>>;
-
-#[derive(Clone, Debug)]
-struct CachedSnapshot {
-    created: Instant,
-    snapshot: Snapshot,
 }
 
 #[derive(Clone, Debug, Parser)]
@@ -1327,11 +1321,11 @@ fn run() -> Result<i32> {
     }
 
     let server = Server::http(&args.bind).map_err(|err| anyhow!("bind {}: {err}", args.bind))?;
-    let snapshot_cache: SnapshotCache = Arc::new(Mutex::new(None));
+    let snapshot_cache: SnapshotCache = new_snapshot_cache();
     eprintln!("detmir-portal listening on http://{}", args.bind);
     for request in server.incoming_requests() {
         let args = args.clone();
-        let snapshot_cache = Arc::clone(&snapshot_cache);
+        let snapshot_cache = clone_snapshot_cache(&snapshot_cache);
         thread::spawn(move || {
             let result = if args.evidence_only {
                 handle_evidence_only_request(request, &args)
@@ -1663,42 +1657,6 @@ fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
         "Not Found",
         "text/plain; charset=utf-8",
     )
-}
-
-fn cached_snapshot(args: &Cli, cache: &SnapshotCache) -> Snapshot {
-    let mut guard = cache.lock().expect("snapshot cache mutex poisoned");
-    if let Some(cached) = guard.as_ref() {
-        if cached.created.elapsed() <= SNAPSHOT_CACHE_TTL {
-            return cached.snapshot.clone();
-        }
-    }
-    let snapshot = build_snapshot(args);
-    *guard = Some(CachedSnapshot {
-        created: Instant::now(),
-        snapshot: snapshot.clone(),
-    });
-    snapshot
-}
-
-fn build_fast_health(cache: &SnapshotCache) -> HealthResponse {
-    match cache.try_lock() {
-        Ok(guard) => guard
-            .as_ref()
-            .map(|cached| build_health(&cached.snapshot))
-            .unwrap_or_else(lightweight_health),
-        Err(_) => lightweight_health(),
-    }
-}
-
-fn lightweight_health() -> HealthResponse {
-    let mut sources = BTreeMap::new();
-    sources.insert("portal".to_string(), true);
-    HealthResponse {
-        ok: true,
-        generated_at_utc: now(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        sources,
-    }
 }
 
 fn build_snapshot(args: &Cli) -> Snapshot {
