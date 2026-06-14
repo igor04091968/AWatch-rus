@@ -1,0 +1,38 @@
+name: rust-binary-build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-linux-x86_64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.94.0
+          rustup show active-toolchain
+          cargo +1.94.0 --version
+          rustc +1.94.0 --version
+
+      - name: Check, test and build
+        run: |
+          cargo +1.94.0 fmt --manifest-path adk-rust/Cargo.toml --all -- --check
+          cargo +1.94.0 test --manifest-path adk-rust/Cargo.toml --workspace --no-fail-fast
+          cargo +1.94.0 clippy --manifest-path adk-rust/Cargo.toml --workspace --all-targets -- -D warnings
+          cargo +1.94.0 build --manifest-path adk-rust/Cargo.toml --workspace --release
+
+      - name: Upload release target directory
+        uses: actions/upload-artifact@v4
+        with:
+          name: awatch-rus-linux-x86_64-release-target
+          path: adk-rust/target/release/
+          if-no-files-found: error
