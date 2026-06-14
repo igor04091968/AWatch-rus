@@ -1,3 +1,14 @@
+//! Production-facing portal runtime support.
+//!
+//! This module groups the cross-cutting concerns that must stay consistent
+//! across all portal routes: health/readiness/version contracts, query and
+//! configuration limits, structured logging, Prometheus-style metrics and
+//! request correlation metadata.
+//!
+//! CONTRACT: keep this module free from role-specific business rendering. It is
+//! the operational boundary around the portal, not the workforce/security report
+//! implementation itself.
+
 pub(crate) mod health;
 pub(crate) mod limits;
 pub(crate) mod logging;
