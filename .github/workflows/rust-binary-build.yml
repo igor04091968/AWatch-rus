@@ -2,6 +2,12 @@ name: rust-binary-build
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'rust-toolchain.toml'
+      - 'adk-rust/**'
+      - '.github/workflows/rust-binary-build.yml'
   push:
     tags:
       - 'v*'
