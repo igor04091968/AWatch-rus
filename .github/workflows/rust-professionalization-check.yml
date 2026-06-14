@@ -45,9 +45,24 @@ jobs:
         working-directory: adk-rust
         run: cargo clippy -p detmir-core --all-targets -- -D warnings
 
-      - name: Clippy detmir-portal
+      - name: Clippy detmir-portal with captured log
         working-directory: adk-rust
-        run: cargo clippy -p detmir-portal --all-targets -- -D warnings
+        run: |
+          set +e
+          cargo clippy -p detmir-portal --all-targets -- -D warnings > ../detmir-portal-clippy.log 2>&1
+          status=$?
+          echo "clippy_exit_status=${status}" > ../detmir-portal-clippy-status.txt
+          tail -n 80 ../detmir-portal-clippy.log
+          exit ${status}
+
+      - name: Upload detmir-portal clippy log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detmir-portal-clippy-log
+          path: |
+            detmir-portal-clippy.log
+            detmir-portal-clippy-status.txt
 
       - name: Private config guard
         run: bash scripts/check_private_config_guard.sh
