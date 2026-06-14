@@ -1,3 +1,9 @@
+//! In-process Prometheus-style metrics for the portal.
+//!
+//! CONTRACT: metric names and label keys are part of the operational contract
+//! used by dashboards and smoke checks. Additive metrics are allowed; renaming
+//! existing metrics requires synchronized dashboard/documentation changes.
+
 use std::collections::BTreeMap;
 use std::fmt::Write as FmtWrite;
 use std::sync::{Mutex, OnceLock};
@@ -179,5 +185,7 @@ pub(crate) fn render_prometheus_metrics(args: &Cli) -> String {
 }
 
 fn prom_escape(value: &str) -> String {
+    // SECURITY: metric label values are route/module tokens, but escaping keeps
+    // the endpoint safe if future callers pass proxy-derived values.
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
