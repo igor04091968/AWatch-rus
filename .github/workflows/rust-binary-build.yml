@@ -7,6 +7,7 @@ on:
     paths:
       - 'rust-toolchain.toml'
       - 'adk-rust/**'
+      - 'scripts/package_rust_release_binaries.py'
       - '.github/workflows/rust-binary-build.yml'
   push:
     tags:
@@ -36,16 +37,23 @@ jobs:
           cargo +1.94.0 clippy --manifest-path adk-rust/Cargo.toml --workspace --all-targets -- -D warnings
           cargo +1.94.0 build --manifest-path adk-rust/Cargo.toml --workspace --release
 
+      - name: Package release binaries
+        run: |
+          python3 scripts/package_rust_release_binaries.py \
+            --release-dir adk-rust/target/release \
+            --out-dir dist/awatch-rus-linux-x86_64 \
+            --archive dist/awatch-rus-linux-x86_64-release-binaries.tar.gz \
+            --target linux-x86_64
+
       - name: Upload release binaries artifact
         uses: actions/upload-artifact@v4
         with:
           name: awatch-rus-linux-x86_64-release-binaries
           path: |
-            adk-rust/target/release/*
-            !adk-rust/target/release/deps/**
-            !adk-rust/target/release/build/**
-            !adk-rust/target/release/examples/**
-            !adk-rust/target/release/incremental/**
-            !adk-rust/target/release/*.d
+            dist/awatch-rus-linux-x86_64-release-binaries.tar.gz
+            dist/awatch-rus-linux-x86_64-release-binaries.tar.gz.sha256
+            dist/awatch-rus-linux-x86_64/BINARIES.txt
+            dist/awatch-rus-linux-x86_64/SHA256SUMS.txt
+            dist/awatch-rus-linux-x86_64/BUILD_MANIFEST.json
           if-no-files-found: error
           retention-days: 30
