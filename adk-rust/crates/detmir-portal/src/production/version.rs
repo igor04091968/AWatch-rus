@@ -1,3 +1,8 @@
+//! Build/version probe payload.
+//!
+//! CONTRACT: `/version` is used by smoke tests, runbooks and release evidence.
+//! Keep field names stable and add new fields only in a backward-compatible way.
+
 use serde_json::{Value, json};
 
 use crate::{Cli, PORTAL_SCHEMA_VERSION};
