@@ -1,0 +1,50 @@
+name: Rust professionalization check
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'adk-rust/**'
+      - 'scripts/**'
+      - '.github/workflows/rust-professionalization-check.yml'
+  workflow_dispatch:
+
+jobs:
+  rust-check:
+    name: cargo fmt, tests and clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust 1.85 with rustfmt and clippy
+        run: |
+          rustup toolchain install 1.85.0 --profile minimal --component rustfmt --component clippy
+          rustup default 1.85.0
+          cargo --version
+          rustc --version
+
+      - name: Cargo fmt check
+        working-directory: adk-rust
+        run: cargo fmt --all -- --check
+
+      - name: Test detmir-core
+        working-directory: adk-rust
+        run: cargo test -p detmir-core
+
+      - name: Test detmir-portal
+        working-directory: adk-rust
+        run: cargo test -p detmir-portal
+
+      - name: Clippy changed Rust workspace
+        working-directory: adk-rust
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Private config guard
+        run: bash scripts/check_private_config_guard.sh
+
+      - name: Portal contract sync
+        run: node scripts/check_portal_contract_sync.mjs
