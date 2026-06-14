@@ -49,27 +49,38 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def copy_release_file(src: Path, dst: Path) -> Path:
+    """Copy file contents without preserving metadata that some mounts reject."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(src, dst)
+    try:
+        dst.chmod(src.stat().st_mode & 0o777)
+    except PermissionError:
+        # Some removable/network filesystems reject chmod/utime metadata changes.
+        # The package remains valid because the archive manifest/checksums are
+        # based on file contents, not filesystem timestamps.
+        pass
+    return dst
+
+
 def write_archive_checksum(archive: Path) -> None:
     write(archive.with_suffix(archive.suffix + ".sha256"), f"{sha256(archive)}  {archive.name}\n")
 
 
 def create_compatibility_aliases(out_dir: Path, archive: Path) -> None:
-    """Create both linux-x86_64 and linux_x86_64 artifact paths.
-
-    Older workflow edits used the underscore form while the target name uses the
-    hyphen form. Keeping both names makes the artifact packaging tolerant to
-    either path without changing the release contents.
-    """
+    """Create both linux-x86_64 and linux_x86_64 artifact paths."""
     out_alias = Path(str(out_dir).replace("linux-x86_64", "linux_x86_64"))
     if out_alias != out_dir:
         if out_alias.exists():
             shutil.rmtree(out_alias)
-        shutil.copytree(out_dir, out_alias)
+        out_alias.mkdir(parents=True)
+        for item in out_dir.iterdir():
+            if item.is_file():
+                copy_release_file(item, out_alias / item.name)
 
     archive_alias = Path(str(archive).replace("linux-x86_64", "linux_x86_64"))
     if archive_alias != archive:
-        archive_alias.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(archive, archive_alias)
+        copy_release_file(archive, archive_alias)
         write_archive_checksum(archive_alias)
 
 
@@ -94,7 +105,7 @@ def main() -> None:
 
     binaries = collect(release_dir)
     for binary in binaries:
-        shutil.copy2(binary, out_dir / binary.name)
+        copy_release_file(binary, out_dir / binary.name)
 
     names = [binary.name for binary in binaries]
     write(out_dir / "BINARIES.txt", "\n".join(names) + "\n")
