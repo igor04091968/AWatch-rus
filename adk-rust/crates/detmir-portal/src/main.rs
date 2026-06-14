@@ -24,6 +24,7 @@ use sha2::{Digest, Sha256};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 mod executive_actions;
+mod portal_roles;
 mod production;
 mod risk_narrative;
 mod workforce_kpi_explain;
@@ -31,6 +32,7 @@ mod workforce_kpi_explain;
 use executive_actions::{
     actions_from_center, build_action_center_from_report, filter_actions_for_role,
 };
+use portal_roles::PortalRole;
 use production::{
     build_healthz, build_readyz, build_version, http_request_metadata, is_limited_api_route,
     log_http_request, mark_request_started, record_http_metric, record_ingestion_accepted,
@@ -74,76 +76,6 @@ unsafe extern "C" {
 }
 
 type SnapshotCache = Arc<Mutex<Option<CachedSnapshot>>>;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "snake_case")]
-enum PortalRole {
-    Executive,
-    Manager,
-    Security,
-    Forensics,
-    Admin,
-}
-
-impl PortalRole {
-    fn parse(value: &str) -> Option<Self> {
-        match value.trim().to_ascii_lowercase().as_str() {
-            "executive" | "owner" | "rukovoditel" | "руководитель" => {
-                Some(Self::Executive)
-            }
-            "manager" | "workforce" | "руководитель_подразделения" => {
-                Some(Self::Manager)
-            }
-            "security" | "ib" | "soc" | "безопасность" => Some(Self::Security),
-            "forensics" | "investigation" | "расследования" => Some(Self::Forensics),
-            "admin" | "operations" | "operator" | "эксплуатация" => Some(Self::Admin),
-            _ => None,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Executive => "executive",
-            Self::Manager => "manager",
-            Self::Security => "security",
-            Self::Forensics => "forensics",
-            Self::Admin => "admin",
-        }
-    }
-
-    fn label_ru(self) -> &'static str {
-        match self {
-            Self::Executive => "Руководитель",
-            Self::Manager => "Руководитель подразделения",
-            Self::Security => "Безопасность",
-            Self::Forensics => "Расследования",
-            Self::Admin => "Администратор",
-        }
-    }
-
-    fn allowed_scopes(self) -> &'static [&'static str] {
-        match self {
-            Self::Executive => &["executive", "workforce"],
-            Self::Manager => &["executive", "workforce"],
-            Self::Security => &["security", "incidents", "ueba", "pfsense"],
-            Self::Forensics => &["forensics", "incidents", "ueba"],
-            Self::Admin => &[
-                "executive",
-                "workforce",
-                "security",
-                "forensics",
-                "incidents",
-                "ueba",
-                "pfsense",
-                "admin",
-            ],
-        }
-    }
-
-    fn can_access(self, scope: &str) -> bool {
-        self.allowed_scopes().contains(&scope)
-    }
-}
 
 #[derive(Clone, Debug)]
 struct CachedSnapshot {
