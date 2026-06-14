@@ -49,6 +49,30 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def write_archive_checksum(archive: Path) -> None:
+    write(archive.with_suffix(archive.suffix + ".sha256"), f"{sha256(archive)}  {archive.name}\n")
+
+
+def create_compatibility_aliases(out_dir: Path, archive: Path) -> None:
+    """Create both linux-x86_64 and linux_x86_64 artifact paths.
+
+    Older workflow edits used the underscore form while the target name uses the
+    hyphen form. Keeping both names makes the artifact packaging tolerant to
+    either path without changing the release contents.
+    """
+    out_alias = Path(str(out_dir).replace("linux-x86_64", "linux_x86_64"))
+    if out_alias != out_dir:
+        if out_alias.exists():
+            shutil.rmtree(out_alias)
+        shutil.copytree(out_dir, out_alias)
+
+    archive_alias = Path(str(archive).replace("linux-x86_64", "linux_x86_64"))
+    if archive_alias != archive:
+        archive_alias.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(archive, archive_alias)
+        write_archive_checksum(archive_alias)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--release-dir", type=Path, required=True)
@@ -100,7 +124,8 @@ def main() -> None:
     archive.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(out_dir, arcname=out_dir.name)
-    write(archive.with_suffix(archive.suffix + ".sha256"), f"{sha256(archive)}  {archive.name}\n")
+    write_archive_checksum(archive)
+    create_compatibility_aliases(out_dir, archive)
 
 
 if __name__ == "__main__":
