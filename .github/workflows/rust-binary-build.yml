@@ -13,6 +13,9 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-linux-x86_64:
     runs-on: ubuntu-latest
@@ -39,7 +42,10 @@ jobs:
             --release-dir adk-rust/target/release \
             --out-dir dist/awatch-rus-linux-x86_64 \
             --archive dist/awatch-rus-linux-x86_64-release-binaries.tar.gz \
-            --target linux-x86_64
+            --target linux-x86_64 \
+            --commit "${GITHUB_SHA}" \
+            --ref "${GITHUB_REF}" \
+            --run-id "${GITHUB_RUN_ID}"
 
       - name: Upload release binaries artifact
         uses: actions/upload-artifact@v4
@@ -53,3 +59,16 @@ jobs:
             dist/awatch-rus-linux_x86_64/BUILD_MANIFEST.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            dist/awatch-rus-linux_x86_64-release-binaries.tar.gz
+            dist/awatch-rus-linux_x86_64-release-binaries.tar.gz.sha256
+            dist/awatch-rus-linux_x86_64/BINARIES.txt
+            dist/awatch-rus-linux_x86_64/SHA256SUMS.txt
+            dist/awatch-rus-linux_x86_64/BUILD_MANIFEST.json
