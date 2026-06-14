@@ -23,12 +23,14 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
+mod command_runner;
 mod executive_actions;
 mod portal_roles;
 mod production;
 mod risk_narrative;
 mod workforce_kpi_explain;
 
+use command_runner::run_in_dir;
 use executive_actions::{
     actions_from_center, build_action_center_from_report, filter_actions_for_role,
 };
@@ -1808,24 +1810,6 @@ fn readiness_verify(args: &Cli) -> Value {
 fn read_json_file(path: &Path) -> Result<Value> {
     let text = fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?;
     serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))
-}
-
-fn run_in_dir(dir: &Path, command: &mut Command) -> std::result::Result<(), String> {
-    let output = command
-        .current_dir(dir)
-        .output()
-        .map_err(|err| format!("run command in {}: {err}", dir.display()))?;
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(format!(
-            "{}{}",
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .trim()
-        .to_string())
-    }
 }
 
 fn query_flag(url: &str, key: &str) -> bool {
