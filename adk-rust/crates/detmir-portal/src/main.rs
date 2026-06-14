@@ -25,6 +25,7 @@ use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
 
 mod command_runner;
 mod executive_actions;
+mod path_query;
 mod portal_roles;
 mod production;
 mod risk_narrative;
@@ -33,6 +34,10 @@ mod workforce_kpi_explain;
 use command_runner::run_in_dir;
 use executive_actions::{
     actions_from_center, build_action_center_from_report, filter_actions_for_role,
+};
+use path_query::{
+    normalize_path, parse_case_path, parse_case_status_path, parse_investigation_pack_path,
+    query_flag, query_param,
 };
 use portal_roles::PortalRole;
 use production::{
@@ -1655,16 +1660,6 @@ fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
     )
 }
 
-fn normalize_path(url: &str) -> String {
-    let path = url.split('?').next().unwrap_or("/");
-    let path = path.strip_prefix("/portal").unwrap_or(path);
-    if path.is_empty() {
-        "/".to_string()
-    } else {
-        path.to_string()
-    }
-}
-
 fn api_contract_summary() -> Value {
     json!({
         "ok": true,
@@ -1812,24 +1807,6 @@ fn read_json_file(path: &Path) -> Result<Value> {
     serde_json::from_str(&text).with_context(|| format!("parse {}", path.display()))
 }
 
-fn query_flag(url: &str, key: &str) -> bool {
-    let Some(query) = url.split_once('?').map(|(_, query)| query) else {
-        return false;
-    };
-    query.split('&').any(|pair| {
-        let (name, value) = pair.split_once('=').unwrap_or((pair, "1"));
-        name == key && matches!(value, "1" | "true" | "yes" | "on")
-    })
-}
-
-fn query_param(url: &str, key: &str) -> Option<String> {
-    let query = url.split_once('?').map(|(_, query)| query)?;
-    query.split('&').find_map(|pair| {
-        let (name, value) = pair.split_once('=').unwrap_or((pair, ""));
-        (name == key && !value.is_empty()).then(|| value.to_string())
-    })
-}
-
 fn portal_role_from_request(request: &Request, url: &str) -> PortalRole {
     query_param(url, "role")
         .as_deref()
@@ -1867,28 +1844,6 @@ fn respond_forbidden(request: Request, role: PortalRole, scope: &str) -> Result<
             "server_enforced": true,
         }),
     )
-}
-
-fn parse_investigation_pack_path(path: &str) -> Option<String> {
-    path.strip_prefix("/api/investigation-pack/")
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && !value.contains('/'))
-        .map(ToString::to_string)
-}
-
-fn parse_case_path(path: &str) -> Option<String> {
-    path.strip_prefix("/api/cases/")
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && !value.contains('/'))
-        .map(ToString::to_string)
-}
-
-fn parse_case_status_path(path: &str) -> Option<String> {
-    path.strip_prefix("/api/cases/")
-        .and_then(|value| value.strip_suffix("/status"))
-        .map(str::trim)
-        .filter(|value| !value.is_empty() && !value.contains('/'))
-        .map(ToString::to_string)
 }
 
 fn cached_snapshot(args: &Cli, cache: &SnapshotCache) -> Snapshot {
