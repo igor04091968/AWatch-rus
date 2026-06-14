@@ -31,6 +31,7 @@ mod portal_roles;
 mod production;
 mod readiness_api;
 mod risk_narrative;
+mod role_access;
 mod workforce_kpi_explain;
 
 use api_contracts::api_contract_summary;
@@ -52,6 +53,7 @@ use readiness_api::{readiness_bundle, readiness_latest, readiness_verify};
 use risk_narrative::{
     RiskNarrativeInputs, RiskNarrativeQuery, build_risk_narrative, build_risk_narrative_from_report,
 };
+use role_access::{portal_role_from_request, respond_forbidden, role_envelope};
 use workforce_kpi_explain::{KpiExplainQuery, build_workforce_kpi_explain};
 
 const INDEX_HTML: &str = include_str!("static/index.html");
@@ -1660,45 +1662,6 @@ fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
         StatusCode(404),
         "Not Found",
         "text/plain; charset=utf-8",
-    )
-}
-
-fn portal_role_from_request(request: &Request, url: &str) -> PortalRole {
-    query_param(url, "role")
-        .as_deref()
-        .and_then(PortalRole::parse)
-        .or_else(|| {
-            request
-                .headers()
-                .iter()
-                .find(|header| header.field.equiv("X-AWatch-Role"))
-                .and_then(|header| PortalRole::parse(header.value.as_str()))
-        })
-        .unwrap_or(PortalRole::Executive)
-}
-
-fn role_envelope(role: PortalRole, scope: &str) -> Value {
-    json!({
-        "role": role.as_str(),
-        "role_label": role.label_ru(),
-        "scope": scope,
-        "allowed_scopes": role.allowed_scopes(),
-        "server_enforced": true,
-    })
-}
-
-fn respond_forbidden(request: Request, role: PortalRole, scope: &str) -> Result<()> {
-    respond_json_status(
-        request,
-        StatusCode(403),
-        &json!({
-            "ok": false,
-            "error": "forbidden",
-            "message": format!("Роль {} не имеет доступа к контуру {scope}", role.label_ru()),
-            "role": role.as_str(),
-            "scope": scope,
-            "server_enforced": true,
-        }),
     )
 }
 
