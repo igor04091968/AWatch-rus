@@ -21,3 +21,7 @@ tiny_http.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[lints.clippy]
+comparison_chain = "allow"
+search_is_some = "allow"
