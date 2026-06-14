@@ -30,9 +30,16 @@ jobs:
           cargo +1.94.0 clippy --manifest-path adk-rust/Cargo.toml --workspace --all-targets -- -D warnings
           cargo +1.94.0 build --manifest-path adk-rust/Cargo.toml --workspace --release
 
-      - name: Upload release target directory
+      - name: Upload release binaries artifact
         uses: actions/upload-artifact@v4
         with:
-          name: awatch-rus-linux-x86_64-release-target
-          path: adk-rust/target/release/
+          name: awatch-rus-linux-x86_64-release-binaries
+          path: |
+            adk-rust/target/release/*
+            !adk-rust/target/release/deps/**
+            !adk-rust/target/release/build/**
+            !adk-rust/target/release/examples/**
+            !adk-rust/target/release/incremental/**
+            !adk-rust/target/release/*.d
           if-no-files-found: error
+          retention-days: 30
