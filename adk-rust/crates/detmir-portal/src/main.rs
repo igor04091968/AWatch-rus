@@ -20,11 +20,12 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use tiny_http::{Header, Method, Request, Response, Server, StatusCode};
+use tiny_http::{Method, Request, Server, StatusCode};
 
 mod api_contracts;
 mod command_runner;
 mod executive_actions;
+mod http_response;
 mod path_query;
 mod portal_roles;
 mod production;
@@ -39,16 +40,19 @@ use api_contracts::api_contract_summary;
 use executive_actions::{
     actions_from_center, build_action_center_from_report, filter_actions_for_role,
 };
+pub(crate) use http_response::{
+    respond_file, respond_json, respond_json_status, respond_text, respond_text_download,
+    safe_download_stem,
+};
 use path_query::{
     normalize_path, parse_case_path, parse_case_status_path, parse_investigation_pack_path,
     query_flag, query_param,
 };
 use portal_roles::PortalRole;
 use production::{
-    build_healthz, build_readyz, build_version, http_request_metadata, is_limited_api_route,
-    log_http_request, mark_request_started, record_http_metric, record_ingestion_accepted,
-    record_ingestion_rejected, record_report_generated, render_prometheus_metrics,
-    validate_api_query_limits, validate_portal_config,
+    build_healthz, build_readyz, build_version, is_limited_api_route, mark_request_started,
+    record_ingestion_accepted, record_ingestion_rejected, record_report_generated,
+    render_prometheus_metrics, validate_api_query_limits, validate_portal_config,
 };
 use readiness_api::{readiness_bundle, readiness_latest, readiness_verify};
 use risk_narrative::{
@@ -9844,7 +9848,7 @@ fn json_i64(value: &Value, names: &[&str]) -> Option<i64> {
         .find_map(|name| value.get(*name).and_then(Value::as_i64))
 }
 
-fn screenshot_basename(path: &str) -> Option<String> {
+pub(crate) fn screenshot_basename(path: &str) -> Option<String> {
     if path.split(['/', '\\']).any(|part| part == "..") {
         return None;
     }
@@ -10423,118 +10427,6 @@ fn source_summary(name: &str, payload: &Value) -> String {
         ),
         _ => "source loaded".to_string(),
     }
-}
-
-fn respond_json<T: Serialize>(request: Request, value: &T) -> Result<()> {
-    let body = serde_json::to_string_pretty(value)?;
-    respond_text(
-        request,
-        StatusCode(200),
-        &body,
-        "application/json; charset=utf-8",
-    )
-}
-
-fn respond_json_status<T: Serialize>(
-    request: Request,
-    status: StatusCode,
-    value: &T,
-) -> Result<()> {
-    let body = serde_json::to_string_pretty(value)?;
-    respond_text(request, status, &body, "application/json; charset=utf-8")
-}
-
-fn respond_text(
-    request: Request,
-    status: StatusCode,
-    body: &str,
-    content_type: &str,
-) -> Result<()> {
-    let metadata = http_request_metadata(&request);
-    record_http_metric(&metadata, status);
-    log_http_request(&metadata, status, body.len());
-    let response = Response::from_string(body.to_string())
-        .with_status_code(status)
-        .with_header(header("Content-Type", content_type)?)
-        .with_header(header("Cache-Control", "no-store")?)
-        .with_header(header("X-Request-Id", &metadata.request_id)?)
-        .with_header(header("X-Correlation-Id", &metadata.correlation_id)?);
-    request.respond(response).map_err(|err| anyhow!("{err}"))
-}
-
-fn respond_text_download(
-    request: Request,
-    status: StatusCode,
-    body: &str,
-    content_type: &str,
-    download_name: &str,
-) -> Result<()> {
-    let metadata = http_request_metadata(&request);
-    record_http_metric(&metadata, status);
-    log_http_request(&metadata, status, body.len());
-    let response = Response::from_string(body.to_string())
-        .with_status_code(status)
-        .with_header(header("Content-Type", content_type)?)
-        .with_header(header("Cache-Control", "no-store")?)
-        .with_header(header("X-Request-Id", &metadata.request_id)?)
-        .with_header(header("X-Correlation-Id", &metadata.correlation_id)?)
-        .with_header(header(
-            "Content-Disposition",
-            &format!(
-                "attachment; filename=\"{}\"",
-                download_name.replace('"', "")
-            ),
-        )?);
-    request.respond(response).map_err(|err| anyhow!("{err}"))
-}
-
-fn respond_file(
-    request: Request,
-    path: &Path,
-    content_type: &str,
-    download_name: Option<&str>,
-) -> Result<()> {
-    let data = fs::read(path).with_context(|| format!("read {}", path.display()))?;
-    let metadata = http_request_metadata(&request);
-    record_http_metric(&metadata, StatusCode(200));
-    log_http_request(&metadata, StatusCode(200), data.len());
-    let mut response = Response::from_data(data)
-        .with_status_code(StatusCode(200))
-        .with_header(header("Content-Type", content_type)?)
-        .with_header(header("Cache-Control", "no-store")?)
-        .with_header(header("X-Request-Id", &metadata.request_id)?)
-        .with_header(header("X-Correlation-Id", &metadata.correlation_id)?);
-    if let Some(name) = download_name.and_then(screenshot_basename) {
-        response = response.with_header(header(
-            "Content-Disposition",
-            &format!("attachment; filename=\"{}\"", name.replace('"', "")),
-        )?);
-    }
-    request.respond(response).map_err(|err| anyhow!("{err}"))
-}
-
-fn safe_download_stem(value: &str) -> String {
-    let stem = value
-        .chars()
-        .map(|ch| {
-            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
-                ch
-            } else {
-                '_'
-            }
-        })
-        .take(96)
-        .collect::<String>();
-    if stem.is_empty() {
-        "candidate".to_string()
-    } else {
-        stem
-    }
-}
-
-fn header(name: &str, value: &str) -> Result<Header> {
-    Header::from_bytes(name.as_bytes(), value.as_bytes())
-        .map_err(|_| anyhow!("invalid header {name}: {value}"))
 }
 
 pub(crate) fn now() -> String {
