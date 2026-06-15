@@ -296,3 +296,4 @@ collectors.
 - [Windows Collector Suite](docs/wiki/Windows-Collector-Suite.md)
 - [Worktime API and UI Bridge](docs/wiki/Worktime-API-and-UI-Bridge.md)
 - [Russian WebUI Patch and Localization](docs/wiki/Russian-WebUI-Patch-and-Localization.md)
+Актуальные ссылки по этой тематике: https://www.securitylab.ru/analytics/573771.php (Как собрать ролевую модель доступа при хаосе в инфраструктуре)
