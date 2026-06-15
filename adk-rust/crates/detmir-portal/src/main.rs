@@ -32,6 +32,7 @@ mod readiness_api;
 mod risk_narrative;
 mod role_access;
 mod snapshot_cache;
+mod static_assets;
 mod workforce_kpi_explain;
 
 use api_contracts::api_contract_summary;
@@ -57,14 +58,11 @@ use role_access::{portal_role_from_request, respond_forbidden, role_envelope};
 use snapshot_cache::{
     SnapshotCache, build_fast_health, cached_snapshot, clone_snapshot_cache, new_snapshot_cache,
 };
+use static_assets::{
+    API_CONTRACT_OPENAPI, API_CONTRACT_TYPESCRIPT, APP_CSS, APP_JS, ARCHITECTURE_HTML, INDEX_HTML,
+};
 use workforce_kpi_explain::{KpiExplainQuery, build_workforce_kpi_explain};
 
-const INDEX_HTML: &str = include_str!("static/index.html");
-const ARCHITECTURE_HTML: &str = include_str!("static/architecture.html");
-const APP_CSS: &str = include_str!("static/app.css");
-const APP_JS: &str = include_str!("static/app.js");
-const API_CONTRACT_OPENAPI: &str = include_str!("contracts/openapi.json");
-const API_CONTRACT_TYPESCRIPT: &str = include_str!("contracts/typescript.d.ts");
 const UEBA_BASELINE_MIN_SAMPLES: usize = 3;
 const DEFAULT_DEPARTMENT_LABEL: &str = "Не привязано к подразделению";
 const LEGACY_UNASSIGNED_DEPARTMENT_LABEL: &str = "Без подразделения";
