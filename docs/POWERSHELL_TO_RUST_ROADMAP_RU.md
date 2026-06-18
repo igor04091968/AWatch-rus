@@ -9,6 +9,9 @@
 Документ описывает порядок миграции. Он не вводит новые функции: каждая Rust
 замена сначала должна повторить текущий контракт PowerShell-компонента.
 
+Актуальная статусная матрица оставшихся PowerShell-файлов:
+[`POWERSHELL_SCRIPT_STATUS_MATRIX_RU.md`](POWERSHELL_SCRIPT_STATUS_MATRIX_RU.md).
+
 Операторский checkpoint от 2026-06-05 сохранен в private `.ops`-контуре:
 Phase 0 live inventory выполнен, Phase 2 validation для уже переведенных
 Windows Rust paths выполнен успешно. В tracked документации не публикуются live
