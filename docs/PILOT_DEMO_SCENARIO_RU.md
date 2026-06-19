@@ -2,7 +2,7 @@
 
 Цель сценария: за 10-12 минут показать AWatch-rus как рабочую платформу
 Workforce Analytics + Security Analytics + Forensics без ложных заявлений о
-SIEM, классическом DLP, ML/LLM или готовом pfSense ingestion.
+SIEM, классическом DLP, ML/LLM .
 
 Демонстрация проводится только на обезличенных данных. Demo fixtures не
 являются live ingestion и не подменяют промышленную настройку источников.
