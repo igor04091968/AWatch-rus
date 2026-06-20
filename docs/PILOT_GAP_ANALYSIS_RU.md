@@ -13,6 +13,9 @@
   и Executive Action Center.
 - Есть Rust Backend, Rust Agent baseline, HTML/HTMX portal и role-based
   контракты Pilot v1.
+- Rust-primary runtime зафиксирован честно: PowerShell не заявлен полностью
+  удаленным, оставшиеся runtime/fallback/installer/repair scripts сохраняются
+  как documented fallback/support layer.
 - Подготовлен demo pack: сценарии руководителя, ИБ и расследований, синтетический
   demo dataset, evidence pack, пример итогового отчета и value proposition.
 - Подготовлены registry readiness документы без ложных заявлений о сертификации.
@@ -57,6 +60,8 @@
 ## Что отложено на roadmap
 
 - Расширенные agentless providers: PowerShell, SSH, Syslog, 1C, VPN и SCUD.
+- Отдельная PowerShell retirement-задача после burn-in периода, canary test,
+  rollback plan и acceptance gate.
 - Production validation российских ОС: Astra Linux, РЕД ОС, Альт и РОСА.
 - Расширенный React/TypeScript Enterprise UI и Tauri Desktop Forensics.
 - Глубокие enterprise-коннекторы AD/LDAP, SIEM и корпоративных учетных систем.

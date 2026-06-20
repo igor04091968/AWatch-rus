@@ -73,6 +73,9 @@ Portal smoke подтвердил:
   Risk -> Investigation -> Report`.
 - Rust-first runtime покрывает критичные серверные helpers, DLP/worktime paths,
   readiness, portal и собственный агент.
+- Rust-first здесь означает Rust-primary направление, а не полное удаление
+  PowerShell: runtime/fallback/installer/repair scripts остаются
+  документированным слоем отката, установки и поддержки.
 - pfSense/network perimeter оставлен optional/read-only слоем, что снижает риск
   пилота и соответствует текущим ограничениям проекта.
 - Python сохранен только для оговоренных исключений, не как ядро продукта.
@@ -227,6 +230,8 @@ enterprise endpoint agent`.
 - Readiness bundle, checksum/signature и Prometheus/Grafana readiness ideas уже
   заложены в документах и тестах.
 - Legacy fallback сохранен там, где это нужно для rollback.
+- Полное удаление PowerShell должно быть отдельной задачей после burn-in,
+  canary test, rollback plan и acceptance gate.
 
 Слабые стороны:
 
@@ -246,6 +251,7 @@ enterprise endpoint agent`.
   поломки старого API.
 - Отсутствие JSON state файлов обрабатывается.
 - PowerShell collector сохранен как legacy fallback, а не удален.
+- Pilot freeze не включает автоматическое удаление PowerShell scripts.
 
 Слабые стороны:
 

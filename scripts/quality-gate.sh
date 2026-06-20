@@ -21,6 +21,9 @@ rust_candidates=()
 if [[ -n "$RUST_BIN" ]]; then
   rust_candidates+=("$RUST_BIN")
 fi
+if [[ -n "${AW_RUS_CARGO_TARGET_DIR:-}" ]]; then
+  rust_candidates+=("$AW_RUS_CARGO_TARGET_DIR/release/quality-gate")
+fi
 rust_candidates+=(
   "$TARGET_ROOT/release/quality-gate"
   "$ROOT_DIR/adk-rust/target/release/quality-gate"
@@ -93,7 +96,7 @@ fi
 violations=()
 for path in "${tracked_py[@]}"; do
   case "$path" in
-    aw-server/dlp-content-analysis/*|clickhouse-1c/ai/*|clickhouse-1c/etl/*|detmir-mcp/main.py|grafana-1c/*|pfsense/*|proxmox/tsj_guardian_bot.py|proxmox/test_tsj_guardian_bot.py)
+    aw-server/dlp-content-analysis/*|clickhouse-1c/ai/*|clickhouse-1c/etl/*|detmir-mcp/main.py|grafana-1c/*|pfsense/*|proxmox/tsj_guardian_bot.py|proxmox/test_tsj_guardian_bot.py|scripts/package_rust_release_binaries.py)
       continue
       ;;
   esac

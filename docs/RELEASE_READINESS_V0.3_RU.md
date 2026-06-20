@@ -41,4 +41,7 @@ v0.3 добавляет объяснительный audit layer поверх э
 - Документы v0.3 не содержат live IP/domains/secrets/evidence.
 - pfSense описан только как optional integration/perimeter layer.
 - SIEM/UEBA/DLP не заявлены как основной сертифицированный класс.
+- Rust-primary runtime описан честно: PowerShell не заявлен полностью
+  удаленным, а оставшиеся runtime/fallback/installer/repair scripts сохраняются
+  до отдельного burn-in/canary/rollback/acceptance gate.
 - Pilot checklist и acceptance act готовы для customer-facing заполнения.

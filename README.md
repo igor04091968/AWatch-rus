@@ -5,7 +5,10 @@ AWatch-rus - программный комплекс операционного 
 корпоративной ИТ-инфраструктуры на базе ActivityWatch, Rust-сервисов
 автоматизации, Grafana/Prometheus-витрин и модулей расследования инцидентов.
 
-Проект не позиционируется как сертифицированная DLP/SIEM/EDR/XDR/СЗИ,хотя DLP,evidence и Hayabusa используются в проекте.
+Проект не позиционируется как сертифицированная DLP/SIEM/EDR/XDR/СЗИ,
+не заявляет ML/LLM UEBA и не подменяет штатные средства защиты, хотя
+DLP-сигналы, evidence и Hayabusa используются как аналитические и
+расследовательские слои.
 
 ## Назначение
 
@@ -23,6 +26,11 @@ AWatch-rus - программный комплекс операционного 
 
 Основной серверный runtime AWatch-rus переведен на Rust: status/check/auto-heal,
 SLO, worktime, DLP server-side helpers, evidence и install-kit tooling.
+
+Это Rust-primary направление, а не заявление о полном удалении PowerShell.
+Оставшиеся PowerShell runtime/fallback/installer/repair scripts сохраняются
+как документированный слой отката, установки и поддержки до отдельной задачи
+удаления с burn-in периодом, canary test, rollback plan и acceptance gate.
 
 Python, присутствующий в коде репозитория, остается для вспомогательных направлений: Telegram bot
 runtime(для оперативного оповещения), OCR/content-analysis, 1C/AI/ETL integration и MCP/dev helpers. Эти части не являются ядром Rust-first runtime.
@@ -55,7 +63,8 @@ Implemented:
 Planned:
 
 - Provider detail expansion under `/portal/architecture`.
-- PowerShell Provider.
+- PowerShell Provider как planned/agentless direction, не как возврат новых
+  runtime-функций на PowerShell.
 - SSH Provider.
 - Syslog Provider.
 - 1C Provider как формализация текущего file-based 1C analytics направления.
@@ -89,6 +98,7 @@ Security Analytics + Forensics для ролей `executive`, `manager`, `securi
 Pilot validation:
 
 - [чеклист проверки пилота](docs/PILOT_VALIDATION_CHECKLIST_RU.md);
+- [pilot freeze readiness](docs/PILOT_FREEZE_READINESS_RU.md);
 - [gap analysis пилота](docs/PILOT_GAP_ANALYSIS_RU.md);
 - [вопросы для discovery с заказчиком](docs/CUSTOMER_DISCOVERY_QUESTIONS_RU.md);
 - [критерии успеха пилота](docs/PILOT_SUCCESS_CRITERIA_RU.md);
@@ -98,6 +108,8 @@ Pilot validation:
 
 - pfSense показывается только как `contract_only/readiness`, без заявления
   production ingestion или SIEM;
+- pfSense в текущем пилоте допускается только как contract/readiness/optional
+  integration layer;
 - UEBA Score v1 является прозрачной rule-based моделью, без ML/LLM;
 - demo fixtures не содержат реальных IP-адресов, hostname, логинов, ФИО,
   подразделений заказчика или событий безопасности;

@@ -128,6 +128,9 @@ git ls-files | grep -E '(^|/)secrets(/|$)|\.env$|inventory\.ini$' || true
 - Live inventory, live domains, private IPs, case IDs, forensic paths,
   screenshots с реальными пользователями и runtime evidence не входят в Git.
 - Telegram runtime остается Python.
+- PowerShell не считается полностью удаленным: оставшиеся
+  runtime/fallback/installer/repair scripts допустимы как документированный
+  слой отката и поддержки до отдельного burn-in/canary/rollback/acceptance gate.
 - pfSense/network layer не входит в этот release-readiness этап.
 
 ## 8. Следующий уровень

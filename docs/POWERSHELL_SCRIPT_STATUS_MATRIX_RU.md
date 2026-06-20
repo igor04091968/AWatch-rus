@@ -3,8 +3,9 @@
 Дата актуализации: 2026-06-17
 
 Документ фиксирует фактический статус оставшихся PowerShell-файлов после
-перехода на Rust-first контур. Цель матрицы: отделить рабочий runtime от
-установочных действий, аварийного отката и устаревших проверочных скриптов.
+перехода на Rust-first контур. Это не означает, что PowerShell полностью
+удален. Цель матрицы: отделить рабочий runtime от установочных действий,
+аварийного отката и устаревших проверочных скриптов.
 
 В tracked документации не публикуются имена рабочих хостов, private IP,
 учетные записи, токены и runtime evidence paths. Live-проверка выполнялась по
@@ -90,8 +91,11 @@
 
 ## Правила дальнейшей миграции
 
-1. Не удалять `runtime` и `fallback` скрипты без acceptance gate и проверенного
-   rollback-плана.
+Полное удаление PowerShell не входит в текущий pilot freeze. Это должна быть
+отдельная задача после подтверждения Rust parity и отката.
+
+1. Не удалять `runtime` и `fallback` скрипты без burn-in/canary/rollback gate,
+   acceptance gate и проверенного rollback-плана.
 2. Любой PowerShell runtime, который остается в Scheduled Tasks или Services,
    должен иметь явный владелец, причину сохранения и целевой Rust replacement.
 3. `installer`-скрипты можно заменять постепенно: сначала Rust dry-run и
@@ -100,3 +104,7 @@
    Scheduled Tasks/Services и контрольного deploy/validation прогона.
 5. Новые runtime-функции не добавлять на PowerShell. Для runtime, long-running
    collectors, upload, guard и validation целевой путь: Rust EXE или service.
+6. Pilot freeze не является основанием для автоматического удаления
+   PowerShell layer: оставшиеся runtime/fallback пути сохраняются до
+   подтвержденной стабильности Rust replacement, canary-наблюдения и
+   документированного отката.

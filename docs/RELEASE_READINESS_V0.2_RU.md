@@ -14,6 +14,7 @@
 | CI checksum/signature self-test | `.github/workflows/release-assets.yml` |
 | Pilot acceptance act | `docs/CUSTOMER_PILOT_ACCEPTANCE_RU.md` |
 | pfSense perimeter positioning | `docs/NETWORK_PERIMETER_PFSENSE_RU.md` |
+| Pilot freeze gate | `docs/PILOT_FREEZE_READINESS_RU.md` |
 
 ## 2. Machine SBOM as GitHub Release asset
 
@@ -94,6 +95,22 @@ docs/CUSTOMER_PILOT_ACCEPTANCE_RU.md
 Использовать для коммерческого пилота после установки и первичной настройки.
 Публичная версия должна оставаться обезличенной.
 
+Перед фиксацией pilot freeze candidate использовать:
+
+```text
+docs/PILOT_FREEZE_READINESS_RU.md
+```
+
+Этот gate не добавляет функциональность. Он проверяет, что текущий main
+остается в границах Pilot v1: Rust Backend, Rust Agent, HTML/HTMX Portal,
+role-based views, rule-based UEBA v1, pfSense только как
+contract/readiness/optional integration layer и сохраненный PowerShell
+runtime/fallback до burn-in/canary/rollback gate.
+
+Полное удаление PowerShell не входит в `release-readiness-v0.2` или текущий
+pilot freeze: оставшиеся runtime/fallback/installer/repair scripts считаются
+документированным слоем отката, установки и поддержки.
+
 ## 7. pfSense perimeter
 
 Документ:
@@ -115,3 +132,6 @@ docs/NETWORK_PERIMETER_PFSENSE_RU.md
 - GitHub release содержит SBOM JSON/TXT, manifest, checksum и signature.
 - `CUSTOMER_PILOT_ACCEPTANCE_RU.md` заполнен для пилотного заказчика.
 - pfSense не описан как обязательный компонент продукта.
+- `PILOT_FREEZE_READINESS_RU.md` заполнен для pilot freeze candidate.
+- PowerShell retirement не заявлен как выполненный без отдельного
+  burn-in/canary/rollback/acceptance gate.

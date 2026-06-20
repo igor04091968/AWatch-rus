@@ -50,6 +50,10 @@
 ## Agent сценарий
 
 - Rust Agent baseline описан и проверяется через документацию.
+- Rust-primary направление не трактуется как полное удаление PowerShell.
+- Runtime/fallback/installer/repair PowerShell scripts остаются
+  documented fallback/support layer до отдельного burn-in/canary/rollback
+  и acceptance gate.
 - Для пилота определены источники данных, ожидаемое покрытие и допустимая
   задержка.
 - Потеря части данных снижает confidence и фиксируется как operational gap.

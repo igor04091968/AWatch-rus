@@ -101,6 +101,9 @@ SIEM, классическом DLP, ML/LLM .
 
 - UEBA v1 является rule-based моделью;
 - pfSense readiness не означает production ingestion;
+- Не заявлять готовый pfSense production ingestion / SIEM ingestion. pfSense
+  в текущем пилоте допускается только как contract/readiness/optional
+  integration layer.
 - риск является сигналом для проверки, а не автоматическим вердиктом.
 
 Что не заявлять:

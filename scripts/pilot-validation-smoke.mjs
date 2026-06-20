@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -175,27 +176,37 @@ function checkRequiredContent() {
   return findings;
 }
 
-function checkSensitiveStrings(files) {
-  const patterns = [
-    { name: "private_network_10", re: /10\.10\.10\./ },
-    { name: "private_network_192", re: /192\.168\./ },
-    { name: "private_network_172", re: /172\.(1[6-9]|2\d|3[0-1])\./ },
-    { name: "private_operator_domain", re: /dm\.iri/i },
-    { name: "customer_codename", re: new RegExp(`${["Det", "Mir"].join("")}|${["SHARKON", "2025"].join("")}`, "i") },
-    { name: "local_operator_path", re: /\/home\/igor/i },
-    { name: "mts_phishing_context", re: /\b(lk|l)\.mts\.ru/i },
-  ];
-  const findings = [];
-  for (const file of files) {
-    if (!file.endsWith(".md") && !file.endsWith(".json")) continue;
-    const text = readText(file);
-    for (const pattern of patterns) {
-      if (pattern.re.test(text)) {
-        findings.push({ file, pattern: pattern.name });
-      }
-    }
+function checkDemoSafety() {
+  const result = spawnSync("bash", ["scripts/check_demo_safety.sh", "--json"], {
+    cwd: root,
+    encoding: "utf8",
+  });
+  if (result.error) {
+    return {
+      ok: false,
+      error: result.error.message,
+      findings: [],
+    };
   }
-  return findings;
+  let parsed = null;
+  try {
+    parsed = JSON.parse(result.stdout || "{}");
+  } catch (error) {
+    return {
+      ok: false,
+      error: `invalid_json: ${error.message}`,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      findings: [],
+    };
+  }
+  return {
+    ok: result.status === 0 && parsed.ok === true,
+    status: result.status,
+    stderr: result.stderr,
+    findings: parsed.findings || [],
+    scope_files: parsed.scope_files || [],
+  };
 }
 
 function pass(checks, name, ok, details = {}) {
@@ -213,12 +224,6 @@ function main() {
     ...roadmapDocs,
     ...reportsAndRunbooks,
   ];
-  const sensitiveScanFiles = [
-    ...validationDocs,
-    "docs/fixtures/pilot-v1-demo/README_RU.md",
-    "docs/fixtures/pilot-v1-demo/demo-seed-data.json",
-  ];
-
   pass(checks, "validation_docs_exist", checkFiles(validationDocs).length === 0, {
     missing: checkFiles(validationDocs),
   });
@@ -253,9 +258,13 @@ function main() {
     findings: linkFindings,
   });
 
-  const sensitiveFindings = checkSensitiveStrings(sensitiveScanFiles);
-  pass(checks, "sensitive_string_scan", sensitiveFindings.length === 0, {
-    findings: sensitiveFindings,
+  const demoSafety = checkDemoSafety();
+  pass(checks, "demo_safety_scan", demoSafety.ok, {
+    findings: demoSafety.findings,
+    scope_files: demoSafety.scope_files,
+    status: demoSafety.status,
+    stderr: demoSafety.stderr,
+    error: demoSafety.error,
   });
 
   const ok = checks.every((check) => check.ok);
