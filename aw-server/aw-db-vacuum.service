@@ -1,0 +1,19 @@
+[Unit]
+Description=ActivityWatch SQLite nightly VACUUM
+After=activitywatch-server.service
+ConditionPathExists=/usr/local/bin/aw-db-maintenance
+ConditionPathExists=/var/lib/activitywatch/aw-server-rust/sqlite.db
+RequiresMountsFor=/var/lib/activitywatch
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/activitywatch/aw-server.env
+ExecStart=/usr/local/bin/aw-db-maintenance --vacuum --apply --json
+TimeoutStartSec=2h
+SyslogIdentifier=aw-db-vacuum
+StandardOutput=journal
+StandardError=journal
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0077

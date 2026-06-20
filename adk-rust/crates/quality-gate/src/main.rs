@@ -285,6 +285,7 @@ fn is_allowed_python_runtime_path(rel: &str) -> bool {
         || rel.starts_with("pfsense/")
         || rel == "proxmox/tsj_guardian_bot.py"
         || rel == "proxmox/test_tsj_guardian_bot.py"
+        || rel == "scripts/package_rust_release_binaries.py"
 }
 
 fn is_detmir_retired_runtime_path(rel: &str) -> bool {
@@ -343,6 +344,9 @@ mod tests {
         assert!(is_allowed_python_runtime_path("detmir-mcp/main.py"));
         assert!(is_allowed_python_runtime_path(
             "pfsense/pfsense-aw-poller.py"
+        ));
+        assert!(is_allowed_python_runtime_path(
+            "scripts/package_rust_release_binaries.py"
         ));
     }
 

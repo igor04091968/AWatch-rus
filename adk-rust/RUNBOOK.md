@@ -1118,6 +1118,45 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
       (`sqlite.db=359.6MiB`, WAL `4.0MiB`, session rows `174`, recent process
       events `0`, latest `eventType=logon`), DetMir status OK with
       `dlp_counts={ok:22,warn:0,fail:0}`, `ok_for_operator=true`.
+35.2. `[done]` Закрепить nightly VACUUM для AW SQLite:
+    - `aw-db-maintenance` получил отдельный `--vacuum` режим; weekly trim
+      остается отдельной задачей и не смешивается с compaction;
+    - добавлены `aw-server/aw-db-vacuum.service` и
+      `aw-server/aw-db-vacuum.timer`;
+    - timer schedule: `OnCalendar=*-*-* 02:10:00`,
+      `RandomizedDelaySec=10m`, `Persistent=true`; Ansible не включает timer
+      без явного opt-in `aw_db_vacuum_timer_enabled=true`;
+    - если opt-in не задан, `deploy_aw_server.yml` оставляет unit-файлы на
+      сервере, но держит `aw-db-vacuum.timer` в `disabled/stopped`;
+    - nightly job перед VACUUM останавливает `activitywatch-server.service`,
+      делает rollback backup SQLite DB, выполняет `VACUUM INTO`, проверяет
+      `PRAGMA integrity_check`, сохраняет владельца и режим файла и
+      поднимает server обратно;
+    - apply-режимы weekly trim и nightly VACUUM используют общий lock
+      `/run/aw-db-maintenance.lock`, поэтому одновременный запуск завершается
+      fail-closed без записи в SQLite;
+    - VACUUM нельзя запускать в рабочее время, во время активного
+      расследования/снятия доказательств, backup/restore, неизвестного
+      состояния `activitywatch-server.service` или если уже есть maintenance
+      lock;
+    - dry-run проверки:
+      `aw-db-maintenance --vacuum --json` и обычный
+      `aw-db-maintenance --json`; они не создают backup и не пишут в DB;
+    - включить timer явно:
+      `ansible-playbook -i inventory.ini deploy_aw_server.yml -e aw_db_vacuum_timer_enabled=true`;
+    - отключить timer:
+      `systemctl disable --now aw-db-vacuum.timer`;
+    - rollback: остановить `activitywatch-server.service`, заменить
+      `/var/lib/activitywatch/aw-server-rust/sqlite.db` из последнего
+      `/var/lib/activitywatch/backups/db/aw-sqlite-before-db-vacuum-*.db`,
+      вернуть владельца/режим, запустить service, проверить `aw-db-health` и
+      `detmir-status`;
+    - local gates: `cargo fmt --all -- --check`, `cargo test --workspace`,
+      `cargo clippy --workspace --all-targets -- -D warnings`,
+      `cargo build --workspace --release`, systemd unit verify,
+      `ansible-playbook -i inventory.ini deploy_aw_server.yml --syntax-check`,
+      `scripts/check_detmir_rust_release_artifacts.sh`,
+      `scripts/quality-gate.sh`;
 36. `[done]` Устранить blocker полного AW server deploy на Influx token:
     - проблема: `deploy_aw_server.yml` падал на assert
       `aw_worktime_influx_enabled=true`, потому что локальные env

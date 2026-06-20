@@ -16,6 +16,7 @@
     aw_worktime_classes: "{{ lookup('file', aw_repo_root + '/aw-server/settings/classes-worktime.json') | from_json }}"
     aw_default_views: "{{ lookup('file', aw_repo_root + '/aw-server/settings/views-default.json') | from_json }}"
     aw_rust_release_dir: "{{ (lookup('env', 'CARGO_TARGET_DIR') | default(aw_repo_root + '/adk-rust/target', true)) + '/release' }}"
+    aw_db_vacuum_timer_enabled: false
 
   tasks:
     - name: Установить базовые пакеты
@@ -588,6 +589,44 @@
             state: started
             daemon_reload: true
           when: aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+
+        - name: Установить aw-db-vacuum service до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-db-vacuum.service"
+            dest: /etc/systemd/system/aw-db-vacuum.service
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+
+        - name: Установить aw-db-vacuum timer до Influx проверок
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/aw-server/aw-db-vacuum.timer"
+            dest: /etc/systemd/system/aw-db-vacuum.timer
+            owner: root
+            group: root
+            mode: "0644"
+          when: aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+
+        - name: Включить nightly aw-db-vacuum timer до Influx проверок
+          ansible.builtin.systemd:
+            name: aw-db-vacuum.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+          when:
+            - aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+            - aw_db_vacuum_timer_enabled | bool
+
+        - name: Отключить nightly aw-db-vacuum timer если opt-in не задан
+          ansible.builtin.systemd:
+            name: aw-db-vacuum.timer
+            enabled: false
+            state: stopped
+            daemon_reload: true
+          when:
+            - aw_db_maintenance_rust_binary_early.stat.exists | default(false)
+            - not (aw_db_vacuum_timer_enabled | bool)
 
         - name: Прочитать текущий aw-server.env для сохранения Influx token
           ansible.builtin.slurp:

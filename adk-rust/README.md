@@ -22,7 +22,9 @@ scripts with durable standalone Rust modules.
 - `detmir-dlp` - SSH wrapper replacement for remote DLP health JSON collection.
 - `dlp-health-check` - AW server DLP health check replacement.
 - `aw-db-maintenance` - guarded weekly SQLite maintenance for old allowlisted
-  process-level session events, with backup-before-delete.
+  process-level session events, with backup-before-delete; nightly SQLite
+  compaction is handled by the same binary in `--vacuum` mode and scheduled
+  separately from the trim job.
 - `aw-ensure-reliability` - safe dry-run/apply planner for AW service
   reliability repair actions that were previously immediate Bash mutations.
 - `aw-linux-install` - safe dry-run/apply planner for Linux ActivityWatch
@@ -57,6 +59,38 @@ scripts with durable standalone Rust modules.
   remains the execution engine and the legacy Node script remains fallback.
 - `detmir-status` - read-only DetMir state normalizer with text, JSON, and ADK
   `Content` output. Also builds `detmir-adk-status` as a compatibility binary.
+
+## SQLite Maintenance Safety
+
+`aw-db-maintenance` has two separate modes:
+
+- default trim mode removes only old allowlisted `process_start` /
+  `process_stop` rows from the configured session bucket and is dry-run unless
+  `--apply` is passed;
+- `--vacuum` compacts the SQLite DB with `VACUUM INTO`, checks
+  `PRAGMA integrity_check`, preserves owner/mode, and replaces the DB only after
+  backup and integrity success.
+
+Both apply modes use `AW_DB_MAINTENANCE_LOCK_PATH` /
+`--lock-path` to block concurrent trim/VACUUM runs. VACUUM also checks the
+configured `activitywatch-server.service` through systemd, refuses unknown or
+failed unit states, stops the service before compaction, and starts it again
+through a guard on success or error.
+
+Do not run VACUUM during business hours, active incident response, evidence
+collection, active backup/restore, or when the ActivityWatch service/unit state
+is unclear. Rollback is replacing the SQLite DB from
+`/var/lib/activitywatch/backups/db/aw-sqlite-before-db-vacuum-*.db` while
+`activitywatch-server.service` is stopped, then starting the service and
+checking `aw-db-health`/`detmir-status`.
+
+The Ansible deploy installs the VACUUM unit files but does not enable the
+nightly timer unless `aw_db_vacuum_timer_enabled=true` is set explicitly.
+Disable it with:
+
+```bash
+systemctl disable --now aw-db-vacuum.timer
+```
 
 ## Migration Runbook
 
