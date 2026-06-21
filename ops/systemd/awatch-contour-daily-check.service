@@ -1,0 +1,21 @@
+[Unit]
+Description=AWatch-rus daily contour check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/lib/detmir-ai
+Environment=CONTOUR_CHECK_SCOPE=daily
+Environment=RUN_PORTAL_SMOKE=0
+Environment=DETMIR_DLP_COMMAND=detmir-dlp
+Environment=CONTOUR_CHECK_OUTPUT_ROOT=/var/lib/detmir-ai/contour-check-runs
+Environment=CONTOUR_CHECK_ENV_FILE=/etc/detmir/detmir-check.env
+Environment=DETMIR_PORTAL_URL=http://127.0.0.1:8720
+EnvironmentFile=-/etc/detmir/detmir-check.env
+EnvironmentFile=-/etc/awatch-rus/contour-check.env
+ExecStart=/usr/bin/env bash /usr/local/sbin/awatch-contour-check
+TimeoutStartSec=10min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

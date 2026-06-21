@@ -1,0 +1,11 @@
+[Unit]
+Description=Run AWatch-rus daily contour check
+
+[Timer]
+OnCalendar=*-*-* 07:10:00
+RandomizedDelaySec=10m
+Persistent=true
+Unit=awatch-contour-daily-check.service
+
+[Install]
+WantedBy=timers.target
