@@ -16,6 +16,7 @@
 | Backup format | Gitea dump ZIP |
 | Checksum | SHA256 |
 | Retention | 14 days |
+| Restore tested | `false` until a separate test restore is completed |
 
 Целевой backup script использует `gitea dump`, создает ZIP backup и отдельный
 SHA256 checksum. Каталог `/var/backups/gitea` должен быть доступен только
@@ -46,16 +47,26 @@ Restore является ручной процедурой и требует т�
 Общий порядок:
 
 1. Подготовить отдельный сервер или isolated test instance.
-2. Установить совместимую версию Gitea.
+2. Установить ту же версию Gitea, из которой был создан dump.
 3. Остановить Gitea на целевом тестовом сервере.
 4. Проверить SHA256 checksum выбранного ZIP backup.
-5. Выполнить восстановление из `gitea dump` согласно официальной процедуре
-   Gitea для используемой версии.
-6. Проверить права на каталоги, repository storage, database, custom config и
-   attachments.
-7. Запустить Gitea.
-8. Выполнить post-restore checks.
-9. Зафиксировать timestamp, backup filename, checksum, Gitea version,
+5. Распаковать dump.
+6. Восстановить `app.ini`, data, repositories и database согласно официальной
+   restore-процедуре Gitea для используемой версии.
+7. Исправить ownership и permissions:
+
+```bash
+chown -R git:git /var/lib/gitea
+chown root:git /etc/gitea/app.ini
+chmod 640 /etc/gitea/app.ini
+```
+
+8. Запустить Gitea.
+9. Выполнить `gitea doctor check`.
+10. Если менялся путь установки или переносился сервер, выполнить
+    `gitea admin regenerate hooks`.
+11. Выполнить post-restore checks.
+12. Зафиксировать timestamp, backup filename, checksum, Gitea version,
    restore duration и результат проверки.
 
 ## Post-restore checks
@@ -64,6 +75,12 @@ Restore является ручной процедурой и требует т�
 systemctl status gitea --no-pager
 curl -L https://git.iri1968.dpdns.org | head
 gitea doctor check
+```
+
+Также открыть в браузере:
+
+```text
+https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus
 ```
 
 Если менялся путь установки или сервер переносился, выполнить:
@@ -75,6 +92,8 @@ gitea admin regenerate hooks
 ## Ограничения
 
 - Restore-runbook не заменяет фактический restore test.
+- `restore_tested=false`, пока не выполнено тестовое восстановление на
+  отдельном сервере.
 - Backup не должен считаться production-ready, пока restore не проверен на
   отдельном сервере.
 - Offsite copy должна быть описана отдельно до финальной подачи в реестр.

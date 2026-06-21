@@ -218,11 +218,15 @@ collectors.
   [commercial positioning](docs/REGISTRY_COMMERCIAL_POSITIONING_RU.md),
   [readiness checklist](docs/REGISTRY_READINESS_CHECKLIST_RU.md).
 
-- Registry-readiness infrastructure:
-  Russian Git contour:
-  `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`;
-  GitHub role: public mirror;
-  detailed docs: [docs/registry/](docs/registry/REGISTER_RU_SOFTWARE_READINESS_RU.md).
+### Подготовка к реестру российского ПО
+
+- Основной российский Git-контур:
+  `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
+- GitHub используется как публичное зеркало.
+- Доказательная документация:
+  [docs/registry/](docs/registry/REGISTER_RU_SOFTWARE_READINESS_RU.md).
+- Gitea Wiki используется только как навигация, не как единственный источник
+  документов.
 
 - [Позиционирование для реестра российского ПО](docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)

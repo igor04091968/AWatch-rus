@@ -8,6 +8,8 @@
 
 Для российского Git-контура и backup-контура фиксировать:
 
+- Primary Git URL:
+  `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
 - Gitea URL: `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
 - Provider: REG.RU VPS / cloud server.
 - Platform: self-hosted Gitea.
@@ -20,7 +22,7 @@
 - SHA256 checksum evidence для backup ZIP.
 - Restore-runbook reference:
   `docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md`.
-- Timestamped evidence file, если он будет предоставлен владельцем.
+- Timestamped evidence file can be provided by rightsholder.
 
 ## Source evidence
 

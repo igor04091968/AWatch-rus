@@ -5,9 +5,13 @@
 Added:
 
 - REG.RU/Gitea Russian Git contour documentation.
+- Documented repository migration to
+  `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
 - Self-hosted Gitea repository reference:
   `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
 - GitHub role as public mirror only.
+- Gitea Wiki policy as navigation-only, with `docs/registry/` as the
+  authoritative registry-readiness documentation package.
 - Gitea backup/restore runbook.
 - Registry evidence manifest updates for Gitea, backup ZIP, SHA256 checksum,
   systemd timer and restore status.
@@ -30,6 +34,7 @@ Remaining gaps:
 - Russian build-runner.
 - Release artifacts storage in RF.
 - Tested restore procedure.
+- Offsite backup in RF.
 - Documented access control policy.
 - Documented backup offsite copy.
 - Final registry legal review.

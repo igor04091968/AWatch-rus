@@ -4,9 +4,15 @@
   "status": "registry-readiness infrastructure evidence manifest",
   "updated_at": "2026-06-21",
   "primary_source_repository": "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus",
+  "primary_git_clone_url_https": "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus.git",
   "primary_git_platform": "self-hosted Gitea",
   "primary_git_provider": "REG.RU VPS / cloud server",
   "github_role": "public_mirror_only",
+  "wiki_policy": {
+    "github_wiki_detected": false,
+    "gitea_builtin_wiki": "navigation_only",
+    "authoritative_docs_path": "docs/registry"
+  },
   "infrastructure": {
     "git_url": "https://git.iri1968.dpdns.org",
     "organization": "awatch-rus",

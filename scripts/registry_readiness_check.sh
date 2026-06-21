@@ -27,11 +27,16 @@ require_grep() {
   fi
 }
 
+if [[ ! -d "$REGISTRY_DIR" ]]; then
+  fail "missing_directory:docs/registry"
+fi
+
 required_files=(
   "docs/registry/REGISTER_RU_SOFTWARE_READINESS_RU.md"
   "docs/registry/SOURCE_CODE_AND_BUILD_INFRASTRUCTURE_RU.md"
   "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md"
   "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md"
+  "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md"
   "docs/registry/RELEASE_EVIDENCE_MANIFEST_RU.md"
   "docs/registry/INSTALLATION_AND_TEST_INSTANCE_RU.md"
   "docs/registry/LIFECYCLE_AND_SUPPORT_RU.md"
@@ -45,7 +50,26 @@ for file in "${required_files[@]}"; do
 done
 
 if [[ -s "$MANIFEST" ]]; then
-  if command -v python3 >/dev/null 2>&1; then
+  if command -v jq >/dev/null 2>&1; then
+    jq -e . "$MANIFEST" >/dev/null || fail "invalid_json:docs/registry/registry-evidence-manifest.json"
+    jq -e '
+      .primary_source_repository == "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus"
+      and .primary_git_clone_url_https == "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus.git"
+      and .primary_git_platform == "self-hosted Gitea"
+      and .primary_git_provider == "REG.RU VPS / cloud server"
+      and .github_role == "public_mirror_only"
+      and .wiki_policy.github_wiki_detected == false
+      and .wiki_policy.gitea_builtin_wiki == "navigation_only"
+      and .wiki_policy.authoritative_docs_path == "docs/registry"
+      and .backup.enabled == true
+      and .backup.tool == "gitea dump"
+      and .backup.path == "/var/backups/gitea"
+      and .backup.checksum == "sha256"
+      and .backup.retention_days == 14
+      and .backup.systemd_timer == "awatch-gitea-backup.timer"
+      and .backup.restore_tested == false
+    ' "$MANIFEST" >/dev/null || fail "manifest_required_fields"
+  elif command -v python3 >/dev/null 2>&1; then
     python3 -m json.tool "$MANIFEST" >/dev/null || fail "invalid_json:docs/registry/registry-evidence-manifest.json"
     python3 - "$MANIFEST" <<'PY' || fail "manifest_required_fields"
 import json
@@ -57,6 +81,7 @@ with open(path, "r", encoding="utf-8") as fh:
 
 expected = {
     "primary_source_repository": "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus",
+    "primary_git_clone_url_https": "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus.git",
     "primary_git_platform": "self-hosted Gitea",
     "primary_git_provider": "REG.RU VPS / cloud server",
     "github_role": "public_mirror_only",
@@ -64,6 +89,16 @@ expected = {
 for key, value in expected.items():
     if data.get(key) != value:
         raise SystemExit(f"{key} mismatch")
+
+wiki_policy = data.get("wiki_policy") or {}
+wiki_expected = {
+    "github_wiki_detected": False,
+    "gitea_builtin_wiki": "navigation_only",
+    "authoritative_docs_path": "docs/registry",
+}
+for key, value in wiki_expected.items():
+    if wiki_policy.get(key) != value:
+        raise SystemExit(f"wiki_policy.{key} mismatch")
 
 backup = data.get("backup") or {}
 backup_expected = {
@@ -89,13 +124,18 @@ fi
 
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/SOURCE_CODE_AND_BUILD_INFRASTRUCTURE_RU.md" "gitea_domain_source_infra"
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md" "gitea_domain_git_runbook"
+require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "gitea_domain_wiki_policy"
 require_grep "git\\.iri1968\\.dpdns\\.org" "README.md" "gitea_domain_readme"
 require_grep "GitHub[[:space:]]*=[[:space:]]*public mirror only|public mirror only" "docs/registry/SOURCE_CODE_AND_BUILD_INFRASTRUCTURE_RU.md" "github_public_mirror_source_infra"
 require_grep "GitHub[[:space:]]*=[[:space:]]*public mirror only|public mirror only" "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md" "github_public_mirror_git_runbook"
-require_grep "public mirror" "README.md" "github_public_mirror_readme"
+require_grep "GitHub.*публичн|public mirror" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "github_public_mirror_wiki_policy"
+require_grep "public mirror|публичн.*зеркал" "README.md" "github_public_mirror_readme"
 require_grep "GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU\\.md|Restore outline|Post-restore checks" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_restore_runbook"
 require_grep "awatch-gitea-backup\\.timer" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_timer"
 require_grep "sha256|SHA256" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_sha256"
+require_grep "restore_tested=false|restore_tested..false|\"restore_tested\"[[:space:]]*:[[:space:]]*false" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "restore_tested_false_runbook"
+require_grep "\"restore_tested\"[[:space:]]*:[[:space:]]*false" "docs/registry/registry-evidence-manifest.json" "restore_tested_false_manifest"
+require_grep "docs/registry" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "authoritative_docs_path_wiki_policy"
 
 scan_files=(
   "$ROOT/README.md"
