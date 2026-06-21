@@ -25,6 +25,12 @@ registry-readiness пакета, не подтверждает готовнос�
 - Доказательная документация должна храниться в `docs/registry/`.
 - Backup-контур начат, но `restore_tested=false` до проверки восстановления
   на отдельном сервере.
+- Public CI, coverage baseline and security scanning added on GitHub for
+  transparency.
+- GitHub Actions is public mirror validation only and is not the primary
+  registry build contour.
+- Russian build-runner remains required for registry release candidate and
+  release evidence.
 
 ## Текущее состояние
 
@@ -65,6 +71,9 @@ Done / partially done:
 - Russian build-runner: planned.
 - Release artifacts storage in RF: planned.
 - Release evidence automation: partially done after this task.
+- Public CI transparency: added.
+- Coverage baseline: added, threshold not enforced yet.
+- Security scanning: added.
 - Restore test: required.
 - Legal rightsholder confirmation: required.
 

@@ -1,0 +1,47 @@
+name: Coverage
+
+# GitHub Actions is public mirror validation only.
+# Primary registry release evidence must be produced on Russian build-runner.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-baseline:
+    name: Coverage baseline
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: adk-rust
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Generate coverage summary
+        run: |
+          mkdir -p ../coverage
+          cargo llvm-cov --workspace --summary-only | tee ../coverage/coverage-summary.txt
+
+      - name: Upload coverage summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-summary
+          path: coverage/coverage-summary.txt
+
+      - name: Future threshold placeholder
+        run: |
+          echo "Coverage threshold is not enforced yet; this workflow tracks baseline and regressions."

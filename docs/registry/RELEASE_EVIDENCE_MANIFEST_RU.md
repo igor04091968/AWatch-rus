@@ -45,6 +45,9 @@ build-runner и storage release artifacts в РФ или документиро�
 владельцем схему. До этого нельзя утверждать, что source/build/release contour
 полностью закрыт для подачи.
 
+Public GitHub Actions CI, coverage and security workflows are transparency
+checks only. They are not primary registry release evidence.
+
 ## Build-runner evidence
 
 Для `awatch-build-01` фиксировать:
@@ -68,3 +71,17 @@ build-runner и storage release artifacts в РФ или документиро�
 Evidence должен формироваться скриптом `scripts/build_release_evidence.sh` и
 проверяться через `scripts/check_release_evidence.sh`. До первого успешного
 release candidate build нельзя утверждать, что release evidence production-ready.
+
+## Public validation evidence
+
+Public mirror validation may include:
+
+- GitHub Actions CI result;
+- coverage summary artifact;
+- cargo audit / cargo deny result;
+- dependency review result for pull requests;
+- secret-pattern check result;
+- issue and PR process evidence.
+
+This public validation can support engineering trust, but registry release
+evidence remains tied to the Russian build-runner.

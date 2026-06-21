@@ -1,0 +1,30 @@
+name: Security hardening task
+description: Track hardening without exposing sensitive data.
+title: "chore(security): "
+labels: ["security", "hardening"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not publish exploits, secrets, private keys, tokens, personal data, real employee logs or customer evidence.
+  - type: textarea
+    id: hardening
+    attributes:
+      label: Hardening target
+      description: What should be hardened?
+    validations:
+      required: true
+  - type: textarea
+    id: risk
+    attributes:
+      label: Risk addressed
+      description: Explain the risk without sensitive details.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Checks or evidence required.
+    validations:
+      required: true

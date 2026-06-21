@@ -1,5 +1,9 @@
 # AWatch-rus
 
+[![CI](https://github.com/igor04091968/AWatch-rus/actions/workflows/ci.yml/badge.svg)](https://github.com/igor04091968/AWatch-rus/actions/workflows/ci.yml)
+[![Security](https://github.com/igor04091968/AWatch-rus/actions/workflows/security.yml/badge.svg)](https://github.com/igor04091968/AWatch-rus/actions/workflows/security.yml)
+[![Coverage](https://github.com/igor04091968/AWatch-rus/actions/workflows/coverage.yml/badge.svg)](https://github.com/igor04091968/AWatch-rus/actions/workflows/coverage.yml)
+
 AWatch-rus - программный комплекс операционного контроля,
 технического аудита, оценки трудоотдачи сотрудников и мониторинга
 корпоративной ИТ-инфраструктуры на базе ActivityWatch, Rust-сервисов
@@ -230,6 +234,16 @@ collectors.
 - Российский build-runner и release evidence описаны в
   [RU_BUILD_RUNNER_READINESS_RU.md](docs/registry/RU_BUILD_RUNNER_READINESS_RU.md).
 - GitHub remains public mirror only.
+
+### Public engineering transparency
+
+- Public CI, coverage baseline and security scanning are enabled on GitHub.
+- Issue templates, PR template and public roadmap are maintained for process
+  visibility.
+- GitHub remains public mirror validation only.
+- Primary registry contour remains Gitea plus the Russian build-runner.
+- Quality status:
+  [docs/QUALITY_STATUS_RU.md](docs/QUALITY_STATUS_RU.md).
 
 - [Позиционирование для реестра российского ПО](docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)

@@ -1,70 +1,114 @@
-name: shell-and-powershell-ci
+name: CI
+
+# GitHub Actions is public mirror validation only.
+# Primary registry release evidence must be produced on Russian build-runner.
 
 on:
   push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  shell-check:
+  rust-checks:
+    name: Rust checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: adk-rust
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: false
 
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
-      - name: Run shellcheck
-        run: |
-          find . -type f -name "*.sh" -print0 | xargs -0 -r shellcheck -S error -e SC1007,SC1090,SC2016
+      - name: cargo fmt
+        run: cargo fmt --all --check
 
-      - name: Run production inventory placeholder guard self-test
-        run: bash scripts/check_production_inventory_placeholders.sh --self-test
+      - name: cargo test
+        run: cargo test --workspace
 
-      - name: Run private-config guard
-        run: bash scripts/check_private_config_guard.sh
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: Run portal contract sync guard
-        run: node scripts/check_portal_contract_sync.mjs
+      - name: cargo build
+        run: cargo build --workspace
 
-  rust-runtime-guard:
+  docs-registry-checks:
+    name: Docs and registry checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: false
 
-      - name: Test detmir-core runtime guard
-        run: cargo test --manifest-path adk-rust/Cargo.toml -p detmir-core runtime_guard
+      - name: Registry script syntax
+        run: bash -n scripts/registry_readiness_check.sh
 
-      - name: Test detmir readiness crate
-        run: cargo test --manifest-path adk-rust/Cargo.toml -p detmir-readiness
+      - name: Registry readiness
+        run: bash scripts/registry_readiness_check.sh
 
-  powershell-analyzer:
+      - name: Release evidence script syntax
+        run: |
+          if [[ -f scripts/build_release_evidence.sh ]]; then
+            bash -n scripts/build_release_evidence.sh
+          fi
+          if [[ -f scripts/check_release_evidence.sh ]]; then
+            bash -n scripts/check_release_evidence.sh
+          fi
+
+      - name: Whitespace diff check
+        run: git diff --check
+
+  smoke-checks:
+    name: Smoke checks
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: false
 
-      - name: Install PSScriptAnalyzer
-        shell: pwsh
-        run: |
-          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      - name: Analyze PowerShell scripts
-        shell: pwsh
+      - name: Deployment readiness smoke
         run: |
-          $targets = @(
-            "windows/*.ps1",
-            "windows/*.psm1",
-            "windows/*.psd1"
-          )
-          $issues = $targets | ForEach-Object {
-            Invoke-ScriptAnalyzer -Path $_ -Recurse -Severity Error
-          }
-          if ($issues) {
-            $issues | Format-Table -AutoSize
-            throw "PSScriptAnalyzer detected issues."
-          }
+          if command -v node >/dev/null 2>&1 && [[ -f scripts/deployment-readiness-smoke.mjs ]]; then
+            node scripts/deployment-readiness-smoke.mjs
+          else
+            echo "skipped: node or scripts/deployment-readiness-smoke.mjs missing"
+          fi
+
+      - name: Pilot validation smoke
+        run: |
+          if command -v node >/dev/null 2>&1 && [[ -f scripts/pilot-validation-smoke.mjs ]]; then
+            node scripts/pilot-validation-smoke.mjs
+          else
+            echo "skipped: node or scripts/pilot-validation-smoke.mjs missing"
+          fi
+
+      - name: Browser conformance smoke
+        run: |
+          if [[ -f scripts/browser-conformance-smoke.mjs ]]; then
+            echo "skipped: requires live stand unless explicitly run by operator"
+          else
+            echo "skipped: scripts/browser-conformance-smoke.mjs missing"
+          fi

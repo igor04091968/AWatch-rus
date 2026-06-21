@@ -12,6 +12,9 @@ Build-runner нужен для воспроизводимой сборки relea
 build/test/check задачи не конкурировали с Git-хранилищем, HTTPS reverse proxy
 и backup-процедурами.
 
+GitHub Actions is public mirror validation only. GitHub Actions is not the
+primary registry build contour and does not replace `awatch-build-01`.
+
 ## Целевая роль
 
 | Параметр | Значение |
@@ -97,5 +100,8 @@ Build-runner должен формировать:
 - Russian build-runner: planned.
 - Release artifacts storage in RF: planned.
 - Release evidence automation: partially done after this task.
+- Public CI transparency: added.
+- Coverage baseline: added.
+- Security scanning: added.
 - Restore test: required.
 - Legal rightsholder confirmation: required.

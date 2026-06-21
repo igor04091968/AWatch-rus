@@ -4,6 +4,10 @@
 candidate на российском build-runner `awatch-build-01`. Он не утверждает, что
 release evidence уже production-ready до первого успешного запуска.
 
+GitHub Actions is public mirror validation only. Public CI, coverage and
+security workflows improve transparency, but registry release evidence must be
+produced on the Russian build-runner.
+
 ## Процесс release candidate
 
 1. Checkout конкретного commit SHA или tag.

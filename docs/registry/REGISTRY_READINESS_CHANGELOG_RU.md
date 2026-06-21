@@ -1,5 +1,44 @@
 # Registry readiness changelog
 
+## 2026-06-21 public engineering transparency
+
+Added:
+
+- Public CI workflow for GitHub mirror validation.
+- Public coverage baseline workflow.
+- Public security workflow with cargo audit, cargo deny, secret-pattern check
+  and dependency review for pull requests.
+- `SECURITY.md`, `CONTRIBUTING.md`, public `ROADMAP.md`, issue templates and
+  pull request template.
+- `docs/QUALITY_STATUS_RU.md`.
+
+Changed:
+
+- Registry manifest now records public engineering transparency fields.
+- Registry readiness check now validates public CI/security/coverage/process
+  files.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- GitHub Actions is public mirror validation only.
+- Russian build-runner remains required for registry release candidate.
+
+Checks note:
+
+- Rust/runtime checks should run in public CI and on `awatch-build-01`.
+- Local Rust checks may be skipped for this documentation/process-only update
+  only if the skip reason is recorded in the final report.
+
+Remaining gaps:
+
+- First successful public CI run after push.
+- First coverage baseline artifact after push.
+- First security scan baseline after push.
+- Actual `awatch-build-01` provisioning and registry release evidence run.
+
 ## 2026-06-21
 
 Added:

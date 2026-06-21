@@ -1,0 +1,42 @@
+name: Feature request
+description: Request a capability without using customer or employee data.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not publish secrets, personal data, real employee logs or non-anonymized customer evidence.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or operator problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the desired behavior conservatively.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Workforce
+        - Security analytics
+        - Forensics
+        - Registry-readiness
+        - Install/deployment
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Demo/anonymized evidence
+    validations:
+      required: false

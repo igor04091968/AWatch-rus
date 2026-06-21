@@ -46,8 +46,21 @@ required_files=(
   "docs/registry/LIFECYCLE_AND_SUPPORT_RU.md"
   "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md"
   "docs/registry/registry-evidence-manifest.json"
+  "docs/QUALITY_STATUS_RU.md"
   "scripts/build_release_evidence.sh"
   "scripts/check_release_evidence.sh"
+  ".github/workflows/ci.yml"
+  ".github/workflows/security.yml"
+  ".github/workflows/coverage.yml"
+  ".github/ISSUE_TEMPLATE/bug_report.yml"
+  ".github/ISSUE_TEMPLATE/feature_request.yml"
+  ".github/ISSUE_TEMPLATE/registry_readiness_task.yml"
+  ".github/ISSUE_TEMPLATE/security_hardening_task.yml"
+  ".github/pull_request_template.md"
+  "SECURITY.md"
+  "CONTRIBUTING.md"
+  "ROADMAP.md"
+  "deny.toml"
   "README.md"
 )
 
@@ -79,6 +92,13 @@ if [[ -s "$MANIFEST" ]]; then
       and .build_runner.target_hostname == "awatch-build-01"
       and .build_runner.separate_from_git_server == true
       and (.build_runner.required_checks | index("release_evidence_check") != null)
+      and .public_engineering_transparency.github_actions_ci == true
+      and .public_engineering_transparency.coverage_baseline == true
+      and .public_engineering_transparency.security_scanning == true
+      and .public_engineering_transparency.issue_templates == true
+      and .public_engineering_transparency.public_roadmap == true
+      and .public_engineering_transparency.github_role == "public_mirror_validation_only"
+      and .public_engineering_transparency.registry_release_build == "requires_russian_build_runner"
     ' "$MANIFEST" >/dev/null || fail "manifest_required_fields"
   elif command -v python3 >/dev/null 2>&1; then
     python3 -m json.tool "$MANIFEST" >/dev/null || fail "invalid_json:docs/registry/registry-evidence-manifest.json"
@@ -135,6 +155,20 @@ if build_runner.get("separate_from_git_server") is not True:
     raise SystemExit("build_runner.separate_from_git_server mismatch")
 if "release_evidence_check" not in build_runner.get("required_checks", []):
     raise SystemExit("build_runner.required_checks missing release_evidence_check")
+
+public = data.get("public_engineering_transparency") or {}
+public_expected = {
+    "github_actions_ci": True,
+    "coverage_baseline": True,
+    "security_scanning": True,
+    "issue_templates": True,
+    "public_roadmap": True,
+    "github_role": "public_mirror_validation_only",
+    "registry_release_build": "requires_russian_build_runner",
+}
+for key, value in public_expected.items():
+    if public.get(key) != value:
+        raise SystemExit(f"public_engineering_transparency.{key} mismatch")
 PY
   else
     fail "json_validator_missing:jq_or_python3_required"
@@ -160,11 +194,30 @@ require_grep "restore_tested=false|restore_tested..false|\"restore_tested\"[[:sp
 require_grep "\"restore_tested\"[[:space:]]*:[[:space:]]*false" "docs/registry/registry-evidence-manifest.json" "restore_tested_false_manifest"
 require_grep "docs/registry" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "authoritative_docs_path_wiki_policy"
 require_grep "release_evidence_check" "docs/registry/registry-evidence-manifest.json" "release_evidence_check_manifest"
+require_grep "Public engineering transparency" "README.md" "readme_public_engineering_transparency"
+require_grep "GitHub Actions is public mirror validation only|public mirror validation only" "docs/registry/RU_BUILD_RUNNER_READINESS_RU.md" "github_actions_not_registry_build_runner"
+require_grep "GitHub Actions is public mirror validation only|public mirror validation only" "docs/registry/RELEASE_EVIDENCE_RUNBOOK_RU.md" "github_actions_not_registry_release_runbook"
+require_grep "Public CI is not registry release evidence|not registry release evidence" "docs/QUALITY_STATUS_RU.md" "quality_public_ci_not_registry_evidence"
+require_grep "requires_russian_build_runner|public_mirror_validation_only" "docs/registry/registry-evidence-manifest.json" "public_engineering_manifest"
+require_grep "public mirror validation only" "SECURITY.md" "security_public_mirror_validation"
+require_grep "public mirror validation only" "CONTRIBUTING.md" "contributing_public_mirror_validation"
+require_grep "public mirror validation only" "ROADMAP.md" "roadmap_public_mirror_validation"
+require_grep "cargo audit|cargo deny|secret-pattern" ".github/workflows/security.yml" "security_workflow_checks"
+require_grep "cargo llvm-cov" ".github/workflows/coverage.yml" "coverage_workflow_llvm_cov"
+require_grep "cargo fmt --all --check" ".github/workflows/ci.yml" "ci_workflow_fmt"
 
 scan_files=(
   "$ROOT/README.md"
   "$REGISTRY_DIR"/*.md
   "$REGISTRY_DIR"/*.json
+  "$ROOT/docs/QUALITY_STATUS_RU.md"
+  "$ROOT/SECURITY.md"
+  "$ROOT/CONTRIBUTING.md"
+  "$ROOT/ROADMAP.md"
+  "$ROOT/deny.toml"
+  "$ROOT/.github/workflows"/*.yml
+  "$ROOT/.github/ISSUE_TEMPLATE"/*.yml
+  "$ROOT/.github/pull_request_template.md"
   "$ROOT/scripts/build_release_evidence.sh"
   "$ROOT/scripts/check_release_evidence.sh"
 )
@@ -173,6 +226,10 @@ claim_scan_files=(
   "$ROOT/README.md"
   "$REGISTRY_DIR"/*.md
   "$REGISTRY_DIR"/*.json
+  "$ROOT/docs/QUALITY_STATUS_RU.md"
+  "$ROOT/SECURITY.md"
+  "$ROOT/CONTRIBUTING.md"
+  "$ROOT/ROADMAP.md"
 )
 
 if grep -RInEi "(password|passwd|pwd|token|secret|api[_-]?key|private[[:space:]_-]?key)[[:space:]]*[:=][[:space:]]*['\"]?[A-Za-z0-9_./+=-]{8,}" "${scan_files[@]}" >/tmp/registry_secret_like.$$ 2>/dev/null; then
@@ -195,7 +252,7 @@ fi
 rm -f /tmp/registry_forbidden_replacement.$$
 
 if grep -RInEi "(ML/LLM-based detection|LLM-based detection|ML-based detection|automatic remediation)" "${claim_scan_files[@]}" \
-  | grep -Eiv "(forbidden|not_made|not_claimed|не заявляет|не фиксируется|не используется|does not claim)" \
+  | grep -Eiv "(forbidden|not_made|not_claimed|no claim|не заявляет|не фиксируется|не используется|does not claim)" \
   >/tmp/registry_forbidden_ai_auto.$$ 2>/dev/null; then
   fail "forbidden_claim_ai_or_automatic_remediation:$(cat /tmp/registry_forbidden_ai_auto.$$)"
 fi

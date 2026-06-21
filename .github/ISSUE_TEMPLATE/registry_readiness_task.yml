@@ -1,0 +1,29 @@
+name: Registry-readiness task
+description: Track registry-readiness documentation, evidence or process gaps.
+title: "docs(registry): "
+labels: ["registry-readiness", "documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not claim legal completion of registry registration. Do not publish secrets, personal data, real employee logs or private infrastructure credentials.
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What registry-readiness gap is being tracked?
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Required evidence
+      description: List sanitized evidence or documents needed.
+    validations:
+      required: true
+  - type: textarea
+    id: remaining
+    attributes:
+      label: Remaining gaps
+    validations:
+      required: false

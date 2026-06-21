@@ -73,6 +73,15 @@
       "release_manifest": true
     }
   },
+  "public_engineering_transparency": {
+    "github_actions_ci": true,
+    "coverage_baseline": true,
+    "security_scanning": true,
+    "issue_templates": true,
+    "public_roadmap": true,
+    "github_role": "public_mirror_validation_only",
+    "registry_release_build": "requires_russian_build_runner"
+  },
   "github_role_note": "GitHub is a public mirror only, not the target primary source/build/release contour for registry-readiness.",
   "remaining_gaps": [
     "legal rightsholder confirmation",
