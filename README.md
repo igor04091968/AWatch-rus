@@ -204,6 +204,9 @@ collectors.
 
 ## Поставка и регистрация
 
+- Ежедневная/еженедельная проверка эксплуатационного контура:
+  [матрица проверки контура](docs/CONTOUR_CHECK_MATRIX_RU.md).
+
 - Enterprise deployment documentation:
   [deployment guide](docs/ENTERPRISE_DEPLOYMENT_GUIDE_RU.md),
   [topologies](docs/DEPLOYMENT_TOPOLOGIES_RU.md),
@@ -224,9 +227,10 @@ collectors.
 
 ### Подготовка к реестру российского ПО
 
-- Основной российский Git-контур:
+- Основной российский Git-контур / Gitea-дубликат GitHub-репозитория:
   `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
-- GitHub используется как публичное зеркало.
+- GitHub используется как публичное зеркало и public validation surface.
+- Gitea operator account: `igor`; пароль/токены не хранятся в репозитории.
 - Доказательная документация:
   [docs/registry/](docs/registry/REGISTER_RU_SOFTWARE_READINESS_RU.md).
 - Gitea Wiki используется только как навигация, не как единственный источник

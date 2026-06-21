@@ -1,4 +1,4 @@
-# AWatch-rus: статус проекта на 2026-06-21
+# AWatch-rus: статус проекта на 2026-06-22
 
 Документ фиксирует текущий baseline после настройки российского Gitea-контура,
 backup, registry-readiness документации, плана российского build-runner и
@@ -15,6 +15,7 @@ backup, registry-readiness документации, плана российск
   `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
 - GitHub:
   `public mirror / public validation only`.
+- Gitea operator account: `igor`; пароль/токены не входят в tracked files.
 - Основной доказательный пакет для registry-readiness:
   `docs/registry/`.
 
@@ -26,6 +27,10 @@ backup, registry-readiness документации, плана российск
   `https://git.iri1968.dpdns.org`.
 - Создана организация `awatch-rus` и репозиторий
   `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
+- Gitea-репозиторий создан как дубликат/зеркало GitHub-репозитория AWatch-rus.
+- Текущая локальная рабочая копия на этой машине пока имеет `origin=GitHub`;
+  для прямой синхронизации с Gitea добавить `ru-origin` по
+  `docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md`.
 - GitHub зафиксирован как публичное зеркало и публичная поверхность проверки,
   а не как основной registry source/build/release contour.
 - Начат backup-контур Gitea через `gitea dump`.

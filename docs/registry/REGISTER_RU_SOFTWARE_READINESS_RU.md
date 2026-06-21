@@ -15,11 +15,13 @@ registry-readiness пакета, не подтверждает готовнос�
 
 ## Текущее состояние инфраструктуры
 
-- Российский Git-контур развернут как целевой контур для registry-readiness.
+- Российский Git-контур развернут как текущий контур для registry-readiness.
 - Self-hosted Gitea развернута на REG.RU VPS / cloud server.
 - Основной целевой URL:
   `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
-- GitHub используется как публичное зеркало.
+- Gitea содержит дубликат/зеркало GitHub-репозитория AWatch-rus.
+- GitHub используется как публичное зеркало и public validation surface.
+- Gitea operator account: `igor`; пароль/токены хранятся вне репозитория.
 - Встроенная Gitea Wiki может использоваться только как навигационная
   страница.
 - Доказательная документация должна храниться в `docs/registry/`.
@@ -43,9 +45,9 @@ Done / partially done:
 - Репозиторий AWatch-rus мигрирован.
 - `docs/registry/` используется как основной документальный пакет.
 - Backup через `gitea dump` начат.
-- Развернут целевой российский Git-контур для registry-readiness.
+- Развернут текущий российский Git-контур для registry-readiness.
 - Развернута self-hosted Gitea на REG.RU VPS / cloud server.
-- Репозиторий AWatch-rus мигрирован в Gitea:
+- Репозиторий AWatch-rus создан в Gitea как дубликат/зеркало GitHub:
   `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
 - HTTPS для Gitea включен через Nginx reverse proxy.
 - Начат backup-контур Gitea на базе `gitea dump`, ZIP-архивов,

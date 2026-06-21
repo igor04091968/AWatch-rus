@@ -1,5 +1,25 @@
 # Registry readiness changelog
 
+## 2026-06-22 Gitea duplicate status
+
+Changed:
+
+- Documented that `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus` is the
+  created self-hosted Gitea duplicate/mirror of the GitHub repository.
+- Documented Gitea operator account name `igor` without storing password,
+  tokens, SSH private keys or recovery codes in tracked files.
+- Clarified that the current local working copy on this machine still has
+  `origin` pointing to GitHub and should use `ru-origin` for direct Gitea push.
+- Updated registry-readiness wording from a purely target scheme to the current
+  deployed source repository contour.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- Rust/runtime checks not required: documentation-only update.
+
 ## 2026-06-21 public secret scan hardening
 
 Added:

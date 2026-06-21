@@ -1,12 +1,12 @@
 # Runbook: российский Git-контур и зеркалирование
 
 Статус: operational registry-readiness runbook. Команды ниже описывают
-целевую схему remotes для работы с российским self-hosted Gitea и публичным
-GitHub mirror.
+текущую рабочую схему remotes для российского self-hosted Gitea-дубликата и
+публичного GitHub mirror.
 
-## Целевая схема remotes
+## Текущая схема remotes
 
-Primary registry-readiness remote:
+Primary registry-readiness remote / Gitea duplicate:
 
 ```text
 ru-origin:
@@ -23,6 +23,25 @@ https://github.com/igor04091968/AWatch-rus.git
 GitHub = public mirror only. GitHub не должен описываться как primary
 registry source/build system или как целевой source/build/release contour
 для registry-readiness.
+
+На текущей локальной рабочей копии этой машины `origin` указывает на GitHub:
+
+```text
+origin:
+https://github.com/igor04091968/AWatch-rus.git
+```
+
+Для прямой синхронизации с Gitea нужно добавить отдельный remote `ru-origin`.
+
+## Доступ и секреты
+
+- Gitea operator account: `igor`.
+- Пароль, personal access token, SSH private key и recovery codes не хранить в
+  репозитории, `docs/registry/`, Gitea Wiki или release evidence.
+- Для HTTPS push предпочтительно использовать Gitea personal access token или
+  credential helper. Если используется пароль учетной записи, он должен
+  оставаться только в приватном хранилище учетных данных.
+- Перед публикацией evidence проверять, что выводы команд не содержат секреты.
 
 ## Базовые команды
 
@@ -67,7 +86,7 @@ git push github --tags
 
 - Реальные remote names сначала проверить через `git remote -v`.
 - При работе через HTTPS использовать Gitea token/password согласно настройкам
-  Gitea.
+  Gitea, без записи секрета в tracked files.
 - SSH-ключи для Gitea настраиваются отдельно и не должны храниться в
   репозитории.
 - GitHub остается публичным зеркалом и внешней площадкой; он не является
