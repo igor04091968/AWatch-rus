@@ -44,3 +44,27 @@
 build-runner и storage release artifacts в РФ или документировать принятую
 владельцем схему. До этого нельзя утверждать, что source/build/release contour
 полностью закрыт для подачи.
+
+## Build-runner evidence
+
+Для `awatch-build-01` фиксировать:
+
+- hostname;
+- provider;
+- OS;
+- `rustc` / `cargo` versions;
+- git commit;
+- tag/version;
+- checks;
+- artifacts;
+- SBOM;
+- SHA256;
+- smoke logs;
+- skipped checks with reasons;
+- `generated_at`;
+- operator/responsible person placeholder:
+  `[ЗАПОЛНИТЬ ПРАВООБЛАДАТЕЛЕМ]`.
+
+Evidence должен формироваться скриптом `scripts/build_release_evidence.sh` и
+проверяться через `scripts/check_release_evidence.sh`. До первого успешного
+release candidate build нельзя утверждать, что release evidence production-ready.

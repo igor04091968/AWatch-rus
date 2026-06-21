@@ -227,6 +227,9 @@ collectors.
   [docs/registry/](docs/registry/REGISTER_RU_SOFTWARE_READINESS_RU.md).
 - Gitea Wiki используется только как навигация, не как единственный источник
   документов.
+- Российский build-runner и release evidence описаны в
+  [RU_BUILD_RUNNER_READINESS_RU.md](docs/registry/RU_BUILD_RUNNER_READINESS_RU.md).
+- GitHub remains public mirror only.
 
 - [Позиционирование для реестра российского ПО](docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)

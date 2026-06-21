@@ -1,5 +1,40 @@
 # Registry readiness changelog
 
+## 2026-06-21
+
+Added:
+
+- Russian build-runner readiness docs.
+- Build-runner setup runbook.
+- Release evidence runbook.
+- Release artifacts storage policy.
+- `scripts/build_release_evidence.sh`.
+- `scripts/check_release_evidence.sh`.
+
+Changed:
+
+- Updated registry evidence manifest with build-runner plan.
+- Updated registry readiness checks for build-runner and release evidence
+  requirements.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- Rust/runtime checks not required: registry documentation and release evidence
+  script update only.
+
+Remaining gaps:
+
+- Actual `awatch-build-01` server provisioning.
+- Build-runner first successful release candidate build.
+- SBOM tool installation decision.
+- Release artifacts storage in RF.
+- Restore test for Gitea backup.
+- Legal rightsholder confirmation.
+- Final legal review.
+
 ## 2026-06-20 / 2026-06-21
 
 Added:

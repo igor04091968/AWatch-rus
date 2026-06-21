@@ -38,6 +38,41 @@
     "restore_tested": false,
     "production_ready": false
   },
+  "build_runner": {
+    "status": "planned",
+    "target_hostname": "awatch-build-01",
+    "target_provider": "REG.RU VPS / cloud server or another Russian-hosted server",
+    "target_location": "Russian Federation",
+    "separate_from_git_server": true,
+    "recommended_specs": {
+      "cpu": "4 vCPU",
+      "ram": "8-16 GB",
+      "disk": "120+ GB SSD/NVMe",
+      "os": [
+        "Debian 12",
+        "Ubuntu 24.04 LTS"
+      ]
+    },
+    "required_checks": [
+      "cargo fmt --all --check",
+      "cargo test --workspace",
+      "cargo clippy --workspace --all-targets -- -D warnings",
+      "cargo build --workspace --release",
+      "registry_readiness_check",
+      "release_evidence_check"
+    ],
+    "release_evidence": {
+      "source_archive": true,
+      "binary_archive": true,
+      "sha256sums": true,
+      "cargo_metadata": true,
+      "cargo_tree": true,
+      "sbom_cyclonedx": "if_tool_available",
+      "sbom_spdx": "if_tool_available",
+      "smoke_logs": true,
+      "release_manifest": true
+    }
+  },
   "github_role_note": "GitHub is a public mirror only, not the target primary source/build/release contour for registry-readiness.",
   "remaining_gaps": [
     "legal rightsholder confirmation",
@@ -49,11 +84,11 @@
     "final registry legal review"
   ],
   "forbidden_claims_not_made": [
-    "FSTEC/FSB certification",
-    "SIEM replacement",
-    "DLP replacement",
-    "ML/LLM-based detection",
-    "cloud dependency",
-    "automatic remediation"
+    "not_claimed: FSTEC/FSB certification",
+    "not_claimed: SIEM replacement",
+    "not_claimed: DLP replacement",
+    "not_claimed: ML/LLM-based detection",
+    "not_claimed: cloud dependency",
+    "not_claimed: automatic remediation"
   ]
 }

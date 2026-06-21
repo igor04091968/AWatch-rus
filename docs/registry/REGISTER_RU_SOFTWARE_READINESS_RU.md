@@ -1,8 +1,8 @@
 # AWatch-rus: readiness для реестра российского ПО
 
 Статус: подготовительный документ. Документ фиксирует текущее состояние
-registry-readiness пакета и не является юридическим заключением о готовности
-подачи или принятия AWatch-rus в реестр российского ПО.
+registry-readiness пакета, не подтверждает готовность подачи и не подтверждает
+юридический результат рассмотрения AWatch-rus для реестра российского ПО.
 
 ## Назначение
 
@@ -57,6 +57,16 @@ Done / partially done:
 - Документированная access control policy для Gitea.
 - Offsite backup в РФ.
 - Финальная юридическая проверка registry package.
+
+## Новый статус registry-readiness
+
+- Russian Git contour: partially done / done.
+- Gitea backup: partially done.
+- Russian build-runner: planned.
+- Release artifacts storage in RF: planned.
+- Release evidence automation: partially done after this task.
+- Restore test: required.
+- Legal rightsholder confirmation: required.
 
 ## Ограничения формулировок
 

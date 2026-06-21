@@ -37,11 +37,17 @@ required_files=(
   "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md"
   "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md"
   "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md"
+  "docs/registry/RU_BUILD_RUNNER_READINESS_RU.md"
+  "docs/registry/BUILD_RUNNER_SETUP_RUNBOOK_RU.md"
+  "docs/registry/RELEASE_EVIDENCE_RUNBOOK_RU.md"
+  "docs/registry/RELEASE_ARTIFACTS_STORAGE_RU.md"
   "docs/registry/RELEASE_EVIDENCE_MANIFEST_RU.md"
   "docs/registry/INSTALLATION_AND_TEST_INSTANCE_RU.md"
   "docs/registry/LIFECYCLE_AND_SUPPORT_RU.md"
   "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md"
   "docs/registry/registry-evidence-manifest.json"
+  "scripts/build_release_evidence.sh"
+  "scripts/check_release_evidence.sh"
   "README.md"
 )
 
@@ -68,6 +74,11 @@ if [[ -s "$MANIFEST" ]]; then
       and .backup.retention_days == 14
       and .backup.systemd_timer == "awatch-gitea-backup.timer"
       and .backup.restore_tested == false
+      and .build_runner.status != "production_ready"
+      and .build_runner.status == "planned"
+      and .build_runner.target_hostname == "awatch-build-01"
+      and .build_runner.separate_from_git_server == true
+      and (.build_runner.required_checks | index("release_evidence_check") != null)
     ' "$MANIFEST" >/dev/null || fail "manifest_required_fields"
   elif command -v python3 >/dev/null 2>&1; then
     python3 -m json.tool "$MANIFEST" >/dev/null || fail "invalid_json:docs/registry/registry-evidence-manifest.json"
@@ -75,8 +86,7 @@ if [[ -s "$MANIFEST" ]]; then
 import json
 import sys
 
-path = sys.argv[1]
-with open(path, "r", encoding="utf-8") as fh:
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
 expected = {
@@ -113,19 +123,32 @@ backup_expected = {
 for key, value in backup_expected.items():
     if backup.get(key) != value:
         raise SystemExit(f"backup.{key} mismatch")
+
+build_runner = data.get("build_runner") or {}
+if build_runner.get("status") == "production_ready":
+    raise SystemExit("build_runner.status must not be production_ready")
+if build_runner.get("status") != "planned":
+    raise SystemExit("build_runner.status mismatch")
+if build_runner.get("target_hostname") != "awatch-build-01":
+    raise SystemExit("build_runner.target_hostname mismatch")
+if build_runner.get("separate_from_git_server") is not True:
+    raise SystemExit("build_runner.separate_from_git_server mismatch")
+if "release_evidence_check" not in build_runner.get("required_checks", []):
+    raise SystemExit("build_runner.required_checks missing release_evidence_check")
 PY
-  elif command -v node >/dev/null 2>&1; then
-    node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$MANIFEST" \
-      || fail "invalid_json:docs/registry/registry-evidence-manifest.json"
   else
-    fail "json_validator_missing:python3_or_node_required"
+    fail "json_validator_missing:jq_or_python3_required"
   fi
 fi
 
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/SOURCE_CODE_AND_BUILD_INFRASTRUCTURE_RU.md" "gitea_domain_source_infra"
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md" "gitea_domain_git_runbook"
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "gitea_domain_wiki_policy"
+require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/RU_BUILD_RUNNER_READINESS_RU.md" "gitea_domain_build_runner"
 require_grep "git\\.iri1968\\.dpdns\\.org" "README.md" "gitea_domain_readme"
+require_grep "awatch-build-01" "docs/registry/RU_BUILD_RUNNER_READINESS_RU.md" "awatch_build_runner_readiness"
+require_grep "awatch-build-01" "docs/registry/BUILD_RUNNER_SETUP_RUNBOOK_RU.md" "awatch_build_runner_setup"
+require_grep "awatch-build-01" "docs/registry/RELEASE_EVIDENCE_RUNBOOK_RU.md" "awatch_build_runner_release_runbook"
 require_grep "GitHub[[:space:]]*=[[:space:]]*public mirror only|public mirror only" "docs/registry/SOURCE_CODE_AND_BUILD_INFRASTRUCTURE_RU.md" "github_public_mirror_source_infra"
 require_grep "GitHub[[:space:]]*=[[:space:]]*public mirror only|public mirror only" "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md" "github_public_mirror_git_runbook"
 require_grep "GitHub.*публичн|public mirror" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "github_public_mirror_wiki_policy"
@@ -136,30 +159,54 @@ require_grep "sha256|SHA256" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.
 require_grep "restore_tested=false|restore_tested..false|\"restore_tested\"[[:space:]]*:[[:space:]]*false" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "restore_tested_false_runbook"
 require_grep "\"restore_tested\"[[:space:]]*:[[:space:]]*false" "docs/registry/registry-evidence-manifest.json" "restore_tested_false_manifest"
 require_grep "docs/registry" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "authoritative_docs_path_wiki_policy"
+require_grep "release_evidence_check" "docs/registry/registry-evidence-manifest.json" "release_evidence_check_manifest"
 
 scan_files=(
   "$ROOT/README.md"
   "$REGISTRY_DIR"/*.md
+  "$REGISTRY_DIR"/*.json
+  "$ROOT/scripts/build_release_evidence.sh"
+  "$ROOT/scripts/check_release_evidence.sh"
 )
 
-if grep -RInEi "(ФСТЭК|ФСБ).{0,80}(сертифицирован|сертификация|сертификат).{0,80}(есть|получен|имеется|подтвержден)" "${scan_files[@]}" >/tmp/registry_forbidden_fstec_fsb.$$ 2>/dev/null; then
+claim_scan_files=(
+  "$ROOT/README.md"
+  "$REGISTRY_DIR"/*.md
+  "$REGISTRY_DIR"/*.json
+)
+
+if grep -RInEi "(password|passwd|pwd|token|secret|api[_-]?key|private[[:space:]_-]?key)[[:space:]]*[:=][[:space:]]*['\"]?[A-Za-z0-9_./+=-]{8,}" "${scan_files[@]}" >/tmp/registry_secret_like.$$ 2>/dev/null; then
+  fail "secret_like_value:$(cat /tmp/registry_secret_like.$$)"
+fi
+rm -f /tmp/registry_secret_like.$$
+
+if grep -RInEi "(ФСТЭК|ФСБ).{0,80}(сертифицирован|сертификация|сертификат).{0,80}(есть|получен|имеется|подтвержден)|сертифицированное[[:space:]]+СЗИ" "${claim_scan_files[@]}" \
+  | grep -Eiv "(does not claim|not_claimed|forbidden_claim|не заявляет|не фиксируется|не является|не утверждает|нельзя)" \
+  >/tmp/registry_forbidden_fstec_fsb.$$ 2>/dev/null; then
   fail "forbidden_claim_fstec_fsb_certification:$(cat /tmp/registry_forbidden_fstec_fsb.$$)"
 fi
 rm -f /tmp/registry_forbidden_fstec_fsb.$$
 
-if grep -RInEi "(заменяет|replacement for|replaces).{0,80}(SIEM|DLP)|((SIEM|DLP).{0,80}(replacement|заменяет))" "${scan_files[@]}" \
-  | grep -Eiv "(не |not |does not|не является|не подменяет|не заявляет|forbidden|not_made)" \
+if grep -RInEi "(заменяет|replacement for|replaces).{0,80}(SIEM|DLP)|((SIEM|DLP).{0,80}(replacement|заменяет))" "${claim_scan_files[@]}" \
+  | grep -Eiv "(не |not |does not|not_claimed|не является|не подменяет|не заявляет|forbidden|not_made)" \
   >/tmp/registry_forbidden_replacement.$$ 2>/dev/null; then
   fail "forbidden_claim_siem_dlp_replacement:$(cat /tmp/registry_forbidden_replacement.$$)"
 fi
 rm -f /tmp/registry_forbidden_replacement.$$
 
-if grep -RInEi "(ML/LLM-based detection|LLM-based detection|ML-based detection|automatic remediation)" "${scan_files[@]}" \
-  | grep -Eiv "(forbidden|not_made|не заявляет|не фиксируется|не используется)" \
+if grep -RInEi "(ML/LLM-based detection|LLM-based detection|ML-based detection|automatic remediation)" "${claim_scan_files[@]}" \
+  | grep -Eiv "(forbidden|not_made|not_claimed|не заявляет|не фиксируется|не используется|does not claim)" \
   >/tmp/registry_forbidden_ai_auto.$$ 2>/dev/null; then
   fail "forbidden_claim_ai_or_automatic_remediation:$(cat /tmp/registry_forbidden_ai_auto.$$)"
 fi
 rm -f /tmp/registry_forbidden_ai_auto.$$
+
+if grep -RInEi "(юридически заверш(е|ё)нн?ая регистрация|принят.*в реестр|реестр.*заверш(е|ё)н)" "${claim_scan_files[@]}" \
+  | grep -Eiv "(не |нельзя|does not|not |не утверждает|не является|не подтверждает|forbidden)" \
+  >/tmp/registry_forbidden_legal_done.$$ 2>/dev/null; then
+  fail "forbidden_claim_legal_registry_completion:$(cat /tmp/registry_forbidden_legal_done.$$)"
+fi
+rm -f /tmp/registry_forbidden_legal_done.$$
 
 if ((${#failures[@]} > 0)); then
   printf 'registry_readiness_check=fail\n'
