@@ -1,5 +1,40 @@
 # Registry readiness changelog
 
+## 2026-06-21 status freeze
+
+Added:
+
+- `docs/PROJECT_STATUS_RU.md` as a single status freeze for the current
+  registry-readiness baseline.
+- README link to the status freeze document.
+- Registry readiness check coverage for the status freeze document.
+
+Baseline:
+
+- Commit:
+  `4970d31 chore(public): add CI coverage security and OSS process visibility`.
+- Primary Russian Git:
+  `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
+- GitHub role:
+  public mirror / public validation only.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- Rust/runtime checks not required: documentation-only status freeze.
+
+Remaining gaps:
+
+- Gitea restore test.
+- Actual `awatch-build-01` provisioning.
+- First real release evidence build.
+- Release artifacts storage in RF.
+- Legal rightsholder confirmation.
+- Final legal review.
+- Russian OS compatibility testing.
+
 ## 2026-06-21 public engineering transparency
 
 Added:

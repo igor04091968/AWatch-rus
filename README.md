@@ -233,6 +233,8 @@ collectors.
   документов.
 - Российский build-runner и release evidence описаны в
   [RU_BUILD_RUNNER_READINESS_RU.md](docs/registry/RU_BUILD_RUNNER_READINESS_RU.md).
+- Текущий status freeze проекта:
+  [docs/PROJECT_STATUS_RU.md](docs/PROJECT_STATUS_RU.md).
 - GitHub remains public mirror only.
 
 ### Public engineering transparency

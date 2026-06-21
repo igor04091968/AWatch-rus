@@ -46,6 +46,7 @@ required_files=(
   "docs/registry/LIFECYCLE_AND_SUPPORT_RU.md"
   "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md"
   "docs/registry/registry-evidence-manifest.json"
+  "docs/PROJECT_STATUS_RU.md"
   "docs/QUALITY_STATUS_RU.md"
   "scripts/build_release_evidence.sh"
   "scripts/check_release_evidence.sh"
@@ -187,6 +188,11 @@ require_grep "GitHub[[:space:]]*=[[:space:]]*public mirror only|public mirror on
 require_grep "GitHub[[:space:]]*=[[:space:]]*public mirror only|public mirror only" "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md" "github_public_mirror_git_runbook"
 require_grep "GitHub.*публичн|public mirror" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "github_public_mirror_wiki_policy"
 require_grep "public mirror|публичн.*зеркал" "README.md" "github_public_mirror_readme"
+require_grep "PROJECT_STATUS_RU\\.md" "README.md" "readme_project_status_link"
+require_grep "4970d31" "docs/PROJECT_STATUS_RU.md" "project_status_baseline_commit"
+require_grep "git\\.iri1968\\.dpdns\\.org/awatch-rus/AWatch-rus" "docs/PROJECT_STATUS_RU.md" "project_status_primary_git"
+require_grep "public mirror / public validation only" "docs/PROJECT_STATUS_RU.md" "project_status_github_role"
+require_grep "docs/registry" "docs/PROJECT_STATUS_RU.md" "project_status_registry_docs"
 require_grep "GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU\\.md|Restore outline|Post-restore checks" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_restore_runbook"
 require_grep "awatch-gitea-backup\\.timer" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_timer"
 require_grep "sha256|SHA256" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_sha256"
@@ -208,6 +214,7 @@ require_grep "cargo fmt --all --check" ".github/workflows/ci.yml" "ci_workflow_f
 
 scan_files=(
   "$ROOT/README.md"
+  "$ROOT/docs/PROJECT_STATUS_RU.md"
   "$REGISTRY_DIR"/*.md
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
@@ -224,6 +231,7 @@ scan_files=(
 
 claim_scan_files=(
   "$ROOT/README.md"
+  "$ROOT/docs/PROJECT_STATUS_RU.md"
   "$REGISTRY_DIR"/*.md
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
