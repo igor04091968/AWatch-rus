@@ -1,6 +1,7 @@
+use std::io::Read;
 use std::net::{SocketAddr, TcpStream};
-use std::process::Command;
-use std::time::Duration;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -8,7 +9,7 @@ use clap::Parser;
 use detmir_aw_client::ActivityWatchClient;
 use detmir_core::{exit_codes, now_utc_rfc3339};
 use reqwest::blocking::Client;
-use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -39,6 +40,12 @@ struct Cli {
 
     #[arg(long, default_value = DEFAULT_HOSTNAME)]
     hostname: String,
+
+    #[arg(long, default_value = DEFAULT_GATEWAY_HOST)]
+    gateway_host: String,
+
+    #[arg(long, default_value = "https://127.0.0.1")]
+    portal_url: String,
 
     #[arg(long, default_value_t = 5)]
     service_timeout_seconds: u64,
@@ -75,6 +82,18 @@ struct Cli {
 
     #[arg(long, default_value = "")]
     clickhouse_password: String,
+
+    #[arg(long, default_value = "detmir-dlp")]
+    dlp_command: String,
+
+    #[arg(long, default_value_t = 45)]
+    dlp_timeout_seconds: u64,
+
+    #[arg(long, default_value_t = false)]
+    disable_dlp_health_check: bool,
+
+    #[arg(long, default_value_t = false)]
+    disable_portal_check: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -160,6 +179,20 @@ fn env_or_default(name: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
+fn env_flag_enabled(name: &str) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| parse_env_flag(&value))
+        .unwrap_or(false)
+}
+
+fn parse_env_flag(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
+}
+
 fn bucket_specs(hostname: &str) -> Vec<BucketSpec> {
     vec![
         BucketSpec {
@@ -224,6 +257,20 @@ fn build_headers(items: &[(&str, &str)]) -> Result<HeaderMap> {
     Ok(headers)
 }
 
+fn portal_headers(args: &Cli) -> HeaderMap {
+    let mut headers = build_headers(&[("Host", args.gateway_host.as_str())]).unwrap_or_default();
+    if let Some(value) = std::env::var("DETMIR_PORTAL_AUTH_HEADER")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+    {
+        if let Ok(value) = HeaderValue::from_str(&value) {
+            headers.insert(AUTHORIZATION, value);
+        }
+    }
+    headers
+}
+
 fn fetch_text(
     url: &str,
     timeout: Duration,
@@ -258,6 +305,7 @@ fn fetch_text(
 fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
     let timeout = Duration::from_secs(args.service_timeout_seconds);
     let one_c_url = args.one_c_url.trim_end_matches('/');
+    let portal_url = args.portal_url.trim_end_matches('/');
     let services = [
         (
             "aw-info",
@@ -285,10 +333,10 @@ fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
         ),
         (
             "gateway-healthz",
-            "https://127.0.0.1/healthz".to_string(),
+            format!("{portal_url}/healthz"),
             true,
             true,
-            build_headers(&[("Host", DEFAULT_GATEWAY_HOST)]).unwrap_or_default(),
+            portal_headers(args),
         ),
     ];
 
@@ -333,10 +381,183 @@ fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
     if !args.disable_grafana_check {
         checks.push(grafana_data_check(args));
     }
+    if !args.disable_portal_check {
+        checks.extend(portal_checks(args));
+    }
     if security_events_clickhouse_enabled(args) {
         checks.push(clickhouse_security_events_check(args));
     }
+    if !args.disable_dlp_health_check {
+        checks.push(dlp_health_check(args));
+    }
     checks
+}
+
+fn portal_checks(args: &Cli) -> Vec<ServiceCheck> {
+    let base = args.portal_url.trim_end_matches('/');
+    [
+        ("portal-healthz", "/healthz", true),
+        ("portal-readyz", "/readyz", true),
+        ("portal-version", "/version", true),
+        ("portal-metrics", "/metrics", true),
+    ]
+    .into_iter()
+    .map(|(name, path, required)| {
+        let url = format!("{base}{path}");
+        let headers = portal_headers(args);
+        match fetch_text(
+            &url,
+            Duration::from_secs(args.service_timeout_seconds),
+            true,
+            headers,
+            2,
+        ) {
+            Ok(raw) => {
+                let payload = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| {
+                    Value::String(raw.lines().next().unwrap_or("").to_string())
+                });
+                ServiceCheck {
+                    name: name.to_string(),
+                    required,
+                    ok: true,
+                    url: Some(url),
+                    payload: Some(payload),
+                    error: None,
+                }
+            }
+            Err(err) => ServiceCheck {
+                name: name.to_string(),
+                required,
+                ok: false,
+                url: Some(url),
+                payload: None,
+                error: Some(err.to_string()),
+            },
+        }
+    })
+    .collect()
+}
+
+fn dlp_health_check(args: &Cli) -> ServiceCheck {
+    let name = "aw-dlp-health".to_string();
+    match run_shell_command_timeout(
+        &args.dlp_command,
+        Duration::from_secs(args.dlp_timeout_seconds),
+    ) {
+        Ok(output) if output.timed_out => ServiceCheck {
+            name,
+            required: true,
+            ok: false,
+            url: None,
+            payload: None,
+            error: Some(format!(
+                "DLP health command timed out after {} seconds",
+                args.dlp_timeout_seconds
+            )),
+        },
+        Ok(output) => {
+            let payload = serde_json::from_str::<Value>(&output.stdout).unwrap_or_else(|_| {
+                Value::String(output.stdout.lines().next().unwrap_or("").to_string())
+            });
+            let ok = output.code == Some(0);
+            ServiceCheck {
+                name,
+                required: true,
+                ok,
+                url: None,
+                payload: Some(payload),
+                error: if ok {
+                    None
+                } else {
+                    Some(format!(
+                        "DLP health command exited with {:?}: {}",
+                        output.code,
+                        sanitize_command_stderr(&output.stderr)
+                    ))
+                },
+            }
+        }
+        Err(err) => ServiceCheck {
+            name,
+            required: true,
+            ok: false,
+            url: None,
+            payload: None,
+            error: Some(format!("cannot execute DLP health command: {err:#}")),
+        },
+    }
+}
+
+#[derive(Debug)]
+struct CommandOutput {
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+    timed_out: bool,
+}
+
+fn run_shell_command_timeout(command: &str, timeout: Duration) -> Result<CommandOutput> {
+    let mut child = Command::new("/bin/sh")
+        .arg("-lc")
+        .arg(command)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .with_context(|| format!("failed to spawn command: {command}"))?;
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait().context("command wait failed")? {
+            return read_command_output(child, status.code(), false);
+        }
+        if started.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return read_command_output(child, None, true);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn read_command_output(
+    mut child: std::process::Child,
+    code: Option<i32>,
+    timed_out: bool,
+) -> Result<CommandOutput> {
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        pipe.read_to_string(&mut stdout)
+            .context("failed to read command stdout")?;
+    }
+    if let Some(mut pipe) = child.stderr.take() {
+        pipe.read_to_string(&mut stderr)
+            .context("failed to read command stderr")?;
+    }
+    Ok(CommandOutput {
+        code,
+        stdout,
+        stderr,
+        timed_out,
+    })
+}
+
+fn sanitize_command_stderr(stderr: &str) -> String {
+    let trimmed = stderr.trim();
+    if trimmed.is_empty() {
+        return "no stderr".to_string();
+    }
+    trimmed
+        .lines()
+        .take(3)
+        .map(|line| {
+            if line.chars().count() > 240 {
+                format!("{}...", line.chars().take(240).collect::<String>())
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
 }
 
 fn security_events_clickhouse_enabled(args: &Cli) -> bool {
@@ -777,6 +998,8 @@ fn main() -> Result<()> {
     args.one_c_url = env_or_default("DETMIR_ONE_C_URL", &args.one_c_url);
     args.rdp_host = env_or_default("DETMIR_RDP_HOST", &args.rdp_host);
     args.hostname = env_or_default("DETMIR_HOSTNAME", &args.hostname);
+    args.gateway_host = env_or_default("DETMIR_GATEWAY_HOST", &args.gateway_host);
+    args.portal_url = env_or_default("DETMIR_PORTAL_URL", &args.portal_url);
     args.grafana_check_json = env_or_default("DETMIR_GRAFANA_CHECK_JSON", &args.grafana_check_json);
     args.security_events_backend =
         env_or_default("SECURITY_EVENTS_BACKEND", &args.security_events_backend);
@@ -784,6 +1007,13 @@ fn main() -> Result<()> {
     args.clickhouse_database = env_or_default("CLICKHOUSE_DATABASE", &args.clickhouse_database);
     args.clickhouse_user = env_or_default("CLICKHOUSE_USER", &args.clickhouse_user);
     args.clickhouse_password = env_or_default("CLICKHOUSE_PASSWORD", &args.clickhouse_password);
+    args.dlp_command = env_or_default("DETMIR_DLP_COMMAND", &args.dlp_command);
+    if env_flag_enabled("DETMIR_DISABLE_DLP_HEALTH_CHECK") {
+        args.disable_dlp_health_check = true;
+    }
+    if env_flag_enabled("DETMIR_DISABLE_PORTAL_CHECK") {
+        args.disable_portal_check = true;
+    }
 
     let report = build_report(&args)?;
     if args.json {
@@ -853,6 +1083,16 @@ mod tests {
             clickhouse_identifier(&args.clickhouse_database).as_deref(),
             Some("analytics_1c")
         );
+    }
+
+    #[test]
+    fn env_flag_accepts_true_values_only() {
+        assert!(parse_env_flag("true"));
+        assert!(parse_env_flag("1"));
+        assert!(parse_env_flag("yes"));
+        assert!(parse_env_flag("on"));
+        assert!(!parse_env_flag("0"));
+        assert!(!parse_env_flag("false"));
     }
 
     #[test]
