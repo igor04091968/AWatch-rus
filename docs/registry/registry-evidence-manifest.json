@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "product": "AWatch-rus",
+  "status": "registry-readiness infrastructure evidence manifest",
+  "updated_at": "2026-06-21",
+  "primary_source_repository": "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus",
+  "primary_git_platform": "self-hosted Gitea",
+  "primary_git_provider": "REG.RU VPS / cloud server",
+  "github_role": "public_mirror_only",
+  "infrastructure": {
+    "git_url": "https://git.iri1968.dpdns.org",
+    "organization": "awatch-rus",
+    "repository": "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus",
+    "https_enabled": true,
+    "reverse_proxy": "Nginx",
+    "gitea_local_http_endpoint": "127.0.0.1:3000",
+    "external_3000_tcp_expected_exposed": false,
+    "legal_sufficiency_confirmed": false
+  },
+  "backup": {
+    "enabled": true,
+    "tool": "gitea dump",
+    "path": "/var/backups/gitea",
+    "script": "/usr/local/sbin/awatch-gitea-backup.sh",
+    "format": "zip",
+    "checksum": "sha256",
+    "retention_days": 14,
+    "systemd_service": "awatch-gitea-backup.service",
+    "systemd_timer": "awatch-gitea-backup.timer",
+    "schedule_target": "daily 03:20 with RandomizedDelaySec=10m",
+    "restore_runbook": "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md",
+    "restore_tested": false,
+    "production_ready": false
+  },
+  "github_role_note": "GitHub is a public mirror only, not the target primary source/build/release contour for registry-readiness.",
+  "remaining_gaps": [
+    "legal rightsholder confirmation",
+    "Russian build-runner",
+    "release artifacts storage in RF",
+    "tested restore procedure",
+    "documented access control policy",
+    "documented backup offsite copy",
+    "final registry legal review"
+  ],
+  "forbidden_claims_not_made": [
+    "FSTEC/FSB certification",
+    "SIEM replacement",
+    "DLP replacement",
+    "ML/LLM-based detection",
+    "cloud dependency",
+    "automatic remediation"
+  ]
+}

@@ -218,6 +218,12 @@ collectors.
   [commercial positioning](docs/REGISTRY_COMMERCIAL_POSITIONING_RU.md),
   [readiness checklist](docs/REGISTRY_READINESS_CHECKLIST_RU.md).
 
+- Registry-readiness infrastructure:
+  Russian Git contour:
+  `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`;
+  GitHub role: public mirror;
+  detailed docs: [docs/registry/](docs/registry/REGISTER_RU_SOFTWARE_READINESS_RU.md).
+
 - [Позиционирование для реестра российского ПО](docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)
 - [Registry product passport](docs/REGISTRY_PRODUCT_PASSPORT_RU.md)
@@ -688,4 +694,3 @@ PILOT V1 SCOPE (ГОТОВО):
 ✅ ТРЕБОВАТЬ: Support contract перед production
 ✅ ПЛАНИРОВАТЬ: Intern training на Rust maintenance
 ```
-

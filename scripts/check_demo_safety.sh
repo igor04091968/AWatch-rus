@@ -139,6 +139,13 @@ def add_finding(findings: list[dict], path: Path, line_no: int, rule: str, value
     )
 
 
+def is_allowed_registry_infrastructure_reference(path: Path, line: str, value: str) -> bool:
+    rel = path.relative_to(ROOT).as_posix()
+    if rel != "README.md":
+        return False
+    return value.lower() == "iri1968" and "https://git.iri1968.dpdns.org" in line
+
+
 def scan_line(findings: list[dict], path: Path, line_no: int, line: str) -> None:
     stripped = line.strip()
     if stripped.startswith("#") and "grep -n" in stripped:
@@ -156,7 +163,9 @@ def scan_line(findings: list[dict], path: Path, line_no: int, line: str) -> None
             add_finding(findings, path, line_no, "non_demo_email", email)
 
     for match in FORBIDDEN_DOMAIN_RE.finditer(line):
-        add_finding(findings, path, line_no, "known_live_domain_or_codename", match.group(0))
+        value = match.group(0)
+        if not is_allowed_registry_infrastructure_reference(path, line, value):
+            add_finding(findings, path, line_no, "known_live_domain_or_codename", value)
 
     for match in SECRET_ASSIGN_RE.finditer(line):
         value = match.group(2)
