@@ -48,8 +48,10 @@ required_files=(
   "docs/registry/registry-evidence-manifest.json"
   "docs/PROJECT_STATUS_RU.md"
   "docs/QUALITY_STATUS_RU.md"
+  "docs/SECURITY_SCANNING_POLICY_RU.md"
   "scripts/build_release_evidence.sh"
   "scripts/check_release_evidence.sh"
+  "scripts/public_secret_pattern_check.py"
   ".github/workflows/ci.yml"
   ".github/workflows/security.yml"
   ".github/workflows/coverage.yml"
@@ -201,6 +203,7 @@ require_grep "\"restore_tested\"[[:space:]]*:[[:space:]]*false" "docs/registry/r
 require_grep "docs/registry" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "authoritative_docs_path_wiki_policy"
 require_grep "release_evidence_check" "docs/registry/registry-evidence-manifest.json" "release_evidence_check_manifest"
 require_grep "Public engineering transparency" "README.md" "readme_public_engineering_transparency"
+require_grep "SECURITY_SCANNING_POLICY_RU\\.md" "README.md" "readme_security_scanning_policy"
 require_grep "GitHub Actions is public mirror validation only|public mirror validation only" "docs/registry/RU_BUILD_RUNNER_READINESS_RU.md" "github_actions_not_registry_build_runner"
 require_grep "GitHub Actions is public mirror validation only|public mirror validation only" "docs/registry/RELEASE_EVIDENCE_RUNBOOK_RU.md" "github_actions_not_registry_release_runbook"
 require_grep "Public CI is not registry release evidence|not registry release evidence" "docs/QUALITY_STATUS_RU.md" "quality_public_ci_not_registry_evidence"
@@ -208,6 +211,9 @@ require_grep "requires_russian_build_runner|public_mirror_validation_only" "docs
 require_grep "public mirror validation only" "SECURITY.md" "security_public_mirror_validation"
 require_grep "public mirror validation only" "CONTRIBUTING.md" "contributing_public_mirror_validation"
 require_grep "public mirror validation only" "ROADMAP.md" "roadmap_public_mirror_validation"
+require_grep "fail-closed" "docs/SECURITY_SCANNING_POLICY_RU.md" "security_scanning_policy_fail_closed"
+require_grep "public-secret-scan: allow dummy" "docs/SECURITY_SCANNING_POLICY_RU.md" "security_scanning_policy_allow_comment"
+require_grep "scripts/public_secret_pattern_check\\.py" ".github/workflows/security.yml" "security_workflow_local_secret_scanner"
 require_grep "cargo audit|cargo deny|secret-pattern" ".github/workflows/security.yml" "security_workflow_checks"
 require_grep "cargo llvm-cov" ".github/workflows/coverage.yml" "coverage_workflow_llvm_cov"
 require_grep "cargo fmt --all --check" ".github/workflows/ci.yml" "ci_workflow_fmt"
@@ -218,6 +224,7 @@ scan_files=(
   "$REGISTRY_DIR"/*.md
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
+  "$ROOT/docs/SECURITY_SCANNING_POLICY_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
   "$ROOT/ROADMAP.md"
@@ -235,10 +242,20 @@ claim_scan_files=(
   "$REGISTRY_DIR"/*.md
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
+  "$ROOT/docs/SECURITY_SCANNING_POLICY_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
   "$ROOT/ROADMAP.md"
 )
+
+if command -v python3 >/dev/null 2>&1; then
+  if ! python3 "$ROOT/scripts/public_secret_pattern_check.py" >/tmp/registry_public_secret_scan.$$ 2>&1; then
+    fail "public_secret_pattern_check:$(cat /tmp/registry_public_secret_scan.$$)"
+  fi
+  rm -f /tmp/registry_public_secret_scan.$$
+else
+  printf 'warning: python3 not found; skipped public_secret_pattern_check\n' >&2
+fi
 
 if grep -RInEi "(password|passwd|pwd|token|secret|api[_-]?key|private[[:space:]_-]?key)[[:space:]]*[:=][[:space:]]*['\"]?[A-Za-z0-9_./+=-]{8,}" "${scan_files[@]}" >/tmp/registry_secret_like.$$ 2>/dev/null; then
   fail "secret_like_value:$(cat /tmp/registry_secret_like.$$)"

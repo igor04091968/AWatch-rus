@@ -86,7 +86,7 @@ if (( self_test == 1 )); then
   cat >"$good" <<'EOF'
 AW_WORKTIME_INFLUX_URL=http://influxdb.internal:8086
 AW_WORKTIME_INFLUX_HOSTS=WINDOWS-HOST
-AW_WORKTIME_INFLUX_TOKEN=prod-write-token-value
+AW_WORKTIME_INFLUX_TOKEN=dummy
 EOF
   cat >"$bad" <<'EOF'
 AW_WORKTIME_INFLUX_URL=http://192.0.2.10:8086

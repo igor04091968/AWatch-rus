@@ -13,8 +13,8 @@ aw_pfsense_poller_config:
     verify_tls: false
     timeout_seconds: 15
     auth:
-      api_key: "replace-me"
-      api_secret: "replace-me"
+      api_key: "<SET_VIA_ENV>"
+      api_secret: "<SET_VIA_ENV>"
   endpoints:
     - name: "system-status"
       path: "/api/v2/status/system"

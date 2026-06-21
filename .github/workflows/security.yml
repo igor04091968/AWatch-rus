@@ -54,7 +54,8 @@ jobs:
         uses: taiki-e/install-action@cargo-deny
 
       - name: cargo deny
-        run: cargo deny --manifest-path adk-rust/Cargo.toml --config deny.toml check
+        run: cargo deny check advisories licenses sources --config ../deny.toml
+        working-directory: adk-rust
 
   secret-pattern-check:
     name: Secret pattern check
@@ -69,53 +70,7 @@ jobs:
           lfs: false
 
       - name: Scan for obvious secret patterns
-        run: |
-          python3 - <<'PY'
-          import os
-          import re
-          import sys
-          from pathlib import Path
-
-          root = Path(".")
-          text_suffixes = {
-              ".cfg", ".conf", ".env", ".ini", ".json", ".lock", ".md", ".py",
-              ".rs", ".sh", ".toml", ".ts", ".txt", ".yaml", ".yml"
-          }
-          skip_dirs = {
-              ".git", "target", "node_modules", "release-evidence", "dist", "bin"
-          }
-          patterns = [
-              ("private_key_header", re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----")),
-              ("aws_access_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
-              ("secret_assignment", re.compile(
-                  r"(?i)\b(password|passwd|pwd|token|secret|api[_-]?key|bearer|cookie)\b"
-                  r"\s*[:=]\s*[\"']?[A-Za-z0-9_./+=-]{16,}"
-              )),
-          ]
-          findings = []
-          for path in root.rglob("*"):
-              if not path.is_file():
-                  continue
-              if any(part in skip_dirs for part in path.parts):
-                  continue
-              if path.suffix.lower() not in text_suffixes:
-                  continue
-              try:
-                  lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
-              except OSError:
-                  continue
-              for line_no, line in enumerate(lines, start=1):
-                  for name, pattern in patterns:
-                      if pattern.search(line):
-                          findings.append(f"{path}:{line_no}:{name}")
-                          break
-          if findings:
-              print("secret_pattern_check=fail")
-              for finding in findings:
-                  print(finding)
-              sys.exit(2)
-          print("secret_pattern_check=ok")
-          PY
+        run: python3 scripts/public_secret_pattern_check.py
 
   dependency-review:
     name: Dependency review

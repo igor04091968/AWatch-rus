@@ -97,7 +97,7 @@ git grep -n -E 'password|token|secret' -- \
 ansible/group_vars/aw_server.yml:4:ansible_password: "{{ lookup('env', 'AW_SSH_PASSWORD') }}"
 ansible/group_vars/aw_windows.yml:4:ansible_password: "{{ lookup('env', 'AW_WINRM_PASSWORD') }}"
 ansible/group_vars/proxmox-bot.example.yml:1:telegram_bot_token: "CHANGE_ME"
-ansible/group_vars/pfsense-poller.example.yml:17:      api_secret: "replace-me"
+ansible/group_vars/pfsense-poller.example.yml:17:      api_secret: "<SET_VIA_ENV>"
 docs/INSTALL_RU.md:66:- Telegram bot token;
 docs/INSTALL_RU.md:67:- evidence upload token.
 adk-rust/crates/detmir-portal/src/main.rs:1756:fn bearer_token(request: &Request) -> Option<String> {
@@ -167,7 +167,7 @@ logic и `CHANGE_ME`/`replace-me`. Реальные статические па�
 ansible/group_vars/aw_server.yml: ansible_password берется из AW_SSH_PASSWORD
 ansible/group_vars/aw_windows.yml: ansible_password берется из AW_WINRM_PASSWORD
 ansible/group_vars/proxmox-bot.example.yml: telegram_bot_token: "CHANGE_ME"
-ansible/group_vars/pfsense-poller.example.yml: api_secret: "replace-me"
+ansible/group_vars/pfsense-poller.example.yml: api_secret: "<SET_VIA_ENV>"
 ansible/deploy_proxmox_web_gateway.yml: password генерируется через openssl rand
 ```
 

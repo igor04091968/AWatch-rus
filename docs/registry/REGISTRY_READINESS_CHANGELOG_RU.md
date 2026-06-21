@@ -1,5 +1,39 @@
 # Registry readiness changelog
 
+## 2026-06-21 public secret scan hardening
+
+Added:
+
+- `scripts/public_secret_pattern_check.py` as a reproducible local equivalent
+  of the public GitHub Actions secret-pattern check.
+- `docs/SECURITY_SCANNING_POLICY_RU.md` describing fail-closed public secret
+  scanning, dummy values and inline allow comments.
+- README link to the public secret scanning policy.
+- Registry readiness check integration for the local public secret scanner.
+
+Changed:
+
+- Security workflow now calls `python3 scripts/public_secret_pattern_check.py`
+  instead of inline Python.
+- Secret scan output remains redacted and reports only `file:line:rule`.
+- Cargo deny workflow command now runs from the Rust workspace and checks
+  advisories, licenses and sources with the repository `deny.toml`.
+- `CDLA-Permissive-2.0` is explicitly allowed for `webpki-roots`; final
+  registry submission still requires legal review.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No deployment behavior changes.
+
+Reason:
+
+- First public security workflow exposed false positives on runtime-derived
+  values and safe config lookups. The scanner was hardened without disabling
+  the check and without broad directory allowlists.
+
 ## 2026-06-21 status freeze
 
 Added:

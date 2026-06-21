@@ -242,6 +242,8 @@ collectors.
 - Public CI, coverage baseline and security scanning are enabled on GitHub.
 - Issue templates, PR template and public roadmap are maintained for process
   visibility.
+- Public secret scanning policy:
+  [docs/SECURITY_SCANNING_POLICY_RU.md](docs/SECURITY_SCANNING_POLICY_RU.md).
 - GitHub remains public mirror validation only.
 - Primary registry contour remains Gitea plus the Russian build-runner.
 - Quality status:

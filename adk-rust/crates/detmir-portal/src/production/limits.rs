@@ -239,7 +239,7 @@ mod tests {
             json_smoke: false,
             evidence_only: false,
             evidence_upload_token: None,
-            telemetry_api_key: "test-key".to_string(),
+            telemetry_api_key: "dummy".to_string(),
             telemetry_store_path: dir.join("telemetry.jsonl"),
             expected_nodes_path: dir.join("expected_nodes.json"),
             security_events_backend: "disabled".to_string(),

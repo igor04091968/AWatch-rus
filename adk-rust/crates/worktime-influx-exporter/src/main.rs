@@ -1031,7 +1031,7 @@ mod tests {
         assert!(err.contains("AW_WORKTIME_INFLUX_URL"));
 
         config.influx_url = "http://influxdb.internal:8086".to_string();
-        config.influx_token = "prod-write-token-value".to_string();
+        config.influx_token = "dummy".to_string();
         let err = validate_runtime_config(&config).unwrap_err().to_string();
         assert!(err.contains("AW_WORKTIME_INFLUX_HOSTS"));
 
