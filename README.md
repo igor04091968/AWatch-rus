@@ -261,6 +261,22 @@ collectors.
 - Public issues plan:
   [docs/PUBLIC_ISSUES_PLAN_RU.md](docs/PUBLIC_ISSUES_PLAN_RU.md).
 
+### Engineering governance and residual risks
+
+- Review checklist:
+  [docs/REVIEW_CHECKLIST_RU.md](docs/REVIEW_CHECKLIST_RU.md).
+- Residual risks register:
+  [docs/RESIDUAL_RISKS_RU.md](docs/RESIDUAL_RISKS_RU.md).
+- Public issues plan:
+  [docs/PUBLIC_ISSUES_PLAN_RU.md](docs/PUBLIC_ISSUES_PLAN_RU.md).
+- Advisory branch protection policy:
+  [docs/BRANCH_PROTECTION_POLICY_RU.md](docs/BRANCH_PROTECTION_POLICY_RU.md).
+- CODEOWNERS and PR template are maintained for review routing and public
+  change-control visibility.
+- Visible external code review is still pending until public reviewed PRs exist.
+- Branch protection policy is documented as advisory; it is not claimed as
+  enabled here.
+
 - [Позиционирование для реестра российского ПО](docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)
 - [Registry product passport](docs/REGISTRY_PRODUCT_PASSPORT_RU.md)
@@ -550,6 +566,9 @@ detmir-dlp --json
 ✅ ROADMAP.md
 ✅ Issue templates
 ✅ PR template
+✅ CODEOWNERS
+✅ Review checklist
+✅ Branch protection policy documented
 ✅ Registry docs
 ✅ Russian Gitea contour
 ✅ GitHub public mirror validation
@@ -760,6 +779,7 @@ PILOT V1 SCOPE (ГОТОВО):
    - Низкая community adoption
    - Gitea restore test еще не выполнен
    - Российский build-runner пока planned
+   - Branch protection policy documented, but enablement not yet verified
 
 5. 🚀 TIMELINE К PRODUCTION:
    - Pilot v1 freeze: готовится (freeze readiness doc)

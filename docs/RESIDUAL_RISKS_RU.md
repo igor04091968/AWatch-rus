@@ -48,21 +48,23 @@ visibility, release evidence contour and legal package. Они требуют д
 - Следующий action: завести публичную задачу
   `[security] Prepare external security/code review checklist`.
 
-## 2. Нет публично видимого peer review
+## 2. Нет внешнего visible peer review / публично видимого peer review
 
 - Текущий статус: риск открыт; PR template and issue templates exist, but
-  public peer review history is still limited.
+  public peer review history is still limited and external review is pending.
 - Влияние: внешним аудиторам сложнее оценить review discipline and change
   control maturity.
 - Почему не блокирует pilot/readiness stage: current changes are protected by
   reproducible checks, public workflows and documented conservative positioning.
-- Как риск будет снижаться: external review checklist, first public PR reviews,
-  explicit release branch review policy.
+- Как риск будет снижаться: review checklist, CODEOWNERS routing, first public
+  PR reviews, explicit release branch review policy and advisory branch
+  protection.
 - Уже снижающие evidence/documents/CI: `.github/pull_request_template.md`,
-  `.github/ISSUE_TEMPLATE/`, `CONTRIBUTING.md`, `SECURITY.md`, public CI,
-  public security workflow.
+  `.github/CODEOWNERS`, `.github/ISSUE_TEMPLATE/`,
+  `docs/REVIEW_CHECKLIST_RU.md`, `docs/BRANCH_PROTECTION_POLICY_RU.md`,
+  `CONTRIBUTING.md`, `SECURITY.md`, public CI, public security workflow.
 - Следующий action: завести публичную задачу
-  `[security] Prepare external security/code review checklist`.
+  `[governance] Enable PR-based review workflow`.
 
 ## 3. Низкая публичная активность issue tracker
 
@@ -166,9 +168,18 @@ visibility, release evidence contour and legal package. Они требуют д
 - Следующий action: завести публичную задачу
   `[legal] Prepare rightsholder evidence package`.
 
+## Review/governance evidence added
+
+- CODEOWNERS exists for review routing and engineering ownership.
+- PR review checklist exists in `docs/REVIEW_CHECKLIST_RU.md`.
+- Advisory branch protection policy exists in
+  `docs/BRANCH_PROTECTION_POLICY_RU.md`.
+- Public PR template includes security, registry-claim, runtime/API/UI,
+  smoke-test, rollback and evidence checklist items.
+- Visible external code review remains pending until public reviewed PRs exist.
+
 ## Следующие публичные задачи
 
 Полный список задач для ручного заведения в GitHub issue tracker:
 
 - `docs/PUBLIC_ISSUES_PLAN_RU.md`.
-

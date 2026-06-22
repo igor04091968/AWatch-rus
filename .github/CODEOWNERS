@@ -1,1 +1,34 @@
+# AWatch-rus CODEOWNERS
+#
+# Ownership is used for review routing and engineering accountability.
+# It does not certify security, legal readiness, performance or fitness for
+# production use. Contributors remain responsible for the safety of their
+# submissions.
+
+# Repository default owner.
 * @igor04091968
+
+# Rust workspace and crates.
+/adk-rust/ @igor04091968
+**/Cargo.toml @igor04091968
+**/Cargo.lock @igor04091968
+**/*.rs @igor04091968
+
+# Operational scripts and automation.
+/scripts/ @igor04091968
+
+# Registry-readiness evidence and policy documents.
+/docs/registry/ @igor04091968
+
+# GitHub public mirror validation metadata.
+/.github/workflows/ @igor04091968
+/.github/pull_request_template.md @igor04091968
+/.github/ISSUE_TEMPLATE/ @igor04091968
+
+# Ansible deployment automation.
+/ansible/ @igor04091968
+
+# Security and contribution governance.
+/SECURITY.md @igor04091968
+/CONTRIBUTING.md @igor04091968
+/deny.toml @igor04091968

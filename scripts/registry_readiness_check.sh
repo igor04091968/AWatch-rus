@@ -49,11 +49,14 @@ required_files=(
   "docs/PROJECT_STATUS_RU.md"
   "docs/QUALITY_STATUS_RU.md"
   "docs/SECURITY_SCANNING_POLICY_RU.md"
+  "docs/REVIEW_CHECKLIST_RU.md"
   "docs/RESIDUAL_RISKS_RU.md"
   "docs/PUBLIC_ISSUES_PLAN_RU.md"
+  "docs/BRANCH_PROTECTION_POLICY_RU.md"
   "scripts/build_release_evidence.sh"
   "scripts/check_release_evidence.sh"
   "scripts/public_secret_pattern_check.py"
+  ".github/CODEOWNERS"
   ".github/workflows/ci.yml"
   ".github/workflows/security.yml"
   ".github/workflows/coverage.yml"
@@ -245,8 +248,38 @@ require_grep "First release evidence build is not claimed as completed" "docs/re
 require_grep "Legal rightsholder package remains pending" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_legal_package_pending"
 require_grep "RESIDUAL_RISKS_RU\\.md" "README.md" "readme_residual_risks_link"
 require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "README.md" "readme_public_issues_plan_link"
+require_grep "Engineering governance and residual risks" "README.md" "readme_engineering_governance_section"
+require_grep "REVIEW_CHECKLIST_RU\\.md" "README.md" "readme_review_checklist_link"
+require_grep "BRANCH_PROTECTION_POLICY_RU\\.md" "README.md" "readme_branch_protection_policy_link"
+require_grep "CODEOWNERS" "README.md" "readme_codeowners"
+require_grep "\\* @igor04091968" ".github/CODEOWNERS" "codeowners_default_owner"
+require_grep "/adk-rust/" ".github/CODEOWNERS" "codeowners_rust_workspace"
+require_grep "/scripts/" ".github/CODEOWNERS" "codeowners_scripts"
+require_grep "/docs/registry/" ".github/CODEOWNERS" "codeowners_registry_docs"
+require_grep "/\\.github/workflows/" ".github/CODEOWNERS" "codeowners_workflows"
+require_grep "/ansible/" ".github/CODEOWNERS" "codeowners_ansible"
+require_grep "SECURITY\\.md" ".github/CODEOWNERS" "codeowners_security_docs"
+require_grep "не публиковать секреты|No secrets" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_no_secrets"
+require_grep "персональных данных|personal data" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_no_pii"
+require_grep "реальных IP|hostname|customer infrastructure identifiers" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_no_customer_infra"
+require_grep "GitHub Actions.*public mirror validation" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_github_public_only"
+require_grep "Release evidence must be produced on the Russian build-runner" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_russian_runner"
+require_grep "Do not claim FSTEC/FSB certification" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_no_fstec_fsb"
+require_grep "Do not claim SIEM/DLP replacement" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_no_siem_dlp"
+require_grep "restore_tested=false|restore_tested.*false" "docs/REVIEW_CHECKLIST_RU.md" "review_checklist_restore_false"
+require_grep "Require pull request before merge" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_require_pr"
+require_grep "Require status checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_status_checks"
+require_grep 'Require `CI` workflow' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_ci"
+require_grep 'Require `Security` workflow' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_security"
+require_grep 'Require `Coverage` workflow' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_coverage"
+require_grep "no coverage threshold" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_no_coverage_threshold"
+require_grep "Restrict force push" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_force_push"
+require_grep "Require conversation resolution" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_conversation_resolution"
+require_grep "Require linear history" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_linear_history"
+require_grep "emergency-only" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_admin_bypass"
+require_grep "recommended policy|advisory branch protection policy" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_advisory_not_enabled"
 require_grep "Один основной разработчик" "docs/RESIDUAL_RISKS_RU.md" "risk_single_developer"
-require_grep "Нет публично видимого peer review" "docs/RESIDUAL_RISKS_RU.md" "risk_peer_review"
+require_grep "Нет внешнего visible peer review" "docs/RESIDUAL_RISKS_RU.md" "risk_peer_review"
 require_grep "Низкая публичная активность issue tracker" "docs/RESIDUAL_RISKS_RU.md" "risk_issue_tracker_activity"
 require_grep "Низкая community adoption" "docs/RESIDUAL_RISKS_RU.md" "risk_community_adoption"
 require_grep "Gitea restore test еще не выполнен" "docs/RESIDUAL_RISKS_RU.md" "risk_restore_test_pending"
@@ -267,6 +300,10 @@ require_grep "\\[compat\\] Test Russian OS compatibility matrix" "docs/PUBLIC_IS
 require_grep "\\[ops\\] Validate release artifacts storage in RF" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_artifact_storage"
 require_grep "\\[docs\\] Refresh public demo pack and screenshots" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_demo_pack"
 require_grep "\\[pilot\\] Prepare Pilot Acceptance Checklist v2" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_pilot_acceptance_v2"
+require_grep "\\[governance\\] Enable PR-based review workflow" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_pr_review_workflow"
+require_grep "\\[governance\\] Add branch protection policy" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_branch_protection_policy"
+require_grep "Acceptance criteria" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_acceptance_criteria"
+require_grep "planned" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_status_planned"
 require_grep "Do not mark restore test as completed until restore evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_restore_guardrail"
 require_grep "Do not mark .*awatch-build-01.* as ready until provisioning evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_build_runner_guardrail"
 require_grep "public mirror validation only" "SECURITY.md" "security_public_mirror_validation"
@@ -286,14 +323,17 @@ scan_files=(
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
   "$ROOT/docs/SECURITY_SCANNING_POLICY_RU.md"
+  "$ROOT/docs/REVIEW_CHECKLIST_RU.md"
   "$ROOT/docs/RESIDUAL_RISKS_RU.md"
   "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md"
+  "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
   "$ROOT/ROADMAP.md"
   "$ROOT/deny.toml"
   "$ROOT/.github/workflows"/*.yml
   "$ROOT/.github/ISSUE_TEMPLATE"/*.yml
+  "$ROOT/.github/CODEOWNERS"
   "$ROOT/.github/pull_request_template.md"
   "$ROOT/scripts/build_release_evidence.sh"
   "$ROOT/scripts/check_release_evidence.sh"
@@ -306,8 +346,10 @@ claim_scan_files=(
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
   "$ROOT/docs/SECURITY_SCANNING_POLICY_RU.md"
+  "$ROOT/docs/REVIEW_CHECKLIST_RU.md"
   "$ROOT/docs/RESIDUAL_RISKS_RU.md"
   "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md"
+  "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
   "$ROOT/ROADMAP.md"
@@ -335,7 +377,7 @@ fi
 rm -f /tmp/registry_forbidden_fstec_fsb.$$
 
 if grep -RInEi "(заменяет|replacement for|replaces).{0,80}(SIEM|DLP)|((SIEM|DLP).{0,80}(replacement|заменяет))" "${claim_scan_files[@]}" \
-  | grep -Eiv "(не |not |does not|not_claimed|не является|не подменяет|не заявляет|forbidden|not_made)" \
+  | grep -Eiv "(не |not |are not|does not|not_claimed|не является|не подменяет|не заявляет|forbidden|not_made)" \
   >/tmp/registry_forbidden_replacement.$$ 2>/dev/null; then
   fail "forbidden_claim_siem_dlp_replacement:$(cat /tmp/registry_forbidden_replacement.$$)"
 fi
@@ -354,6 +396,20 @@ if grep -RInEi "(юридически заверш(е|ё)нн?ая регист�
   fail "forbidden_claim_legal_registry_completion:$(cat /tmp/registry_forbidden_legal_done.$$)"
 fi
 rm -f /tmp/registry_forbidden_legal_done.$$
+
+if grep -RInEi "(branch protection).{0,120}(enabled|включ(е|ё)н|настроен|active)" "$ROOT/README.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md" "$REGISTRY_DIR"/*.md \
+  | grep -Eiv "(not |не |не утверждает|not claimed|advisory|until repository settings|если применимо|recommended)" \
+  >/tmp/registry_forbidden_branch_protection_enabled.$$ 2>/dev/null; then
+  fail "forbidden_claim_branch_protection_enabled:$(cat /tmp/registry_forbidden_branch_protection_enabled.$$)"
+fi
+rm -f /tmp/registry_forbidden_branch_protection_enabled.$$
+
+if grep -RInEi "(external|visible|peer).{0,80}(review).{0,120}(active|performed|completed|done|выполняется|проведен|провед(е|ё)н|активен)" "$ROOT/README.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$ROOT/docs/RESIDUAL_RISKS_RU.md" "$REGISTRY_DIR"/*.md \
+  | grep -Eiv "(not |не |pending|still pending|не утверждает|not claimed|until public reviewed PRs)" \
+  >/tmp/registry_forbidden_external_review_active.$$ 2>/dev/null; then
+  fail "forbidden_claim_external_review_active:$(cat /tmp/registry_forbidden_external_review_active.$$)"
+fi
+rm -f /tmp/registry_forbidden_external_review_active.$$
 
 if grep -RInEi "(restore(_| )?test|restore_tested|тестов(ое|ого)[[:space:]]+восстановлен).{0,120}(completed|done|passed|true|выполнен|готов|подтвержден)" "$ROOT/docs/RESIDUAL_RISKS_RU.md" "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$REGISTRY_DIR"/*.md "$REGISTRY_DIR"/*.json \
   | grep -Eiv "(not |не |false|pending|not completed|not claimed|не выполнен|еще не выполнен|ещё не выполнен|не заяв|не готов|until evidence|restore_tested.*false|если.*выполнен)" \

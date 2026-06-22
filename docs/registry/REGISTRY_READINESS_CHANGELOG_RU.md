@@ -1,5 +1,42 @@
 # Registry readiness changelog
 
+## 2026-06-22 review governance and branch protection policy
+
+Added:
+
+- `.github/CODEOWNERS` for public review routing and engineering ownership.
+- `docs/REVIEW_CHECKLIST_RU.md` for PR/code review checks.
+- `docs/BRANCH_PROTECTION_POLICY_RU.md` as advisory GitHub branch protection
+  policy.
+- Expanded `docs/PUBLIC_ISSUES_PLAN_RU.md` with governance issues for PR-based
+  review workflow and branch protection.
+- Registry readiness checks for review/governance documents and false-claim
+  guardrails.
+
+Changed:
+
+- PR template now includes compact security, registry-claim, runtime/API/UI,
+  smoke-test, rollback and evidence checklist items.
+- README and project status now link to review/governance documents.
+- Residual risk register now records that visible external code review remains
+  pending.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
+Guardrails:
+
+- Branch protection is documented as advisory and is not claimed as enabled.
+- External visible peer review is not claimed as active.
+- Restore test remains pending.
+- Russian build-runner remains planned.
+- Registry submission, FSTEC/FSB certification and SIEM/DLP replacement are not
+  claimed.
+
 ## 2026-06-22 residual risk register and public issue plan
 
 Added:

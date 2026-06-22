@@ -32,6 +32,10 @@ backup, registry-readiness документации, плана российск
   `docs/RESIDUAL_RISKS_RU.md`.
 - План публичных GitHub issues:
   `docs/PUBLIC_ISSUES_PLAN_RU.md`.
+- Review checklist:
+  `docs/REVIEW_CHECKLIST_RU.md`.
+- Advisory branch protection policy:
+  `docs/BRANCH_PROTECTION_POLICY_RU.md`.
 
 ## Что готово
 
@@ -60,6 +64,12 @@ backup, registry-readiness документации, плана российск
   по контурам `CI`, `Coverage` и `Security`.
 - Добавлены `SECURITY.md`, `CONTRIBUTING.md`, `ROADMAP.md`, issue templates и
   pull request template.
+- Добавлен `.github/CODEOWNERS` for review routing.
+- Добавлен review checklist:
+  `docs/REVIEW_CHECKLIST_RU.md`.
+- PR review process documented in PR template and review checklist.
+- Branch protection policy documented as advisory:
+  `docs/BRANCH_PROTECTION_POLICY_RU.md`.
 - Зафиксирован residual risk register:
   `docs/RESIDUAL_RISKS_RU.md`.
 - Подготовлен план публичных issues для ручного заведения:
@@ -75,6 +85,9 @@ backup, registry-readiness документации, плана российск
 - Финальная юридическая проверка пакета документов перед подачей.
 - Проверка совместимости с российскими ОС.
 - Публичные roadmap/issues из `docs/PUBLIC_ISSUES_PLAN_RU.md`.
+- Visible external code review is still pending.
+- Branch protection enablement is not claimed until repository settings are
+  verified.
 
 ## Честные ограничения
 
@@ -103,5 +116,7 @@ backup, registry-readiness документации, плана российск
 - `docs/registry/RELEASE_EVIDENCE_RUNBOOK_RU.md`
 - `docs/registry/RELEASE_ARTIFACTS_STORAGE_RU.md`
 - `docs/QUALITY_STATUS_RU.md`
+- `docs/REVIEW_CHECKLIST_RU.md`
 - `docs/RESIDUAL_RISKS_RU.md`
 - `docs/PUBLIC_ISSUES_PLAN_RU.md`
+- `docs/BRANCH_PROTECTION_POLICY_RU.md`
