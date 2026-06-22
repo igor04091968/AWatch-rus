@@ -21,7 +21,7 @@
 | **Размер репо** | 11 MB | ✅ Хорошо структурирован |
 | **Основной язык** | Rust (51.8%) | ✅ Production-grade выбор |
 | **Лицензия** | Apache 2.0 | ✅ Коммерчески дружелюбно |
-| **Открытых issues** | 1 | ✅ Отличное соотношение |
+| **Открытых issues** | 1 | ⚠️ Низкая публичная активность |
 | **Интенсивность** | Ежедневные коммиты | ✅ Постоянное развитие |
 
 ---
@@ -180,11 +180,48 @@ detmir-dlp --json
 ### ⚠️ Слабые стороны
 
 ```
-❌ Нет публичных test coverage метрик
-❌ Нет видимого GitHub Actions CI/CD (может быть приватным)
-❌ Только 1 открытый issue → низкая visibility в development process
-❌ 2 форка → community adoption low
-❌ Нет automated security scanning в публике
+⚠️ Низкая публичная активность в issue tracker
+   - issue templates есть
+   - public roadmap есть
+   - открытых публичных задач пока мало
+
+⚠️ Низкая community adoption
+   - мало forks/stars
+   - проект пока выглядит как early-stage / pilot-stage OSS
+   - это нормально для нового специализированного продукта
+
+⚠️ Restore test еще не выполнен
+   - backup Gitea работает
+   - SHA256 verification работает
+   - daily timer работает
+   - restore_tested пока false
+
+⚠️ Российский build-runner пока planned
+   - release evidence scripts есть
+   - первый настоящий release build на awatch-build-01 еще не выполнен
+
+⚠️ Юридический пакет правообладателя еще pending
+   - техническая readiness сильная
+   - юридическая часть для реестра еще требует отдельной подготовки
+```
+
+### ✅ Что уже закрыто после последних коммитов
+
+```
+✅ Public CI/CD visibility
+✅ Public coverage workflow
+✅ Public security scanning
+✅ Secret scan policy
+✅ SECURITY.md
+✅ CONTRIBUTING.md
+✅ ROADMAP.md
+✅ Issue templates
+✅ PR template
+✅ Registry docs
+✅ Russian Gitea contour
+✅ GitHub public mirror validation
+✅ Gitea backup
+✅ Status freeze
 ```
 
 ---
@@ -214,7 +251,10 @@ detmir-dlp --json
 | **BUS FACTOR** (1 разработчик) | Средняя | 🔴 Критическое | Требовать второго разработчика перед GA |
 | **Молодость проекта** (58 дней) | Средняя | 🟡 Среднее | Пилот с близким мониторингом |
 | **Отсутствие community validation** | Высокая | 🟢 Низкое | Требовать code review process |
-| **Limited visibility** (1 issue, 2 fork) | Средняя | 🟢 Низкое | GitHub Discussions включить |
+| **Limited public tracker activity** | Средняя | 🟢 Низкое | Завести публичные roadmap-tasks |
+| **Low community adoption** | Средняя | 🟢 Низкое | Публикации, пилоты, demo и внешние ссылки |
+| **Gitea restore test not done** | Средняя | 🟡 Среднее | Выполнить restore test на отдельном сервере |
+| **Russian build-runner planned** | Средняя | 🟡 Среднее | Выполнить первый release evidence build на `awatch-build-01` |
 
 ---
 
@@ -344,7 +384,8 @@ ROI: 1550% в первый год ✅
 2026-06-12: Security hardening improvements
 2026-06-14: v0.2.1-test Binary release
 2026-06-20: Pilot v1.0 Freeze (aw-db-maintenance добавлено)
-2026-06-21: Ongoing feature development (свежайшие коммиты)
+2026-06-21: Public CI/Coverage/Security workflows added
+2026-06-22: Public GitHub Actions validation passed after secret scan hardening
 
 ВЫВОД: Проект в PRODUCTION HARDENING фазе перед Pilot release
 ```
@@ -371,8 +412,8 @@ ROI: 1550% в первый год ✅
    
    2. Community setup
       → GitHub Discussions включить
-      → Public issue tracking
-      → Contributor guidelines
+      → Public roadmap-tasks завести в issue tracker
+      → Contributor guidelines поддерживать актуальными
       → First external code reviews
    
    3. Support structure
@@ -483,13 +524,16 @@ TIMELINE К ДОХОДУ:
 1. **Team Structure** (критично)
    - [ ] Второй разработчик Rust/DevOps
    - [ ] Code review process setup
-   - [ ] CI/CD pipeline hardening
+   - [x] Public CI/Coverage/Security workflows
    - [ ] Knowledge sharing sessions
 
 2. **Community & Visibility**
    - [ ] GitHub Discussions enable
-   - [ ] Public roadmap
-   - [ ] Contributor guidelines
+   - [x] Public roadmap
+   - [x] Contributor guidelines
+   - [x] Issue templates
+   - [x] PR template
+   - [ ] Public roadmap-tasks in issue tracker
    - [ ] First external contributors
 
 3. **Support & Commercial**
@@ -499,8 +543,12 @@ TIMELINE К ДОХОДУ:
    - [ ] Customer onboarding process
 
 4. **Quality Gates**
-   - [ ] Public test coverage >70%
-   - [ ] Automated security scanning
+   - [x] Public coverage workflow
+   - [ ] Coverage threshold after stable baseline review
+   - [x] Automated public security scanning
+   - [x] Hardened public secret scan
+   - [ ] Russian build-runner release evidence
+   - [ ] Gitea restore test
    - [ ] Regular penetration testing
    - [ ] Third-party audit (для госзакупок)
 
