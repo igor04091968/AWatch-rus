@@ -96,8 +96,12 @@ if [[ -s "$MANIFEST" ]]; then
       and .build_runner.separate_from_git_server == true
       and (.build_runner.required_checks | index("release_evidence_check") != null)
       and .public_engineering_transparency.github_actions_ci == true
+      and .public_engineering_transparency.github_actions_ci_status == "passed"
       and .public_engineering_transparency.coverage_baseline == true
+      and .public_engineering_transparency.coverage_workflow_status == "passed"
       and .public_engineering_transparency.security_scanning == true
+      and .public_engineering_transparency.security_workflow_status == "passed"
+      and .public_engineering_transparency.secret_scan_status == "passed"
       and .public_engineering_transparency.issue_templates == true
       and .public_engineering_transparency.public_roadmap == true
       and .public_engineering_transparency.github_role == "public_mirror_validation_only"
@@ -162,8 +166,12 @@ if "release_evidence_check" not in build_runner.get("required_checks", []):
 public = data.get("public_engineering_transparency") or {}
 public_expected = {
     "github_actions_ci": True,
+    "github_actions_ci_status": "passed",
     "coverage_baseline": True,
+    "coverage_workflow_status": "passed",
     "security_scanning": True,
+    "security_workflow_status": "passed",
+    "secret_scan_status": "passed",
     "issue_templates": True,
     "public_roadmap": True,
     "github_role": "public_mirror_validation_only",
@@ -194,6 +202,12 @@ require_grep "PROJECT_STATUS_RU\\.md" "README.md" "readme_project_status_link"
 require_grep "4970d31" "docs/PROJECT_STATUS_RU.md" "project_status_baseline_commit"
 require_grep "git\\.iri1968\\.dpdns\\.org/awatch-rus/AWatch-rus" "docs/PROJECT_STATUS_RU.md" "project_status_primary_git"
 require_grep "public mirror / public validation only" "docs/PROJECT_STATUS_RU.md" "project_status_github_role"
+require_grep "Public CI status:[[:space:]]*passed" "docs/PROJECT_STATUS_RU.md" "project_status_public_ci_passed"
+require_grep "Public coverage workflow:[[:space:]]*passed" "docs/PROJECT_STATUS_RU.md" "project_status_public_coverage_passed"
+require_grep "Public security workflow:[[:space:]]*passed" "docs/PROJECT_STATUS_RU.md" "project_status_public_security_passed"
+require_grep "Secret scan:[[:space:]]*hardened and passed" "docs/PROJECT_STATUS_RU.md" "project_status_secret_scan_passed"
+require_grep "Public validation passed.*not.*registry release evidence|not registry release evidence" "docs/PROJECT_STATUS_RU.md" "project_status_public_validation_not_release_evidence"
+require_grep "Russian build-runner.*required|requires_russian_build_runner" "docs/PROJECT_STATUS_RU.md" "project_status_russian_runner_required"
 require_grep "docs/registry" "docs/PROJECT_STATUS_RU.md" "project_status_registry_docs"
 require_grep "GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU\\.md|Restore outline|Post-restore checks" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_restore_runbook"
 require_grep "awatch-gitea-backup\\.timer" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_timer"
@@ -207,7 +221,18 @@ require_grep "SECURITY_SCANNING_POLICY_RU\\.md" "README.md" "readme_security_sca
 require_grep "GitHub Actions is public mirror validation only|public mirror validation only" "docs/registry/RU_BUILD_RUNNER_READINESS_RU.md" "github_actions_not_registry_build_runner"
 require_grep "GitHub Actions is public mirror validation only|public mirror validation only" "docs/registry/RELEASE_EVIDENCE_RUNBOOK_RU.md" "github_actions_not_registry_release_runbook"
 require_grep "Public CI is not registry release evidence|not registry release evidence" "docs/QUALITY_STATUS_RU.md" "quality_public_ci_not_registry_evidence"
+require_grep "First public validation passed|public validation passed" "docs/QUALITY_STATUS_RU.md" "quality_first_public_validation_passed"
+require_grep "Coverage.*passed" "docs/QUALITY_STATUS_RU.md" "quality_coverage_workflow_passed"
+require_grep "Security.*passed" "docs/QUALITY_STATUS_RU.md" "quality_security_workflow_passed"
+require_grep "Coverage threshold is not enforced yet" "docs/QUALITY_STATUS_RU.md" "quality_no_coverage_threshold"
+require_grep "Russian build-runner.*required" "docs/QUALITY_STATUS_RU.md" "quality_russian_runner_required"
 require_grep "requires_russian_build_runner|public_mirror_validation_only" "docs/registry/registry-evidence-manifest.json" "public_engineering_manifest"
+require_grep "\"github_actions_ci_status\"[[:space:]]*:[[:space:]]*\"passed\"" "docs/registry/registry-evidence-manifest.json" "manifest_github_actions_ci_passed"
+require_grep "\"coverage_workflow_status\"[[:space:]]*:[[:space:]]*\"passed\"" "docs/registry/registry-evidence-manifest.json" "manifest_coverage_passed"
+require_grep "\"security_workflow_status\"[[:space:]]*:[[:space:]]*\"passed\"" "docs/registry/registry-evidence-manifest.json" "manifest_security_passed"
+require_grep "\"secret_scan_status\"[[:space:]]*:[[:space:]]*\"passed\"" "docs/registry/registry-evidence-manifest.json" "manifest_secret_scan_passed"
+require_grep "public GitHub Actions validation passed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_validation_passed"
+require_grep "No business logic changes" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_no_business_logic_changes"
 require_grep "public mirror validation only" "SECURITY.md" "security_public_mirror_validation"
 require_grep "public mirror validation only" "CONTRIBUTING.md" "contributing_public_mirror_validation"
 require_grep "public mirror validation only" "ROADMAP.md" "roadmap_public_mirror_validation"

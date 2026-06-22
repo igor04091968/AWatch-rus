@@ -13,6 +13,14 @@ Public GitHub Actions workflows are available for mirror validation:
 
 GitHub Actions is public mirror validation only. Public CI is not registry release evidence and is not the primary registry build contour.
 
+First public validation passed after
+`4f90aba chore(security): harden public secret scan and document policy`:
+
+- `CI`: passed.
+- `Coverage`: passed.
+- `Security`: passed.
+- Secret-pattern scan: hardened and passed.
+
 ## Coverage baseline policy
 
 Coverage threshold is not enforced yet. The first stage is tracking and
@@ -28,6 +36,9 @@ regression visibility:
 Registry release build and release evidence must be produced on the Russian
 build-runner described in
 `docs/registry/RU_BUILD_RUNNER_READINESS_RU.md`.
+
+Public validation passed does not replace Russian build-runner release
+evidence. Russian build-runner still required for registry release evidence.
 
 ## Security checks
 

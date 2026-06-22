@@ -1,5 +1,26 @@
 # Registry readiness changelog
 
+## 2026-06-22 public GitHub Actions validation passed
+
+Changed:
+
+- Recorded first public validation passed after
+  `4f90aba chore(security): harden public secret scan and document policy`.
+- Documented passed public GitHub Actions contours: `CI`, `Coverage` and
+  `Security`.
+- Documented that the hardened public secret scan passed.
+- Reconfirmed that GitHub Actions remains public mirror validation only and is
+  not registry release evidence.
+- Reconfirmed that registry release evidence still requires the Russian
+  build-runner contour.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
 ## 2026-06-22 Gitea duplicate status
 
 Changed:

@@ -11,13 +11,23 @@ backup, registry-readiness документации, плана российск
 ## Текущий baseline
 
 - Baseline commit: `4970d31 chore(public): add CI coverage security and OSS process visibility`.
+- Public validation after hardening commit:
+  `4f90aba chore(security): harden public secret scan and document policy`.
 - Primary Russian Git:
   `https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus`.
 - GitHub:
   `public mirror / public validation only`.
+- Public CI status: passed.
+- Public coverage workflow: passed.
+- Public security workflow: passed.
+- Secret scan: hardened and passed.
+- GitHub Actions role: public mirror validation only.
 - Gitea operator account: `igor`; пароль/токены не входят в tracked files.
 - Основной доказательный пакет для registry-readiness:
   `docs/registry/`.
+- Public validation passed status does not constitute registry release evidence.
+- Registry release evidence still requires the Russian build-runner contour.
+- Russian build-runner still required for registry release evidence.
 
 ## Что готово
 
@@ -42,6 +52,8 @@ backup, registry-readiness документации, плана российск
   `scripts/check_release_evidence.sh`.
 - Добавлены публичные GitHub Actions workflow для CI, coverage baseline и
   security scanning.
+- Первый публичный GitHub Actions validation после hardening secret scan прошел
+  по контурам `CI`, `Coverage` и `Security`.
 - Добавлены `SECURITY.md`, `CONTRIBUTING.md`, `ROADMAP.md`, issue templates и
   pull request template.
 
@@ -67,12 +79,11 @@ backup, registry-readiness документации, плана российск
 
 ## Следующие рекомендуемые этапы
 
-1. Проверить первый публичный прогон GitHub Actions после push.
-2. Выполнить тестовое восстановление Gitea backup на отдельном сервере.
-3. Подготовить временный или постоянный российский build-runner
+1. Выполнить тестовое восстановление Gitea backup на отдельном сервере.
+2. Подготовить временный или постоянный российский build-runner
    `awatch-build-01`.
-4. Сформировать первый release evidence package на российском build-runner.
-5. Подготовить юридический пакет правообладателя для финальной проверки.
+3. Сформировать первый release evidence package на российском build-runner.
+4. Подготовить юридический пакет правообладателя для финальной проверки.
 
 ## Связанные документы
 
