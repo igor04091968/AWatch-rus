@@ -345,21 +345,25 @@ collectors.
 
 ---
 
-## 📊 **ОЦЕНКА ЗРЕЛОСТИ И КАЧЕСТВА ПРОЕКТА** (обновлено 20 июня 2026)
+## 📊 **ОЦЕНКА ЗРЕЛОСТИ И КАЧЕСТВА ПРОЕКТА** (обновлено 22 июня 2026)
 
 ### **1️⃣ ОБЩИЕ МЕТРИКИ ПРОЕКТА**
 
 | Метрика | Значение | Тренд | Оценка |
 |---------|----------|-------|--------|
-| **Возраст проекта** | 56 дней | ✅ Active | Молодой, но стабильный |
-| **Размер репо** | 10.8 MB | ✅ Compact | Хорошо структурирован |
+| **Возраст проекта** | 58 дней | ✅ Active | Молодой, но стабильный |
+| **Размер репо** | ~11 MB | ✅ Compact | Хорошо структурирован |
 | **Основной язык** | Rust | ✅ Production | Правильный выбор |
 | **Лицензия** | Apache 2.0 | ✅ Open-friendly | Коммерчески дружелюбно |
 | **Звезды** | 3 ⭐ | ⚠️ Нишевой продукт | Целевая аудитория |
-| **Форки** | 2 | ⚠️ Низко | Не заинтересовал мейнстрим |
-| **Open Issues** | 1 | ✅ Отличное соотношение | Контролируемая очередь |
-| **Последний коммит** | 20 июня, 13:08 | ✅ **СЕГОДНЯ!** | **АКТИВНО РАЗРАБАТЫВАЕТСЯ** |
+| **Форки** | 2 | ⚠️ Низко | Early-stage / pilot-stage OSS |
+| **Open Issues** | 1 | ⚠️ Низкая публичная активность | Issue templates уже есть |
+| **Последний коммит** | 22 июня 2026 | ✅ **СЕГОДНЯ** | **АКТИВНО РАЗРАБАТЫВАЕТСЯ** |
 | **Проектный статус** | main branch | ✅ Единая стратегия | Production-ready focus |
+| **Public CI** | passed | ✅ Visible | GitHub Actions mirror validation |
+| **Coverage workflow** | passed | ✅ Visible | Baseline workflow, threshold позже |
+| **Security workflow** | passed | ✅ Visible | cargo audit/deny + secret scan |
+| **Secret scan** | hardened + passed | ✅ Conservative | Fail-closed public scanner |
 
 ---
 
@@ -496,14 +500,51 @@ detmir-dlp --json
 // - Shadow-mode validation перед switch
 ```
 
-#### ⚠️ Слабые стороны:
+#### ⚠️ Оставшиеся слабые стороны:
 
 ```
-❌ Нет public test coverage metrics
-❌ Нет GitHub Actions CI/CD видно (может быть приватные)
-❌ Только 1 открытый issue - нет visibility в development process
-❌ 2 форка - community adoption low
-❌ Нет automated security scanning в публике
+⚠️ Низкая публичная активность в issue tracker
+   - issue templates есть
+   - public roadmap есть
+   - открытых публичных задач пока мало
+
+⚠️ Низкая community adoption
+   - мало forks/stars
+   - проект пока выглядит как early-stage / pilot-stage OSS
+   - это нормально для нового специализированного продукта
+
+⚠️ Restore test еще не выполнен
+   - backup Gitea работает
+   - SHA256 verification работает
+   - daily timer работает
+   - restore_tested пока false
+
+⚠️ Российский build-runner пока planned
+   - release evidence scripts есть
+   - первый настоящий release build на awatch-build-01 еще не выполнен
+
+⚠️ Юридический пакет правообладателя еще pending
+   - техническая readiness сильная
+   - юридическая часть для реестра еще требует отдельной подготовки
+```
+
+#### ✅ Уже закрыто после последних коммитов:
+
+```
+✅ Public CI/CD visibility
+✅ Public coverage workflow
+✅ Public security scanning
+✅ Secret scan policy
+✅ SECURITY.md
+✅ CONTRIBUTING.md
+✅ ROADMAP.md
+✅ Issue templates
+✅ PR template
+✅ Registry docs
+✅ Russian Gitea contour
+✅ GitHub public mirror validation
+✅ Gitea backup
+✅ Status freeze
 ```
 
 ---
@@ -544,10 +585,15 @@ detmir-dlp --json
    - Нет долгосрочной production history
    - Нет documented post-mortems (кроме одного)
 
-⚠️ Limited community
+⚠️ Limited public activity / community adoption
    - 2 форка, 3 звезды
-   - Нет community issues/discussions
-   - Нет external validation
+   - Issue templates и roadmap есть, но публичных задач пока мало
+   - Community adoption низкая, это не технический blocker
+
+⚠️ Registry release evidence еще не завершен
+   - GitHub Actions зеленые, но это только public mirror validation
+   - Первый release evidence build должен быть выполнен на awatch-build-01
+   - Gitea restore_tested пока false
 ```
 
 ---
@@ -563,12 +609,13 @@ detmir-dlp --json
    - Поддержка русских Windows локализаций
    - Cyrillic-aware logging
 
-✅ РЕЕСТР РПО:
-   - 9 документов специально для реестра
-   - Product passport готов
-   - Architecture document в формате реестра
-   - Dependency statement для审核
-   - REGISTER_RU_SOFTWARE.md с инструкциями
+✅ РЕЕСТР РПО / REGISTRY-READINESS:
+   - Подготовлен registry-readiness пакет документов
+   - Product passport и architecture documents описаны
+   - Dependency statement зафиксирован
+   - Российский Gitea-контур поднят
+   - GitHub Actions используется только как public mirror validation
+   - Release evidence требует российского build-runner
 
 ✅ ТЕХНОЛОГИЧЕСКИЙ STACK:
    - Rust (не зависит от США)
@@ -629,7 +676,9 @@ PILOT V1 SCOPE (ГОТОВО):
 2026-06-11: Security hardening improvements
 2026-06-12: Release candidate preflight
 2026-06-12-19: Intensive hardening phase
-2026-06-20: TODAY - Pilot freeze readiness doc добавлен
+2026-06-20: Pilot freeze readiness doc добавлен
+2026-06-21: Public CI/Coverage/Security workflows добавлены
+2026-06-22: GitHub Actions validation прошел после hardening secret scan
 
 ВЫВОД: Проект в PRODUCTION HARDENING фазе перед Pilot release
 ```
@@ -668,6 +717,7 @@ PILOT V1 SCOPE (ГОТОВО):
 | **Профессионализм** | 9.0 | **9.3** | ⬆️ +0.3 | Pilot freeze readiness shows maturity |
 | **Российский рынок** | 9.0 | **9.5** | ⬆️ +0.5 | Registry docs enhanced, freeze ready |
 | **Production Ready** | 8.5 | **9.0** | ⬆️ +0.5 | Safety gates, rollback procedures validated |
+| **Public Validation** | 6.5 | **8.8** | ⬆️ +2.3 | CI/Coverage/Security workflows green |
 | **ИТОГО** | **8.6** | **9.1** | ⬆️ **+0.5** | **PRODUCTION GRADE** |
 
 ---
@@ -686,19 +736,31 @@ PILOT V1 SCOPE (ГОТОВО):
    - Registry documents готовы
    - Технологический stack без зависимостей
 
-3. ⚠️ ЕДИНСТВЕННЫЙ РИСК - BUS FACTOR
+3. ✅ PUBLIC VALIDATION VISIBILITY УЖЕ ЗАКРЫТА
+   - Public CI/CD visibility ✅
+   - Public coverage workflow ✅
+   - Public security scanning ✅
+   - Secret scan policy hardened ✅
+   - GitHub public mirror validation ✅
+
+4. ⚠️ ОСТАВШИЕСЯ РИСКИ
    - Один разработчик
    - Нет visible code review
-   - Нет community validation
+   - Низкая публичная активность issue tracker
+   - Низкая community adoption
+   - Gitea restore test еще не выполнен
+   - Российский build-runner пока planned
 
-4. 🚀 TIMELINE К PRODUCTION:
+5. 🚀 TIMELINE К PRODUCTION:
    - Pilot v1 freeze: готовится (freeze readiness doc)
    - Beta release: Q3 2026 (est.)
    - GA production: Q4 2026 (est.)
 
-5. 📊 QUALITY METRICS:
+6. 📊 QUALITY METRICS:
    - Code: Rust clippy strict mode ✅
    - Testing: Cargo test suite ✅
+   - Public coverage workflow ✅
+   - Public security workflow ✅
    - Deployment: Ansible idempotent ✅
    - Operations: Runbook-driven ✅
    - Documentation: 60+ doc pages ✅
@@ -713,6 +775,8 @@ PILOT V1 SCOPE (ГОТОВО):
 ✅ ИНВЕСТИРОВАТЬ: Проект достаточно зрелый для pilot
 ✅ ТРЕБОВАТЬ: Bus factor mitigation (второй разработчик)
 ✅ ТРЕБОВАТЬ: Community code review process (GitHub PRs)
+✅ ТРЕБОВАТЬ: Первый release evidence build на российском build-runner
+✅ ТРЕБОВАТЬ: Restore test Gitea backup на отдельном сервере
 ⚠️ НАБЛЮДАТЬ: Feedback из first customers на Pilot v1
 ```
 
