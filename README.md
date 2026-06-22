@@ -239,6 +239,10 @@ collectors.
   [RU_BUILD_RUNNER_READINESS_RU.md](docs/registry/RU_BUILD_RUNNER_READINESS_RU.md).
 - Текущий status freeze проекта:
   [docs/PROJECT_STATUS_RU.md](docs/PROJECT_STATUS_RU.md).
+- Остаточные риски:
+  [docs/RESIDUAL_RISKS_RU.md](docs/RESIDUAL_RISKS_RU.md).
+- План публичных GitHub issues:
+  [docs/PUBLIC_ISSUES_PLAN_RU.md](docs/PUBLIC_ISSUES_PLAN_RU.md).
 - GitHub remains public mirror only.
 
 ### Public engineering transparency
@@ -252,6 +256,10 @@ collectors.
 - Primary registry contour remains Gitea plus the Russian build-runner.
 - Quality status:
   [docs/QUALITY_STATUS_RU.md](docs/QUALITY_STATUS_RU.md).
+- Residual risks:
+  [docs/RESIDUAL_RISKS_RU.md](docs/RESIDUAL_RISKS_RU.md).
+- Public issues plan:
+  [docs/PUBLIC_ISSUES_PLAN_RU.md](docs/PUBLIC_ISSUES_PLAN_RU.md).
 
 - [Позиционирование для реестра российского ПО](docs/RUSSIAN_SOFTWARE_REGISTRY_POSITIONING_RU.md)
 - [Сведения для подачи в реестр](REGISTER_RU_SOFTWARE.md)
@@ -262,6 +270,8 @@ collectors.
 - [Registry deployment model](docs/REGISTRY_DEPLOYMENT_MODEL_RU.md)
 - [Registry commercial positioning](docs/REGISTRY_COMMERCIAL_POSITIONING_RU.md)
 - [Registry readiness checklist](docs/REGISTRY_READINESS_CHECKLIST_RU.md)
+- [Остаточные риски](docs/RESIDUAL_RISKS_RU.md)
+- [План публичных issues](docs/PUBLIC_ISSUES_PLAN_RU.md)
 - [Описание продукта](PRODUCT_DESCRIPTION_RU.md)
 - [Журнал изменений](CHANGELOG_RU.md)
 - [Установка для эксперта](INSTALL_FOR_EXPERT_RU.md)

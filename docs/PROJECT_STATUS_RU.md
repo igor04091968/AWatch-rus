@@ -28,6 +28,10 @@ backup, registry-readiness документации, плана российск
 - Public validation passed status does not constitute registry release evidence.
 - Registry release evidence still requires the Russian build-runner contour.
 - Russian build-runner still required for registry release evidence.
+- Остаточные риски:
+  `docs/RESIDUAL_RISKS_RU.md`.
+- План публичных GitHub issues:
+  `docs/PUBLIC_ISSUES_PLAN_RU.md`.
 
 ## Что готово
 
@@ -56,6 +60,10 @@ backup, registry-readiness документации, плана российск
   по контурам `CI`, `Coverage` и `Security`.
 - Добавлены `SECURITY.md`, `CONTRIBUTING.md`, `ROADMAP.md`, issue templates и
   pull request template.
+- Зафиксирован residual risk register:
+  `docs/RESIDUAL_RISKS_RU.md`.
+- Подготовлен план публичных issues для ручного заведения:
+  `docs/PUBLIC_ISSUES_PLAN_RU.md`.
 
 ## Planned / pending
 
@@ -66,6 +74,7 @@ backup, registry-readiness документации, плана российск
 - Юридическое подтверждение правообладателя.
 - Финальная юридическая проверка пакета документов перед подачей.
 - Проверка совместимости с российскими ОС.
+- Публичные roadmap/issues из `docs/PUBLIC_ISSUES_PLAN_RU.md`.
 
 ## Честные ограничения
 
@@ -94,3 +103,5 @@ backup, registry-readiness документации, плана российск
 - `docs/registry/RELEASE_EVIDENCE_RUNBOOK_RU.md`
 - `docs/registry/RELEASE_ARTIFACTS_STORAGE_RU.md`
 - `docs/QUALITY_STATUS_RU.md`
+- `docs/RESIDUAL_RISKS_RU.md`
+- `docs/PUBLIC_ISSUES_PLAN_RU.md`

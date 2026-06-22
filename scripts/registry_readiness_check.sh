@@ -49,6 +49,8 @@ required_files=(
   "docs/PROJECT_STATUS_RU.md"
   "docs/QUALITY_STATUS_RU.md"
   "docs/SECURITY_SCANNING_POLICY_RU.md"
+  "docs/RESIDUAL_RISKS_RU.md"
+  "docs/PUBLIC_ISSUES_PLAN_RU.md"
   "scripts/build_release_evidence.sh"
   "scripts/check_release_evidence.sh"
   "scripts/public_secret_pattern_check.py"
@@ -209,6 +211,8 @@ require_grep "Secret scan:[[:space:]]*hardened and passed" "docs/PROJECT_STATUS_
 require_grep "Public validation passed.*not.*registry release evidence|not registry release evidence" "docs/PROJECT_STATUS_RU.md" "project_status_public_validation_not_release_evidence"
 require_grep "Russian build-runner.*required|requires_russian_build_runner" "docs/PROJECT_STATUS_RU.md" "project_status_russian_runner_required"
 require_grep "docs/registry" "docs/PROJECT_STATUS_RU.md" "project_status_registry_docs"
+require_grep "RESIDUAL_RISKS_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_status_residual_risks_link"
+require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_status_public_issues_plan_link"
 require_grep "GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU\\.md|Restore outline|Post-restore checks" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_restore_runbook"
 require_grep "awatch-gitea-backup\\.timer" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_timer"
 require_grep "sha256|SHA256" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_sha256"
@@ -233,6 +237,38 @@ require_grep "\"security_workflow_status\"[[:space:]]*:[[:space:]]*\"passed\"" "
 require_grep "\"secret_scan_status\"[[:space:]]*:[[:space:]]*\"passed\"" "docs/registry/registry-evidence-manifest.json" "manifest_secret_scan_passed"
 require_grep "public GitHub Actions validation passed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_validation_passed"
 require_grep "No business logic changes" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_no_business_logic_changes"
+require_grep "RESIDUAL_RISKS_RU\\.md" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_residual_risks"
+require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_plan"
+require_grep "Restore test is not claimed as completed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_restore_not_completed"
+require_grep "Russian build-runner is not claimed as ready" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_build_runner_not_ready"
+require_grep "First release evidence build is not claimed as completed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_release_evidence_not_completed"
+require_grep "Legal rightsholder package remains pending" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_legal_package_pending"
+require_grep "RESIDUAL_RISKS_RU\\.md" "README.md" "readme_residual_risks_link"
+require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "README.md" "readme_public_issues_plan_link"
+require_grep "Один основной разработчик" "docs/RESIDUAL_RISKS_RU.md" "risk_single_developer"
+require_grep "Нет публично видимого peer review" "docs/RESIDUAL_RISKS_RU.md" "risk_peer_review"
+require_grep "Низкая публичная активность issue tracker" "docs/RESIDUAL_RISKS_RU.md" "risk_issue_tracker_activity"
+require_grep "Низкая community adoption" "docs/RESIDUAL_RISKS_RU.md" "risk_community_adoption"
+require_grep "Gitea restore test еще не выполнен" "docs/RESIDUAL_RISKS_RU.md" "risk_restore_test_pending"
+require_grep "restore_tested.*false" "docs/RESIDUAL_RISKS_RU.md" "risk_restore_tested_false"
+require_grep "Российский build-runner пока planned" "docs/RESIDUAL_RISKS_RU.md" "risk_build_runner_planned"
+require_grep "awatch-build-01.*planned|planned, not ready" "docs/RESIDUAL_RISKS_RU.md" "risk_awatch_build_01_not_ready"
+require_grep "Первый настоящий release evidence build pending" "docs/RESIDUAL_RISKS_RU.md" "risk_release_evidence_pending"
+require_grep "Юридический пакет правообладателя pending" "docs/RESIDUAL_RISKS_RU.md" "risk_rightsholder_pending"
+require_grep "Почему не блокирует pilot/readiness stage" "docs/RESIDUAL_RISKS_RU.md" "risk_non_blocking_reason"
+require_grep "Уже снижающие evidence/documents/CI" "docs/RESIDUAL_RISKS_RU.md" "risk_existing_evidence"
+require_grep "\\[registry\\] Perform Gitea backup restore test" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_restore_test"
+require_grep "\\[registry\\] Prepare temporary Russian build-runner awatch-build-01" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_build_runner"
+require_grep "\\[release\\] Produce first release evidence package" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_release_evidence"
+require_grep "\\[legal\\] Prepare rightsholder evidence package" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_legal"
+require_grep "\\[qa\\] Define coverage threshold policy" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_qa_coverage_threshold"
+require_grep "\\[security\\] Prepare external security/code review checklist" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_security_review"
+require_grep "\\[compat\\] Test Russian OS compatibility matrix" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_compat_matrix"
+require_grep "\\[ops\\] Validate release artifacts storage in RF" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_artifact_storage"
+require_grep "\\[docs\\] Refresh public demo pack and screenshots" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_demo_pack"
+require_grep "\\[pilot\\] Prepare Pilot Acceptance Checklist v2" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_pilot_acceptance_v2"
+require_grep "Do not mark restore test as completed until restore evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_restore_guardrail"
+require_grep "Do not mark .*awatch-build-01.* as ready until provisioning evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_build_runner_guardrail"
 require_grep "public mirror validation only" "SECURITY.md" "security_public_mirror_validation"
 require_grep "public mirror validation only" "CONTRIBUTING.md" "contributing_public_mirror_validation"
 require_grep "public mirror validation only" "ROADMAP.md" "roadmap_public_mirror_validation"
@@ -250,6 +286,8 @@ scan_files=(
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
   "$ROOT/docs/SECURITY_SCANNING_POLICY_RU.md"
+  "$ROOT/docs/RESIDUAL_RISKS_RU.md"
+  "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
   "$ROOT/ROADMAP.md"
@@ -268,6 +306,8 @@ claim_scan_files=(
   "$REGISTRY_DIR"/*.json
   "$ROOT/docs/QUALITY_STATUS_RU.md"
   "$ROOT/docs/SECURITY_SCANNING_POLICY_RU.md"
+  "$ROOT/docs/RESIDUAL_RISKS_RU.md"
+  "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
   "$ROOT/ROADMAP.md"
@@ -314,6 +354,34 @@ if grep -RInEi "(юридически заверш(е|ё)нн?ая регист�
   fail "forbidden_claim_legal_registry_completion:$(cat /tmp/registry_forbidden_legal_done.$$)"
 fi
 rm -f /tmp/registry_forbidden_legal_done.$$
+
+if grep -RInEi "(restore(_| )?test|restore_tested|тестов(ое|ого)[[:space:]]+восстановлен).{0,120}(completed|done|passed|true|выполнен|готов|подтвержден)" "$ROOT/docs/RESIDUAL_RISKS_RU.md" "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$REGISTRY_DIR"/*.md "$REGISTRY_DIR"/*.json \
+  | grep -Eiv "(not |не |false|pending|not completed|not claimed|не выполнен|еще не выполнен|ещё не выполнен|не заяв|не готов|until evidence|restore_tested.*false|если.*выполнен)" \
+  >/tmp/registry_forbidden_restore_done.$$ 2>/dev/null; then
+  fail "forbidden_claim_restore_test_completed:$(cat /tmp/registry_forbidden_restore_done.$$)"
+fi
+rm -f /tmp/registry_forbidden_restore_done.$$
+
+if grep -RInEi "(build-runner|awatch-build-01).{0,120}(ready|production_ready|provisioned|готов|поднят|развернут|запущен)" "$ROOT/docs/RESIDUAL_RISKS_RU.md" "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$REGISTRY_DIR"/*.md "$REGISTRY_DIR"/*.json \
+  | grep -Eiv "(not |не |planned|pending|not ready|not claimed|не готов|пока|until provisioning evidence|status != \"production_ready\"|requires|требует|подготовить|prepare)" \
+  >/tmp/registry_forbidden_build_runner_ready.$$ 2>/dev/null; then
+  fail "forbidden_claim_build_runner_ready:$(cat /tmp/registry_forbidden_build_runner_ready.$$)"
+fi
+rm -f /tmp/registry_forbidden_build_runner_ready.$$
+
+if grep -RInEi "(release evidence (build|package)|first release evidence|перв(ый|ого).{0,40}release evidence).{0,120}(completed|done|produced|выполнен|готов|сформирован|создан)" "$ROOT/docs/RESIDUAL_RISKS_RU.md" "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$REGISTRY_DIR"/*.md "$REGISTRY_DIR"/*.json \
+  | grep -Eiv "(not |не |pending|not claimed|not yet|еще не|ещё не|не выполнен|не заяв|requires|требует|produce first|first real|scripts exist|automation.*partially done)" \
+  >/tmp/registry_forbidden_release_evidence_done.$$ 2>/dev/null; then
+  fail "forbidden_claim_release_evidence_completed:$(cat /tmp/registry_forbidden_release_evidence_done.$$)"
+fi
+rm -f /tmp/registry_forbidden_release_evidence_done.$$
+
+if grep -RInEi "(community adoption).{0,120}(high|strong|mature|высок|сильн|зрел)" "$ROOT/docs/RESIDUAL_RISKS_RU.md" "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$ROOT/README.md" \
+  | grep -Eiv "(low|низк|не |not |fake|do not claim|не заяв)" \
+  >/tmp/registry_forbidden_fake_community.$$ 2>/dev/null; then
+  fail "forbidden_claim_fake_community_adoption:$(cat /tmp/registry_forbidden_fake_community.$$)"
+fi
+rm -f /tmp/registry_forbidden_fake_community.$$
 
 if ((${#failures[@]} > 0)); then
   printf 'registry_readiness_check=fail\n'

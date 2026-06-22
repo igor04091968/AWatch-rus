@@ -1,5 +1,34 @@
 # Registry readiness changelog
 
+## 2026-06-22 residual risk register and public issue plan
+
+Added:
+
+- `docs/RESIDUAL_RISKS_RU.md` with the remaining governance, public process,
+  disaster recovery, build-runner, release evidence and legal package risks.
+- `docs/PUBLIC_ISSUES_PLAN_RU.md` with public GitHub issues to create manually.
+- Registry readiness checks for residual risk documents and pending-state
+  guardrails.
+
+Changed:
+
+- README and project status now link to the residual risk register and public
+  issue plan.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
+Guardrails:
+
+- Restore test is not claimed as completed.
+- Russian build-runner is not claimed as ready.
+- First release evidence build is not claimed as completed.
+- Legal rightsholder package remains pending.
+
 ## 2026-06-22 public GitHub Actions validation passed
 
 Changed:
