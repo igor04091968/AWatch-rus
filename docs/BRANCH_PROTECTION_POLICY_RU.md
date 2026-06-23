@@ -1,6 +1,6 @@
 # AWatch-rus: advisory branch protection policy
 
-Дата: 2026-06-22
+Дата: 2026-06-23
 
 Статус: recommended policy. Этот документ описывает целевую настройку GitHub
 branch protection для публичного зеркала. Он не утверждает, что branch
@@ -31,6 +31,41 @@ contour остается Russian Gitea plus Russian build-runner release evidenc
 - Restrict branch deletion.
 - Require linear history if compatible with the maintainer workflow.
 - Administrator bypass should be emergency-only and documented after the fact.
+
+## Recommended GitHub Branch Protection Settings
+
+Recommended settings for `main` on the GitHub public mirror:
+
+- Require pull request before merging.
+- Required approvals: `1`.
+- Dismiss stale approvals when new commits are pushed.
+- Require review from CODEOWNERS if available on the current GitHub plan.
+- Require status checks to pass before merging.
+- Require branches to be up to date before merging if this does not block the
+  current maintainer workflow.
+- Restrict force pushes.
+- Restrict deletions.
+- Allow administrators bypass: documented decision only; stricter mode should
+  keep bypass disabled unless repository recovery requires it.
+
+Recommended required checks, using current workflow/job names:
+
+- `CI / Rust checks`
+- `CI / Docs and registry checks`
+- `CI / Smoke checks`
+- `Coverage / Coverage baseline`
+- `Security / Cargo audit`
+- `Security / Cargo deny`
+- `Security / Secret pattern check`
+- `Security / Dependency review`
+
+Before verification, maintainer must compare these names with the exact check
+names displayed by GitHub. If GitHub displays different names, update this
+document and `docs/BRANCH_PROTECTION_EVIDENCE_RU.md` before recording evidence.
+
+Current evidence status is tracked in
+`docs/BRANCH_PROTECTION_EVIDENCE_RU.md` and remains
+`pending_manual_verification` until maintainer evidence is recorded.
 
 ## Review expectations
 

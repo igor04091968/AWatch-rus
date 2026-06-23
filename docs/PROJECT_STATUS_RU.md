@@ -47,6 +47,15 @@ backup, registry-readiness документации, плана российск
   `docs/REVIEW_CHECKLIST_RU.md`.
 - Advisory branch protection policy:
   `docs/BRANCH_PROTECTION_POLICY_RU.md`.
+- PR-based workflow documentation: ready
+  (`docs/PR_REVIEW_WORKFLOW_RU.md`).
+- PR review evidence package: ready
+  (`docs/PR_REVIEW_EVIDENCE_RU.md`).
+- Branch protection evidence package: ready
+  (`docs/BRANCH_PROTECTION_EVIDENCE_RU.md`).
+- Branch protection actual enablement:
+  `pending_manual_verification`.
+- First reviewed PR evidence: pending.
 
 ## Что готово
 
@@ -81,6 +90,12 @@ backup, registry-readiness документации, плана российск
 - PR review process documented in PR template and review checklist.
 - Branch protection policy documented as advisory:
   `docs/BRANCH_PROTECTION_POLICY_RU.md`.
+- Branch protection evidence template prepared:
+  `docs/BRANCH_PROTECTION_EVIDENCE_RU.md`.
+- PR-based review workflow documented:
+  `docs/PR_REVIEW_WORKFLOW_RU.md`.
+- PR review evidence template prepared:
+  `docs/PR_REVIEW_EVIDENCE_RU.md`.
 - Зафиксирован residual risk register:
   `docs/RESIDUAL_RISKS_RU.md`.
 - Подготовлен план публичных issues для ручного заведения:
@@ -104,6 +119,9 @@ backup, registry-readiness документации, плана российск
 - Visible external code review is still pending.
 - Branch protection enablement is not claimed until repository settings are
   verified.
+- Branch protection actual enablement remains `pending_manual_verification`.
+- First reviewed PR evidence remains pending until a reviewed public PR is
+  merged and evidence is recorded.
 - Community adoption remains low until external contributors, public reviews
   and sustained third-party activity appear.
 
@@ -135,8 +153,11 @@ backup, registry-readiness документации, плана российск
 - `docs/registry/RELEASE_ARTIFACTS_STORAGE_RU.md`
 - `docs/QUALITY_STATUS_RU.md`
 - `docs/REVIEW_CHECKLIST_RU.md`
+- `docs/PR_REVIEW_WORKFLOW_RU.md`
+- `docs/PR_REVIEW_EVIDENCE_RU.md`
 - `docs/RESIDUAL_RISKS_RU.md`
 - `docs/PUBLIC_ISSUES_PLAN_RU.md`
 - `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`
 - `docs/public-issues/public-issues-manifest.json`
 - `docs/BRANCH_PROTECTION_POLICY_RU.md`
+- `docs/BRANCH_PROTECTION_EVIDENCE_RU.md`

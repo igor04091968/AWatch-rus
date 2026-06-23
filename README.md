@@ -283,6 +283,12 @@ collectors.
   [docs/public-issues/public-issues-manifest.json](docs/public-issues/public-issues-manifest.json).
 - Advisory branch protection policy:
   [docs/BRANCH_PROTECTION_POLICY_RU.md](docs/BRANCH_PROTECTION_POLICY_RU.md).
+- Branch protection evidence template:
+  [docs/BRANCH_PROTECTION_EVIDENCE_RU.md](docs/BRANCH_PROTECTION_EVIDENCE_RU.md).
+- PR-based review workflow:
+  [docs/PR_REVIEW_WORKFLOW_RU.md](docs/PR_REVIEW_WORKFLOW_RU.md).
+- PR review evidence template:
+  [docs/PR_REVIEW_EVIDENCE_RU.md](docs/PR_REVIEW_EVIDENCE_RU.md).
 - CODEOWNERS and PR template are maintained for review routing and public
   change-control visibility.
 - Visible external code review is still pending until public reviewed PRs exist.

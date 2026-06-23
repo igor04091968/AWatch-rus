@@ -17,13 +17,27 @@
 # Operational scripts and automation.
 /scripts/ @igor04091968
 
+# Product documentation, demo material and screenshots.
+/docs/ @igor04091968
+/docs/demo/ @igor04091968
+/docs/screenshots/ @igor04091968
+/docs/assets/screenshots/ @igor04091968
+
 # Registry-readiness evidence and policy documents.
 /docs/registry/ @igor04091968
 
-# GitHub public mirror validation metadata.
+# GitHub public mirror validation metadata and governance controls.
 /.github/workflows/ @igor04091968
+/.github/workflows/ci.yml @igor04091968
+/.github/workflows/security.yml @igor04091968
+/.github/workflows/coverage.yml @igor04091968
 /.github/pull_request_template.md @igor04091968
 /.github/ISSUE_TEMPLATE/ @igor04091968
+/.github/CODEOWNERS @igor04091968
+/docs/BRANCH_PROTECTION_POLICY_RU.md @igor04091968
+/docs/BRANCH_PROTECTION_EVIDENCE_RU.md @igor04091968
+/docs/PR_REVIEW_WORKFLOW_RU.md @igor04091968
+/docs/PR_REVIEW_EVIDENCE_RU.md @igor04091968
 
 # Ansible deployment automation.
 /ansible/ @igor04091968

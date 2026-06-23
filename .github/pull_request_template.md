@@ -18,6 +18,14 @@ stand or unavailable tool.
 
 ## Review Checklist
 
+- [ ] Linked issue is provided, or the PR explains why no issue is applicable.
+- [ ] Runtime/API/UI impact is stated.
+- [ ] Registry claims are checked and remain conservative.
+- [ ] Secrets, PII, employee logs and customer identifiers are absent.
+- [ ] Tests/checks executed are listed, or skipped checks have reasons.
+- [ ] Evidence docs are updated when the change affects governance, registry
+      readiness or release evidence.
+- [ ] GitHub Actions are public validation only, not registry release evidence.
 - [ ] I checked that this PR does not publish secrets, tokens, passwords,
       private keys, recovery codes or live credentials.
 - [ ] I checked that this PR does not publish personal data, real employee data,

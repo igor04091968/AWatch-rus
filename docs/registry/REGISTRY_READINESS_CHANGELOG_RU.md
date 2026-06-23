@@ -1,5 +1,45 @@
 # Registry readiness changelog
 
+## 2026-06-23 branch protection and PR review evidence package
+
+Added:
+
+- `docs/BRANCH_PROTECTION_EVIDENCE_RU.md` with
+  `pending_manual_verification` status for GitHub branch protection evidence.
+- `docs/PR_REVIEW_WORKFLOW_RU.md` with PR-based review workflow rules.
+- `docs/PR_REVIEW_EVIDENCE_RU.md` with evidence criteria for the first reviewed
+  public PR.
+- Public issues manifest links issue #48 to PR review evidence and issue #49 to
+  branch protection evidence.
+
+Changed:
+
+- `docs/BRANCH_PROTECTION_POLICY_RU.md` now lists recommended settings and real
+  current GitHub Actions check names.
+- `.github/pull_request_template.md` includes compact governance/evidence
+  checklist items.
+- `.github/CODEOWNERS` has clearer zones for workflows/security/governance,
+  registry docs, scripts, Rust workspace, demo/screenshots/docs.
+- Project status and residual risks now distinguish prepared governance
+  evidence from pending verification.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
+Guardrails:
+
+- Branch protection verification remains pending until maintainer records
+  repository settings evidence.
+- External peer review is not claimed completed until real reviewed PR evidence
+  exists.
+- GitHub remains public mirror validation only.
+- Russian Gitea plus planned Russian build-runner remains the primary registry
+  contour.
+
 ## 2026-06-23 public roadmap issues created and linked
 
 Changed:
