@@ -1,0 +1,128 @@
+domain	site_name	category	productivity_class	risk_level	business_allowed	source	comment	is_active
+intranet.local	Internal portal	internal_service	productive	low	1	catalog-ru-20260623	Internal work portal	1
+dbo.sevnb.ru	SEVNB online banking	banking	productive	low	1	catalog-ru-20260623	Banking workflow seen in RDP title stream	1
+sberbank.ru	Sberbank	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+online.sberbank.ru	Sberbank Online	banking	productive	low	1	catalog-ru-20260623	Russian banking web client	1
+sbi.sberbank.ru	SberBusiness	banking	productive	low	1	catalog-ru-20260623	Sber business banking	1
+business-online.sberbank.ru	SberBusiness	banking	productive	low	1	catalog-ru-20260623	Sber business banking legacy host	1
+vtb.ru	VTB	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+dbo.vtb.ru	VTB Business Online	banking	productive	low	1	catalog-ru-20260623	VTB business banking	1
+alfabank.ru	Alfa-Bank	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+ibank.alfabank.ru	Alfa-Bank Business	banking	productive	low	1	catalog-ru-20260623	Alfa business banking	1
+tbank.ru	T-Bank	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+business.tbank.ru	T-Business	banking	productive	low	1	catalog-ru-20260623	T-Bank business banking	1
+tinkoff.ru	Tinkoff	banking	productive	low	1	catalog-ru-20260623	T-Bank legacy domain	1
+business.tinkoff.ru	Tinkoff Business	banking	productive	low	1	catalog-ru-20260623	T-Bank business legacy domain	1
+tochka.com	Tochka Bank	banking	productive	low	1	catalog-ru-20260623	Business banking	1
+bspb.ru	Bank Saint Petersburg	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+dbo.bspb.ru	Bank Saint Petersburg Business	banking	productive	low	1	catalog-ru-20260623	Business banking	1
+gazprombank.ru	Gazprombank	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+bankuralsib.ru	Uralsib	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+rshb.ru	Russian Agricultural Bank	banking	productive	low	1	catalog-ru-20260623	Russian banking and business services	1
+modulbank.ru	Modulbank	banking	productive	low	1	catalog-ru-20260623	Business banking	1
+gosuslugi.ru	Gosuslugi	government	productive	low	1	catalog-ru-20260623	Russian government services	1
+esia.gosuslugi.ru	ESIA	government	productive	low	1	catalog-ru-20260623	Government authentication	1
+lk.gosuslugi.ru	Gosuslugi account	government	productive	low	1	catalog-ru-20260623	Government services account	1
+nalog.gov.ru	FNS	government	productive	low	1	catalog-ru-20260623	Russian tax service	1
+service.nalog.ru	FNS services	government	productive	low	1	catalog-ru-20260623	Russian tax service portals	1
+egrul.nalog.ru	FNS EGRUL	government	productive	low	1	catalog-ru-20260623	Company registry lookup	1
+pb.nalog.ru	FNS transparent business	government	productive	low	1	catalog-ru-20260623	Tax counterparty lookup	1
+lkfl2.nalog.ru	FNS personal account	government	productive	low	1	catalog-ru-20260623	Tax account	1
+lkul.nalog.ru	FNS legal entity account	government	productive	low	1	catalog-ru-20260623	Tax account for legal entities	1
+fssp.gov.ru	FSSP	government	productive	low	1	catalog-ru-20260623	Bailiff service lookup	1
+rosreestr.gov.ru	Rosreestr	government	productive	low	1	catalog-ru-20260623	Real estate registry	1
+kad.arbitr.ru	Arbitration cases	government	productive	low	1	catalog-ru-20260623	Arbitration case database	1
+my.arbitr.ru	Arbitration e-filing	government	productive	low	1	catalog-ru-20260623	Arbitration electronic filing	1
+sudrf.ru	Courts of Russia	government	productive	low	1	catalog-ru-20260623	Court information	1
+zakupki.gov.ru	Unified procurement	government	productive	low	1	catalog-ru-20260623	State procurement	1
+torgi.gov.ru	Torgi.gov	government	productive	low	1	catalog-ru-20260623	State auctions and property tenders	1
+mos.ru	Mos.ru	government	productive	low	1	catalog-ru-20260623	Moscow city services	1
+cbr.ru	Bank of Russia	government	productive	low	1	catalog-ru-20260623	Central bank reference data	1
+rosstat.gov.ru	Rosstat	government	productive	low	1	catalog-ru-20260623	Statistics and reporting	1
+sfr.gov.ru	Social Fund	government	productive	low	1	catalog-ru-20260623	Social fund services	1
+trudvsem.ru	Trudvsem	government	productive	low	1	catalog-ru-20260623	Labor and vacancies portal	1
+kontur.ru	Kontur	edo_reporting	productive	low	1	catalog-ru-20260623	EDO reporting and business checks	1
+extern.kontur.ru	Kontur Extern	edo_reporting	productive	low	1	catalog-ru-20260623	Electronic reporting	1
+diadoc.kontur.ru	Diadoc	edo_reporting	productive	low	1	catalog-ru-20260623	Electronic document exchange	1
+focus.kontur.ru	Kontur Focus	business_reference	productive	low	1	catalog-ru-20260623	Counterparty checks	1
+normativ.kontur.ru	Kontur Normativ	business_reference	productive	low	1	catalog-ru-20260623	Legal and accounting reference	1
+sbis.ru	SBIS	edo_reporting	productive	low	1	catalog-ru-20260623	EDO reporting and business services	1
+online.sbis.ru	SBIS Online	edo_reporting	productive	low	1	catalog-ru-20260623	EDO reporting portal	1
+saby.ru	Saby	edo_reporting	productive	low	1	catalog-ru-20260623	SBIS/Saby services	1
+ofd.ru	OFD	reporting	productive	low	1	catalog-ru-20260623	Fiscal data operator	1
+ofd.yandex.ru	Yandex OFD	reporting	productive	low	1	catalog-ru-20260623	Fiscal data operator	1
+1-ofd.ru	1-OFD	reporting	productive	low	1	catalog-ru-20260623	Fiscal data operator	1
+sberbank-ast.ru	Sberbank AST	procurement	productive	low	1	catalog-ru-20260623	Electronic trading platform	1
+roseltorg.ru	Roseltorg	procurement	productive	low	1	catalog-ru-20260623	Electronic trading platform	1
+rts-tender.ru	RTS Tender	procurement	productive	low	1	catalog-ru-20260623	Electronic trading platform	1
+fabrikant.ru	Fabrikant	procurement	productive	low	1	catalog-ru-20260623	Electronic trading platform	1
+spark-interfax.ru	SPARK Interfax	business_reference	productive	low	1	catalog-ru-20260623	Counterparty checks	1
+rusprofile.ru	Rusprofile	business_reference	productive	low	1	catalog-ru-20260623	Counterparty checks	1
+checko.ru	Checko	business_reference	productive	low	1	catalog-ru-20260623	Counterparty checks	1
+zachestnyibiznes.ru	Za Chestny Biznes	business_reference	productive	low	1	catalog-ru-20260623	Counterparty checks	1
+list-org.com	List-Org	business_reference	neutral	medium	1	catalog-ru-20260623	Counterparty checks with mixed data quality	1
+garant.ru	Garant	legal_reference	productive	low	1	catalog-ru-20260623	Legal reference system	1
+consultant.ru	ConsultantPlus	legal_reference	productive	low	1	catalog-ru-20260623	Legal reference system	1
+mail.yandex.ru	Yandex Mail	mail	productive	low	1	catalog-ru-20260623	Business mail when used with org account	1
+360.yandex.ru	Yandex 360	mail	productive	low	1	catalog-ru-20260623	Business mail and documents	1
+mail.ru	Mail.ru	mail	neutral	medium	1	catalog-ru-20260623	Mail portal; classify account policy separately if needed	1
+e.mail.ru	Mail.ru webmail	mail	neutral	medium	1	catalog-ru-20260623	Mail.ru webmail	1
+biz.mail.ru	Mail.ru business	mail	productive	low	1	catalog-ru-20260623	Business mail	1
+corp.mail.ru	Mail.ru corporate	mail	productive	low	1	catalog-ru-20260623	Corporate services	1
+gmail.com	Gmail	mail	neutral	medium	1	catalog-ru-20260623	External mail	1
+outlook.office.com	Outlook Web	mail	productive	low	1	catalog-ru-20260623	Business mail	1
+yandex.ru	Yandex	search	neutral	low	1	catalog-ru-20260623	Search portal	1
+ya.ru	Yandex	search	neutral	low	1	catalog-ru-20260623	Search portal	1
+google.com	Google Search	search	neutral	low	1	catalog-ru-20260623	Search portal	1
+2gis.ru	2GIS	maps_reference	productive	low	1	catalog-ru-20260623	Maps and organization reference	1
+maps.yandex.ru	Yandex Maps	maps_reference	productive	low	1	catalog-ru-20260623	Maps and organization reference	1
+dadata.ru	DaData	business_reference	productive	low	1	catalog-ru-20260623	Address and company reference	1
+disk.yandex.ru	Yandex Disk	cloud_docs	productive	medium	1	catalog-ru-20260623	Cloud documents; data handling policy applies	1
+docs.yandex.ru	Yandex Documents	cloud_docs	productive	medium	1	catalog-ru-20260623	Cloud documents; data handling policy applies	1
+cloud.mail.ru	Cloud Mail.ru	cloud_docs	productive	medium	1	catalog-ru-20260623	Cloud storage; data handling policy applies	1
+docs.google.com	Google Docs	cloud_docs	productive	medium	1	catalog-ru-20260623	Cloud documents; data handling policy applies	1
+drive.google.com	Google Drive	cloud_docs	productive	medium	1	catalog-ru-20260623	Cloud storage; data handling policy applies	1
+office.com	Microsoft 365	cloud_docs	productive	medium	1	catalog-ru-20260623	Cloud documents; data handling policy applies	1
+microsoft365.com	Microsoft 365	cloud_docs	productive	medium	1	catalog-ru-20260623	Cloud documents; data handling policy applies	1
+web.telegram.org	Telegram Web	communication	neutral	medium	1	catalog-ru-20260623	Messenger; business use depends on policy	1
+t.me	Telegram links	communication	neutral	medium	1	catalog-ru-20260623	Messenger links	1
+telegram.org	Telegram	communication	neutral	medium	1	catalog-ru-20260623	Messenger	1
+web.whatsapp.com	WhatsApp Web	communication	neutral	medium	1	catalog-ru-20260623	Messenger; business use depends on policy	1
+whatsapp.com	WhatsApp	communication	neutral	medium	1	catalog-ru-20260623	Messenger	1
+teams.microsoft.com	Microsoft Teams	communication	productive	low	1	catalog-ru-20260623	Business communication	1
+meet.google.com	Google Meet	communication	productive	low	1	catalog-ru-20260623	Business communication	1
+zoom.us	Zoom	communication	productive	low	1	catalog-ru-20260623	Business communication	1
+github.com	GitHub	developer	productive	low	1	catalog-ru-20260623	Development and documentation workflow	1
+gitlab.com	GitLab	developer	productive	low	1	catalog-ru-20260623	Development workflow	1
+stackoverflow.com	Stack Overflow	developer	productive	low	1	catalog-ru-20260623	Technical reference	1
+learn.microsoft.com	Microsoft Learn	developer	productive	low	1	catalog-ru-20260623	Technical documentation	1
+docs.microsoft.com	Microsoft Docs	developer	productive	low	1	catalog-ru-20260623	Technical documentation legacy host	1
+microsoft.com	Microsoft	developer	neutral	low	1	catalog-ru-20260623	Vendor documentation and downloads	1
+docker.com	Docker	developer	productive	low	1	catalog-ru-20260623	Developer tooling documentation	1
+software.qnap.com	QNAP Software	work_service	neutral	low	1	catalog-ru-20260623	Vendor software/download portal for admin work	1
+cryptopro.ru	CryptoPro	security_crypto	productive	low	1	catalog-ru-20260623	CryptoPro documentation and downloads	1
+www.cryptopro.ru	CryptoPro	security_crypto	productive	low	1	catalog-ru-20260623	CryptoPro documentation and downloads	1
+chatgpt.com	ChatGPT	ai_assistant	productive	medium	1	catalog-ru-20260623	AI assistant; data handling policy applies	1
+chat.openai.com	ChatGPT legacy	ai_assistant	productive	medium	1	catalog-ru-20260623	AI assistant; data handling policy applies	1
+giga.chat	GigaChat	ai_assistant	productive	medium	1	catalog-ru-20260623	AI assistant; data handling policy applies	1
+alice.yandex.ru	Yandex Alice	ai_assistant	productive	medium	1	catalog-ru-20260623	AI assistant; data handling policy applies	1
+wildberries.ru	Wildberries	marketplace	neutral	medium	1	catalog-ru-20260623	Marketplace; business purchases possible	1
+ozon.ru	Ozon	marketplace	neutral	medium	1	catalog-ru-20260623	Marketplace; business purchases possible	1
+market.yandex.ru	Yandex Market	marketplace	neutral	medium	1	catalog-ru-20260623	Marketplace; business purchases possible	1
+avito.ru	Avito	marketplace	neutral	medium	1	catalog-ru-20260623	Marketplace; business use depends on policy	1
+dns-shop.ru	DNS Shop	marketplace	neutral	medium	1	catalog-ru-20260623	IT and office equipment purchases	1
+citilink.ru	Citilink	marketplace	neutral	medium	1	catalog-ru-20260623	IT and office equipment purchases	1
+vk.com	VK	social	non_productive	medium	0	catalog-ru-20260623	Social network; whitelist business communities separately if needed	1
+ok.ru	Odnoklassniki	social	non_productive	medium	0	catalog-ru-20260623	Social network	1
+dzen.ru	Dzen	news	non_productive	medium	0	catalog-ru-20260623	News/feed portal	1
+rbc.ru	RBC	news	neutral	medium	1	catalog-ru-20260623	Business news; review by department policy	1
+ria.ru	RIA Novosti	news	neutral	medium	1	catalog-ru-20260623	News; review by department policy	1
+lenta.ru	Lenta	news	non_productive	medium	0	catalog-ru-20260623	News/feed portal	1
+youtube.com	YouTube	media	non_productive	medium	0	catalog-ru-20260623	Video platform; business use requires URL-level exception	1
+rutube.ru	Rutube	media	non_productive	medium	0	catalog-ru-20260623	Video platform	1
+vkvideo.ru	VK Video	media	non_productive	medium	0	catalog-ru-20260623	Video platform	1
+music.yandex.ru	Yandex Music	media	non_productive	medium	0	catalog-ru-20260623	Music streaming	1
+kinopoisk.ru	Kinopoisk	media	non_productive	medium	0	catalog-ru-20260623	Entertainment streaming	1
+twitch.tv	Twitch	media	non_productive	high	0	catalog-ru-20260623	Entertainment streaming	1
+example.com	Example Domain	test_reference	neutral	low	0	catalog-ru-20260623	Test/reference domain	1
+unknown.example	Unknown example	test_reference	neutral	low	0	catalog-ru-20260623	Test/reference domain from demo data	1

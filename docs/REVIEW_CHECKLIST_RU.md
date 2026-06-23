@@ -26,7 +26,12 @@ release evidence должен производиться на российско
 ## Rust code quality
 
 - Rust-код форматируется `cargo fmt --all --check`.
-- Для затронутого Rust workspace ожидаются relevant `cargo test` checks.
+- Для существенных Rust-изменений ожидается полный workspace gate:
+  `cargo test --workspace --all-targets --locked`,
+  `cargo test --workspace --doc --locked` и
+  `cargo clippy --workspace --all-targets --locked -- -D warnings`.
+- Для Windows/RDP collector дополнительно проверяется target
+  `x86_64-pc-windows-gnu` через `cargo check` и `cargo clippy`.
 - Ошибки обрабатываются явно; нет silent fallback для security-sensitive paths.
 - Timeouts, retries and bounds are explicit for network or long-running work.
 - Новые dependencies justified and license-compatible.
@@ -95,7 +100,11 @@ release evidence должен производиться на российско
   `bash scripts/registry_readiness_check.sh`,
   `git diff --check`.
 - For shell changes, `bash -n` is mandatory for changed shell scripts.
-- For Rust/product changes, Rust checks are required by risk and scope.
+- For Rust/product changes, use
+  `docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md` as the default local validation
+  contour.
+- For operator-facing web, gateway, worktime reports or Grafana dashboards,
+  browser smoke through the rendered pages is required in addition to API checks.
 
 ## Evidence requirements
 

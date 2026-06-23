@@ -29,7 +29,6 @@ const DEFAULT_DLP_STATE: &str = r"C:\ProgramData\AWatch-rus\dlp-evidence-sync-st
 const DEFAULT_DLP_TOKEN: &str = r"C:\ProgramData\AWatch-rus\dlp-evidence-upload-token.txt";
 const DEFAULT_REMOTE_ROOT: &str = "/opt/activitywatch/clickhouse-1c/landing";
 const DEFAULT_SSH_KEY: &str = r"C:\ProgramData\AWatch-rus\ssh\awops_ed25519";
-const DEFAULT_REGISTRY_WORKBOOK: &str = r"E:\USER1\СПИСОК ПРЕДПРИЯТИЙ И ИХ РАСПРЕДЕЛЕНИЕ.xlsx";
 
 #[derive(Parser)]
 #[command(about = "AWatch-rus Windows telemetry uploader without PowerShell runtime wrappers")]
@@ -459,8 +458,7 @@ fn run_file1c_upload_inner(args: &mut File1cUpload, log_path: &Path) -> Result<(
     if args.registry_workbook_path.is_none() {
         args.registry_workbook_path = json_string(automation, &["registryWorkbookPath"])
             .filter(|v| !v.trim().is_empty())
-            .map(PathBuf::from)
-            .or_else(|| Some(PathBuf::from(DEFAULT_REGISTRY_WORKBOOK)));
+            .map(PathBuf::from);
     }
 
     let scp = system32_path("OpenSSH\\scp.exe");
@@ -1614,6 +1612,10 @@ struct ForegroundWindowContext {
     window_handle: isize,
 }
 
+fn has_foreground_context(context: &ForegroundWindowContext) -> bool {
+    context.process_id != 0 || !context.app.trim().is_empty() || !context.title.trim().is_empty()
+}
+
 #[derive(Debug, Clone)]
 struct WebCategoryRule {
     name: String,
@@ -1741,17 +1743,19 @@ fn run_browser_domains_collector(args: BrowserDomainsCollector) -> Result<()> {
     loop {
         let context = foreground_window_context();
         let mut loop_failed = false;
-        match send_browser_window_event(&runtime, &context) {
-            Ok(()) => events_sent = events_sent.saturating_add(1),
-            Err(err) => {
-                loop_failed = true;
-                record_collector_send_failure(
-                    &runtime,
-                    &mut problems,
-                    &mut send_failures,
-                    "browser window heartbeat",
-                    &err,
-                );
+        if has_foreground_context(&context) {
+            match send_browser_window_event(&runtime, &context) {
+                Ok(()) => events_sent = events_sent.saturating_add(1),
+                Err(err) => {
+                    loop_failed = true;
+                    record_collector_send_failure(
+                        &runtime,
+                        &mut problems,
+                        &mut send_failures,
+                        "browser window heartbeat",
+                        &err,
+                    );
+                }
             }
         }
         match send_browser_category_health(&runtime, &context, events_sent) {
@@ -5977,7 +5981,7 @@ Connect=File="E:\Bases\Org\Base1";
 ID=skip
 Connect=Srvr="srv";Ref="x";
 "#;
-        let items = parse_v8i_text(text, "user1", Path::new("ibases.v8i"));
+        let items = parse_v8i_text(text, "fixture-user", Path::new("ibases.v8i"));
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].infobase, "База 1");
         assert_eq!(items[0].base_id.as_deref(), Some("abc-123"));
@@ -6062,6 +6066,19 @@ Connect=Srvr="srv";Ref="x";
         assert_eq!(category.name, "work_docs_collab");
         assert_eq!(category.group, "work");
         assert!(normalize_browser_url("new tab").is_none());
+    }
+
+    #[test]
+    fn foreground_context_requires_real_window_signal() {
+        assert!(!has_foreground_context(&ForegroundWindowContext::default()));
+        assert!(has_foreground_context(&ForegroundWindowContext {
+            process_id: 1000,
+            ..ForegroundWindowContext::default()
+        }));
+        assert!(has_foreground_context(&ForegroundWindowContext {
+            title: "1C".to_string(),
+            ..ForegroundWindowContext::default()
+        }));
     }
 
     #[test]
@@ -6183,7 +6200,7 @@ SERVICE_NAME: AWatchRusCollectorGuard
 
     #[test]
     fn file_operations_queue_token_is_filename_safe() {
-        let token = queue_name_token(r"DOMAIN\Администратор", 3);
+        let token = queue_name_token(r"DOMAIN\operator", 3);
         assert!(token.ends_with("-s3"));
         assert!(!token.contains('\\'));
         assert!(

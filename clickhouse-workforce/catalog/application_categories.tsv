@@ -1,0 +1,97 @@
+process_name	application_name	vendor	category	productivity_class	risk_level	is_system	source	comment	is_active
+1cv8.exe	1C:Enterprise	1C	1c	productive	low	0	catalog-ru-20260623	1C thick client	1
+1cv8c.exe	1C:Enterprise client	1C	1c	productive	low	0	catalog-ru-20260623	1C current RDP workload	1
+1cv8s.exe	1C:Enterprise starter	1C	1c	productive	low	0	catalog-ru-20260623	1C server or launcher process	1
+1cestart.exe	1C:Enterprise launcher	1C	1c	productive	low	0	catalog-ru-20260623	1C launcher	1
+1cv8u.exe	1C:Enterprise updater	1C	1c	productive	low	0	catalog-ru-20260623	1C updater	1
+sbis.exe	SBIS	SBIS	edo_reporting	productive	low	0	catalog-ru-20260623	EDO and reporting client	1
+sbisplugin.exe	SBIS Plugin	SBIS	edo_reporting	productive	low	0	catalog-ru-20260623	SBIS browser integration	1
+saby.exe	Saby	SBIS	edo_reporting	productive	low	0	catalog-ru-20260623	Saby business client	1
+sabyapps.exe	Saby Apps	SBIS	edo_reporting	productive	low	0	catalog-ru-20260623	Saby desktop apps	1
+diadoc.exe	Diadoc	Kontur	edo_reporting	productive	low	0	catalog-ru-20260623	Electronic document exchange client	1
+kontur.plugin.exe	Kontur Plugin	Kontur	edo_reporting	productive	low	0	catalog-ru-20260623	Kontur browser integration	1
+extern.exe	Kontur Extern	Kontur	edo_reporting	productive	low	0	catalog-ru-20260623	Electronic reporting client	1
+cryptoarm.exe	CryptoARM	Digital Technologies	security_crypto	productive	low	0	catalog-ru-20260623	Crypto signing tool	1
+cryptcp.exe	CryptoPro CryptCP	CryptoPro	security_crypto	productive	low	0	catalog-ru-20260623	CryptoPro command line signing tool	1
+cprocsp.exe	CryptoPro CSP	CryptoPro	security_crypto	productive	low	0	catalog-ru-20260623	CryptoPro CSP utility	1
+certmgr.exe	Certificate Manager	Microsoft	security_crypto	productive	low	0	catalog-ru-20260623	Certificate management	1
+cadesplugin.exe	CAdES Plugin	CryptoPro	security_crypto	productive	low	0	catalog-ru-20260623	Browser crypto plugin	1
+chrome.exe	Google Chrome	Google	browser	neutral	low	0	catalog-ru-20260623	Browser; domains classify productivity	1
+msedge.exe	Microsoft Edge	Microsoft	browser	neutral	low	0	catalog-ru-20260623	Browser; domains classify productivity	1
+browser.exe	Yandex Browser	Yandex	browser	neutral	low	0	catalog-ru-20260623	Browser; domains classify productivity	1
+firefox.exe	Mozilla Firefox	Mozilla	browser	neutral	low	0	catalog-ru-20260623	Browser; domains classify productivity	1
+opera.exe	Opera	Opera	browser	neutral	low	0	catalog-ru-20260623	Browser; domains classify productivity	1
+iexplore.exe	Internet Explorer	Microsoft	browser	neutral	medium	0	catalog-ru-20260623	Legacy browser; domains classify productivity	1
+outlook.exe	Microsoft Outlook	Microsoft	mail	productive	low	0	catalog-ru-20260623	Business mail client	1
+thunderbird.exe	Thunderbird	Mozilla	mail	productive	low	0	catalog-ru-20260623	Mail client	1
+winword.exe	Microsoft Word	Microsoft	office	productive	low	0	catalog-ru-20260623	Office document editor	1
+excel.exe	Microsoft Excel	Microsoft	office	productive	low	0	catalog-ru-20260623	Spreadsheet editor	1
+powerpnt.exe	Microsoft PowerPoint	Microsoft	office	productive	low	0	catalog-ru-20260623	Presentation editor	1
+onenote.exe	Microsoft OneNote	Microsoft	office	productive	low	0	catalog-ru-20260623	Notes and documents	1
+msaccess.exe	Microsoft Access	Microsoft	office	productive	low	0	catalog-ru-20260623	Database office tool	1
+soffice.bin	LibreOffice	The Document Foundation	office	productive	low	0	catalog-ru-20260623	Office suite	1
+soffice.exe	LibreOffice	The Document Foundation	office	productive	low	0	catalog-ru-20260623	Office suite launcher	1
+swriter.exe	LibreOffice Writer	The Document Foundation	office	productive	low	0	catalog-ru-20260623	Office document editor	1
+scalc.exe	LibreOffice Calc	The Document Foundation	office	productive	low	0	catalog-ru-20260623	Spreadsheet editor	1
+simpress.exe	LibreOffice Impress	The Document Foundation	office	productive	low	0	catalog-ru-20260623	Presentation editor	1
+notepad.exe	Notepad	Microsoft	office	neutral	low	0	catalog-ru-20260623	Text editor	1
+notepad++.exe	Notepad++	Notepad++	office	productive	low	0	catalog-ru-20260623	Text and config editor	1
+acrord32.exe	Adobe Acrobat Reader	Adobe	pdf	productive	low	0	catalog-ru-20260623	PDF reader	1
+acrobat.exe	Adobe Acrobat	Adobe	pdf	productive	low	0	catalog-ru-20260623	PDF editor	1
+foxitpdfreader.exe	Foxit PDF Reader	Foxit	pdf	productive	low	0	catalog-ru-20260623	PDF reader	1
+pdfxedit.exe	PDF-XChange Editor	Tracker Software	pdf	productive	low	0	catalog-ru-20260623	PDF editor	1
+7zfm.exe	7-Zip File Manager	7-Zip	archive	productive	low	0	catalog-ru-20260623	Archive manager	1
+7zg.exe	7-Zip GUI	7-Zip	archive	productive	low	0	catalog-ru-20260623	Archive tool	1
+7z.exe	7-Zip CLI	7-Zip	archive	productive	low	0	catalog-ru-20260623	Archive command line tool	1
+winrar.exe	WinRAR	RARLAB	archive	productive	low	0	catalog-ru-20260623	Archive manager	1
+explorer.exe	Windows Explorer	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows shell and file manager	1
+dwm.exe	Desktop Window Manager	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows desktop compositor	1
+taskhostw.exe	Task Host	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows task host	1
+applicationframehost.exe	Application Frame Host	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows app frame host	1
+startmenuexperiencehost.exe	Start Menu Experience Host	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows Start menu	1
+searchapp.exe	Windows Search	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows search UI	1
+systemsettings.exe	Windows Settings	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows settings	1
+rdpclip.exe	RDP Clipboard	Microsoft	system	neutral	low	1	catalog-ru-20260623	RDP clipboard process	1
+conhost.exe	Console Host	Microsoft	system	neutral	low	1	catalog-ru-20260623	Windows console host	1
+taskmgr.exe	Task Manager	Microsoft	admin_tool	productive	low	1	catalog-ru-20260623	Administrative diagnostics	1
+mmc.exe	Microsoft Management Console	Microsoft	admin_tool	productive	low	1	catalog-ru-20260623	Administrative console	1
+eventvwr.exe	Event Viewer	Microsoft	admin_tool	productive	low	1	catalog-ru-20260623	Administrative diagnostics	1
+services.exe	Windows Services	Microsoft	admin_tool	productive	low	1	catalog-ru-20260623	Service control manager	1
+compmgmtlauncher.exe	Computer Management	Microsoft	admin_tool	productive	low	1	catalog-ru-20260623	Administrative console launcher	1
+regedit.exe	Registry Editor	Microsoft	admin_tool	productive	medium	1	catalog-ru-20260623	Registry editor	1
+cmd.exe	Command Prompt	Microsoft	admin_tool	productive	medium	1	catalog-ru-20260623	Command shell	1
+powershell.exe	Windows PowerShell	Microsoft	admin_tool	productive	medium	1	catalog-ru-20260623	Administrative shell	1
+pwsh.exe	PowerShell	Microsoft	admin_tool	productive	medium	1	catalog-ru-20260623	Administrative shell	1
+windowsterminal.exe	Windows Terminal	Microsoft	admin_tool	productive	medium	0	catalog-ru-20260623	Administrative terminal	1
+wt.exe	Windows Terminal	Microsoft	admin_tool	productive	medium	0	catalog-ru-20260623	Administrative terminal launcher	1
+mstsc.exe	Remote Desktop Connection	Microsoft	remote_admin	productive	low	0	catalog-ru-20260623	RDP client	1
+putty.exe	PuTTY	PuTTY	remote_admin	productive	low	0	catalog-ru-20260623	SSH client	1
+winscp.exe	WinSCP	WinSCP	remote_admin	productive	low	0	catalog-ru-20260623	SFTP and SCP client	1
+filezilla.exe	FileZilla	FileZilla	remote_admin	productive	low	0	catalog-ru-20260623	File transfer client	1
+procexp.exe	Process Explorer	Microsoft	admin_tool	productive	medium	0	catalog-ru-20260623	Advanced diagnostics	1
+procexp64.exe	Process Explorer	Microsoft	admin_tool	productive	medium	0	catalog-ru-20260623	Advanced diagnostics	1
+procmon.exe	Process Monitor	Microsoft	admin_tool	productive	medium	0	catalog-ru-20260623	Advanced diagnostics	1
+procmon64.exe	Process Monitor	Microsoft	admin_tool	productive	medium	0	catalog-ru-20260623	Advanced diagnostics	1
+telegram.exe	Telegram	Telegram	communication	neutral	medium	0	catalog-ru-20260623	Messenger; business use depends on policy	1
+whatsapp.exe	WhatsApp	Meta	communication	neutral	medium	0	catalog-ru-20260623	Messenger; business use depends on policy	1
+teams.exe	Microsoft Teams	Microsoft	communication	productive	low	0	catalog-ru-20260623	Business communication	1
+ms-teams.exe	Microsoft Teams	Microsoft	communication	productive	low	0	catalog-ru-20260623	Business communication	1
+zoom.exe	Zoom	Zoom	communication	productive	low	0	catalog-ru-20260623	Business communication	1
+skype.exe	Skype	Microsoft	communication	neutral	medium	0	catalog-ru-20260623	Messenger	1
+discord.exe	Discord	Discord	social	non_productive	medium	0	catalog-ru-20260623	Social and gaming communication	1
+yandexdisk.exe	Yandex Disk	Yandex	cloud_docs	productive	medium	0	catalog-ru-20260623	Cloud storage; data handling policy applies	1
+yandexdisk2.exe	Yandex Disk	Yandex	cloud_docs	productive	medium	0	catalog-ru-20260623	Cloud storage; data handling policy applies	1
+onedrive.exe	OneDrive	Microsoft	cloud_docs	productive	medium	0	catalog-ru-20260623	Cloud storage; data handling policy applies	1
+dropbox.exe	Dropbox	Dropbox	cloud_docs	neutral	medium	0	catalog-ru-20260623	Cloud storage; data handling policy applies	1
+code.exe	Visual Studio Code	Microsoft	developer	productive	low	0	catalog-ru-20260623	Code editor and admin scripting	1
+devenv.exe	Visual Studio	Microsoft	developer	productive	low	0	catalog-ru-20260623	Development IDE	1
+git.exe	Git	Git	developer	productive	low	0	catalog-ru-20260623	Version control CLI	1
+docker desktop.exe	Docker Desktop	Docker	developer	productive	low	0	catalog-ru-20260623	Container development tool	1
+vlc.exe	VLC	VideoLAN	media	non_productive	medium	0	catalog-ru-20260623	Media player	1
+wmplayer.exe	Windows Media Player	Microsoft	media	non_productive	medium	0	catalog-ru-20260623	Media player	1
+spotify.exe	Spotify	Spotify	media	non_productive	medium	0	catalog-ru-20260623	Music streaming	1
+steam.exe	Steam	Valve	gaming	non_productive	high	0	catalog-ru-20260623	Gaming platform	1
+gamebar.exe	Xbox Game Bar	Microsoft	gaming	non_productive	high	0	catalog-ru-20260623	Gaming overlay	1
+securityhealthsystray.exe	Windows Security	Microsoft	security_crypto	neutral	low	1	catalog-ru-20260623	Windows security UI	1
+avgui.exe	AVG Antivirus	AVG	security_crypto	neutral	low	0	catalog-ru-20260623	Endpoint security UI	1
+avpui.exe	Kaspersky	Kaspersky	security_crypto	neutral	low	0	catalog-ru-20260623	Endpoint security UI	1

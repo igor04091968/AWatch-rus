@@ -13,6 +13,7 @@ services:
     volumes:
       - clickhouse_1c_data:/var/lib/clickhouse
       - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse/users.d/99-aw-workforce-dict.xml:/etc/clickhouse-server/users.d/99-aw-workforce-dict.xml:ro
 
 volumes:
   clickhouse_1c_data:

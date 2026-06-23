@@ -206,6 +206,9 @@ collectors.
 
 - Ежедневная/еженедельная проверка эксплуатационного контура:
   [матрица проверки контура](docs/CONTOUR_CHECK_MATRIX_RU.md).
+- Проверка после инженерных изменений: cargo/security gates, browser smoke и
+  production smoke:
+  [эксплуатационный validation runbook](docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md).
 
 - Enterprise deployment documentation:
   [deployment guide](docs/ENTERPRISE_DEPLOYMENT_GUIDE_RU.md),
@@ -360,6 +363,8 @@ collectors.
 
 - [Grafana and Prometheus Monitoring Stack](docs/wiki/Grafana-and-Prometheus-Monitoring-Stack.md)
 - [Grafana dashboards guide](docs/GRAFANA_DASHBOARDS_RU.md)
+- [План внедрения ClickHouse Dictionaries для DetMir](docs/clickhouse/DICTIONARIES_IMPLEMENTATION_PLAN_RU.md)
+- [ClickHouse Workforce scaffold](clickhouse-workforce/README.md)
 - [Prometheus Exporter](docs/wiki/Prometheus-Exporter.md)
 
 Для сборщиков и интерфейса:

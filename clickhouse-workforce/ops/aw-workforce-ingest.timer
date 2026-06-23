@@ -1,0 +1,13 @@
+[Unit]
+Description=Run AW-rus workforce ClickHouse ingest every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+RandomizedDelaySec=30s
+Persistent=true
+Unit=aw-workforce-ingest.service
+
+[Install]
+WantedBy=timers.target

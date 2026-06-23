@@ -45,6 +45,19 @@ evidence. Russian build-runner still required for registry release evidence.
 Public security checks are advisory/public validation. Registry release
 security evidence must be generated in the Russian build contour.
 
+Current local engineering gate for product changes is documented in
+`docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md` and includes:
+
+- full Rust workspace tests with `--workspace --all-targets --locked`;
+- doc tests;
+- `clippy` with `-D warnings`;
+- RustSec check through `cargo audit --deny warnings`;
+- dependency policy through `cargo deny`;
+- repository `quality-gate`;
+- public secret-pattern check;
+- browser smoke through ActivityWatch UI, worktime reports, 1C manager pages,
+  gateway and Grafana dashboards.
+
 ## Conservative positioning
 
 The quality layer does not claim certification, does not position AWatch-rus as

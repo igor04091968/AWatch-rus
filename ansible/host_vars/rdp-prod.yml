@@ -1,0 +1,5 @@
+---
+# SHARKON2025 uses aw-windows-telemetry browser-domains-collector as the
+# per-user currentwindow source. The legacy aw-watcher-window process emits
+# no-user duplicate rows in this RDP setup, so keep it disabled for this host.
+aw_windows_window_enabled: false

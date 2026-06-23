@@ -1,0 +1,13 @@
+<clickhouse>
+  <users>
+    <aw_workforce_dict>
+      <no_password/>
+      <networks>
+        <ip>127.0.0.1</ip>
+        <ip>::1</ip>
+      </networks>
+      <profile>readonly</profile>
+      <quota>default</quota>
+    </aw_workforce_dict>
+  </users>
+</clickhouse>

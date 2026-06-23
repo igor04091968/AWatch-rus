@@ -1,0 +1,8 @@
+host_name	user_login	user_domain	employee_id	employee_name	department	branch	position	source	is_active
+SHARKON2025	user1	sharkon2025	sharkon2025\\user1	user1	tsj	tsj	RDP user	catalog-p5	1
+SHARKON2025	user4	sharkon2025	sharkon2025\\user4	user4	tsj	tsj	RDP user	catalog-p5	1
+SHARKON2025	user5	sharkon2025	sharkon2025\\user5	user5	tsj	tsj	RDP user	catalog-p5	1
+SHARKON2025	Администратор	sharkon2025	sharkon2025\\Администратор	Администратор	it_admin	tsj	Windows administrator	catalog-p5	1
+SHARKON2025	администратор	sharkon2025	sharkon2025\\Администратор	Администратор	it_admin	tsj	Windows administrator legacy lowercase alias	catalog-p5	1
+ws-001	ivanov	corp	E001	Иванов И.И.	Бухгалтерия	Филиал 1	Бухгалтер	demo	1
+ws-002	petrova	corp	E002	Петрова П.П.	Операционный отдел	Филиал 1	Оператор	demo	1

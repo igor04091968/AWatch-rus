@@ -32,6 +32,7 @@ members = [
     "crates/detmir-readiness",
     "crates/detmir-portal",
     "crates/aw-slo-monitor",
+    "crates/aw-workforce-ingest",
     "crates/aw-rus-healthd",
     "crates/detmir-check",
     "crates/detmir-core",

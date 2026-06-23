@@ -1,0 +1,17 @@
+[Unit]
+Description=AW-rus workforce ClickHouse ingest
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/activitywatch/clickhouse-workforce
+EnvironmentFile=-/etc/activitywatch/aw-workforce-ingest.env
+ExecStart=/usr/local/bin/aw-workforce-ingest
+TimeoutStartSec=20min
+User=root
+Group=root
+Nice=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aw-workforce-ingest

@@ -286,6 +286,7 @@ fn is_allowed_python_runtime_path(rel: &str) -> bool {
         || rel == "proxmox/tsj_guardian_bot.py"
         || rel == "proxmox/test_tsj_guardian_bot.py"
         || rel == "scripts/package_rust_release_binaries.py"
+        || rel == "scripts/public_secret_pattern_check.py"
 }
 
 fn is_detmir_retired_runtime_path(rel: &str) -> bool {
@@ -347,6 +348,9 @@ mod tests {
         ));
         assert!(is_allowed_python_runtime_path(
             "scripts/package_rust_release_binaries.py"
+        ));
+        assert!(is_allowed_python_runtime_path(
+            "scripts/public_secret_pattern_check.py"
         ));
     }
 

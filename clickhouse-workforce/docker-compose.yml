@@ -1,0 +1,17 @@
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    container_name: aw-rus-workforce-clickhouse
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-aw_workforce}
+    ports:
+      - "${CLICKHOUSE_HTTP_BIND:-127.0.0.1}:${CLICKHOUSE_PORT:-8124}:8123"
+      - "${CLICKHOUSE_NATIVE_BIND:-127.0.0.1}:${CLICKHOUSE_NATIVE_PORT:-9001}:9000"
+    volumes:
+      - clickhouse_workforce_data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse/users.d/99-aw-workforce-local.xml:/etc/clickhouse-server/users.d/99-aw-workforce-local.xml:ro
+
+volumes:
+  clickhouse_workforce_data:

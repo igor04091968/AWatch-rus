@@ -4,8 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-DEFAULT_ENV_FILE="$SCRIPT_DIR/detmir-support.env"
-ENV_FILE="${DETMIR_SUPPORT_ENV_FILE:-$DEFAULT_ENV_FILE}"
+LOCAL_ENV_FILE="$SCRIPT_DIR/detmir-support.env"
+USER_ENV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/awatch-rus/detmir-support.env"
+if [[ -n "${DETMIR_SUPPORT_ENV_FILE:-}" ]]; then
+  ENV_FILE="$DETMIR_SUPPORT_ENV_FILE"
+elif [[ -f "$LOCAL_ENV_FILE" ]]; then
+  ENV_FILE="$LOCAL_ENV_FILE"
+else
+  ENV_FILE="$USER_ENV_FILE"
+fi
 
 if [[ -f "$ENV_FILE" ]]; then
   set -a
@@ -71,7 +78,7 @@ fi
 
 DETMIR_SUPPORT_PVE_HOST="${DETMIR_SUPPORT_PVE_HOST:-10.10.10.2}"
 DETMIR_SUPPORT_AW_HOST="${DETMIR_SUPPORT_AW_HOST:-10.10.10.13}"
-DETMIR_SUPPORT_WEB_HOST="${DETMIR_SUPPORT_WEB_HOST:-10.10.10.11}"
+DETMIR_SUPPORT_WEB_HOST="${DETMIR_SUPPORT_WEB_HOST:-$DETMIR_SUPPORT_PVE_HOST}"
 DETMIR_SUPPORT_WINDOWS_HOST="${DETMIR_SUPPORT_WINDOWS_HOST:-192.168.100.18}"
 DETMIR_SUPPORT_PFSENSE_HOST="${DETMIR_SUPPORT_PFSENSE_HOST:-}"
 DETMIR_SUPPORT_PFSENSE_URL="${DETMIR_SUPPORT_PFSENSE_URL:-}"
@@ -80,17 +87,30 @@ DETMIR_SUPPORT_OPENVPN_WEB_URL="${DETMIR_SUPPORT_OPENVPN_WEB_URL:-}"
 DETMIR_SUPPORT_SURICATA_HOST="${DETMIR_SUPPORT_SURICATA_HOST:-$DETMIR_SUPPORT_PVE_HOST}"
 DETMIR_SUPPORT_WEB_TLS_HOST="${DETMIR_SUPPORT_WEB_TLS_HOST:-$DETMIR_SUPPORT_WEB_HOST}"
 
-DETMIR_SUPPORT_SSH_USER="${DETMIR_SUPPORT_SSH_USER:-root}"
+DETMIR_SUPPORT_SSH_USER="${DETMIR_SUPPORT_SSH_USER:-igor}"
+DETMIR_SUPPORT_PVE_SSH_USER="${DETMIR_SUPPORT_PVE_SSH_USER:-$DETMIR_SUPPORT_SSH_USER}"
+DETMIR_SUPPORT_AW_SSH_USER="${DETMIR_SUPPORT_AW_SSH_USER:-$DETMIR_SUPPORT_SSH_USER}"
+DETMIR_SUPPORT_WEB_SSH_USER="${DETMIR_SUPPORT_WEB_SSH_USER:-$DETMIR_SUPPORT_SSH_USER}"
+DETMIR_SUPPORT_SURICATA_SSH_USER="${DETMIR_SUPPORT_SURICATA_SSH_USER:-$DETMIR_SUPPORT_PVE_SSH_USER}"
+DETMIR_SUPPORT_SSH_PASSWORD="${DETMIR_SUPPORT_SSH_PASSWORD:-}"
+DETMIR_SUPPORT_PVE_SSH_PASSWORD="${DETMIR_SUPPORT_PVE_SSH_PASSWORD:-$DETMIR_SUPPORT_SSH_PASSWORD}"
+DETMIR_SUPPORT_AW_SSH_PASSWORD="${DETMIR_SUPPORT_AW_SSH_PASSWORD:-$DETMIR_SUPPORT_SSH_PASSWORD}"
+DETMIR_SUPPORT_WEB_SSH_PASSWORD="${DETMIR_SUPPORT_WEB_SSH_PASSWORD:-$DETMIR_SUPPORT_SSH_PASSWORD}"
+DETMIR_SUPPORT_SURICATA_SSH_PASSWORD="${DETMIR_SUPPORT_SURICATA_SSH_PASSWORD:-$DETMIR_SUPPORT_PVE_SSH_PASSWORD}"
 DETMIR_SUPPORT_SSH_IDENTITY="${DETMIR_SUPPORT_SSH_IDENTITY:-}"
+DETMIR_SUPPORT_PVE_SSH_IDENTITY="${DETMIR_SUPPORT_PVE_SSH_IDENTITY:-$DETMIR_SUPPORT_SSH_IDENTITY}"
+DETMIR_SUPPORT_AW_SSH_IDENTITY="${DETMIR_SUPPORT_AW_SSH_IDENTITY:-$DETMIR_SUPPORT_SSH_IDENTITY}"
+DETMIR_SUPPORT_WEB_SSH_IDENTITY="${DETMIR_SUPPORT_WEB_SSH_IDENTITY:-$DETMIR_SUPPORT_SSH_IDENTITY}"
+DETMIR_SUPPORT_SURICATA_SSH_IDENTITY="${DETMIR_SUPPORT_SURICATA_SSH_IDENTITY:-$DETMIR_SUPPORT_PVE_SSH_IDENTITY}"
 DETMIR_SUPPORT_SKIP_REMOTE="${DETMIR_SUPPORT_SKIP_REMOTE:-0}"
 DETMIR_SUPPORT_CONNECT_TIMEOUT="${DETMIR_SUPPORT_CONNECT_TIMEOUT:-8}"
 
 DETMIR_SUPPORT_PVE_SERVICES="${DETMIR_SUPPORT_PVE_SERVICES:-pve-cluster pvedaemon pvestatd pveproxy pvedaemon.service pvestatd.service}"
 DETMIR_SUPPORT_AW_SERVICES="${DETMIR_SUPPORT_AW_SERVICES:-activitywatch-server aw-server-rust}"
-DETMIR_SUPPORT_WEB_SERVICES="${DETMIR_SUPPORT_WEB_SERVICES:-nginx apache2}"
+DETMIR_SUPPORT_WEB_SERVICES="${DETMIR_SUPPORT_WEB_SERVICES:-nginx}"
 DETMIR_SUPPORT_SURICATA_SERVICES="${DETMIR_SUPPORT_SURICATA_SERVICES:-suricata}"
 DETMIR_SUPPORT_PVE_VM_IDS="${DETMIR_SUPPORT_PVE_VM_IDS:-}"
-DETMIR_SUPPORT_PVE_BACKUP_DIRS="${DETMIR_SUPPORT_PVE_BACKUP_DIRS:-/var/lib/vz/dump}"
+DETMIR_SUPPORT_PVE_BACKUP_DIRS="${DETMIR_SUPPORT_PVE_BACKUP_DIRS:-/var/lib/pve/local-btrfs/dump}"
 DETMIR_SUPPORT_BACKUP_MAX_AGE_DAYS="${DETMIR_SUPPORT_BACKUP_MAX_AGE_DAYS:-14}"
 
 DETMIR_SUPPORT_DISK_WARN_PERCENT="${DETMIR_SUPPORT_DISK_WARN_PERCENT:-85}"
@@ -115,6 +135,7 @@ WARN_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
 REMOTE_OUTPUT=""
+REMOTE_ERROR=""
 
 printf '%s\n' "timestamp;scope;section;status;check;result;action" > "$CSV_FILE"
 
@@ -170,6 +191,68 @@ require_command() {
   fi
 }
 
+remote_failure_summary() {
+  local fallback="${1:-Remote command failed}"
+  local detail=""
+  if [[ -n "$REMOTE_ERROR" ]]; then
+    detail="$REMOTE_ERROR"
+  elif [[ -n "$REMOTE_OUTPUT" ]]; then
+    detail="$REMOTE_OUTPUT"
+  else
+    detail="$fallback"
+  fi
+  detail="$(printf '%s\n' "$detail" | grep -Ev '^(Warning: Permanently added|$)' | head -n 1 || true)"
+  if [[ -z "$detail" ]]; then
+    detail="$fallback"
+  fi
+  sanitize "$detail"
+}
+
+remote_user_for_host() {
+  local host="$1"
+  if [[ "$host" == "$DETMIR_SUPPORT_PVE_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_PVE_SSH_USER"
+  elif [[ "$host" == "$DETMIR_SUPPORT_AW_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_AW_SSH_USER"
+  elif [[ "$host" == "$DETMIR_SUPPORT_WEB_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_WEB_SSH_USER"
+  elif [[ "$host" == "$DETMIR_SUPPORT_SURICATA_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_SURICATA_SSH_USER"
+  else
+    printf '%s' "$DETMIR_SUPPORT_SSH_USER"
+  fi
+}
+
+remote_password_for_host() {
+  local host="$1"
+  if [[ "$host" == "$DETMIR_SUPPORT_PVE_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_PVE_SSH_PASSWORD"
+  elif [[ "$host" == "$DETMIR_SUPPORT_AW_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_AW_SSH_PASSWORD"
+  elif [[ "$host" == "$DETMIR_SUPPORT_WEB_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_WEB_SSH_PASSWORD"
+  elif [[ "$host" == "$DETMIR_SUPPORT_SURICATA_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_SURICATA_SSH_PASSWORD"
+  else
+    printf '%s' "$DETMIR_SUPPORT_SSH_PASSWORD"
+  fi
+}
+
+remote_identity_for_host() {
+  local host="$1"
+  if [[ "$host" == "$DETMIR_SUPPORT_PVE_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_PVE_SSH_IDENTITY"
+  elif [[ "$host" == "$DETMIR_SUPPORT_AW_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_AW_SSH_IDENTITY"
+  elif [[ "$host" == "$DETMIR_SUPPORT_WEB_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_WEB_SSH_IDENTITY"
+  elif [[ "$host" == "$DETMIR_SUPPORT_SURICATA_HOST" ]]; then
+    printf '%s' "$DETMIR_SUPPORT_SURICATA_SSH_IDENTITY"
+  else
+    printf '%s' "$DETMIR_SUPPORT_SSH_IDENTITY"
+  fi
+}
+
 run_remote() {
   local host="$1"
   shift
@@ -179,20 +262,51 @@ run_remote() {
     return 125
   fi
 
+  local ssh_user ssh_password ssh_identity
+  ssh_user="$(remote_user_for_host "$host")"
+  ssh_password="$(remote_password_for_host "$host")"
+  ssh_identity="$(remote_identity_for_host "$host")"
+
   local -a ssh_opts=(
-    -o BatchMode=yes
     -o ConnectTimeout="$DETMIR_SUPPORT_CONNECT_TIMEOUT"
     -o StrictHostKeyChecking=no
     -o UserKnownHostsFile=/dev/null
   )
-  if [[ -n "$DETMIR_SUPPORT_SSH_IDENTITY" ]]; then
-    ssh_opts=("-i" "$DETMIR_SUPPORT_SSH_IDENTITY" "${ssh_opts[@]}")
+  if [[ -n "$ssh_password" ]]; then
+    ssh_opts=(-o BatchMode=no "${ssh_opts[@]}")
+  else
+    ssh_opts=(-o BatchMode=yes "${ssh_opts[@]}")
+  fi
+  if [[ -n "$ssh_identity" ]]; then
+    ssh_opts=("-i" "$ssh_identity" "${ssh_opts[@]}")
   fi
 
-  if REMOTE_OUTPUT="$(printf '%s\n' "$remote_cmd" | ssh "${ssh_opts[@]}" "${DETMIR_SUPPORT_SSH_USER}@${host}" bash -s 2>&1)"; then
+  local stderr_file rc
+  stderr_file="$(mktemp)"
+  REMOTE_OUTPUT=""
+  REMOTE_ERROR=""
+  local -a ssh_cmd=(ssh "${ssh_opts[@]}" "${ssh_user}@${host}" bash -s)
+  if [[ -n "$ssh_password" ]]; then
+    if ! command -v sshpass >/dev/null 2>&1; then
+      REMOTE_ERROR="sshpass is required for password authentication"
+      rm -f "$stderr_file"
+      return 127
+    fi
+    ssh_cmd=(sshpass -e "${ssh_cmd[@]}")
+  fi
+
+  if REMOTE_OUTPUT="$(printf '%s\n' "$remote_cmd" | SSHPASS="$ssh_password" "${ssh_cmd[@]}" 2>"$stderr_file")"; then
+    REMOTE_ERROR="$(<"$stderr_file")"
+    rm -f "$stderr_file"
+    if echo "$REMOTE_ERROR" | grep -Eiq "Permission denied|Connection refused|No route to host|Connection timed out|Could not resolve hostname"; then
+      return 255
+    fi
     return 0
   fi
-  return "$?"
+  rc=$?
+  REMOTE_ERROR="$(<"$stderr_file")"
+  rm -f "$stderr_file"
+  return "$rc"
 }
 
 check_tcp() {
@@ -271,14 +385,26 @@ check_remote_service_status() {
 
   local service
   for service in $services; do
-    if run_remote "$host" "systemctl is-active --quiet \"$service\""; then
-      record "$section" OK "$service" "$host active" ""
+    if run_remote "$host" "systemctl is-active \"$service\""; then
+      local state
+      state="$(echo "$REMOTE_OUTPUT" | tr -d '\r' | awk 'NF {print $1; exit}')"
+      if [[ "$state" == "active" ]]; then
+        record "$section" OK "$service" "$host active" ""
+      elif [[ -n "$state" ]]; then
+        record "$section" WARN "$service" "$host state=$state" "Check unit status"
+      else
+        local detail
+        detail="$(remote_failure_summary "Empty systemctl output")"
+        record "$section" SKIP "$service" "$host empty systemctl output; ${detail}" "Check remote SSH/auth and unit name"
+      fi
     else
       local rc=$?
       if (( rc == 125 )); then
         record "$section" SKIP "$service" "SSH skipped" "Provide SSH access or run locally"
       else
-        record "$section" WARN "$service" "$host inactive or unit missing" "Check unit status"
+        local detail
+        detail="$(remote_failure_summary "systemctl failed")"
+        record "$section" WARN "$service" "$host systemctl check failed; ${detail}" "Check remote SSH/auth and unit status"
       fi
     fi
   done
@@ -290,6 +416,8 @@ check_node_load() {
     local load_line="$REMOTE_OUTPUT"
     if [[ -z "$load_line" ]]; then
       record "$section" SKIP "Node load" "Empty loadavg output" "Check /proc on remote"
+    elif ! [[ "$load_line" =~ ^[0-9]+([.][0-9]+)?[[:space:]][0-9]+([.][0-9]+)?[[:space:]][0-9]+([.][0-9]+)?$ ]]; then
+      record "$section" SKIP "Node load" "Unable to parse loadavg output ($(sanitize "$load_line"))" "Check remote shell output"
     else
       local avg1 avg5 avg15
       avg1="${load_line%% *}"
@@ -302,7 +430,9 @@ check_node_load() {
     if (( rc == 125 )); then
       record "$section" SKIP "Node load" "SSH skipped" "Provide SSH access or run locally"
     else
-      record "$section" WARN "Node load" "Cannot read /proc/loadavg" "Check remote shell access"
+      local detail
+      detail="$(remote_failure_summary "Cannot read /proc/loadavg")"
+      record "$section" WARN "Node load" "$host load check failed; ${detail}" "Check remote SSH/auth and /proc access"
     fi
   fi
 }
@@ -315,7 +445,9 @@ check_disk() {
     raw_total="$(echo "$REMOTE_OUTPUT" | tr '\\t' ' ')"
     used="${raw_total%%\%*}"
     if ! [[ "$used" =~ ^[0-9]+$ ]]; then
-      record "$section" SKIP "disk $mount" "Unable to parse df output ($raw_total)" "Check mount and fs output"
+      local detail
+      detail="$(remote_failure_summary "Empty or invalid df output")"
+      record "$section" SKIP "disk $mount" "Unable to parse df output on ${host}:${mount}; ${detail}" "Check remote SSH/auth, mount and fs output"
       return
     fi
     if (( used >= DETMIR_SUPPORT_DISK_CRIT_PERCENT )); then
@@ -330,7 +462,9 @@ check_disk() {
     if (( rc == 125 )); then
       record "$section" SKIP "disk $mount" "SSH skipped" "Provide SSH access"
     else
-      record "$section" FAIL "disk $mount" "df failed" "Check permissions and mount"
+      local detail
+      detail="$(remote_failure_summary "df failed")"
+      record "$section" FAIL "disk $mount" "$host df failed; ${detail}" "Check remote SSH/auth, permissions and mount"
     fi
   fi
 }
@@ -356,6 +490,10 @@ EOF
       record "$section" WARN "backup" "No backup files found in ${path}" "Check backup schedule"
       return
     fi
+    if ! [[ "$REMOTE_OUTPUT" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+      record "$section" SKIP "backup" "Unable to parse backup timestamp ($(sanitize "$REMOTE_OUTPUT"))" "Check remote SSH output and backup path"
+      return
+    fi
     local epoch_now age_days
     epoch_now="$(date -u +%s)"
     age_days=$(( (epoch_now - ${REMOTE_OUTPUT%.*}) / 86400 ))
@@ -369,7 +507,9 @@ EOF
     if (( rc == 125 )); then
       record "$section" SKIP "backup" "SSH skipped" "Provide SSH access"
     else
-      record "$section" FAIL "backup" "Check failed" "Inspect permissions/path"
+      local detail
+      detail="$(remote_failure_summary "Backup check failed")"
+      record "$section" FAIL "backup" "$host backup check failed; ${detail}" "Inspect remote SSH/auth, permissions and path"
     fi
   fi
 }
@@ -408,7 +548,7 @@ check_vms() {
 
 check_task_log() {
   local section="$1" host="$2"
-  if run_remote "$host" "journalctl -p 3 --no-pager -n 50 2>/dev/null | grep -Eci '(error|fail|critical|timeout)'"; then
+  if run_remote "$host" "journalctl -p 3 --no-pager -n 50 2>/dev/null | grep -Eci '(error|fail|critical|timeout)' || true"; then
     local errors="${REMOTE_OUTPUT//[$'\n']/ }"
     if ! [[ "$errors" =~ ^[0-9]+$ ]]; then
       record "$section" SKIP "task log" "Cannot parse journal count" "Check journald"
@@ -487,14 +627,29 @@ check_suricata_service() {
   local section="$1" host="$2"
   check_remote_service_status "$section" "$host" "$DETMIR_SUPPORT_SURICATA_SERVICES"
 
-  if run_remote "$host" "command -v suricata >/dev/null 2>&1 && pgrep -af suricata >/dev/null"; then
-    record "$section" OK "Suricata process" "running"
+  if run_remote "$host" "systemctl is-active suricata 2>/dev/null || true"; then
+    local service_state
+    service_state="$(echo "$REMOTE_OUTPUT" | tr -d '\r' | awk 'NF {print $1; exit}')"
+    if [[ -n "$service_state" && "$service_state" != "active" ]]; then
+      record "$section" SKIP "Suricata process" "Skipped because suricata.service state=${service_state}" "Start Suricata only if IDS/IPS is required on this host"
+      return
+    fi
+  fi
+
+  if run_remote "$host" "command -v suricata >/dev/null 2>&1 && pgrep -af suricata >/dev/null && echo running"; then
+    if [[ "$(echo "$REMOTE_OUTPUT" | awk 'NF {print $1; exit}')" == "running" ]]; then
+      record "$section" OK "Suricata process" "running"
+    else
+      record "$section" SKIP "Suricata process" "No running process reported" "Service is inactive or process is absent"
+    fi
   else
     local rc=$?
     if (( rc == 125 )); then
       record "$section" SKIP "Suricata process" "SSH skipped" "Provide SSH access"
     else
-      record "$section" WARN "Suricata process" "No running process or suricata missing" "Verify IDS/IPS host"
+      local detail
+      detail="$(remote_failure_summary "No running process or suricata missing")"
+      record "$section" WARN "Suricata process" "$host process check failed; ${detail}" "Verify IDS/IPS host and remote SSH/auth"
     fi
   fi
 }
@@ -507,8 +662,9 @@ run_daily() {
   check_tcp "Доступность" "$DETMIR_SUPPORT_WEB_HOST" 443 "Web HTTPS"
   [[ -n "$DETMIR_SUPPORT_WINDOWS_HOST" ]] && check_tcp "Удаленный доступ" "$DETMIR_SUPPORT_WINDOWS_HOST" 3389 "Windows RDP"
 
-  check_http "Ключевые сервисы" "https://$DETMIR_SUPPORT_AW_HOST:5600" '^2[0-9][0-9]$' "AW API health"
-  check_http "Web" "https://$DETMIR_SUPPORT_WEB_TLS_HOST/" '^2[0-9][0-9]$' "Public HTTPS"
+  check_http "Ключевые сервисы" "http://$DETMIR_SUPPORT_AW_HOST:5600/api/0/settings/" '^2[0-9][0-9]$' "AW API health"
+  check_http "Web" "https://$DETMIR_SUPPORT_WEB_TLS_HOST/healthz" '^200$' "Gateway healthz"
+  check_http "Web" "https://$DETMIR_SUPPORT_WEB_TLS_HOST/" '^401$' "Gateway protected root"
   check_tls "TLS" "$DETMIR_SUPPORT_WEB_TLS_HOST" 443 "Web certificate"
 
   check_pfsense "Сеть"
