@@ -1,5 +1,5 @@
 {
-  "status": "planned_issue_templates_ready",
+  "status": "public_issue_urls_recorded",
   "github_issue_tracker": "manual_or_gh_cli_creation_required",
   "github_role": "public_mirror_validation_only",
   "registry_release_evidence": "requires_russian_build_runner",
@@ -9,96 +9,120 @@
       "title": "[registry] Perform Gitea backup restore test",
       "labels": ["registry", "ops", "evidence"],
       "source": "docs/public-issues/001-registry-gitea-restore-test.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/38",
+      "created_at": "2026-06-23T19:42:47Z",
+      "created_by": "maintainer"
     },
     {
       "id": "002",
       "title": "[registry] Prepare temporary Russian build-runner awatch-build-01",
       "labels": ["registry", "build-runner", "ops"],
       "source": "docs/public-issues/002-registry-russian-build-runner.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/39",
+      "created_at": "2026-06-23T19:42:49Z",
+      "created_by": "maintainer"
     },
     {
       "id": "003",
       "title": "[release] Produce first release evidence package",
       "labels": ["release", "registry", "evidence"],
       "source": "docs/public-issues/003-release-evidence-package.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/40",
+      "created_at": "2026-06-23T19:42:51Z",
+      "created_by": "maintainer"
     },
     {
       "id": "004",
       "title": "[legal] Prepare rightsholder evidence package",
       "labels": ["legal", "registry", "docs"],
       "source": "docs/public-issues/004-legal-rightsholder-package.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/41",
+      "created_at": "2026-06-23T19:42:53Z",
+      "created_by": "maintainer"
     },
     {
       "id": "005",
       "title": "[qa] Define coverage threshold policy",
       "labels": ["qa", "coverage", "policy"],
       "source": "docs/public-issues/005-coverage-threshold-policy.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/42",
+      "created_at": "2026-06-23T19:42:55Z",
+      "created_by": "maintainer"
     },
     {
       "id": "006",
       "title": "[security] Prepare external security/code review checklist",
       "labels": ["security", "review", "governance"],
       "source": "docs/public-issues/006-external-security-code-review-checklist.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/43",
+      "created_at": "2026-06-23T19:42:58Z",
+      "created_by": "maintainer"
     },
     {
       "id": "007",
       "title": "[compat] Test Russian OS compatibility matrix",
       "labels": ["compat", "qa", "registry"],
       "source": "docs/public-issues/007-russian-os-compatibility-matrix.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/44",
+      "created_at": "2026-06-23T19:43:00Z",
+      "created_by": "maintainer"
     },
     {
       "id": "008",
       "title": "[ops] Validate release artifacts storage in RF",
       "labels": ["ops", "release", "registry"],
       "source": "docs/public-issues/008-release-artifacts-storage-rf.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/45",
+      "created_at": "2026-06-23T19:43:02Z",
+      "created_by": "maintainer"
     },
     {
       "id": "009",
       "title": "[docs] Refresh public demo pack and screenshots",
       "labels": ["docs", "demo", "public"],
       "source": "docs/public-issues/009-public-demo-pack-refresh.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/46",
+      "created_at": "2026-06-23T19:43:04Z",
+      "created_by": "maintainer"
     },
     {
       "id": "010",
       "title": "[pilot] Prepare Pilot Acceptance Checklist v2",
       "labels": ["pilot", "qa", "docs"],
       "source": "docs/public-issues/010-pilot-acceptance-checklist-v2.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/47",
+      "created_at": "2026-06-23T19:43:06Z",
+      "created_by": "maintainer"
     },
     {
       "id": "011",
       "title": "[governance] Enable PR-based review workflow",
       "labels": ["governance", "review", "process"],
       "source": "docs/public-issues/011-governance-pr-based-review-workflow.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/48",
+      "created_at": "2026-06-23T19:43:08Z",
+      "created_by": "maintainer"
     },
     {
       "id": "012",
       "title": "[governance] Add branch protection policy",
       "labels": ["governance", "github", "policy"],
       "source": "docs/public-issues/012-governance-branch-protection-policy.md",
-      "status": "ready_to_create",
-      "github_issue_url": null
+      "status": "created",
+      "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/49",
+      "created_at": "2026-06-23T19:43:10Z",
+      "created_by": "maintainer"
     }
   ]
 }

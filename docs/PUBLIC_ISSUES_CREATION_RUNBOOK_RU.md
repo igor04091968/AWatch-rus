@@ -2,9 +2,9 @@
 
 Дата: 2026-06-23
 
-Статус: issue templates готовы к созданию. Реальные GitHub issues считаются
-pending, пока ссылки не записаны в
-`docs/public-issues/public-issues-manifest.json`.
+Статус: issue templates готовы; 12 публичных GitHub issues созданы, а ссылки
+записаны в `docs/public-issues/public-issues-manifest.json`. Этот runbook
+остается процедурой для повторного, добавочного или ручного создания issues.
 
 GitHub issues используются для public roadmap visibility. Они не являются
 registry release evidence. Primary registry contour остается Russian Gitea +
@@ -97,8 +97,19 @@ CONFIRM_CREATE_GITHUB_ISSUES=YES bash scripts/create_public_issues_from_manifest
 "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/<number>"
 ```
 
-Status можно оставлять `ready_to_create` до отдельного решения о переводе в
-`created`; минимальное evidence требование - наличие URL.
+Для созданного issue manifest должен фиксировать:
+
+```json
+{
+  "status": "created",
+  "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/<number>",
+  "created_at": "YYYY-MM-DDTHH:MM:SSZ",
+  "created_by": "maintainer"
+}
+```
+
+Если issue не создан, `status` остается `ready_to_create`, а
+`github_issue_url` остается `null`.
 
 ## Запрещенные данные
 

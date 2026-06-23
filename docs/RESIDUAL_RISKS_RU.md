@@ -1,6 +1,6 @@
 # AWatch-rus: остаточные риски после public validation и российского Git-контура
 
-Дата: 2026-06-22
+Дата: 2026-06-23
 
 Статус: governance / registry-readiness residual risk register.
 
@@ -68,23 +68,25 @@ visibility, release evidence contour and legal package. Они требуют д
 
 ## 3. Низкая публичная активность issue tracker
 
-- Текущий статус: риск открыт частично; issue templates, public roadmap and
-  issue creation package exist, but real GitHub issues are still pending until
-  URLs are recorded.
+- Текущий статус: mitigation added; public roadmap/governance issues are
+  created and linked in `docs/public-issues/public-issues-manifest.json`.
 - Влияние: низкая внешняя visibility development process; сложнее показать
   плановое управление backlog and governance.
 - Почему не блокирует pilot/readiness stage: templates, roadmap and status docs
-  already define expected process; missing public tasks are a visibility gap,
-  not a runtime readiness gap.
-- Как риск будет снижаться: manually create public issues for registry, QA,
-  security, compatibility, ops and pilot follow-up work using
-  `docs/public-issues/` and `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`.
+  already define expected process; created public issues improve visibility,
+  but do not prove task completion or community adoption.
+- Как риск будет снижаться: keep public issues current, link future evidence
+  only after checks are actually performed, and use PR-based public review when
+  practical.
 - Уже снижающие evidence/documents/CI: `ROADMAP.md`, issue templates,
   `docs/PROJECT_STATUS_RU.md`, `docs/PUBLIC_ISSUES_PLAN_RU.md`,
   `docs/public-issues/public-issues-manifest.json`,
   `scripts/prepare_public_issues.sh`.
-- Следующий action: создать реальные GitHub issues и записать URLs в
-  `docs/public-issues/public-issues-manifest.json`.
+- Residual risk: community adoption is still low until external contributors,
+  public reviewed PRs and sustained third-party activity appear.
+- Следующий action: keep issue URLs current in
+  `docs/public-issues/public-issues-manifest.json` and record real task
+  evidence only after completion.
 
 ## 4. Низкая community adoption
 

@@ -217,15 +217,24 @@ if [[ -s "$PUBLIC_ISSUES_MANIFEST" ]]; then
   if command -v jq >/dev/null 2>&1; then
     jq -e . "$PUBLIC_ISSUES_MANIFEST" >/dev/null || fail "invalid_json:docs/public-issues/public-issues-manifest.json"
     jq -e '
-      .status == "planned_issue_templates_ready"
+      (.status == "planned_issue_templates_ready" or .status == "public_issue_urls_recorded")
       and .github_issue_tracker == "manual_or_gh_cli_creation_required"
       and .github_role == "public_mirror_validation_only"
       and .registry_release_evidence == "requires_russian_build_runner"
       and (.issues | length == 12)
+      and any(.issues[]; .github_issue_url != null)
       and all(.issues[];
-        .status == "ready_to_create"
-        and .github_issue_url == null
-        and (.source | startswith("docs/public-issues/"))
+        (.source | startswith("docs/public-issues/"))
+        and (
+          (.status == "ready_to_create" and .github_issue_url == null)
+          or (
+            .status == "created"
+            and (.github_issue_url | type == "string")
+            and (.github_issue_url | test("^https://github\\.com/igor04091968/AWatch-rus/issues/[0-9]+$"))
+            and (.created_at | type == "string")
+            and .created_by == "maintainer"
+          )
+        )
       )
     ' "$PUBLIC_ISSUES_MANIFEST" >/dev/null || fail "public_issues_manifest_required_fields"
   elif command -v python3 >/dev/null 2>&1; then
@@ -236,8 +245,12 @@ import sys
 with open(sys.argv[1], "r", encoding="utf-8") as fh:
     data = json.load(fh)
 
+import re
+
+if data.get("status") not in {"planned_issue_templates_ready", "public_issue_urls_recorded"}:
+    raise SystemExit("status mismatch")
+
 expected = {
-    "status": "planned_issue_templates_ready",
     "github_issue_tracker": "manual_or_gh_cli_creation_required",
     "github_role": "public_mirror_validation_only",
     "registry_release_evidence": "requires_russian_build_runner",
@@ -249,13 +262,26 @@ for key, value in expected.items():
 issues = data.get("issues")
 if not isinstance(issues, list) or len(issues) != 12:
     raise SystemExit("issues length mismatch")
+url_re = re.compile(r"^https://github\.com/igor04091968/AWatch-rus/issues/[0-9]+$")
+if not any(issue.get("github_issue_url") for issue in issues):
+    raise SystemExit("no github_issue_url recorded")
 for issue in issues:
-    if issue.get("status") != "ready_to_create":
-        raise SystemExit("issue status mismatch")
-    if issue.get("github_issue_url") is not None:
-        raise SystemExit("github_issue_url must remain null until created")
     if not str(issue.get("source", "")).startswith("docs/public-issues/"):
         raise SystemExit("issue source mismatch")
+    status = issue.get("status")
+    url = issue.get("github_issue_url")
+    if status == "ready_to_create":
+        if url is not None:
+            raise SystemExit("ready_to_create issue must not have github_issue_url")
+    elif status == "created":
+        if not isinstance(url, str) or not url_re.match(url):
+            raise SystemExit("created issue URL mismatch")
+        if not isinstance(issue.get("created_at"), str):
+            raise SystemExit("created issue missing created_at")
+        if issue.get("created_by") != "maintainer":
+            raise SystemExit("created issue created_by mismatch")
+    else:
+        raise SystemExit("issue status mismatch")
 PY
   else
     fail "json_validator_missing:jq_or_python3_required"
@@ -289,7 +315,7 @@ require_grep "RESIDUAL_RISKS_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_statu
 require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_status_public_issues_plan_link"
 require_grep "docs/public-issues" "docs/PROJECT_STATUS_RU.md" "project_status_public_issue_templates"
 require_grep "PUBLIC_ISSUES_CREATION_RUNBOOK_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_status_public_issue_runbook"
-require_grep "manual/pending.*URLs.*public-issues-manifest|URLs.*public-issues-manifest" "docs/PROJECT_STATUS_RU.md" "project_status_issue_creation_pending_urls"
+require_grep "Public issues:[[:space:]]*created and linked in manifest|Созданы 12 публичных" "docs/PROJECT_STATUS_RU.md" "project_status_issue_creation_created_urls"
 require_grep "GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU\\.md|Restore outline|Post-restore checks" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_restore_runbook"
 require_grep "awatch-gitea-backup\\.timer" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_timer"
 require_grep "sha256|SHA256" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_sha256"
@@ -317,6 +343,7 @@ require_grep "No business logic changes" "docs/registry/REGISTRY_READINESS_CHANG
 require_grep "RESIDUAL_RISKS_RU\\.md" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_residual_risks"
 require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_plan"
 require_grep "public issue creation package" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issue_creation_package"
+require_grep "public roadmap issues created and linked" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_created_linked"
 require_grep "docs/public-issues" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_dir"
 require_grep "runtime/product code changes" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_no_runtime"
 require_grep "GitHub remains public mirror validation only" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_github_role"
@@ -383,10 +410,10 @@ require_grep "\\[pilot\\] Prepare Pilot Acceptance Checklist v2" "docs/PUBLIC_IS
 require_grep "\\[governance\\] Enable PR-based review workflow" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_pr_review_workflow"
 require_grep "\\[governance\\] Add branch protection policy" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_branch_protection_policy"
 require_grep "Acceptance criteria" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_acceptance_criteria"
-require_grep "ready_to_create" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_status_ready_to_create"
+require_grep "created" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_status_created"
 require_grep "docs/public-issues" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_templates_dir"
 require_grep "public-issues-manifest\\.json" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_manifest_link"
-require_grep "URLs.*pending|pending.*URLs" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_urls_pending"
+require_grep "https://github\\.com/igor04091968/AWatch-rus/issues/[0-9]+" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_urls_recorded"
 require_grep "Do not mark restore test as completed until restore evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_restore_guardrail"
 require_grep "Do not mark .*awatch-build-01.* as ready until provisioning evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_build_runner_guardrail"
 require_grep "public mirror validation only" "SECURITY.md" "security_public_mirror_validation"

@@ -1,5 +1,34 @@
 # Registry readiness changelog
 
+## 2026-06-23 public roadmap issues created and linked
+
+Changed:
+
+- Created 12 public roadmap/governance GitHub issues from
+  `docs/public-issues/`.
+- Recorded issue URLs, `created_at` timestamps and `created_by=maintainer` in
+  `docs/public-issues/public-issues-manifest.json`.
+- Updated project status, public issue plan and residual risk register to
+  distinguish created public issues from actual task completion evidence.
+- Registry readiness checks now validate created issue URL/status consistency.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
+Guardrails:
+
+- Public roadmap issues are development visibility evidence only.
+- GitHub remains public mirror validation only.
+- Russian Gitea plus planned Russian build-runner remains the primary registry
+  contour.
+- Created issues do not prove restore completion, build-runner readiness,
+  release evidence production, external peer review, branch protection
+  enablement or community adoption.
+
 ## 2026-06-23 public issue creation package
 
 Added:

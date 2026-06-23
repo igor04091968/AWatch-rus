@@ -263,8 +263,9 @@ collectors.
   [docs/RESIDUAL_RISKS_RU.md](docs/RESIDUAL_RISKS_RU.md).
 - Public issues plan:
   [docs/PUBLIC_ISSUES_PLAN_RU.md](docs/PUBLIC_ISSUES_PLAN_RU.md).
-- Public issue templates are prepared and should be created manually or through
-  the opt-in script; this does not claim community adoption:
+- Public issue templates are prepared and real GitHub issue URLs are recorded
+  in the manifest; this improves roadmap visibility but does not claim
+  community adoption:
   [creation runbook](docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md),
   [manifest](docs/public-issues/public-issues-manifest.json).
 

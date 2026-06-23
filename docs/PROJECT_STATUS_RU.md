@@ -1,4 +1,4 @@
-# AWatch-rus: статус проекта на 2026-06-22
+# AWatch-rus: статус проекта на 2026-06-23
 
 Документ фиксирует текущий baseline после настройки российского Gitea-контура,
 backup, registry-readiness документации, плана российского build-runner и
@@ -36,6 +36,11 @@ backup, registry-readiness документации, плана российск
   `docs/public-issues/`.
 - Manifest публичных issues:
   `docs/public-issues/public-issues-manifest.json`.
+- Public issue package: ready.
+- Public issues: created and linked in manifest.
+- Public development visibility: improved through created roadmap/governance
+  issues.
+- Community adoption remains low; no artificial adoption claim is made.
 - Runbook создания публичных issues:
   `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`.
 - Review checklist:
@@ -80,10 +85,12 @@ backup, registry-readiness документации, плана российск
   `docs/RESIDUAL_RISKS_RU.md`.
 - Подготовлен план публичных issues для ручного заведения:
   `docs/PUBLIC_ISSUES_PLAN_RU.md`.
-- Подготовлен пакет issue templates со статусом `ready_to_create`:
+- Подготовлен пакет issue templates:
   `docs/public-issues/`.
 - Подготовлен runbook ручного/opt-in создания issues:
   `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`.
+- Созданы 12 публичных roadmap/governance GitHub issues, ссылки записаны в
+  `docs/public-issues/public-issues-manifest.json`.
 
 ## Planned / pending
 
@@ -94,15 +101,11 @@ backup, registry-readiness документации, плана российск
 - Юридическое подтверждение правообладателя.
 - Финальная юридическая проверка пакета документов перед подачей.
 - Проверка совместимости с российскими ОС.
-- Публичные roadmap/issues из `docs/PUBLIC_ISSUES_PLAN_RU.md`: templates
-  готовы, создание самих GitHub issues остается manual/pending, пока URLs не
-  записаны в `docs/public-issues/public-issues-manifest.json`.
-- GitHub issue creation remains pending until URLs are recorded in
-  `docs/public-issues/public-issues-manifest.json`.
-- URLs remain pending in `docs/public-issues/public-issues-manifest.json`.
 - Visible external code review is still pending.
 - Branch protection enablement is not claimed until repository settings are
   verified.
+- Community adoption remains low until external contributors, public reviews
+  and sustained third-party activity appear.
 
 ## Честные ограничения
 

@@ -31,11 +31,22 @@ fi
 
 jq -e . "$MANIFEST" >/dev/null
 jq -e '
-  .status == "planned_issue_templates_ready"
+  (.status == "planned_issue_templates_ready" or .status == "public_issue_urls_recorded")
   and .github_issue_tracker == "manual_or_gh_cli_creation_required"
   and .github_role == "public_mirror_validation_only"
   and .registry_release_evidence == "requires_russian_build_runner"
-  and all(.issues[]; .status == "ready_to_create")
+  and (.issues | length == 12)
+  and all(.issues[];
+    (
+      .status == "ready_to_create"
+      and .github_issue_url == null
+    )
+    or (
+      .status == "created"
+      and (.github_issue_url | type == "string")
+      and (.github_issue_url | test("^https://github\\.com/igor04091968/AWatch-rus/issues/[0-9]+$"))
+    )
+  )
 ' "$MANIFEST" >/dev/null
 
 gh auth status >/dev/null
@@ -49,7 +60,7 @@ while IFS= read -r label; do
     gh label create "$label" --color "ededed" --description "AWatch-rus public governance label"
     printf '%s\n' "$label" >>"$existing_labels"
   fi
-done < <(jq -r '.issues[].labels[]' "$MANIFEST" | sort -u)
+done < <(jq -r '.issues[] | select(.status == "ready_to_create") | .labels[]' "$MANIFEST" | sort -u)
 
 created=0
 
@@ -64,7 +75,7 @@ while IFS=$'\t' read -r title labels source; do
   printf 'created_issue=%s\n' "$url"
   created=$((created + 1))
 done < <(
-  jq -r '.issues[] | [.title, (.labels | join(",")), .source] | @tsv' "$MANIFEST"
+  jq -r '.issues[] | select(.status == "ready_to_create") | [.title, (.labels | join(",")), .source] | @tsv' "$MANIFEST"
 )
 
 printf 'create_public_issues=ok\n'
