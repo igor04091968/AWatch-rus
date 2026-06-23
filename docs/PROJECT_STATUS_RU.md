@@ -32,6 +32,12 @@ backup, registry-readiness документации, плана российск
   `docs/RESIDUAL_RISKS_RU.md`.
 - План публичных GitHub issues:
   `docs/PUBLIC_ISSUES_PLAN_RU.md`.
+- Пакет шаблонов публичных GitHub issues подготовлен:
+  `docs/public-issues/`.
+- Manifest публичных issues:
+  `docs/public-issues/public-issues-manifest.json`.
+- Runbook создания публичных issues:
+  `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`.
 - Review checklist:
   `docs/REVIEW_CHECKLIST_RU.md`.
 - Advisory branch protection policy:
@@ -74,6 +80,10 @@ backup, registry-readiness документации, плана российск
   `docs/RESIDUAL_RISKS_RU.md`.
 - Подготовлен план публичных issues для ручного заведения:
   `docs/PUBLIC_ISSUES_PLAN_RU.md`.
+- Подготовлен пакет issue templates со статусом `ready_to_create`:
+  `docs/public-issues/`.
+- Подготовлен runbook ручного/opt-in создания issues:
+  `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`.
 
 ## Planned / pending
 
@@ -84,7 +94,12 @@ backup, registry-readiness документации, плана российск
 - Юридическое подтверждение правообладателя.
 - Финальная юридическая проверка пакета документов перед подачей.
 - Проверка совместимости с российскими ОС.
-- Публичные roadmap/issues из `docs/PUBLIC_ISSUES_PLAN_RU.md`.
+- Публичные roadmap/issues из `docs/PUBLIC_ISSUES_PLAN_RU.md`: templates
+  готовы, создание самих GitHub issues остается manual/pending, пока URLs не
+  записаны в `docs/public-issues/public-issues-manifest.json`.
+- GitHub issue creation remains pending until URLs are recorded in
+  `docs/public-issues/public-issues-manifest.json`.
+- URLs remain pending in `docs/public-issues/public-issues-manifest.json`.
 - Visible external code review is still pending.
 - Branch protection enablement is not claimed until repository settings are
   verified.
@@ -119,4 +134,6 @@ backup, registry-readiness документации, плана российск
 - `docs/REVIEW_CHECKLIST_RU.md`
 - `docs/RESIDUAL_RISKS_RU.md`
 - `docs/PUBLIC_ISSUES_PLAN_RU.md`
+- `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`
+- `docs/public-issues/public-issues-manifest.json`
 - `docs/BRANCH_PROTECTION_POLICY_RU.md`

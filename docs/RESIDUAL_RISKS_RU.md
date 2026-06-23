@@ -68,19 +68,23 @@ visibility, release evidence contour and legal package. Они требуют д
 
 ## 3. Низкая публичная активность issue tracker
 
-- Текущий статус: риск открыт частично; issue templates and public roadmap
-  exist, but public roadmap-tasks are still few.
+- Текущий статус: риск открыт частично; issue templates, public roadmap and
+  issue creation package exist, but real GitHub issues are still pending until
+  URLs are recorded.
 - Влияние: низкая внешняя visibility development process; сложнее показать
   плановое управление backlog and governance.
 - Почему не блокирует pilot/readiness stage: templates, roadmap and status docs
   already define expected process; missing public tasks are a visibility gap,
   not a runtime readiness gap.
 - Как риск будет снижаться: manually create public issues for registry, QA,
-  security, compatibility, ops and pilot follow-up work.
+  security, compatibility, ops and pilot follow-up work using
+  `docs/public-issues/` and `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`.
 - Уже снижающие evidence/documents/CI: `ROADMAP.md`, issue templates,
-  `docs/PROJECT_STATUS_RU.md`, `docs/PUBLIC_ISSUES_PLAN_RU.md`.
-- Следующий action: завести публичные issues по списку из
-  `docs/PUBLIC_ISSUES_PLAN_RU.md`.
+  `docs/PROJECT_STATUS_RU.md`, `docs/PUBLIC_ISSUES_PLAN_RU.md`,
+  `docs/public-issues/public-issues-manifest.json`,
+  `scripts/prepare_public_issues.sh`.
+- Следующий action: создать реальные GitHub issues и записать URLs в
+  `docs/public-issues/public-issues-manifest.json`.
 
 ## 4. Низкая community adoption
 
@@ -183,3 +187,5 @@ visibility, release evidence contour and legal package. Они требуют д
 Полный список задач для ручного заведения в GitHub issue tracker:
 
 - `docs/PUBLIC_ISSUES_PLAN_RU.md`.
+- `docs/public-issues/`.
+- `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md`.

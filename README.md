@@ -263,6 +263,10 @@ collectors.
   [docs/RESIDUAL_RISKS_RU.md](docs/RESIDUAL_RISKS_RU.md).
 - Public issues plan:
   [docs/PUBLIC_ISSUES_PLAN_RU.md](docs/PUBLIC_ISSUES_PLAN_RU.md).
+- Public issue templates are prepared and should be created manually or through
+  the opt-in script; this does not claim community adoption:
+  [creation runbook](docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md),
+  [manifest](docs/public-issues/public-issues-manifest.json).
 
 ### Engineering governance and residual risks
 
@@ -272,6 +276,10 @@ collectors.
   [docs/RESIDUAL_RISKS_RU.md](docs/RESIDUAL_RISKS_RU.md).
 - Public issues plan:
   [docs/PUBLIC_ISSUES_PLAN_RU.md](docs/PUBLIC_ISSUES_PLAN_RU.md).
+- Public issues creation runbook:
+  [docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md](docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md).
+- Public issues manifest:
+  [docs/public-issues/public-issues-manifest.json](docs/public-issues/public-issues-manifest.json).
 - Advisory branch protection policy:
   [docs/BRANCH_PROTECTION_POLICY_RU.md](docs/BRANCH_PROTECTION_POLICY_RU.md).
 - CODEOWNERS and PR template are maintained for review routing and public

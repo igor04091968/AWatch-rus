@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REGISTRY_DIR="$ROOT/docs/registry"
 MANIFEST="$REGISTRY_DIR/registry-evidence-manifest.json"
+PUBLIC_ISSUES_DIR="$ROOT/docs/public-issues"
+PUBLIC_ISSUES_MANIFEST="$PUBLIC_ISSUES_DIR/public-issues-manifest.json"
 
 failures=()
 
@@ -31,6 +33,10 @@ if [[ ! -d "$REGISTRY_DIR" ]]; then
   fail "missing_directory:docs/registry"
 fi
 
+if [[ ! -d "$PUBLIC_ISSUES_DIR" ]]; then
+  fail "missing_directory:docs/public-issues"
+fi
+
 required_files=(
   "docs/registry/REGISTER_RU_SOFTWARE_READINESS_RU.md"
   "docs/registry/SOURCE_CODE_AND_BUILD_INFRASTRUCTURE_RU.md"
@@ -52,10 +58,26 @@ required_files=(
   "docs/REVIEW_CHECKLIST_RU.md"
   "docs/RESIDUAL_RISKS_RU.md"
   "docs/PUBLIC_ISSUES_PLAN_RU.md"
+  "docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md"
+  "docs/public-issues/public-issues-manifest.json"
+  "docs/public-issues/001-registry-gitea-restore-test.md"
+  "docs/public-issues/002-registry-russian-build-runner.md"
+  "docs/public-issues/003-release-evidence-package.md"
+  "docs/public-issues/004-legal-rightsholder-package.md"
+  "docs/public-issues/005-coverage-threshold-policy.md"
+  "docs/public-issues/006-external-security-code-review-checklist.md"
+  "docs/public-issues/007-russian-os-compatibility-matrix.md"
+  "docs/public-issues/008-release-artifacts-storage-rf.md"
+  "docs/public-issues/009-public-demo-pack-refresh.md"
+  "docs/public-issues/010-pilot-acceptance-checklist-v2.md"
+  "docs/public-issues/011-governance-pr-based-review-workflow.md"
+  "docs/public-issues/012-governance-branch-protection-policy.md"
   "docs/BRANCH_PROTECTION_POLICY_RU.md"
   "scripts/build_release_evidence.sh"
   "scripts/check_release_evidence.sh"
   "scripts/public_secret_pattern_check.py"
+  "scripts/prepare_public_issues.sh"
+  "scripts/create_public_issues_from_manifest.sh"
   ".github/CODEOWNERS"
   ".github/workflows/ci.yml"
   ".github/workflows/security.yml"
@@ -191,6 +213,55 @@ PY
   fi
 fi
 
+if [[ -s "$PUBLIC_ISSUES_MANIFEST" ]]; then
+  if command -v jq >/dev/null 2>&1; then
+    jq -e . "$PUBLIC_ISSUES_MANIFEST" >/dev/null || fail "invalid_json:docs/public-issues/public-issues-manifest.json"
+    jq -e '
+      .status == "planned_issue_templates_ready"
+      and .github_issue_tracker == "manual_or_gh_cli_creation_required"
+      and .github_role == "public_mirror_validation_only"
+      and .registry_release_evidence == "requires_russian_build_runner"
+      and (.issues | length == 12)
+      and all(.issues[];
+        .status == "ready_to_create"
+        and .github_issue_url == null
+        and (.source | startswith("docs/public-issues/"))
+      )
+    ' "$PUBLIC_ISSUES_MANIFEST" >/dev/null || fail "public_issues_manifest_required_fields"
+  elif command -v python3 >/dev/null 2>&1; then
+    python3 - "$PUBLIC_ISSUES_MANIFEST" <<'PY' || fail "public_issues_manifest_required_fields"
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as fh:
+    data = json.load(fh)
+
+expected = {
+    "status": "planned_issue_templates_ready",
+    "github_issue_tracker": "manual_or_gh_cli_creation_required",
+    "github_role": "public_mirror_validation_only",
+    "registry_release_evidence": "requires_russian_build_runner",
+}
+for key, value in expected.items():
+    if data.get(key) != value:
+        raise SystemExit(f"{key} mismatch")
+
+issues = data.get("issues")
+if not isinstance(issues, list) or len(issues) != 12:
+    raise SystemExit("issues length mismatch")
+for issue in issues:
+    if issue.get("status") != "ready_to_create":
+        raise SystemExit("issue status mismatch")
+    if issue.get("github_issue_url") is not None:
+        raise SystemExit("github_issue_url must remain null until created")
+    if not str(issue.get("source", "")).startswith("docs/public-issues/"):
+        raise SystemExit("issue source mismatch")
+PY
+  else
+    fail "json_validator_missing:jq_or_python3_required"
+  fi
+fi
+
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/SOURCE_CODE_AND_BUILD_INFRASTRUCTURE_RU.md" "gitea_domain_source_infra"
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/GIT_RU_MIRRORING_RUNBOOK_RU.md" "gitea_domain_git_runbook"
 require_grep "git\\.iri1968\\.dpdns\\.org" "docs/registry/WIKI_AND_DOCUMENTATION_POLICY_RU.md" "gitea_domain_wiki_policy"
@@ -216,6 +287,9 @@ require_grep "Russian build-runner.*required|requires_russian_build_runner" "doc
 require_grep "docs/registry" "docs/PROJECT_STATUS_RU.md" "project_status_registry_docs"
 require_grep "RESIDUAL_RISKS_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_status_residual_risks_link"
 require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_status_public_issues_plan_link"
+require_grep "docs/public-issues" "docs/PROJECT_STATUS_RU.md" "project_status_public_issue_templates"
+require_grep "PUBLIC_ISSUES_CREATION_RUNBOOK_RU\\.md" "docs/PROJECT_STATUS_RU.md" "project_status_public_issue_runbook"
+require_grep "manual/pending.*URLs.*public-issues-manifest|URLs.*public-issues-manifest" "docs/PROJECT_STATUS_RU.md" "project_status_issue_creation_pending_urls"
 require_grep "GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU\\.md|Restore outline|Post-restore checks" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_restore_runbook"
 require_grep "awatch-gitea-backup\\.timer" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_timer"
 require_grep "sha256|SHA256" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_sha256"
@@ -242,12 +316,18 @@ require_grep "public GitHub Actions validation passed" "docs/registry/REGISTRY_R
 require_grep "No business logic changes" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_no_business_logic_changes"
 require_grep "RESIDUAL_RISKS_RU\\.md" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_residual_risks"
 require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_plan"
+require_grep "public issue creation package" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issue_creation_package"
+require_grep "docs/public-issues" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_dir"
+require_grep "runtime/product code changes" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_no_runtime"
+require_grep "GitHub remains public mirror validation only" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_github_role"
 require_grep "Restore test is not claimed as completed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_restore_not_completed"
 require_grep "Russian build-runner is not claimed as ready" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_build_runner_not_ready"
 require_grep "First release evidence build is not claimed as completed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_release_evidence_not_completed"
 require_grep "Legal rightsholder package remains pending" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_legal_package_pending"
 require_grep "RESIDUAL_RISKS_RU\\.md" "README.md" "readme_residual_risks_link"
 require_grep "PUBLIC_ISSUES_PLAN_RU\\.md" "README.md" "readme_public_issues_plan_link"
+require_grep "PUBLIC_ISSUES_CREATION_RUNBOOK_RU\\.md" "README.md" "readme_public_issues_creation_runbook"
+require_grep "public-issues/public-issues-manifest\\.json" "README.md" "readme_public_issues_manifest"
 require_grep "Engineering governance and residual risks" "README.md" "readme_engineering_governance_section"
 require_grep "REVIEW_CHECKLIST_RU\\.md" "README.md" "readme_review_checklist_link"
 require_grep "BRANCH_PROTECTION_POLICY_RU\\.md" "README.md" "readme_branch_protection_policy_link"
@@ -303,7 +383,10 @@ require_grep "\\[pilot\\] Prepare Pilot Acceptance Checklist v2" "docs/PUBLIC_IS
 require_grep "\\[governance\\] Enable PR-based review workflow" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_pr_review_workflow"
 require_grep "\\[governance\\] Add branch protection policy" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issue_branch_protection_policy"
 require_grep "Acceptance criteria" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_acceptance_criteria"
-require_grep "planned" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_status_planned"
+require_grep "ready_to_create" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_status_ready_to_create"
+require_grep "docs/public-issues" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_templates_dir"
+require_grep "public-issues-manifest\\.json" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_manifest_link"
+require_grep "URLs.*pending|pending.*URLs" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_urls_pending"
 require_grep "Do not mark restore test as completed until restore evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_restore_guardrail"
 require_grep "Do not mark .*awatch-build-01.* as ready until provisioning evidence exists" "docs/PUBLIC_ISSUES_PLAN_RU.md" "issues_build_runner_guardrail"
 require_grep "public mirror validation only" "SECURITY.md" "security_public_mirror_validation"
@@ -326,6 +409,9 @@ scan_files=(
   "$ROOT/docs/REVIEW_CHECKLIST_RU.md"
   "$ROOT/docs/RESIDUAL_RISKS_RU.md"
   "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md"
+  "$ROOT/docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md"
+  "$ROOT/docs/public-issues"/*.md
+  "$ROOT/docs/public-issues"/*.json
   "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
@@ -349,6 +435,9 @@ claim_scan_files=(
   "$ROOT/docs/REVIEW_CHECKLIST_RU.md"
   "$ROOT/docs/RESIDUAL_RISKS_RU.md"
   "$ROOT/docs/PUBLIC_ISSUES_PLAN_RU.md"
+  "$ROOT/docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md"
+  "$ROOT/docs/public-issues"/*.md
+  "$ROOT/docs/public-issues"/*.json
   "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md"
   "$ROOT/SECURITY.md"
   "$ROOT/CONTRIBUTING.md"
@@ -396,6 +485,13 @@ if grep -RInEi "(юридически заверш(е|ё)нн?ая регист�
   fail "forbidden_claim_legal_registry_completion:$(cat /tmp/registry_forbidden_legal_done.$$)"
 fi
 rm -f /tmp/registry_forbidden_legal_done.$$
+
+if grep -RInEi "(completed Russian software registry submission|registry submission is complete|Russian software registry submission.{0,80}(completed|done))" "${claim_scan_files[@]}" \
+  | grep -Eiv "(do not|no claim|not |не |forbidden|pending|until evidence)" \
+  >/tmp/registry_forbidden_registry_submission_done.$$ 2>/dev/null; then
+  fail "forbidden_claim_registry_submission_completed:$(cat /tmp/registry_forbidden_registry_submission_done.$$)"
+fi
+rm -f /tmp/registry_forbidden_registry_submission_done.$$
 
 if grep -RInEi "(branch protection).{0,120}(enabled|включ(е|ё)н|настроен|active)" "$ROOT/README.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md" "$REGISTRY_DIR"/*.md \
   | grep -Eiv "(not |не |не утверждает|not claimed|advisory|until repository settings|если применимо|recommended)" \

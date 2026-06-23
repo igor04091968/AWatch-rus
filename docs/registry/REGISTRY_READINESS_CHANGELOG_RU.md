@@ -1,5 +1,42 @@
 # Registry readiness changelog
 
+## 2026-06-23 public issue creation package
+
+Added:
+
+- `docs/public-issues/` with public issue templates for the planned governance,
+  registry, QA, security, compatibility, ops, demo and pilot tasks.
+- `docs/public-issues/public-issues-manifest.json` with `ready_to_create`
+  status and `github_issue_url: null` until real issue URLs are recorded.
+- `docs/PUBLIC_ISSUES_CREATION_RUNBOOK_RU.md` for manual and opt-in `gh` CLI
+  issue creation.
+- `scripts/prepare_public_issues.sh` as a dry-run validation and command
+  preparation script.
+- `scripts/create_public_issues_from_manifest.sh` as an opt-in helper that
+  requires `CONFIRM_CREATE_GITHUB_ISSUES=YES`.
+
+Changed:
+
+- `docs/PUBLIC_ISSUES_PLAN_RU.md`, project status, residual risks and README now
+  distinguish prepared issue templates from real created GitHub issues.
+- Registry readiness checks now verify the public issue package and pending URL
+  status.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
+Guardrails:
+
+- GitHub remains public mirror validation only.
+- Russian Gitea plus planned Russian build-runner remains the primary registry
+  contour.
+- Real GitHub issue creation remains manual/opt-in.
+- GitHub issue URLs remain pending until created and recorded in the manifest.
+
 ## 2026-06-22 review governance and branch protection policy
 
 Added:
