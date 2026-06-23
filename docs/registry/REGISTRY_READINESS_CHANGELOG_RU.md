@@ -1,5 +1,66 @@
 # Registry readiness changelog
 
+## 2026-06-24 protected PR workflow evidence recorded
+
+Changed:
+
+- Recorded PR #50 as the first protected PR workflow reference in
+  `docs/PR_REVIEW_EVIDENCE_RU.md`.
+- Recorded that required ruleset checks passed for PR #50: `Coverage baseline`,
+  `security`, `rust-checks`, `docs-registry-checks`, `smoke-checks`.
+- Recorded that PR #50 remains `pending_review_required`; first reviewed PR
+  evidence is not claimed complete.
+- Linked issue #48 in `docs/public-issues/public-issues-manifest.json` to
+  `docs/PR_REVIEW_EVIDENCE_RU.md` with `pending_review_required`.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
+Guardrails:
+
+- GitHub remains public mirror validation only.
+- Protected PR workflow evidence is governance evidence only.
+- This is not registry release evidence.
+- External peer review is not claimed completed.
+- Russian Gitea plus planned Russian build-runner remains the primary registry
+  contour.
+
+## 2026-06-23 verified GitHub ruleset evidence
+
+Changed:
+
+- Recorded maintainer-verified active GitHub ruleset `main` for target branch
+  `main` in `docs/BRANCH_PROTECTION_EVIDENCE_RU.md`.
+- Recorded empty bypass list, required pull request review, one required
+  approval, stale approval dismissal and Code Owners review.
+- Recorded required status checks: `Coverage baseline`, `security`,
+  `rust-checks`, `docs-registry-checks`, `smoke-checks`.
+- Linked issue #49 in `docs/public-issues/public-issues-manifest.json` to
+  verified ruleset evidence.
+- Updated project status, branch protection policy and residual risks to show
+  branch protection risk mitigated while first reviewed PR evidence remains
+  pending.
+
+Runtime impact:
+
+- No runtime/product code changes.
+- No API changes.
+- No UI changes.
+- No business logic changes.
+
+Guardrails:
+
+- GitHub remains public mirror validation only.
+- Verified GitHub ruleset is public governance evidence only.
+- This is not registry release evidence.
+- Russian Gitea plus planned Russian build-runner remains the primary registry
+  contour.
+- External peer review is not claimed completed.
+
 ## 2026-06-23 branch protection and PR review evidence package
 
 Added:

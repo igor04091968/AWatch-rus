@@ -53,8 +53,12 @@ backup, registry-readiness документации, плана российск
   (`docs/PR_REVIEW_EVIDENCE_RU.md`).
 - Branch protection evidence package: ready
   (`docs/BRANCH_PROTECTION_EVIDENCE_RU.md`).
-- Branch protection actual enablement:
-  `pending_manual_verification`.
+- Branch protection ruleset: `verified_active_ruleset`.
+- Branch protection target branch: `main`.
+- Branch protection required checks: `Coverage baseline`, `security`,
+  `rust-checks`, `docs-registry-checks`, `smoke-checks`.
+- First protected PR workflow: PR #50 opened; required checks passed;
+  review/merge still `pending_review_required`.
 - First reviewed PR evidence: pending.
 
 ## Что готово
@@ -92,10 +96,17 @@ backup, registry-readiness документации, плана российск
   `docs/BRANCH_PROTECTION_POLICY_RU.md`.
 - Branch protection evidence template prepared:
   `docs/BRANCH_PROTECTION_EVIDENCE_RU.md`.
+- GitHub ruleset / branch protection for `main` verified active by maintainer:
+  ruleset `main`, target branch `main`, empty bypass list, required PR with
+  one approval, stale approval dismissal, Code Owners review, required status
+  checks and force-push blocking.
 - PR-based review workflow documented:
   `docs/PR_REVIEW_WORKFLOW_RU.md`.
 - PR review evidence template prepared:
   `docs/PR_REVIEW_EVIDENCE_RU.md`.
+- First protected PR workflow evidence recorded for PR #50:
+  required checks passed; review requirement is still pending; merge status is
+  open; no admin bypass recorded.
 - Зафиксирован residual risk register:
   `docs/RESIDUAL_RISKS_RU.md`.
 - Подготовлен план публичных issues для ручного заведения:
@@ -117,11 +128,9 @@ backup, registry-readiness документации, плана российск
 - Финальная юридическая проверка пакета документов перед подачей.
 - Проверка совместимости с российскими ОС.
 - Visible external code review is still pending.
-- Branch protection enablement is not claimed until repository settings are
-  verified.
-- Branch protection actual enablement remains `pending_manual_verification`.
 - First reviewed PR evidence remains pending until a reviewed public PR is
   merged and evidence is recorded.
+- External peer review remains pending.
 - Community adoption remains low until external contributors, public reviews
   and sustained third-party activity appear.
 

@@ -1,13 +1,14 @@
 # AWatch-rus: PR review evidence
 
-Дата: 2026-06-23
+Дата: 2026-06-24
 
-pr_review_evidence_status: "pending_until_first_reviewed_pr_is_merged"
+pr_review_status: "pending_review_required"
 
 GitHub issue: https://github.com/igor04091968/AWatch-rus/issues/48
 
-Этот документ фиксирует, что будет считаться evidence для PR-based review
-workflow. Он не утверждает, что external peer review уже выполнен.
+Этот документ фиксирует evidence первого protected PR-based workflow после
+включения GitHub ruleset на `main`. Он не утверждает, что review requirement
+уже выполнен или что external peer review завершен.
 
 ## Evidence Criteria
 
@@ -23,16 +24,23 @@ workflow. Он не утверждает, что external peer review уже в�
 
 ## Evidence Record
 
-- PR URL: `pending`
-- Linked issue URL: `pending`
+- PR URL: `https://github.com/igor04091968/AWatch-rus/pull/50`
+- Linked issue URL: `https://github.com/igor04091968/AWatch-rus/issues/48`
+- Evidence issue URL: `https://github.com/igor04091968/AWatch-rus/issues/49`
+- Required checks status: `passed`
+- Required checks: `Coverage baseline`, `security`, `rust-checks`,
+  `docs-registry-checks`, `smoke-checks`
+- Review requirement status: `pending_review_required`
+- Merge status: `open`
+- Admin bypass used: `false`
 - Reviewer: `pending`
 - Reviewer type: `pending`
 - Approval URL or screenshot filename: `pending`
-- Passed checks: `pending`
 - Merge commit: `pending`
-- Bypass used: `pending`
-- Date: `YYYY-MM-DD`
-- Maintainer note: `pending`
+- Date: `2026-06-24`
+- Maintainer note: PR #50 demonstrates protected branch workflow and required
+  checks execution, but first reviewed PR evidence remains pending until review
+  requirement is satisfied and the PR is merged without bypass.
 
 ## Reviewer Interpretation
 
@@ -46,6 +54,8 @@ the review is visible.
 - PR workflow documentation: ready.
 - PR template: ready.
 - CODEOWNERS routing: ready.
+- First protected PR validation reference: PR #50.
+- Required checks for PR #50: passed.
 - First reviewed PR evidence: pending.
 - External peer review completed: not claimed.
 

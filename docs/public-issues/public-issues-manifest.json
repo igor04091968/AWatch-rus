@@ -113,7 +113,9 @@
       "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/48",
       "created_at": "2026-06-23T19:43:08Z",
       "created_by": "maintainer",
-      "next_evidence_doc": "docs/PR_REVIEW_EVIDENCE_RU.md"
+      "next_evidence_doc": "docs/PR_REVIEW_EVIDENCE_RU.md",
+      "evidence_status": "pending_review_required",
+      "evidence_doc": "docs/PR_REVIEW_EVIDENCE_RU.md"
     },
     {
       "id": "012",
@@ -124,7 +126,9 @@
       "github_issue_url": "https://github.com/igor04091968/AWatch-rus/issues/49",
       "created_at": "2026-06-23T19:43:10Z",
       "created_by": "maintainer",
-      "next_evidence_doc": "docs/BRANCH_PROTECTION_EVIDENCE_RU.md"
+      "next_evidence_doc": "docs/BRANCH_PROTECTION_EVIDENCE_RU.md",
+      "evidence_status": "verified_active_ruleset",
+      "evidence_doc": "docs/BRANCH_PROTECTION_EVIDENCE_RU.md"
     }
   ]
 }
