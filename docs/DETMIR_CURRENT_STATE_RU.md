@@ -36,6 +36,9 @@ logical host id остаётся `SHARKON2025`. Подробный post-restore 
 - Live DLP runtime state after 2026-06-25 controlled disable:
   `AW_DLP_ENABLED=false`, `AW_DLP_INFLUX_ENABLED=false`;
   active/enabled DLP units: `0/0`.
+- Reason: DLP runtime materially increases Proxmox VM/LXC, InfluxDB, Grafana,
+  ClickHouse and AW server load. In production DetMir it is currently kept
+  disabled, but remains a documented optional module that can be enabled later.
 - Health после деплоя: `/healthz` возвращал `status=ok`.
 - Readiness после деплоя: `/readyz` возвращал `status=ready`.
 
@@ -171,6 +174,18 @@ detmir_portal_dlp_module_enabled_override: false
 Отдельный `detmir-portal-evidence` сервис не отключается этим флагом и остается
 самостоятельным контуром evidence/API при наличии отдельной конфигурации.
 
+Hayabusa/Velociraptor boundary:
+
+- Hayabusa/Sigma and Velociraptor are optional security findings / forensics
+  sources, not Workforce hot path dependencies.
+- Heavy DLP runtime can remain disabled while Hayabusa/Velociraptor findings
+  are imported into Security Finding Inbox / ClickHouse.
+- Velociraptor server/client mode must be enabled explicitly
+  (`disabled|offline_collector|server_clients`) and must not be auto-started by
+  routine production deploy on the small DetMir Proxmox contour.
+- Findings from Velociraptor/Hayabusa support `decide -> plan -> approve ->
+  apply -> verify`, but do not imply automatic remediation without approval.
+
 Server-side optional DLP runtime описан отдельно:
 
 - [DLP_OPTIONAL_RUNTIME_RU.md](DLP_OPTIONAL_RUNTIME_RU.md).
@@ -290,6 +305,8 @@ curl -sS --max-time 5 http://10.10.10.2:8720/healthz
 ## Что не менять без отдельной задачи
 
 - Не удалять DLP collectors и warehouse ради ускорения портала.
+- Не включать heavy DLP или Velociraptor server runtime автоматически при
+  обычном deploy без ресурсного решения.
 - Не менять UI/API несовместимо: новые поля должны быть additive.
 - Не заявлять completed DLP decoupling до live deploy и browser/API smoke.
 - Не позиционировать AWatch-rus как сертифицированную DLP/SIEM/EDR/СЗИ.

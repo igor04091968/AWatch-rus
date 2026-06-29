@@ -21,7 +21,16 @@
   - `aw-dlp-case-management.service`;
   - `detmir-portal-evidence.service`, если DLP evidence upload больше не нужен.
 
-Worktime, ActivityWatch server, browser/window/AFK collection, Hayabusa and 1C/ClickHouse core не считаются DLP runtime и отдельно не отключаются.
+Worktime, ActivityWatch server, browser/window/AFK collection, Hayabusa,
+Velociraptor findings ingest и 1C/ClickHouse core не считаются DLP runtime и
+отдельно не отключаются.
+
+Важно: отключение DLP runtime не удаляет DLP-контур из проекта. Это
+эксплуатационный режим `disabled`, выбранный для production DetMir из-за
+существенной нагрузки на виртуальную среду Proxmox, InfluxDB, Grafana,
+ClickHouse и AW server. DLP должен оставаться подключаемым обратно через
+описанный ниже enable-процесс, без переустановки продукта и без потери
+исторических артефактов до отдельной retention/cleanup процедуры.
 
 ## Статистика перед отключением
 
@@ -118,7 +127,8 @@ AW_DLP_ENABLED=false check-aw-full
 - `detmir-dlp` returned `ok=true`, `dlp:mode=disabled`;
 - `check-aw-full` returned `DLP buckets ... SKIPPED`.
 
-Отдельные non-DLP findings того же ручного прогона:
+Отдельные non-DLP findings того же ручного прогона, до восстановления
+`192.168.100.19`:
 
 - AFK/window/worktime buckets were stale and require RDP collector/session
   recovery;
@@ -147,6 +157,30 @@ sudo systemctl restart detmir-portal.service
 detmir-dlp
 detmir-check --json
 ```
+
+Перед возвратом DLP в production обязательно проверить ресурсный бюджет
+Proxmox/InfluxDB/Grafana/ClickHouse. Не включайте DLP timers/services
+автоматически вместе с обычным deploy, если текущая цель - сохранить лёгкий
+Workforce/AW контур.
+
+## Hayabusa/Velociraptor при выключенном DLP
+
+Hayabusa/Sigma и Velociraptor относятся к optional security findings /
+forensics layer, а не к тяжёлому DLP runtime:
+
+- Hayabusa drop/autoprocess может продолжать работать при выключенном DLP;
+- Velociraptor findings ingest может использоваться в offline/server mode, если
+  администратор явно включил соответствующий режим;
+- результаты должны попадать в Security Finding Inbox / ClickHouse как
+  контролируемые findings, а не запускать автоматическую блокировку без
+  approve/apply workflow;
+- portal/workforce first screen не должен ждать Velociraptor или DLP;
+- disabled DLP mode не должен превращаться в FAIL только из-за отсутствия DLP
+  buckets.
+
+Velociraptor server/client runtime не должен стартовать автоматически в
+production DetMir без отдельного ресурсного решения. Для малой виртуальной
+среды предпочтителен `disabled` или `offline_collector` режим.
 
 ## Ansible
 

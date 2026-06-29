@@ -31,6 +31,11 @@ AWatch-rus/DetMir после возврата RDP-сервера `SHARKON2025`.
   `security_finding_inbox`.
 - `check-aw-full` обновлен: env-aware RDP host, корректный CORS origin,
   AFK freshness через `bucket.metadata.end`.
+- DLP runtime зафиксирован как optional disabled contour: отключён для снижения
+  нагрузки на Proxmox/InfluxDB/Grafana/ClickHouse/AW server, но оставлен
+  подключаемым через documented enable flow.
+- Hayabusa/Velociraptor зафиксированы как optional security findings /
+  forensics layer, отдельный от DLP runtime и Workforce hot path.
 
 ## Проверенный статус по 7 пунктам
 
@@ -48,8 +53,9 @@ AWatch-rus/DetMir после возврата RDP-сервера `SHARKON2025`.
    reduce resource usage.
 6. Hayabusa/Velociraptor layer: Hayabusa doctor OK, drop.path active,
    incoming/drop backlog empty, latest intake `2026-06-29T09:00:23Z`,
-   bad zip сохранен только в quarantine как evidence. Velociraptor остаётся
-   addon/source path; live service не заявляется как подтвержденный.
+   bad zip сохранен только в quarantine как evidence. Velociraptor integration
+   is treated as optional findings source; no always-on Velociraptor runtime is
+   required for Workforce/AW core.
 7. Baseline зафиксирован в этом документе и связан с operational docs/skills.
 
 ## Остаточные риски
@@ -62,6 +68,9 @@ AWatch-rus/DetMir после возврата RDP-сервера `SHARKON2025`.
   LXC `202 loki-logs` is stopped, active config has `onboot: 0`, and TCP
   `10.10.10.12:3100` is closed. This is an operator decision to save resources
   and does not break core AW/worktime/ClickHouse.
+- DLP runtime is intentionally disabled for the current production profile and
+  must not be auto-enabled by routine deploys. Re-enable only after resource
+  budget check and explicit operator decision.
 
 ## Проверки
 

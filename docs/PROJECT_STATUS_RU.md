@@ -77,6 +77,10 @@ backup, registry-readiness документации, плана российск
   `dlp-health-check=dlp:mode disabled`, `detmir-dlp=dlp:mode disabled`,
   active/enabled DLP units `0/0`, history snapshots under
   `/var/lib/activitywatch/health/dlp-runtime-history/`.
+- DetMir DLP contour status: disabled for the current production resource
+  profile, not removed. It remains a documented optional module and must only be
+  re-enabled after explicit operator decision and Proxmox/InfluxDB/Grafana/
+  ClickHouse capacity check.
 - DetMir DLP buckets in manual full check: `SKIPPED` under
   `AW_DLP_ENABLED=false`, not reported as dead.
 - DetMir RDP collector freshness after 2026-06-29 restore: physical RDP target
@@ -97,6 +101,10 @@ backup, registry-readiness документации, плана российск
   events only; approved `apply_requested` can be processed by the fail-closed
   executor through `containment-engine` `decide -> plan -> apply -> verify`
   with rollback on apply failure.
+- Velociraptor/Hayabusa status: implemented as optional findings/forensics
+  sources. They are not required for Workforce hot path, do not replace DLP or
+  SIEM, and must not start heavy always-on runtime in DetMir production unless
+  `offline_collector` or `server_clients` mode is explicitly selected.
 - Security Finding Inbox live schema: applied on ClickHouse 2026-06-29
   (`security_findings`, `security_finding_workflow_events`,
   `security_finding_inbox`).
