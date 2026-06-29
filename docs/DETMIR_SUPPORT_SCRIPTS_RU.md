@@ -55,7 +55,7 @@ DETMIR_SUPPORT_PVE_HOST=10.10.10.2
 DETMIR_SUPPORT_AW_HOST=10.10.10.13
 DETMIR_SUPPORT_WEB_HOST=10.10.10.2
 DETMIR_SUPPORT_WEB_TLS_HOST=10.10.10.2
-DETMIR_SUPPORT_WINDOWS_HOST=192.168.100.18
+DETMIR_SUPPORT_WINDOWS_HOST=192.168.100.19
 DETMIR_SUPPORT_SURICATA_HOST=10.10.10.2
 
 DETMIR_SUPPORT_SSH_USER=igor
@@ -79,6 +79,7 @@ DETMIR_SUPPORT_PVE_BACKUP_DIRS=/var/lib/pve/local-btrfs/dump
 
 - операторский gateway находится на `10.10.10.2`, а не на историческом
   `10.10.10.11`;
+- текущий Windows/RDP target после восстановления: `192.168.100.19`;
 - web health endpoint: `https://10.10.10.2/healthz`, ожидаемый ответ `200`;
 - защищенный корень gateway `https://10.10.10.2/` штатно отвечает `401`;
 - AW API health проверяется через

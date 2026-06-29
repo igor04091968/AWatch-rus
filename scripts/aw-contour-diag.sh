@@ -23,9 +23,14 @@ PROXMOX_HOST="10.10.10.2"
 AW_HOST="10.10.10.13"
 GRAFANA_HOST="10.10.10.11"
 INFLUXDB_HOST="10.10.10.10"
-WINDOWS_HOST="192.168.100.18"
+WINDOWS_HOST="${AW_WINDOWS_HOST:-${AW_SMOKE_WINDOWS_HOST:-192.168.100.19}}"
 CLICKHOUSE_HOST="10.10.10.2"
-SOURCE_HOSTNAME="SHARKON2025"
+SOURCE_HOSTNAME="${AW_LOGICAL_HOST_ID:-${AW_MONITORED_WINDOWS_HOSTNAME:-${AW_SMOKE_SOURCE_HOSTNAME:-SHARKON2025}}}"
+DLP_ENABLED="${AW_DLP_ENABLED:-${DETMIR_DLP_ENABLED:-true}}"
+case "${DLP_ENABLED,,}" in
+  0|false|no|off) DLP_ENABLED=false ;;
+  *) DLP_ENABLED=true ;;
+esac
 
 QUICK_MODE=0
 SKIP_WINDOWS=0
@@ -102,7 +107,7 @@ check_http_json_key() {
 check_bucket_freshness() {
   local bucket="$1" label="$2" remediation="$3"
   local bucket_id="${bucket}_${SOURCE_HOSTNAME}"
-  local tmp last_ts event_epoch now age_sec
+  local tmp last_ts event_epoch now age_sec meta_ts
   tmp="$(mktemp)"
   if ! curl -fsS --connect-timeout 5 --max-time 15 "$AW_SERVER/api/0/buckets/$bucket_id/events?limit=1" -o "$tmp" 2>"$tmp.err"; then
     fail "bucket $label ($bucket_id) — запрос не удался"
@@ -113,6 +118,12 @@ check_bucket_freshness() {
   fi
   last_ts="$(jq -r '.[0].timestamp // empty' "$tmp" 2>/dev/null)"
   rm -f "$tmp"
+  if [ "$bucket" = "aw-watcher-afk" ]; then
+    meta_ts="$(curl -fsS --connect-timeout 5 --max-time 15 "$AW_SERVER/api/0/buckets/$bucket_id" 2>/dev/null | jq -r '.metadata.end // empty' 2>/dev/null || true)"
+    if [ -n "$meta_ts" ]; then
+      last_ts="$meta_ts"
+    fi
+  fi
   if [ -z "$last_ts" ]; then
     warn "bucket $label ($bucket_id) — нет событий"
     echo "       REMEDIATION: $remediation"
@@ -268,11 +279,11 @@ if [ "$QUICK_MODE" = "1" ]; then
 
   section "4. Buckets (быстрый режим)"
   for entry in \
-    "aw-watcher-afk|AFK watcher|Запустите на RDP: schtasks /Run /TN \"ActivityWatch Recovery\" или schtasks /Run /TN \"ActivityWatch Launch [SHARKON2025_Администратор]\"" \
+    "aw-watcher-afk|AFK watcher|Запустите на RDP: schtasks /Run /TN \"ActivityWatch Recovery\" или launch task для logical host $SOURCE_HOSTNAME" \
     "aw-watcher-window|Window watcher|Запустите через ansible: ansible aw_windows -i $INVENTORY -m win_shell -a 'Start-Process -FilePath \"C:\\Program Files\\AWatch-rus\\bin\\aw-watcher-window\\aw-watcher-window.exe\" -ArgumentList @(\"--host\", \"10.10.10.13\", \"--port\", \"5600\") -WindowStyle Hidden'" \
     "aw-worktime-sessions|Worktime sessions|Проверьте работу worktime-api: systemctl status aw-worktime-api на AW сервере" \
     "aw-session-events|Session events|Проверьте collector-guard и aw-session-events-collector на RDP" \
-    "aw-dlp-endpoint-signals|DLP signals|Запустите: ansible aw_windows -i $INVENTORY -m win_shell -a 'schtasks /Run /TN \"ActivityWatch Launch [SHARKON2025_Администратор]\"; Start-Sleep 30'" \
+    "aw-dlp-endpoint-signals|DLP signals|Запустите: ansible aw_windows -i $INVENTORY -m win_shell -a 'schtasks /Run /TN \"ActivityWatch Recovery\"; Start-Sleep 30'" \
     "aw-dlp-incidents|DLP incidents|Проверьте aw-detmir-dlp-collector.ps1 на RDP (логи: C:\\ProgramData\\AWatch-rus\\logs\\)" \
   ; do
     bucket="${entry%%|*}"; rest="${entry#*|}"
@@ -302,10 +313,10 @@ section "4. Buckets (свежесть данных)"
 # ============================================================
 for entry in \
   "aw-watcher-afk|AFK watcher|Запустите на RDP: ansible aw_windows -i $INVENTORY -m win_shell -a 'schtasks /Run /TN \"ActivityWatch Recovery\"'" \
-  "aw-watcher-window|Window watcher|Запустите: ansible aw_windows -i $INVENTORY -m win_shell -a 'schtasks /Run /TN \"ActivityWatch Launch [SHARKON2025_Администратор]\"; Start-Process -FilePath \"C:\\Program Files\\AWatch-rus\\bin\\aw-watcher-window\\aw-watcher-window.exe\" -ArgumentList @(\"--host\", \"10.10.10.13\", \"--port\", \"5600\") -WindowStyle Hidden'" \
+  "aw-watcher-window|Window watcher|Запустите: ansible aw_windows -i $INVENTORY -m win_shell -a 'schtasks /Run /TN \"ActivityWatch Recovery\"; Start-Sleep 60'" \
   "aw-worktime-sessions|Worktime sessions|Проверьте: ssh igor@$AW_HOST 'systemctl status aw-worktime-api && journalctl -u aw-worktime-api -n 20'" \
   "aw-session-events|Session events|Проверьте collector-guard на RDP: ansible aw_windows -i $INVENTORY -m win_shell -a 'Get-Process -Name aw-session-events-* -ErrorAction SilentlyContinue'" \
-  "aw-dlp-endpoint-signals|DLP endpoint signals|Запустите: ansible aw_windows -i $INVENTORY -m win_shell -a 'schtasks /Run /TN \"ActivityWatch Launch [SHARKON2025_Администратор]\"; Start-Sleep 60'" \
+  "aw-dlp-endpoint-signals|DLP endpoint signals|Запустите: ansible aw_windows -i $INVENTORY -m win_shell -a 'schtasks /Run /TN \"ActivityWatch Recovery\"; Start-Sleep 60'" \
   "aw-dlp-incidents|DLP incidents|Проверьте: ansible aw_windows -i $INVENTORY -m win_shell -a \"Get-Content 'C:\\ProgramData\\AWatch-rus\\logs\\dlp-*.log' -Tail 20\"" \
   "aw-dlp-review|DLP review|Проверьте: ssh igor@$AW_HOST 'journalctl -u aw-dlp-policy-engine.service -n 20 --no-pager'" \
   "aw-dlp-rules|DLP rules|Проверьте: ssh igor@$AW_HOST 'journalctl -u aw-dlp-ioc-refresh.service -n 20 --no-pager'" \
@@ -389,6 +400,9 @@ check_service_remote "Nginx service" "$PROXMOX_HOST" "nginx.service" \
 # ============================================================
 section "10. DLP Pipeline (10.10.10.13)"
 # ============================================================
+if [ "$DLP_ENABLED" = "false" ]; then
+  skip "DLP Pipeline disabled by AW_DLP_ENABLED/DETMIR_DLP_ENABLED=false"
+else
 # DLP Policy Engine — должен быть active (running)
 check_service_remote "DLP Policy Engine" "$AW_HOST" "aw-dlp-policy-engine.service" \
   "Проверьте: ssh igor@$AW_HOST 'sudo journalctl -u aw-dlp-policy-engine.service -n 30 --no-pager'"
@@ -434,6 +448,7 @@ check_service_remote "DLP Webhook Sender timer" "$AW_HOST" "aw-dlp-webhook-sende
 # DLP Report Scheduler
 check_service_remote "DLP Report Scheduler timer" "$AW_HOST" "aw-dlp-report-scheduler.timer" \
   "ssh igor@$AW_HOST 'sudo systemctl enable --now aw-dlp-report-scheduler.timer'"
+fi
 
 # Worktime Influx Exporter
 check_service_remote "Worktime Influx Exporter timer" "$AW_HOST" "aw-worktime-influx-exporter.timer" \
@@ -443,7 +458,7 @@ check_service_remote "Worktime Influx Exporter timer" "$AW_HOST" "aw-worktime-in
 if [ "$SKIP_WINDOWS" = "1" ]; then
   skip "Проверки RDP хоста пропущены (--skip-windows)"
 else
-  section "11. RDP хост (192.168.100.18)"
+  section "11. RDP хост ($WINDOWS_HOST)"
   if have ansible && [ -f "$INVENTORY" ]; then
     check_ansible_module "WinRM ping" aw_windows win_ping
 
@@ -459,7 +474,7 @@ else
       'schtasks /Query /TN "ActivityWatch Recovery" /FO LIST /V | Select-String "Status|Run|Next"'
 
     check_ansible_win_shell "Scheduled tasks (Launch Admin)" \
-      'schtasks /Query /TN "ActivityWatch Launch [SHARKON2025_Администратор]" /FO LIST /V | Select-String "Status|Run|Next"'
+      'Get-Content -Raw "C:\ProgramData\AWatch-rus\deployment-config.json" | ConvertFrom-Json | Select-Object -ExpandProperty userTasks | Select-Object LaunchTaskName,UserId | Format-Table -AutoSize'
   else
     skip "Ansible или inventory не найдены"
   fi
@@ -469,7 +484,7 @@ fi
 section "12. Systemd health (AW server)"
 # ============================================================
 check_ansible_shell "AW server core units" aw_server \
-  'systemctl is-active activitywatch-server aw-worktime-api aw-dlp-policy-engine aw-dlp-case-management aw-worktime-influx-exporter.timer aw-dlp-influx-exporter.timer activitywatch-dlp-aggregator.timer aw-clickhouse-network-health.timer | paste -sd,'
+  'if [ "${AW_DLP_ENABLED:-true}" = "false" ] || [ "${DETMIR_DLP_ENABLED:-true}" = "false" ]; then systemctl is-active activitywatch-server aw-worktime-api aw-worktime-influx-exporter.timer aw-clickhouse-network-health.timer | paste -sd,; else systemctl is-active activitywatch-server aw-worktime-api aw-dlp-policy-engine aw-dlp-case-management aw-worktime-influx-exporter.timer aw-dlp-influx-exporter.timer activitywatch-dlp-aggregator.timer aw-clickhouse-network-health.timer | paste -sd,; fi'
 
 check_ansible_shell "AW server — нет failed units" aw_server \
   'failed=$(systemctl --failed --no-legend | awk "{print \$1}" | grep -E "activitywatch|aw-|dlp" || true); test -z "$failed" && echo "no AW-related failed units" || { echo "$failed"; exit 1; }'
