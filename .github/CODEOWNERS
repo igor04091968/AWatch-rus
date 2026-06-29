@@ -6,43 +6,43 @@
 # submissions.
 
 # Repository default owner.
-* @igor04091968
+* @igor04091968 @rachkovii68-bisness
 
 # Rust workspace and crates.
-/adk-rust/ @igor04091968
-**/Cargo.toml @igor04091968
-**/Cargo.lock @igor04091968
-**/*.rs @igor04091968
+/adk-rust/ @igor04091968 @rachkovii68-bisness
+**/Cargo.toml @igor04091968 @rachkovii68-bisness
+**/Cargo.lock @igor04091968 @rachkovii68-bisness
+**/*.rs @igor04091968 @rachkovii68-bisness
 
 # Operational scripts and automation.
-/scripts/ @igor04091968
+/scripts/ @igor04091968 @rachkovii68-bisness
 
 # Product documentation, demo material and screenshots.
-/docs/ @igor04091968
-/docs/demo/ @igor04091968
-/docs/screenshots/ @igor04091968
-/docs/assets/screenshots/ @igor04091968
+/docs/ @igor04091968 @rachkovii68-bisness
+/docs/demo/ @igor04091968 @rachkovii68-bisness
+/docs/screenshots/ @igor04091968 @rachkovii68-bisness
+/docs/assets/screenshots/ @igor04091968 @rachkovii68-bisness
 
 # Registry-readiness evidence and policy documents.
-/docs/registry/ @igor04091968
+/docs/registry/ @igor04091968 @rachkovii68-bisness
 
 # GitHub public mirror validation metadata and governance controls.
-/.github/workflows/ @igor04091968
-/.github/workflows/ci.yml @igor04091968
-/.github/workflows/security.yml @igor04091968
-/.github/workflows/coverage.yml @igor04091968
-/.github/pull_request_template.md @igor04091968
-/.github/ISSUE_TEMPLATE/ @igor04091968
-/.github/CODEOWNERS @igor04091968
-/docs/BRANCH_PROTECTION_POLICY_RU.md @igor04091968
-/docs/BRANCH_PROTECTION_EVIDENCE_RU.md @igor04091968
-/docs/PR_REVIEW_WORKFLOW_RU.md @igor04091968
-/docs/PR_REVIEW_EVIDENCE_RU.md @igor04091968
+/.github/workflows/ @igor04091968 @rachkovii68-bisness
+/.github/workflows/ci.yml @igor04091968 @rachkovii68-bisness
+/.github/workflows/security.yml @igor04091968 @rachkovii68-bisness
+/.github/workflows/coverage.yml @igor04091968 @rachkovii68-bisness
+/.github/pull_request_template.md @igor04091968 @rachkovii68-bisness
+/.github/ISSUE_TEMPLATE/ @igor04091968 @rachkovii68-bisness
+/.github/CODEOWNERS @igor04091968 @rachkovii68-bisness
+/docs/BRANCH_PROTECTION_POLICY_RU.md @igor04091968 @rachkovii68-bisness
+/docs/BRANCH_PROTECTION_EVIDENCE_RU.md @igor04091968 @rachkovii68-bisness
+/docs/PR_REVIEW_WORKFLOW_RU.md @igor04091968 @rachkovii68-bisness
+/docs/PR_REVIEW_EVIDENCE_RU.md @igor04091968 @rachkovii68-bisness
 
 # Ansible deployment automation.
-/ansible/ @igor04091968
+/ansible/ @igor04091968 @rachkovii68-bisness
 
 # Security and contribution governance.
-/SECURITY.md @igor04091968
-/CONTRIBUTING.md @igor04091968
-/deny.toml @igor04091968
+/SECURITY.md @igor04091968 @rachkovii68-bisness
+/CONTRIBUTING.md @igor04091968 @rachkovii68-bisness
+/deny.toml @igor04091968 @rachkovii68-bisness

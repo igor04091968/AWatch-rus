@@ -239,8 +239,22 @@ if [[ -s "$PUBLIC_ISSUES_MANIFEST" ]]; then
           )
         )
       )
-      and ([.issues[] | select(.id == "011" and .github_issue_url == "https://github.com/igor04091968/AWatch-rus/issues/48" and .status == "created" and .next_evidence_doc == "docs/PR_REVIEW_EVIDENCE_RU.md")] | length == 1)
-      and ([.issues[] | select(.id == "012" and .github_issue_url == "https://github.com/igor04091968/AWatch-rus/issues/49" and .status == "created" and .next_evidence_doc == "docs/BRANCH_PROTECTION_EVIDENCE_RU.md")] | length == 1)
+      and ([.issues[] | select(
+        .id == "011"
+        and .github_issue_url == "https://github.com/igor04091968/AWatch-rus/issues/48"
+        and .status == "created"
+        and .next_evidence_doc == "docs/PR_REVIEW_EVIDENCE_RU.md"
+        and .evidence_status == "pending_review_required"
+        and .evidence_doc == "docs/PR_REVIEW_EVIDENCE_RU.md"
+      )] | length == 1)
+      and ([.issues[] | select(
+        .id == "012"
+        and .github_issue_url == "https://github.com/igor04091968/AWatch-rus/issues/49"
+        and .status == "created"
+        and .next_evidence_doc == "docs/BRANCH_PROTECTION_EVIDENCE_RU.md"
+        and .evidence_status == "verified_active_ruleset"
+        and .evidence_doc == "docs/BRANCH_PROTECTION_EVIDENCE_RU.md"
+      )] | length == 1)
     ' "$PUBLIC_ISSUES_MANIFEST" >/dev/null || fail "public_issues_manifest_required_fields"
   elif command -v python3 >/dev/null 2>&1; then
     python3 - "$PUBLIC_ISSUES_MANIFEST" <<'PY' || fail "public_issues_manifest_required_fields"
@@ -296,6 +310,10 @@ if issue_011.get("github_issue_url") != "https://github.com/igor04091968/AWatch-
     raise SystemExit("issue 011 URL mismatch")
 if issue_011.get("next_evidence_doc") != "docs/PR_REVIEW_EVIDENCE_RU.md":
     raise SystemExit("issue 011 next_evidence_doc mismatch")
+if issue_011.get("evidence_status") != "pending_review_required":
+    raise SystemExit("issue 011 evidence_status mismatch")
+if issue_011.get("evidence_doc") != "docs/PR_REVIEW_EVIDENCE_RU.md":
+    raise SystemExit("issue 011 evidence_doc mismatch")
 
 issue_012 = issue_by_id.get("012") or {}
 if issue_012.get("status") != "created":
@@ -304,6 +322,10 @@ if issue_012.get("github_issue_url") != "https://github.com/igor04091968/AWatch-
     raise SystemExit("issue 012 URL mismatch")
 if issue_012.get("next_evidence_doc") != "docs/BRANCH_PROTECTION_EVIDENCE_RU.md":
     raise SystemExit("issue 012 next_evidence_doc mismatch")
+if issue_012.get("evidence_status") != "verified_active_ruleset":
+    raise SystemExit("issue 012 evidence_status mismatch")
+if issue_012.get("evidence_doc") != "docs/BRANCH_PROTECTION_EVIDENCE_RU.md":
+    raise SystemExit("issue 012 evidence_doc mismatch")
 PY
   else
     fail "json_validator_missing:jq_or_python3_required"
@@ -340,8 +362,17 @@ require_grep "PUBLIC_ISSUES_CREATION_RUNBOOK_RU\\.md" "docs/PROJECT_STATUS_RU.md
 require_grep "Public issues:[[:space:]]*created and linked in manifest|Созданы 12 публичных" "docs/PROJECT_STATUS_RU.md" "project_status_issue_creation_created_urls"
 require_grep "PR-based workflow documentation:[[:space:]]*ready" "docs/PROJECT_STATUS_RU.md" "project_status_pr_workflow_ready"
 require_grep "Branch protection evidence package:[[:space:]]*ready" "docs/PROJECT_STATUS_RU.md" "project_status_branch_evidence_ready"
-require_grep "pending_manual_verification" "docs/PROJECT_STATUS_RU.md" "project_status_branch_pending_manual"
+require_grep 'Branch protection ruleset:[[:space:]]*`verified_active_ruleset`' "docs/PROJECT_STATUS_RU.md" "project_status_branch_verified_ruleset"
+require_grep 'Branch protection target branch:[[:space:]]*`main`' "docs/PROJECT_STATUS_RU.md" "project_status_branch_target_main"
+require_grep "Coverage baseline" "docs/PROJECT_STATUS_RU.md" "project_status_branch_check_coverage_baseline"
+require_grep "security" "docs/PROJECT_STATUS_RU.md" "project_status_branch_check_security"
+require_grep "rust-checks" "docs/PROJECT_STATUS_RU.md" "project_status_branch_check_rust_checks"
+require_grep "docs-registry-checks" "docs/PROJECT_STATUS_RU.md" "project_status_branch_check_docs_registry_checks"
+require_grep "smoke-checks" "docs/PROJECT_STATUS_RU.md" "project_status_branch_check_smoke_checks"
 require_grep "First reviewed PR evidence:[[:space:]]*pending|First reviewed PR evidence remains pending" "docs/PROJECT_STATUS_RU.md" "project_status_first_reviewed_pr_pending"
+require_grep "First protected PR workflow: PR #50 opened" "docs/PROJECT_STATUS_RU.md" "project_status_first_protected_pr"
+require_grep "pending_review_required" "docs/PROJECT_STATUS_RU.md" "project_status_pr_pending_review_required"
+require_grep "External peer review remains pending" "docs/PROJECT_STATUS_RU.md" "project_status_external_peer_review_pending"
 require_grep "GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU\\.md|Restore outline|Post-restore checks" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_restore_runbook"
 require_grep "awatch-gitea-backup\\.timer" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_timer"
 require_grep "sha256|SHA256" "docs/registry/GITEA_BACKUP_AND_RESTORE_RUNBOOK_RU.md" "backup_sha256"
@@ -374,6 +405,11 @@ require_grep "docs/public-issues" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU
 require_grep "runtime/product code changes" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_no_runtime"
 require_grep "GitHub remains public mirror validation only" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_public_issues_github_role"
 require_grep "branch protection and PR review evidence package" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_branch_pr_evidence_package"
+require_grep "verified GitHub ruleset evidence" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_verified_ruleset_evidence"
+require_grep "protected PR workflow evidence recorded" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_protected_pr_workflow"
+require_grep "PR #50" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_pr_50"
+require_grep "pending_review_required" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_pr_pending_review_required"
+require_grep "This is not registry release evidence" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_ruleset_not_registry_evidence"
 require_grep "No runtime/product code changes" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_branch_pr_no_runtime"
 require_grep "External peer review is not claimed completed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_external_review_not_completed"
 require_grep "Restore test is not claimed as completed" "docs/registry/REGISTRY_READINESS_CHANGELOG_RU.md" "changelog_restore_not_completed"
@@ -422,14 +458,14 @@ require_grep 'Required approvals:[[:space:]]*`1`' "docs/BRANCH_PROTECTION_POLICY
 require_grep "Dismiss stale approvals" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_dismiss_stale"
 require_grep "CODEOWNERS" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_codeowners_review"
 require_grep "Require status checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_status_checks"
-require_grep "CI / Rust checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_ci_rust_checks"
-require_grep "CI / Docs and registry checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_ci_docs_registry_checks"
-require_grep "CI / Smoke checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_ci_smoke_checks"
-require_grep "Coverage / Coverage baseline" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_coverage_baseline_check"
-require_grep "Security / Cargo audit" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_security_cargo_audit"
-require_grep "Security / Cargo deny" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_security_cargo_deny"
-require_grep "Security / Secret pattern check" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_secret_pattern_check"
-require_grep "Security / Dependency review" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_dependency_review"
+require_grep 'Ruleset name:[[:space:]]*`main`' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_ruleset_main"
+require_grep 'Enforcement:[[:space:]]*`active`' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_enforcement_active"
+require_grep "Bypass list:[[:space:]]*empty" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_bypass_empty"
+require_grep "Coverage baseline" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_coverage_baseline_check"
+require_grep "security" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_security_check"
+require_grep "rust-checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_rust_checks"
+require_grep "docs-registry-checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_docs_registry_checks"
+require_grep "smoke-checks" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_smoke_checks"
 require_grep 'Require `CI` workflow' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_ci"
 require_grep 'Require `Security` workflow' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_security"
 require_grep 'Require `Coverage` workflow' "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_coverage"
@@ -438,12 +474,21 @@ require_grep "Restrict force push" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch
 require_grep "Require conversation resolution" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_conversation_resolution"
 require_grep "Require linear history" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_linear_history"
 require_grep "emergency-only" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_admin_bypass"
-require_grep "recommended policy|advisory branch protection policy" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_advisory_not_enabled"
-require_grep "branch_protection_status:[[:space:]]*\"pending_manual_verification\"" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_pending_manual"
+require_grep "verified_active_ruleset" "docs/BRANCH_PROTECTION_POLICY_RU.md" "branch_policy_verified_active_ruleset"
+require_grep "branch_protection_status:[[:space:]]*\"verified_active_ruleset\"" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_verified_active"
 require_grep "https://github\\.com/igor04091968/AWatch-rus/issues/49" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_issue_49"
 require_grep "Not Registry Release Evidence|Not registry release evidence" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_not_registry"
 require_grep "Russian Contour Note" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_russian_contour"
-require_grep "CI / Rust checks" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_required_checks"
+require_grep 'enforcement:[[:space:]]*`active`' "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_enforcement_active"
+require_grep 'bypass_list:[[:space:]]*`empty`' "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_bypass_empty"
+require_grep 'required approvals:[[:space:]]*`1`' "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_required_approvals"
+require_grep 'require review from Code Owners:[[:space:]]*`enabled`' "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_codeowners_enabled"
+require_grep "Coverage baseline" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_coverage_baseline"
+require_grep "security" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_security_check"
+require_grep "rust-checks" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_rust_checks"
+require_grep "docs-registry-checks" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_docs_registry_checks"
+require_grep "smoke-checks" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_smoke_checks"
+require_grep "GitHub ruleset / branch protection evidence is public governance evidence only" "docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "branch_evidence_governance_only"
 require_grep "workflow documentation ready" "docs/PR_REVIEW_WORKFLOW_RU.md" "pr_workflow_ready"
 require_grep "https://github\\.com/igor04091968/AWatch-rus/issues/48" "docs/PR_REVIEW_WORKFLOW_RU.md" "pr_workflow_issue_48"
 require_grep "PR template must be completed" "docs/PR_REVIEW_WORKFLOW_RU.md" "pr_workflow_template_required"
@@ -451,12 +496,26 @@ require_grep "CODEOWNERS" "docs/PR_REVIEW_WORKFLOW_RU.md" "pr_workflow_codeowner
 require_grep "CI, Coverage and Security checks" "docs/PR_REVIEW_WORKFLOW_RU.md" "pr_workflow_checks"
 require_grep "public secret-pattern scan" "docs/PR_REVIEW_WORKFLOW_RU.md" "pr_workflow_secret_scan"
 require_grep "GitHub Actions is public mirror validation only" "docs/PR_REVIEW_WORKFLOW_RU.md" "pr_workflow_github_public_only"
-require_grep "pr_review_evidence_status:[[:space:]]*\"pending_until_first_reviewed_pr_is_merged\"" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_pending_first_reviewed_pr"
+require_grep "pr_review_status:[[:space:]]*\"pending_review_required\"" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_pending_review_required"
+require_grep "https://github\\.com/igor04091968/AWatch-rus/pull/50" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_pr_50"
+require_grep 'Required checks status:[[:space:]]*`passed`' "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_required_checks_passed"
+require_grep 'Review requirement status:[[:space:]]*`pending_review_required`' "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_review_pending"
+require_grep 'Merge status:[[:space:]]*`open`' "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_merge_open"
+require_grep 'Admin bypass used:[[:space:]]*`false`' "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_no_bypass"
+require_grep "Coverage baseline" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_coverage_baseline"
+require_grep "security" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_security"
+require_grep "rust-checks" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_rust_checks"
+require_grep "docs-registry-checks" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_docs_registry_checks"
+require_grep "smoke-checks" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_smoke_checks"
 require_grep "reviewer approval" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_reviewer_approval"
 require_grep "External peer review completed:[[:space:]]*not claimed" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_external_not_claimed"
 require_grep "Not Registry Release Evidence|Not registry release evidence" "docs/PR_REVIEW_EVIDENCE_RU.md" "pr_evidence_not_registry"
 require_grep "\"next_evidence_doc\"[[:space:]]*:[[:space:]]*\"docs/PR_REVIEW_EVIDENCE_RU\\.md\"" "docs/public-issues/public-issues-manifest.json" "manifest_issue_48_next_evidence_doc"
+require_grep "\"evidence_status\"[[:space:]]*:[[:space:]]*\"pending_review_required\"" "docs/public-issues/public-issues-manifest.json" "manifest_issue_48_evidence_status"
+require_grep "\"evidence_doc\"[[:space:]]*:[[:space:]]*\"docs/PR_REVIEW_EVIDENCE_RU\\.md\"" "docs/public-issues/public-issues-manifest.json" "manifest_issue_48_evidence_doc"
 require_grep "\"next_evidence_doc\"[[:space:]]*:[[:space:]]*\"docs/BRANCH_PROTECTION_EVIDENCE_RU\\.md\"" "docs/public-issues/public-issues-manifest.json" "manifest_issue_49_next_evidence_doc"
+require_grep "\"evidence_status\"[[:space:]]*:[[:space:]]*\"verified_active_ruleset\"" "docs/public-issues/public-issues-manifest.json" "manifest_issue_49_evidence_status"
+require_grep "\"evidence_doc\"[[:space:]]*:[[:space:]]*\"docs/BRANCH_PROTECTION_EVIDENCE_RU\\.md\"" "docs/public-issues/public-issues-manifest.json" "manifest_issue_49_evidence_doc"
 require_grep "Один основной разработчик" "docs/RESIDUAL_RISKS_RU.md" "risk_single_developer"
 require_grep "Нет внешнего visible peer review" "docs/RESIDUAL_RISKS_RU.md" "risk_peer_review"
 require_grep "Низкая публичная активность issue tracker" "docs/RESIDUAL_RISKS_RU.md" "risk_issue_tracker_activity"
@@ -599,11 +658,33 @@ fi
 rm -f /tmp/registry_forbidden_registry_submission_done.$$
 
 if grep -RInEi "(branch protection).{0,120}(enabled|включ(е|ё)н|настроен|active)" "$ROOT/README.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md" "$ROOT/docs/BRANCH_PROTECTION_EVIDENCE_RU.md" "$ROOT/docs/PR_REVIEW_WORKFLOW_RU.md" "$ROOT/docs/PR_REVIEW_EVIDENCE_RU.md" "$REGISTRY_DIR"/*.md \
-  | grep -Eiv "(not |не |не утверждает|not claimed|advisory|until repository settings|если применимо|recommended|pending_manual_verification|until maintainer evidence|until.*evidence|to verify)" \
+  | grep -Eiv "(not |не |не утверждает|not claimed|no claim|no assertion|advisory|until repository settings|если применимо|recommended|pending|pending_manual_verification|verified_active_ruleset|maintainer-verified|verified active by maintainer|verified GitHub ruleset|until maintainer evidence|until.*evidence|to verify)" \
   >/tmp/registry_forbidden_branch_protection_enabled.$$ 2>/dev/null; then
   fail "forbidden_claim_branch_protection_enabled:$(cat /tmp/registry_forbidden_branch_protection_enabled.$$)"
 fi
 rm -f /tmp/registry_forbidden_branch_protection_enabled.$$
+
+if grep -Eq 'pr_review_status:[[:space:]]*"verified"' "$ROOT/docs/PR_REVIEW_EVIDENCE_RU.md" \
+  && ! grep -Eq 'Admin bypass used:[[:space:]]*`false`' "$ROOT/docs/PR_REVIEW_EVIDENCE_RU.md"; then
+  fail "pr_review_verified_requires_admin_bypass_false"
+fi
+
+if grep -Eq 'Admin bypass used:[[:space:]]*`true`' "$ROOT/docs/PR_REVIEW_EVIDENCE_RU.md" \
+  && grep -Eiq "first PR review workflow:[[:space:]]*verified|PR review workflow:[[:space:]]*verified|first reviewed PR evidence:[[:space:]]*verified" "$ROOT/docs/PROJECT_STATUS_RU.md"; then
+  fail "bypass_pr_must_not_mark_review_workflow_verified"
+fi
+
+if grep -RInEi "(CodeQL|code scanning).{0,80}(enabled|required|requirement|tool)" \
+  "$ROOT/docs/BRANCH_PROTECTION_EVIDENCE_RU.md" \
+  "$ROOT/docs/BRANCH_PROTECTION_POLICY_RU.md" \
+  "$ROOT/docs/PROJECT_STATUS_RU.md" \
+  "$ROOT/docs/RESIDUAL_RISKS_RU.md" \
+  "$ROOT/docs/PR_REVIEW_EVIDENCE_RU.md" \
+  "$REGISTRY_DIR/REGISTRY_READINESS_CHANGELOG_RU.md" \
+  >/tmp/registry_forbidden_codeql_claim.$$ 2>/dev/null; then
+  fail "forbidden_claim_codeql_enabled_or_required:$(cat /tmp/registry_forbidden_codeql_claim.$$)"
+fi
+rm -f /tmp/registry_forbidden_codeql_claim.$$
 
 if grep -RInEi "(external|visible|peer).{0,80}(review).{0,120}(active|performed|completed|done|выполняется|проведен|провед(е|ё)н|активен)" "$ROOT/README.md" "$ROOT/docs/PROJECT_STATUS_RU.md" "$ROOT/docs/RESIDUAL_RISKS_RU.md" "$ROOT/docs/PR_REVIEW_WORKFLOW_RU.md" "$ROOT/docs/PR_REVIEW_EVIDENCE_RU.md" "$REGISTRY_DIR"/*.md \
   | grep -Eiv "(not |не |pending|still pending|не утверждает|not claimed|until public reviewed PRs|until reviewed PR evidence|unless a reviewed public PR|is not claimed)" \

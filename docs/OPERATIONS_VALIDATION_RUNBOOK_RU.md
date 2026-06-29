@@ -94,10 +94,25 @@ Browser smoke не заменяет API/CLI проверки. Он подтве�
 
 ```bash
 cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
-NO_PROXY=localhost,127.0.0.1,10.10.10.13,10.10.10.2,192.168.100.18,10.10.10.0/24 \
-no_proxy=localhost,127.0.0.1,10.10.10.13,10.10.10.2,192.168.100.18,10.10.10.0/24 \
+NO_PROXY=localhost,127.0.0.1,10.10.10.13,10.10.10.2,192.168.100.19,10.10.10.0/24 \
+no_proxy=localhost,127.0.0.1,10.10.10.13,10.10.10.2,192.168.100.19,10.10.10.0/24 \
+AW_SMOKE_WINDOWS_HOST=192.168.100.19 \
+AW_SMOKE_SOURCE_HOSTNAME=SHARKON2025 \
 ./check-aw-full.sh
 ```
+
+Для DetMir production при проверке после rename RDP-сервера явно фиксируйте
+stable logical host id:
+
+```bash
+AW_MONITORED_WINDOWS_HOSTNAME=SHARKON2025 ./check-aw-data.sh
+AW_SMOKE_WINDOWS_HOST=192.168.100.19 \
+AW_SMOKE_SOURCE_HOSTNAME=SHARKON2025 \
+./scripts/aw-contour-smoke-local.sh --skip-winrm
+```
+
+`SHARKON2025` в этих командах - исторический ActivityWatch logical id, не
+физическое имя Windows-сервера.
 
 Для workforce ClickHouse дополнительно проверить quality views:
 

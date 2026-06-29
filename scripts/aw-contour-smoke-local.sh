@@ -40,12 +40,13 @@ GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-}"
 PROXMOX_HOST="${AW_SMOKE_PROXMOX_HOST:-10.10.10.2}"
 AW_HOST="${AW_SMOKE_AW_HOST:-10.10.10.13}"
 GRAFANA_HOST="${AW_SMOKE_GRAFANA_HOST:-10.10.10.11}"
-WINDOWS_HOST="${AW_SMOKE_WINDOWS_HOST:-192.168.100.18}"
-AW_SOURCE_HOSTNAME="${AW_SMOKE_SOURCE_HOSTNAME:-SHARKON2025}"
+WINDOWS_HOST="${AW_SMOKE_WINDOWS_HOST:-${AW_WINDOWS_HOST:-192.168.100.19}}"
+AW_SOURCE_HOSTNAME="${AW_SMOKE_SOURCE_HOSTNAME:-${AW_LOGICAL_HOST_ID:-${AW_MONITORED_WINDOWS_HOSTNAME:-SHARKON2025}}}"
 LOG_DIR="${AW_SMOKE_LOG_DIR:-$REPO_ROOT/output/smoke}"
 RUN_REMOTE="${AW_SMOKE_RUN_REMOTE:-1}"
 RUN_WINRM="${AW_SMOKE_RUN_WINRM:-1}"
 RUN_SERVER_SYSTEMD="${AW_SMOKE_RUN_SERVER_SYSTEMD:-1}"
+LOKI_ENABLED="${AW_SMOKE_LOKI_ENABLED:-0}"
 
 NO_PROXY_REQUIRED="localhost,127.0.0.1,$PROXMOX_HOST,$AW_HOST,$GRAFANA_HOST,$WINDOWS_HOST,10.10.10.0/24,192.168.100.0/24"
 if [ -n "${no_proxy:-}" ]; then
@@ -87,6 +88,7 @@ Environment overrides:
   AW_SMOKE_WORKTIME_API=http://10.10.10.13:5610
   AW_SMOKE_GRAFANA_URL=http://10.10.10.11:3000
   AW_SMOKE_SOURCE_HOSTNAME=SHARKON2025
+  AW_SMOKE_LOKI_ENABLED=0|1
   AW_SMOKE_ENV_FILE=$HOME/.config/aw-contour-smoke.env
   AW_SMOKE_LOG_DIR=$REPO_ROOT/output/smoke
   GRAFANA_USER/GRAFANA_PASSWORD via env or a local env file
@@ -219,6 +221,10 @@ check_http_code_basic_auth() {
 check_grafana_loki_proxy() {
   local name="Grafana Loki datasource proxy"
   local tmp uid code body
+  if [ "$LOKI_ENABLED" != "1" ]; then
+    skip "$name skipped: Loki is intentionally disabled for the current DetMir resource profile"
+    return
+  fi
   tmp="$(mktemp)"
   if ! curl -k -fsS -u "$GRAFANA_USER:$GRAFANA_PASSWORD" --connect-timeout 5 --max-time 20 "$GRAFANA_URL/api/datasources" -o "$tmp" 2>"$tmp.err"; then
     fail "$name cannot list datasources"
@@ -416,7 +422,7 @@ classify_bucket_age() {
 check_bucket_freshness() {
   local bucket="$1"
   local bucket_id="${bucket}_${AW_SOURCE_HOSTNAME}"
-  local tmp last_ts last_id event_epoch now age_sec status
+  local tmp last_ts last_id event_epoch now age_sec status meta_ts
   tmp="$(mktemp)"
   if ! curl -fsS --connect-timeout 5 --max-time 20 "$AW_SERVER/api/0/buckets/$bucket_id/events?limit=1" -o "$tmp" 2>"$tmp.err"; then
     fail "bucket $bucket_id query failed"
@@ -428,6 +434,12 @@ check_bucket_freshness() {
   last_ts="$(jq -r '.[0].timestamp // empty' "$tmp" 2>/dev/null)"
   last_id="$(jq -r '.[0].id // 0' "$tmp" 2>/dev/null)"
   rm -f "$tmp" "$tmp.err"
+  if [ "$bucket" = "aw-watcher-afk" ]; then
+    meta_ts="$(curl -fsS --connect-timeout 5 --max-time 20 "$AW_SERVER/api/0/buckets/$bucket_id" 2>/dev/null | jq -r '.metadata.end // empty' 2>/dev/null || true)"
+    if [ -n "$meta_ts" ]; then
+      last_ts="$meta_ts"
+    fi
+  fi
 
   if [ -z "$last_ts" ]; then
     case "$bucket" in
@@ -611,7 +623,7 @@ if [ "$RUN_WINRM" = "1" ] && have ansible; then
   check_ansible_module "Windows win_ping" aw_windows win_ping
   check_ansible_win_shell "Windows sessions" aw_windows '$psi = [System.Diagnostics.ProcessStartInfo]::new(); $psi.FileName = "$env:SystemRoot\System32\query.exe"; $psi.Arguments = "user"; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.StandardOutputEncoding = [System.Text.Encoding]::GetEncoding(866); $psi.StandardErrorEncoding = [System.Text.Encoding]::GetEncoding(866); $p = [System.Diagnostics.Process]::Start($psi); $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit(); [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $out; if ($err) { $err }; if ($out -match "USERNAME|ПОЛЬЗОВАТЕЛЬ|администратор|Администратор") { exit 0 } else { exit $p.ExitCode }'
   check_ansible_win_shell_warn "Windows collector processes" aw_windows '$p = Get-Process aw-watcher-afk,aw-watcher-window -ErrorAction SilentlyContinue; if ($p) { $p | Select-Object Name,Id,SessionId,StartTime | Format-Table -AutoSize } else { "no aw-watcher-afk/window process visible to this WinRM session" }'
-  check_ansible_win_shell "Windows ActivityWatch tasks" aw_windows 'schtasks /Query /TN "ActivityWatch Recovery" /FO LIST /V; schtasks /Query /TN "ActivityWatch Launch [SHARKON2025_Администратор]" /FO LIST /V'
+  check_ansible_win_shell "Windows ActivityWatch tasks" aw_windows 'schtasks /Query /TN "ActivityWatch Recovery" /FO LIST /V; Get-Content -Raw "C:\ProgramData\AWatch-rus\deployment-config.json" | ConvertFrom-Json | Select-Object -ExpandProperty userTasks | Select-Object LaunchTaskName,UserId | Format-Table -AutoSize'
 else
   skip "Windows WinRM checks skipped"
 fi
@@ -625,7 +637,7 @@ else
   skip "check-aw-data.sh missing"
 fi
 if [ -x "$REPO_ROOT/check-aw-full.sh" ]; then
-  if "$REPO_ROOT/check-aw-full.sh"; then pass "check-aw-full.sh completed"; else fail "check-aw-full.sh failed"; fi
+  if AW_SMOKE_AW_SERVER="$AW_SERVER" AW_SMOKE_SOURCE_HOSTNAME="$AW_SOURCE_HOSTNAME" AW_SMOKE_WINDOWS_HOST="$WINDOWS_HOST" "$REPO_ROOT/check-aw-full.sh"; then pass "check-aw-full.sh completed"; else fail "check-aw-full.sh failed"; fi
 else
   skip "check-aw-full.sh missing"
 fi

@@ -7,9 +7,9 @@ use clap::Parser;
 use reqwest::blocking::Client;
 use serde_json::Value;
 
-const DEFAULT_SERVER: &str = "http://192.0.2.13:5600";
-const DEFAULT_HOST: &str = "HOST-EXAMPLE";
-const DEFAULT_RDP_HOST: &str = "198.51.100.18";
+const DEFAULT_SERVER: &str = "http://10.10.10.13:5600";
+const DEFAULT_HOST: &str = "SHARKON2025";
+const DEFAULT_RDP_HOST: &str = "192.168.100.19";
 const BUCKETS: &[(&str, &str)] = &[
     ("aw-watcher-afk", "AFK watcher"),
     ("aw-watcher-window", "Window watcher"),
@@ -38,6 +38,9 @@ struct Cli {
 
     #[arg(long)]
     no_color: bool,
+
+    #[arg(long, default_value_t = true)]
+    dlp_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -119,7 +122,37 @@ fn main() {
 }
 
 fn run() -> Result<i32> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    if cli.server == DEFAULT_SERVER {
+        if let Some(value) = env_nonempty("CHECK_AW_FULL_SERVER")
+            .or_else(|| env_nonempty("AW_SMOKE_AW_SERVER"))
+            .or_else(|| env_nonempty("AW_SERVER"))
+        {
+            cli.server = value;
+        }
+    }
+    if cli.host == DEFAULT_HOST {
+        if let Some(value) = env_nonempty("CHECK_AW_FULL_HOST")
+            .or_else(|| env_nonempty("AW_SMOKE_SOURCE_HOSTNAME"))
+            .or_else(|| env_nonempty("AW_LOGICAL_HOST_ID"))
+            .or_else(|| env_nonempty("AW_MONITORED_WINDOWS_HOSTNAME"))
+        {
+            cli.host = value;
+        }
+    }
+    if cli.rdp_host == DEFAULT_RDP_HOST {
+        if let Some(value) = env_nonempty("CHECK_AW_FULL_RDP_HOST")
+            .or_else(|| env_nonempty("AW_SMOKE_WINDOWS_HOST"))
+            .or_else(|| env_nonempty("AW_WINDOWS_HOST"))
+        {
+            cli.rdp_host = value;
+        }
+    }
+    if let Some(value) =
+        env_nonempty("AW_DLP_ENABLED").or_else(|| env_nonempty("DETMIR_DLP_ENABLED"))
+    {
+        cli.dlp_enabled = parse_env_flag(&value);
+    }
     let server = cli.server.trim_end_matches('/').to_string();
     let colors = Colors::new(!cli.no_color && std::env::var_os("NO_COLOR").is_none());
     let timeout = Duration::from_secs(cli.timeout_seconds.max(1));
@@ -182,7 +215,11 @@ fn run() -> Result<i32> {
     );
 
     let mut rows = Vec::new();
-    for (bucket, label) in BUCKETS {
+    for (bucket, label) in BUCKETS
+        .iter()
+        .copied()
+        .filter(|(bucket, _)| cli.dlp_enabled || !bucket.starts_with("aw-dlp-"))
+    {
         let row = read_bucket_row(&client, &server, &cli.host, bucket, label, now, &context);
         println!(
             "  {:<42} {:<8} {:<20} {}",
@@ -192,6 +229,15 @@ fn run() -> Result<i32> {
             render_status(&colors, row.status)
         );
         rows.push(row);
+    }
+    if !cli.dlp_enabled {
+        println!(
+            "  {:<42} {:<8} {:<20} {}",
+            "DLP buckets",
+            "-",
+            "disabled",
+            colors.paint(colors.cyan, "SKIPPED")
+        );
     }
     println!();
 
@@ -330,7 +376,12 @@ fn read_bucket_row(
             status: BucketStatus::Unknown,
         };
     };
-    let age_sec = (now - ts).num_seconds().max(0);
+    let effective_ts = if bucket == "aw-watcher-afk" {
+        bucket_metadata_end(client, server, &bucket_full).unwrap_or(ts)
+    } else {
+        ts
+    };
+    let age_sec = (now - effective_ts).num_seconds().max(0);
     BucketRow {
         label,
         last_id,
@@ -407,6 +458,15 @@ fn latest_event(client: &Client, server: &str, bucket: &str) -> Result<Option<Va
     Ok(value.as_array().and_then(|items| items.first()).cloned())
 }
 
+fn bucket_metadata_end(client: &Client, server: &str, bucket: &str) -> Option<DateTime<Utc>> {
+    let url = format!("{server}/api/0/buckets/{bucket}");
+    let value = get_json(client, &url).ok()?;
+    value
+        .pointer("/metadata/end")
+        .and_then(Value::as_str)
+        .and_then(parse_ts)
+}
+
 fn get_json(client: &Client, url: &str) -> Result<Value> {
     client
         .get(url)
@@ -423,7 +483,7 @@ fn check_cors(client: &Client, server: &str) -> u16 {
     let url = format!("{server}/api/0/settings/");
     client
         .get(&url)
-        .header("Origin", "http://192.0.2.13:5600")
+        .header("Origin", server)
         .send()
         .map(|response| response.status().as_u16())
         .unwrap_or(0)
@@ -464,6 +524,17 @@ fn json_value_to_string(value: &Value) -> String {
         Value::String(value) => value.clone(),
         other => other.to_string(),
     }
+}
+
+fn env_nonempty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
+fn parse_env_flag(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 #[cfg(test)]

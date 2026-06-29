@@ -53,9 +53,77 @@ backup, registry-readiness документации, плана российск
   (`docs/PR_REVIEW_EVIDENCE_RU.md`).
 - Branch protection evidence package: ready
   (`docs/BRANCH_PROTECTION_EVIDENCE_RU.md`).
-- Branch protection actual enablement:
-  `pending_manual_verification`.
+- Branch protection ruleset: `verified_active_ruleset`.
+- Branch protection target branch: `main`.
+- Branch protection required checks: `Coverage baseline`, `security`,
+  `rust-checks`, `docs-registry-checks`, `smoke-checks`.
+- First protected PR workflow: PR #50 opened; required checks passed;
+  review/merge still `pending_review_required`.
 - First reviewed PR evidence: pending.
+- DetMir portal live baseline on 2026-06-25:
+  `docs/DETMIR_CURRENT_STATE_RU.md`.
+- DetMir portal deployed binary:
+  `653b22b0fbf29a22f7de42ade7b689490b1de16fa07e785e4e0efd3078e7a3bc`.
+- DetMir portal cold-start UI hang: mitigated. During cold/prewarm state the UI
+  now shows `STALE / Первичный срез прогревается`, not endless loading.
+- DetMir DLP hot-path boundary: phase 1 deployed on the portal service with
+  `DETMIR_PORTAL_DLP_MODULE_ENABLED=false`.
+- DetMir optional DLP runtime controls: implemented in code/docs through
+  `AW_DLP_ENABLED`, `DETMIR_DLP_ENABLED`,
+  `scripts/detmir_dlp_runtime_control.sh` and
+  `docs/DLP_OPTIONAL_RUNTIME_RU.md`.
+- DetMir optional DLP runtime live state: disabled on 2026-06-25 to reduce
+  InfluxDB/Grafana/ClickHouse/AW server load. Evidence:
+  `dlp-health-check=dlp:mode disabled`, `detmir-dlp=dlp:mode disabled`,
+  active/enabled DLP units `0/0`, history snapshots under
+  `/var/lib/activitywatch/health/dlp-runtime-history/`.
+- DetMir DLP contour status: disabled for the current production resource
+  profile, not removed. It remains a documented optional module and must only be
+  re-enabled after explicit operator decision and Proxmox/InfluxDB/Grafana/
+  ClickHouse capacity check.
+- DetMir DLP buckets in manual full check: `SKIPPED` under
+  `AW_DLP_ENABLED=false`, not reported as dead.
+- DetMir RDP collector freshness after 2026-06-29 restore: physical RDP target
+  is `192.168.100.19`, stable AW logical host id remains `SHARKON2025`.
+  Buckets are fresh/inactive as expected, collector guard quarantine was reset,
+  and `check-aw-full` was updated to use env-driven RDP target and AFK
+  `metadata.end` freshness. Admin laptop route to `192.168.100.19` goes through
+  DetMir OpenVPN gateway `10.0.13.1`; WinRM `5985` and RDP `3389` are reachable
+  from the admin laptop.
+- Low-cost containment pack: first safe control-plane layer implemented as
+  Rust `containment-engine`, example policy/finding fixtures, Ansible/env
+  disabled-by-default configuration, and operator/policy runbooks. Current
+  engine is decision/shadow only and does not mutate firewall, pfSense, AD,
+  VLAN or routes.
+- Security Finding Inbox: ClickHouse schema, DetMir Portal view/API,
+  Hayabusa/Velociraptor ingest adapters and separate
+  `security-finding-inbox executor` are implemented. Portal records workflow
+  events only; approved `apply_requested` can be processed by the fail-closed
+  executor through `containment-engine` `decide -> plan -> apply -> verify`
+  with rollback on apply failure.
+- Velociraptor/Hayabusa status: implemented as optional findings/forensics
+  sources. They are not required for Workforce hot path, do not replace DLP or
+  SIEM, and must not start heavy always-on runtime in DetMir production unless
+  `offline_collector` or `server_clients` mode is explicitly selected.
+- Security Finding Inbox live schema: applied on ClickHouse 2026-06-29
+  (`security_findings`, `security_finding_workflow_events`,
+  `security_finding_inbox`).
+- DetMir Loki log contour: intentionally disabled by operator to reduce
+  resource usage. Proxmox LXC `202 loki-logs` is stopped, active config has
+  `onboot: 0`, and smoke checks skip Loki by default unless
+  `AW_SMOKE_LOKI_ENABLED=1` is set.
+- DetMir restore baseline 2026-06-29:
+  `docs/DETMIR_RESTORE_BASELINE_2026-06-29_RU.md`.
+- DetMir API smoke after phase 1: `/healthz` and `/readyz` OK;
+  `/api/reports` returned `cache_status=warming` with
+  `modules.dlp.enabled=false`; `/api/operator` returned bounded
+  `cache_status=warming` / `summary.severity=STALE` without waiting for the
+  full cold snapshot.
+- DetMir remaining heavy path risk: full report/snapshot prewarm can still be
+  CPU/IO expensive; deeper optimization remains pending.
+- DetMir VPN access rule: do not identify the contour by `tun0`/`tun1`; verify
+  by NetworkManager profile, `10.0.13.*` address, route via `10.0.13.1` and live
+  reachability.
 
 ## Что готово
 
@@ -92,10 +160,17 @@ backup, registry-readiness документации, плана российск
   `docs/BRANCH_PROTECTION_POLICY_RU.md`.
 - Branch protection evidence template prepared:
   `docs/BRANCH_PROTECTION_EVIDENCE_RU.md`.
+- GitHub ruleset / branch protection for `main` verified active by maintainer:
+  ruleset `main`, target branch `main`, empty bypass list, required PR with
+  one approval, stale approval dismissal, Code Owners review, required status
+  checks and force-push blocking.
 - PR-based review workflow documented:
   `docs/PR_REVIEW_WORKFLOW_RU.md`.
 - PR review evidence template prepared:
   `docs/PR_REVIEW_EVIDENCE_RU.md`.
+- First protected PR workflow evidence recorded for PR #50:
+  required checks passed; review requirement is still pending; merge status is
+  open; no admin bypass recorded.
 - Зафиксирован residual risk register:
   `docs/RESIDUAL_RISKS_RU.md`.
 - Подготовлен план публичных issues для ручного заведения:
@@ -117,13 +192,16 @@ backup, registry-readiness документации, плана российск
 - Финальная юридическая проверка пакета документов перед подачей.
 - Проверка совместимости с российскими ОС.
 - Visible external code review is still pending.
-- Branch protection enablement is not claimed until repository settings are
-  verified.
-- Branch protection actual enablement remains `pending_manual_verification`.
 - First reviewed PR evidence remains pending until a reviewed public PR is
   merged and evidence is recorded.
+- External peer review remains pending.
 - Community adoption remains low until external contributors, public reviews
   and sustained third-party activity appear.
+- DetMir DLP runtime disable is complete for the current live contour; deeper
+  long-term DLP product modularization and retention/cleanup policy remain
+  separate future work.
+- DetMir RDP collector/session recovery after 2026-06-29 restore is verified by
+  live smoke: `check-aw-full` reports `FRESH=8 STALE=0 DEAD=0`.
 
 ## Честные ограничения
 
@@ -161,3 +239,4 @@ backup, registry-readiness документации, плана российск
 - `docs/public-issues/public-issues-manifest.json`
 - `docs/BRANCH_PROTECTION_POLICY_RU.md`
 - `docs/BRANCH_PROTECTION_EVIDENCE_RU.md`
+- `docs/DETMIR_CURRENT_STATE_RU.md`

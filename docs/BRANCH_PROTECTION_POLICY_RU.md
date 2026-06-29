@@ -2,9 +2,8 @@
 
 Дата: 2026-06-23
 
-Статус: recommended policy. Этот документ описывает целевую настройку GitHub
-branch protection для публичного зеркала. Он не утверждает, что branch
-protection уже включен.
+Статус: recommended policy plus verified GitHub ruleset evidence. GitHub UI
+verification is recorded in `docs/BRANCH_PROTECTION_EVIDENCE_RU.md`.
 
 GitHub остается public mirror validation surface. Primary registry-readiness
 contour остается Russian Gitea plus Russian build-runner release evidence.
@@ -12,6 +11,7 @@ contour остается Russian Gitea plus Russian build-runner release evidenc
 ## Scope
 
 - Branch: `main`.
+- Ruleset: `main`.
 - Platform: GitHub public mirror.
 - Purpose: visible review discipline, status-check discipline and public
   engineering maturity signal.
@@ -36,10 +36,15 @@ contour остается Russian Gitea plus Russian build-runner release evidenc
 
 Recommended settings for `main` on the GitHub public mirror:
 
+- Ruleset name: `main`.
+- Enforcement: `active`.
+- Target branches: `main`.
+- Applies to: `1` target, `main`.
+- Bypass list: empty.
 - Require pull request before merging.
 - Required approvals: `1`.
 - Dismiss stale approvals when new commits are pushed.
-- Require review from CODEOWNERS if available on the current GitHub plan.
+- Require review from Code Owners.
 - Require status checks to pass before merging.
 - Require branches to be up to date before merging if this does not block the
   current maintainer workflow.
@@ -48,24 +53,24 @@ Recommended settings for `main` on the GitHub public mirror:
 - Allow administrators bypass: documented decision only; stricter mode should
   keep bypass disabled unless repository recovery requires it.
 
-Recommended required checks, using current workflow/job names:
+Verified ruleset required status checks from GitHub UI:
 
-- `CI / Rust checks`
-- `CI / Docs and registry checks`
-- `CI / Smoke checks`
-- `Coverage / Coverage baseline`
-- `Security / Cargo audit`
-- `Security / Cargo deny`
-- `Security / Secret pattern check`
-- `Security / Dependency review`
+- `Coverage baseline`
+- `security`
+- `rust-checks`
+- `docs-registry-checks`
+- `smoke-checks`
 
-Before verification, maintainer must compare these names with the exact check
-names displayed by GitHub. If GitHub displays different names, update this
-document and `docs/BRANCH_PROTECTION_EVIDENCE_RU.md` before recording evidence.
+Workflow/job-name mapping for operator review:
 
-Current evidence status is tracked in
-`docs/BRANCH_PROTECTION_EVIDENCE_RU.md` and remains
-`pending_manual_verification` until maintainer evidence is recorded.
+- `Coverage baseline`: Coverage workflow baseline job.
+- `rust-checks`: CI Rust checks job.
+- `docs-registry-checks`: CI docs and registry checks job.
+- `smoke-checks`: CI smoke checks job.
+- `security`: security validation context shown by GitHub rulesets UI.
+
+Current evidence status is `verified_active_ruleset` in
+`docs/BRANCH_PROTECTION_EVIDENCE_RU.md`.
 
 ## Review expectations
 
