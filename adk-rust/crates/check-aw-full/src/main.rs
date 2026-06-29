@@ -124,9 +124,9 @@ fn main() {
 fn run() -> Result<i32> {
     let mut cli = Cli::parse();
     if cli.server == DEFAULT_SERVER {
-        if let Some(value) =
-            env_nonempty("CHECK_AW_FULL_SERVER").or_else(|| env_nonempty("AW_SMOKE_AW_SERVER"))
-                .or_else(|| env_nonempty("AW_SERVER"))
+        if let Some(value) = env_nonempty("CHECK_AW_FULL_SERVER")
+            .or_else(|| env_nonempty("AW_SMOKE_AW_SERVER"))
+            .or_else(|| env_nonempty("AW_SERVER"))
         {
             cli.server = value;
         }
