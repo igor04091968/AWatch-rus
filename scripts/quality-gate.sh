@@ -17,18 +17,25 @@ else
   echo "node not found, skipping portal contract sync guard."
 fi
 
+echo "[preflight] Orchestration map guard"
+bash scripts/check_orchestration_map.sh
+
 rust_candidates=()
 if [[ -n "$RUST_BIN" ]]; then
   rust_candidates+=("$RUST_BIN")
 fi
-if [[ -n "${AW_RUS_CARGO_TARGET_DIR:-}" ]]; then
-  rust_candidates+=("$AW_RUS_CARGO_TARGET_DIR/release/quality-gate")
+if [[ "${QUALITY_GATE_USE_RUST:-0}" == "1" ]]; then
+  if [[ -n "${AW_RUS_CARGO_TARGET_DIR:-}" ]]; then
+    rust_candidates+=("$AW_RUS_CARGO_TARGET_DIR/release/quality-gate")
+  fi
+  rust_candidates+=(
+    "$TARGET_ROOT/release/quality-gate"
+    "$ROOT_DIR/adk-rust/target/release/quality-gate"
+  )
 fi
-rust_candidates+=(
-  "$TARGET_ROOT/release/quality-gate"
-  "$ROOT_DIR/adk-rust/target/release/quality-gate"
-  "/usr/local/bin/quality-gate"
-)
+if [[ "${QUALITY_GATE_ALLOW_SYSTEM:-0}" == "1" ]]; then
+  rust_candidates+=("/usr/local/bin/quality-gate")
+fi
 
 for candidate in "${rust_candidates[@]}"; do
   if [[ -x "$candidate" ]]; then
@@ -96,7 +103,7 @@ fi
 violations=()
 for path in "${tracked_py[@]}"; do
   case "$path" in
-    aw-server/dlp-content-analysis/*|clickhouse-1c/ai/*|clickhouse-1c/etl/*|detmir-mcp/main.py|grafana-1c/*|pfsense/*|proxmox/tsj_guardian_bot.py|proxmox/test_tsj_guardian_bot.py|scripts/package_rust_release_binaries.py)
+    aw-server/dlp-content-analysis/*|clickhouse-1c/ai/*|clickhouse-1c/etl/*|detmir-mcp/main.py|grafana-1c/*|pfsense/*|proxmox/tsj_guardian_bot.py|proxmox/test_tsj_guardian_bot.py|scripts/package_rust_release_binaries.py|scripts/public_secret_pattern_check.py)
       continue
       ;;
   esac

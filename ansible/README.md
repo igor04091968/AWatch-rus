@@ -7,6 +7,13 @@
 - централизованное развёртывание Windows/RDP collector'ов по WinRM;
 - развёртывание внешнего pfSense poller'а на Debian/Ubuntu utility VM.
 
+Актуальная карта связи playbooks, scripts, systemd timers, Windows Scheduled
+Tasks и модулей комплекса ведётся в
+[`docs/ORCHESTRATION_MAP_RU.md`](../docs/ORCHESTRATION_MAP_RU.md). При
+добавлении или переименовании orchestration entrypoint обновляйте карту и
+проверяйте её через `bash scripts/check_orchestration_map.sh` из корня
+репозитория.
+
 ## Файлы
 
 - `ansible/deploy_aw_server.yml` — основной playbook для уже существующего Debian/CT host.
