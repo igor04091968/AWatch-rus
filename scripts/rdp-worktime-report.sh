@@ -4,13 +4,28 @@ set -euo pipefail
 DAY=""
 FROM=""
 TO=""
-AW_BASE_URL="${AW_BASE_URL:-http://192.0.2.13:5600/api/0}"
-AW_WORKTIME_HOST="${AW_WORKTIME_HOST:-HOST-EXAMPLE}"
+AW_BASE_URL="${AW_BASE_URL:-}"
+AW_WORKTIME_HOST="${AW_WORKTIME_HOST:-}"
 AW_WORKTIME_DEFAULT_SAMPLE_SECONDS="${AW_WORKTIME_DEFAULT_SAMPLE_SECONDS:-30}"
 AW_WORKTIME_MAX_SAMPLE_SECONDS="${AW_WORKTIME_MAX_SAMPLE_SECONDS:-300}"
 OUT_DIR="${OUT_DIR:-reports}"
 TARGET_ROOT="${CARGO_TARGET_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/adk-rust/target}"
 RUST_BIN="${RDP_WORKTIME_REPORT_RUST:-}"
+
+require_live_value() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "$value" ]]; then
+    echo "Missing required variable: $name" >&2
+    exit 2
+  fi
+  case "$value" in
+    *192.0.2.*|*198.51.100.*|*203.0.113.*|*HOST-EXAMPLE*|*.example*)
+      echo "Refusing placeholder value for $name: $value" >&2
+      exit 2
+      ;;
+  esac
+}
 
 usage() {
   cat <<EOF
@@ -52,6 +67,9 @@ if [[ -z "$FROM" || -z "$TO" ]]; then
   exit 2
 fi
 
+require_live_value AW_BASE_URL
+require_live_value AW_WORKTIME_HOST
+
 mkdir -p "$OUT_DIR"
 CSV_OUT="${OUT_DIR}/rdp-worktime-${FROM}_${TO}.csv"
 JSON_OUT="${OUT_DIR}/rdp-worktime-${FROM}_${TO}.json"
@@ -80,7 +98,9 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 
 base, host, default_sample, max_sample, from_d, to_d, csv_out, json_out = sys.argv[1:9]
-base = (base or "http://192.0.2.13:5600").rstrip("/")
+if not base:
+    raise SystemExit("AW_BASE_URL is required")
+base = base.rstrip("/")
 if not base.endswith("/api/0"):
     base = base + "/api/0"
 default_sample = max(1.0, float(default_sample))

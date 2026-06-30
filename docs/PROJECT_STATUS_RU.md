@@ -66,23 +66,25 @@ backup, registry-readiness документации, плана российск
   `653b22b0fbf29a22f7de42ade7b689490b1de16fa07e785e4e0efd3078e7a3bc`.
 - DetMir portal cold-start UI hang: mitigated. During cold/prewarm state the UI
   now shows `STALE / Первичный срез прогревается`, not endless loading.
-- DetMir DLP hot-path boundary: phase 1 deployed on the portal service with
-  `DETMIR_PORTAL_DLP_MODULE_ENABLED=false`.
+- DetMir DLP hot-path boundary: phase 1 deployed; current production runtime
+  uses `AW_DLP_ENABLED=false`, `AW_DLP_PROFILE=core_only`. The portal DLP module
+  may stay enabled for historical/security views, but server-side DLP
+  collectors/exporters are off.
 - DetMir optional DLP runtime controls: implemented in code/docs through
   `AW_DLP_ENABLED`, `DETMIR_DLP_ENABLED`,
   `scripts/detmir_dlp_runtime_control.sh` and
-  `docs/DLP_OPTIONAL_RUNTIME_RU.md`.
-- DetMir optional DLP runtime live state: disabled on 2026-06-25 to reduce
-  InfluxDB/Grafana/ClickHouse/AW server load. Evidence:
-  `dlp-health-check=dlp:mode disabled`, `detmir-dlp=dlp:mode disabled`,
-  active/enabled DLP units `0/0`, history snapshots under
-  `/var/lib/activitywatch/health/dlp-runtime-history/`.
-- DetMir DLP contour status: disabled for the current production resource
-  profile, not removed. It remains a documented optional module and must only be
-  re-enabled after explicit operator decision and Proxmox/InfluxDB/Grafana/
-  ClickHouse capacity check.
-- DetMir DLP buckets in manual full check: `SKIPPED` under
-  `AW_DLP_ENABLED=false`, not reported as dead.
+  `docs/DLP_OPTIONAL_RUNTIME_RU.md`. Resource profiles
+  `core_only|light|on_demand|full` and rollback are documented in
+  `docs/DLP_RESOURCE_PROFILES_RU.md`.
+- DetMir optional DLP runtime state: 2026-06-25 controlled disable evidence is
+  retained; 2026-06-30 prod hardening keeps production in `core_only` by
+  default. `light` can be re-enabled by operator command after
+  Proxmox/InfluxDB/Grafana/ClickHouse capacity check.
+- DetMir DLP contour status: server-side DLP collection is currently disabled;
+  heavy DLP remains optional and must only be enabled after explicit operator
+  decision and resource check.
+- DetMir DLP auto-disable guard: `detmir-dlp-load-guard` records load/RAM/iowait
+  state and switches DLP to `core_only` if thresholds are exceeded.
 - DetMir RDP collector freshness after 2026-06-29 restore: physical RDP target
   is `192.168.100.19`, stable AW logical host id remains `SHARKON2025`.
   Buckets are fresh/inactive as expected, collector guard quarantine was reset,
@@ -112,6 +114,9 @@ backup, registry-readiness документации, плана российск
   resource usage. Proxmox LXC `202 loki-logs` is stopped, active config has
   `onboot: 0`, and smoke checks skip Loki by default unless
   `AW_SMOKE_LOKI_ENABLED=1` is set.
+- DetMir DLP rollback guard: `detmir-dlp-runtime-control set-profile` stores
+  the previous DLP systemd active/enabled state and `rollback` restores it.
+  Rollback does not start Loki CT.
 - DetMir restore baseline 2026-06-29:
   `docs/DETMIR_RESTORE_BASELINE_2026-06-29_RU.md`.
 - DetMir API smoke after phase 1: `/healthz` and `/readyz` OK;
@@ -197,9 +202,9 @@ backup, registry-readiness документации, плана российск
 - External peer review remains pending.
 - Community adoption remains low until external contributors, public reviews
   and sustained third-party activity appear.
-- DetMir DLP runtime disable is complete for the current live contour; deeper
-  long-term DLP product modularization and retention/cleanup policy remain
-  separate future work.
+- DetMir lightweight DLP profile is implemented in repo defaults/scripts/docs;
+  heavy DLP modularization and retention/cleanup policy remain separate future
+  work.
 - DetMir RDP collector/session recovery after 2026-06-29 restore is verified by
   live smoke: `check-aw-full` reports `FRESH=8 STALE=0 DEAD=0`.
 

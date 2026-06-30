@@ -18,6 +18,7 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 sha2.workspace = true
 tiny_http.workspace = true
+url.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

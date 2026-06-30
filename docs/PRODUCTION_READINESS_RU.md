@@ -47,6 +47,8 @@ bounded payload/query limits и role-gate smoke.
 | `--slow-request-log-ms` | `AWATCH_PORTAL_SLOW_REQUEST_LOG_MS` | Порог медленного запроса для логов |
 | `--environment` | `AWATCH_PORTAL_ENVIRONMENT` | Безопасное имя окружения |
 | `--enabled-modules` | `AWATCH_PORTAL_ENABLED_MODULES` | Разрешенные модули портала |
+| `--dlp-module-enabled` | `DETMIR_PORTAL_DLP_MODULE_ENABLED` | Включает DLP/security status для портала; может оставаться `true` для исторического SQLite/evidence-среза без запуска server-side DLP runtime |
+| DLP resource profile | `AW_DLP_PROFILE`, `DETMIR_PORTAL_DLP_PROFILE` | Для DetMir production default `core_only`; `light` включается оператором после resource check |
 
 Ограничения применяются к тяжелым API:
 
@@ -66,6 +68,21 @@ bounded payload/query limits и role-gate smoke.
   возвращает `400`;
 - слишком большое тело запроса возвращает `413`;
 - role gate возвращает `403`.
+- при `DETMIR_PORTAL_DLP_MODULE_ENABLED=true` и `AW_DLP_PROFILE=core_only`
+  портал может показывать исторический DLP/security status без запуска
+  collectors/exporters.
+- при `DETMIR_PORTAL_DLP_MODULE_ENABLED=true` и `AW_DLP_PROFILE=light`
+  Workforce core, `/healthz`, `/readyz`, `/api/reports` и `/api/operator`
+  должны оставаться доступными без тяжелого DLP/case/evidence чтения.
+- при `AW_DLP_ENABLED=false` и `DETMIR_DLP_ENABLED=false` server-side
+  DLP health/readiness/checks должны возвращать контролируемый disabled-state,
+  а не пытаться поднять DLP Influx/exporter/aggregator/case runtime.
+  Runbook: [DLP_OPTIONAL_RUNTIME_RU.md](DLP_OPTIONAL_RUNTIME_RU.md).
+- при `AW_DLP_PROFILE=light` активны только lightweight collector/IOC/guard;
+  Loki/DLP heavy runtime должен оставаться inactive. При перегрузе
+  `detmir-dlp-load-guard` переводит DLP в `core_only`; возврат выполняется
+  только через profile switch и rollback, см.
+  [DLP_RESOURCE_PROFILES_RU.md](DLP_RESOURCE_PROFILES_RU.md).
 
 ### Request ID, logs и metrics
 

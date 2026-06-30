@@ -18,7 +18,9 @@ const DEFAULT_AW_ENV_FILE: &str = "/etc/activitywatch/aw-server.env";
 const DEFAULT_GRAFANA_ENV_FILE: &str = "/etc/detmir-grafana-check.env";
 const DEFAULT_GRAFANA_URL: &str = "http://127.0.0.1:3000";
 const DEFAULT_GRAFANA_DATASOURCE_UID: &str = "influxdb_aw";
-const DEFAULT_SYSTEMD_SERVICES: &str = "activitywatch-server,aw-worktime-api,aw-worktime-influx-exporter.timer,aw-dlp-influx-exporter.timer";
+const DEFAULT_SYSTEMD_SERVICES: &str =
+    "activitywatch-server,aw-worktime-api,aw-worktime-influx-exporter.timer";
+const DEFAULT_DLP_SYSTEMD_SERVICES: &str = "aw-dlp-influx-exporter.timer";
 const DEFAULT_RETENTION_DAYS: i64 = 30;
 
 #[derive(Debug, Parser)]
@@ -218,14 +220,26 @@ fn run(cli: &Cli) -> Result<Report> {
     let mut checks = Vec::new();
     let worktime = influx_config(&aw_env, "AW_WORKTIME_INFLUX");
     let dlp = influx_config(&aw_env, "AW_DLP_INFLUX");
+    let dlp_enabled = env_bool(&aw_env, "AW_DLP_ENABLED", true);
 
     checks.push(check_influx_env(&worktime, cli.allow_disabled_influx));
-    checks.push(check_influx_env(&dlp, cli.allow_disabled_influx));
+    if dlp_enabled {
+        checks.push(check_influx_env(&dlp, cli.allow_disabled_influx));
+    } else {
+        checks.push(warn(
+            "env:AW_DLP_INFLUX",
+            "DLP Influx runtime disabled by AW_DLP_ENABLED=false",
+            json!({"enabled": false, "mode": "disabled"}),
+        ));
+    }
 
     if cli.skip_systemd {
         checks.push(warn("systemd", "systemd checks skipped", json!({})));
     } else {
-        checks.extend(check_systemd_services(&cli.systemd_services));
+        checks.extend(check_systemd_services(&systemd_services_for_mode(
+            &cli.systemd_services,
+            dlp_enabled,
+        )));
     }
 
     if cli.skip_influx_write {
@@ -236,7 +250,15 @@ fn run(cli: &Cli) -> Result<Report> {
         ));
     } else {
         checks.push(check_influx_write(&client, "worktime", &worktime));
-        checks.push(check_influx_write(&client, "dlp", &dlp));
+        if dlp_enabled {
+            checks.push(check_influx_write(&client, "dlp", &dlp));
+        } else {
+            checks.push(warn(
+                "influx:write:dlp",
+                "DLP write probe skipped because DLP is disabled",
+                json!({"enabled": false, "mode": "disabled"}),
+            ));
+        }
     }
 
     if cli.skip_grafana {
@@ -270,7 +292,7 @@ fn run(cli: &Cli) -> Result<Report> {
         git_commit: cli.git_commit.clone(),
         counts,
         checks,
-        limitations: build_limitations(cli),
+        limitations: build_limitations(cli, dlp_enabled),
     })
 }
 
@@ -338,6 +360,20 @@ fn split_csv(value: &str) -> Vec<String> {
         .collect()
 }
 
+fn systemd_services_for_mode(csv: &str, dlp_enabled: bool) -> String {
+    let mut services = split_csv(csv);
+    if dlp_enabled {
+        for service in split_csv(DEFAULT_DLP_SYSTEMD_SERVICES) {
+            if !services.iter().any(|item| item == &service) {
+                services.push(service);
+            }
+        }
+    } else {
+        services.retain(|service| !service.contains("dlp"));
+    }
+    services.into_iter().collect::<Vec<_>>().join(",")
+}
+
 fn hostname() -> String {
     Command::new("hostname")
         .output()
@@ -348,7 +384,7 @@ fn hostname() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn build_limitations(cli: &Cli) -> Vec<String> {
+fn build_limitations(cli: &Cli, dlp_enabled: bool) -> Vec<String> {
     let mut limitations = Vec::new();
     limitations.push(
         "Проверка подтверждает состояние runtime на момент формирования акта и не заменяет аудит конфигурации, нагрузочное тестирование или приемочные испытания заказчика.".to_string(),
@@ -375,6 +411,11 @@ fn build_limitations(cli: &Cli) -> Vec<String> {
         limitations.push(
             "Отключенный Influx тракт допускается как WARN из-за параметра --allow-disabled-influx."
                 .to_string(),
+        );
+    }
+    if !dlp_enabled {
+        limitations.push(
+            "DLP runtime отключен штатно через AW_DLP_ENABLED=false; readiness не считает DLP services/timers и DLP Influx write обязательными.".to_string(),
         );
     }
     limitations

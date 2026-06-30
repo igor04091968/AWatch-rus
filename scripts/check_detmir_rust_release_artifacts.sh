@@ -4,8 +4,33 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET_ROOT="${CARGO_TARGET_DIR:-$ROOT_DIR/adk-rust/target}"
 RELEASE_DIR="$TARGET_ROOT/release"
+SCOPE="${CHECK_DETMIR_RUST_RELEASE_SCOPE:-prod-runtime}"
 
-required_bins=(
+prod_runtime_bins=(
+  aw-1c-ingest
+  aw-hayabusa-autoprocess-rust
+  aw-rus-healthd
+  aw-slo-monitor
+  aw-workforce-ingest
+  detmir-auto
+  detmir-portal
+  detmir-readiness
+  dlp-aggregator
+  dlp-case-management
+  dlp-cef-exporter
+  dlp-compliance
+  dlp-influx-exporter
+  dlp-policy-engine
+  dlp-syslog-forwarder
+  dlp-webhook-sender
+  worktime-api
+  worktime-autoheal
+  worktime-influx-exporter
+  worktime-prewarm
+  worktime-ui-bridge
+)
+
+workspace_bins=(
   detmir-status
   detmir-adk-status
   detmir-check
@@ -61,7 +86,22 @@ required_bins=(
   aw-hayabusa-from-windows-rust
   aw-hayabusa-autoprocess-rust
   aw-1c-ingest
+  containment-engine
+  security-finding-inbox
 )
+
+case "$SCOPE" in
+  prod-runtime)
+    required_bins=("${prod_runtime_bins[@]}")
+    ;;
+  workspace)
+    required_bins=("${workspace_bins[@]}")
+    ;;
+  *)
+    echo "Unsupported CHECK_DETMIR_RUST_RELEASE_SCOPE=$SCOPE; expected prod-runtime or workspace" >&2
+    exit 2
+    ;;
+esac
 
 missing=0
 for bin in "${required_bins[@]}"; do
@@ -76,7 +116,7 @@ done
 if (( missing != 0 )); then
   cat >&2 <<EOF
 
-Missing DetMir Rust release artifacts.
+Missing DetMir Rust release artifacts for scope: $SCOPE.
 Build them with:
   cd "$ROOT_DIR/adk-rust"
   CARGO_TARGET_DIR="$TARGET_ROOT" cargo build --release --workspace
@@ -84,4 +124,4 @@ EOF
   exit 1
 fi
 
-echo "detmir rust release artifacts: OK ($RELEASE_DIR)"
+echo "detmir rust release artifacts: OK scope=$SCOPE ($RELEASE_DIR)"

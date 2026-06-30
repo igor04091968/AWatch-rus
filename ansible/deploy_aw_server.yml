@@ -19,6 +19,22 @@
     aw_db_vacuum_timer_enabled: false
 
   tasks:
+    - name: Refuse inconsistent DLP resource profile
+      ansible.builtin.assert:
+        that:
+          - aw_dlp_profile | default('core_only') in ['core_only', 'light', 'on_demand', 'full']
+          - (aw_dlp_profile | default('core_only') == 'core_only') or (aw_dlp_enabled | default(false) | bool)
+          - (aw_dlp_enabled | default(false) | bool) or not (
+              aw_dlp_influx_enabled | default(false) | bool
+              or aw_dlp_ioc_enabled | default(false) | bool
+              or aw_dlp_policy_engine_enabled | default(false) | bool
+              or aw_dlp_content_analysis_enabled | default(false) | bool
+              or aw_dlp_integrations_enabled | default(false) | bool
+              or aw_dlp_case_management_enabled | default(false) | bool
+              or aw_dlp_compliance_enabled | default(false) | bool
+            )
+        fail_msg: "Inconsistent DLP profile: keep aw_dlp_enabled=false with all DLP component flags false, or explicitly choose aw_dlp_enabled=true and aw_dlp_profile=light|on_demand|full."
+
     - name: Установить базовые пакеты
       ansible.builtin.apt:
         name:
@@ -78,6 +94,7 @@
         - "{{ aw_server_data_dir }}/backups"
         - "{{ aw_server_data_dir }}/slo"
         - "{{ aw_server_data_dir }}/browser-smoke"
+        - "{{ aw_security_finding_executor_work_dir | default(aw_server_data_dir ~ '/security-finding-executor') }}"
         - "{{ aw_rus_health_state_dir }}"
         - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
@@ -108,6 +125,7 @@
         - "{{ aw_server_data_dir }}/backups"
         - "{{ aw_server_data_dir }}/slo"
         - "{{ aw_server_data_dir }}/browser-smoke"
+        - "{{ aw_security_finding_executor_work_dir | default(aw_server_data_dir ~ '/security-finding-executor') }}"
         - "{{ aw_rus_health_state_dir }}"
         - "{{ aw_rus_health_validation_dir }}"
         - "{{ aw_server_log_dir }}"
@@ -713,7 +731,9 @@
               - aw_effective_dlp_influx_token | length > 0
               - (aw_effective_dlp_influx_token | string | lower | regex_search('^(change_me|changeme|replace-me|replace_me|token|secret|password|api_key|influx_token|write_token|your_.*|<.*>)$')) is none
             fail_msg: "aw_dlp_influx_enabled=true, но token пуст и в локальном env, и в текущем /etc/activitywatch/aw-server.env. Exporter будет падать и Grafana не получит DLP-ряды."
-          when: aw_dlp_influx_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_influx_enabled | default(false) | bool
 
         - name: Проверить destination для AW worktime Influx exporter
           ansible.builtin.assert:
@@ -745,7 +765,9 @@
               - (aw_dlp_influx_hosts | default('') | string | length) > 0
               - "'WINDOWS_USER_EXAMPLE' not in (aw_dlp_influx_hosts | default('') | string)"
             fail_msg: "aw_dlp_influx_enabled=true, но URL/org/bucket/hosts похожи на public example/TEST-NET значения. Задайте live значения в private inventory/env, не в public repo."
-          when: aw_dlp_influx_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_influx_enabled | default(false) | bool
 
         - name: Записать /etc/activitywatch/aw-server.env перед хотфиксами
           ansible.builtin.copy:
@@ -764,7 +786,7 @@
               AW_SERVER_GROUP={{ aw_server_group }}
               AW_WORKTIME_REPORT_BASE={{ aw_worktime_report_base }}
               AW_WORKTIME_TZ={{ aw_worktime_timezone }}
-              AW_WORKTIME_HOST={{ aw_effective_worktime_host | default(aw_effective_monitored_windows_hostname | default('SHARKON2025')) }}
+              AW_WORKTIME_HOST={{ aw_effective_worktime_host | default(aw_effective_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
               AW_WORKTIME_EVENTS_LIMIT={{ aw_worktime_events_limit | default(5000) }}
               AW_WORKTIME_AW_HTTP_TIMEOUT_SECONDS={{ aw_worktime_aw_http_timeout_seconds | default(6) }}
               AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS={{ aw_worktime_events_cache_ttl_seconds | default(300) }}
@@ -787,7 +809,7 @@
               AW_WORKTIME_INFLUX_URL={{ aw_worktime_influx_url | default('') }}
               AW_WORKTIME_INFLUX_ORG={{ aw_worktime_influx_org | default('proxmox') }}
               AW_WORKTIME_INFLUX_BUCKET={{ aw_worktime_influx_bucket | default('aw_metrics') }}
-              AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default('SHARKON2025') }}
+              AW_WORKTIME_INFLUX_HOSTS={{ aw_worktime_influx_hosts | default(aw_effective_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
               AW_WORKTIME_INFLUX_DAYS={{ aw_worktime_influx_days | default('today,yesterday') }}
               AW_WORKTIME_INFLUX_TOKEN={{ aw_effective_worktime_influx_token | default('') }}
               AW_WORKTIME_MANAGEMENT_HISTORY_DIR={{ aw_worktime_management_history_dir | default(aw_server_data_dir ~ '/worktime-management-history') }}
@@ -798,11 +820,28 @@
               AW_WORKTIME_MANAGER_TREND_DELTA_PCT={{ aw_worktime_manager_trend_delta_pct | default(10) }}
               AW_WORKTIME_MANAGER_OFF_HOURS_THRESHOLD_SECONDS={{ aw_worktime_manager_off_hours_threshold_seconds | default(1800) }}
               AW_WORKTIME_MANAGER_INTERPRETATION_POLICY={{ aw_worktime_interpretation_policy_path | default('/etc/activitywatch/worktime-interpretation-policy.json') }}
-              AW_DLP_INFLUX_ENABLED={{ 'true' if (aw_dlp_influx_enabled | default(false) | bool) else 'false' }}
+              AW_DLP_ENABLED={{ 'true' if (aw_dlp_enabled | default(false) | bool) else 'false' }}
+              AW_DLP_PROFILE={{ aw_dlp_profile | default('core_only') }}
+              AW_DLP_DISABLED_REASON={{ aw_dlp_disabled_reason | default('') }}
+              AW_DLP_DISABLED_SINCE={{ aw_dlp_disabled_since | default('') }}
+              AW_DLP_GUARD_ENABLED={{ 'true' if (aw_dlp_light_guard_enabled | default(true) | bool) else 'false' }}
+              AW_DLP_GUARD_STATE_DIR={{ aw_dlp_light_guard_state_dir | default(aw_server_data_dir ~ '/health') }}
+              AW_DLP_GUARD_LOAD_RATIO={{ aw_dlp_light_guard_load_ratio | default('1.50') }}
+              AW_DLP_GUARD_MEM_AVAILABLE_PCT_MIN={{ aw_dlp_light_guard_mem_available_pct_min | default('15') }}
+              AW_DLP_GUARD_IOWAIT_PCT_MAX={{ aw_dlp_light_guard_iowait_pct_max | default('20') }}
+              AW_DLP_GUARD_STRIKES_REQUIRED={{ aw_dlp_light_guard_strikes_required | default(3) }}
+              AW_DLP_CONTROL_BIN=/usr/local/bin/detmir-dlp-runtime-control
+              AW_CONTAINMENT_ENABLED={{ 'true' if (aw_containment_enabled | default(false) | bool) else 'false' }}
+              AW_CONTAINMENT_MODE={{ aw_containment_mode | default('shadow') }}
+              AW_CONTAINMENT_POLICY={{ aw_containment_policy_path | default('/etc/activitywatch/containment-policy.json') }}
+              AW_CONTAINMENT_DEFAULT_TTL_MINUTES={{ aw_containment_default_ttl_minutes | default(60) }}
+              AW_CONTAINMENT_REQUIRE_ADMIN_CHANNEL_CHECK={{ 'true' if (aw_containment_require_admin_channel_check | default(true) | bool) else 'false' }}
+              AW_CONTAINMENT_ALLOW_AUTO_FOR_SERVERS={{ 'true' if (aw_containment_allow_auto_for_servers | default(false) | bool) else 'false' }}
+              AW_DLP_INFLUX_ENABLED={{ 'true' if ((aw_dlp_enabled | default(false) | bool) and (aw_dlp_influx_enabled | default(false) | bool)) else 'false' }}
               AW_DLP_INFLUX_URL={{ aw_dlp_influx_url | default('') }}
               AW_DLP_INFLUX_ORG={{ aw_dlp_influx_org | default('proxmox') }}
               AW_DLP_INFLUX_BUCKET={{ aw_dlp_influx_bucket | default('aw_metrics') }}
-              AW_DLP_INFLUX_HOSTS={{ aw_dlp_influx_hosts | default('SHARKON2025') }}
+              AW_DLP_INFLUX_HOSTS={{ aw_dlp_influx_hosts | default(aw_effective_monitored_windows_hostname | default('HOST-EXAMPLE')) }}
               AW_DLP_INFLUX_LOOKBACK_DAYS={{ aw_dlp_influx_lookback_days | default(30) }}
               AW_DLP_INFLUX_EVENT_LIMIT={{ aw_dlp_influx_event_limit | default(2000) }}
               AW_DLP_INFLUX_TOKEN={{ aw_effective_dlp_influx_token | default('') }}
@@ -820,6 +859,7 @@
               AW_RUS_HEALTH_SESSION_EVENTS_MAX_AGE_SECONDS={{ aw_rus_health_session_events_max_age_seconds | default(86400) }}
               AW_RUS_HEALTH_GUARD_MAX_AGE_SECONDS={{ aw_rus_health_guard_max_age_seconds | default(300) }}
               AW_RUS_HEALTH_GUARD_REQUIRED={{ 1 if (aw_rus_health_guard_required | default(true) | bool) else 0 }}
+              AW_RUS_HEALTH_RDP_TCP_REQUIRED={{ 'true' if (aw_rus_health_rdp_tcp_required | default(true) | bool) else 'false' }}
               AW_RUS_SLO_STATE_DIR={{ aw_server_data_dir }}/slo
               AW_RUS_SLO_AW_BASE=http://127.0.0.1:5600
               AW_RUS_SLO_WORKTIME_BASE={{ aw_rus_health_worktime_api_base | default('http://127.0.0.1:5610') }}
@@ -837,6 +877,104 @@
               AW_HAYABUSA_TELEGRAM_MIN_SEVERITY={{ aw_hayabusa_telegram_min_severity | default('high') }}
               AW_HAYABUSA_TELEGRAM_BOT_TOKEN={{ aw_hayabusa_telegram_bot_token | default('') }}
               AW_HAYABUSA_TELEGRAM_CHAT_IDS={{ aw_hayabusa_telegram_chat_ids | default('') }}
+              AW_SECURITY_FINDING_INBOX_ENABLED={{ 'true' if (aw_security_finding_inbox_enabled | default(false) | bool) else 'false' }}
+              AW_SECURITY_FINDING_INBOX_REQUIRED={{ 'true' if (aw_security_finding_inbox_required | default(false) | bool) else 'false' }}
+              AW_SECURITY_FINDING_INBOX_BIN={{ aw_security_finding_inbox_bin | default('/usr/local/bin/security-finding-inbox') }}
+              AW_SECURITY_FINDING_INBOX_MIN_SEVERITY={{ aw_security_finding_inbox_min_severity | default('medium') }}
+              AW_SECURITY_FINDING_EXECUTOR_WORK_DIR={{ aw_security_finding_executor_work_dir | default(aw_server_data_dir ~ '/security-finding-executor') }}
+              AW_SECURITY_FINDING_EXECUTOR_LOCK={{ aw_security_finding_executor_lock | default('/var/lock/aw-security-finding-executor.lock') }}
+              AW_CONTAINMENT_ENGINE_BIN={{ aw_containment_engine_bin | default('/usr/local/bin/containment-engine') }}
+              AW_CONTAINMENT_MANAGEMENT_ALLOWLIST={{ aw_containment_management_allowlist | default('') }}
+              AW_CONTAINMENT_BLOCKED_REMOTE_ADDRESSES={{ aw_containment_blocked_remote_addresses | default('') }}
+
+        - name: Установить runtime control для optional DLP контура
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/detmir_dlp_runtime_control.sh"
+            dest: /usr/local/bin/detmir-dlp-runtime-control
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить load guard для lightweight DLP контура
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/scripts/detmir_dlp_load_guard.sh"
+            dest: /usr/local/bin/detmir-dlp-load-guard
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить systemd unit DLP load guard
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/detmir-dlp-load-guard.service
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=DetMir lightweight DLP load guard
+              After=activitywatch-server.service
+
+              [Service]
+              Type=oneshot
+              EnvironmentFile=-/etc/activitywatch/aw-server.env
+              ExecStart=/usr/local/bin/detmir-dlp-load-guard
+              Nice=10
+              IOSchedulingClass=best-effort
+              IOSchedulingPriority=7
+              TimeoutStartSec=45
+
+        - name: Установить systemd timer DLP load guard
+          ansible.builtin.copy:
+            dest: /etc/systemd/system/detmir-dlp-load-guard.timer
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              [Unit]
+              Description=Run DetMir lightweight DLP load guard
+
+              [Timer]
+              OnBootSec=3min
+              OnUnitActiveSec=1min
+              AccuracySec=30s
+              Persistent=false
+
+              [Install]
+              WantedBy=timers.target
+
+        - name: Включить DLP load guard timer
+          ansible.builtin.systemd:
+            name: detmir-dlp-load-guard.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+          when: aw_dlp_light_guard_enabled | default(true) | bool
+
+        - name: Отключить DLP load guard timer, если guard явно выключен
+          ansible.builtin.systemd:
+            name: detmir-dlp-load-guard.timer
+            enabled: false
+            state: stopped
+            daemon_reload: true
+          failed_when: false
+          when: not (aw_dlp_light_guard_enabled | default(true) | bool)
+
+        - name: Создать каталог containment policy
+          ansible.builtin.file:
+            path: "{{ (aw_containment_policy_path | default('/etc/activitywatch/containment-policy.json')) | dirname }}"
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Установить default containment policy, если live policy отсутствует
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/configs/containment-policy.example.json"
+            dest: "{{ aw_containment_policy_path | default('/etc/activitywatch/containment-policy.json') }}"
+            owner: root
+            group: root
+            mode: "0644"
+            force: false
 
         - name: Создать каталог DLP policy engine
           ansible.builtin.file:
@@ -845,7 +983,9 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0755"
-          when: aw_dlp_policy_engine_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_policy_engine_enabled | default(false) | bool
 
         - name: Установить systemd unit DLP policy engine
           ansible.builtin.copy:
@@ -854,7 +994,9 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_policy_engine_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_policy_engine_enabled | default(false) | bool
 
         - name: Проверить локальный Rust DLP policy engine
           ansible.builtin.stat:
@@ -889,7 +1031,7 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0755"
-          when: aw_dlp_content_analysis_enabled | default(true) | bool
+          when: aw_dlp_content_analysis_enabled | default(false) | bool
 
         - name: Скопировать файлы DLP content analysis
           ansible.builtin.copy:
@@ -898,7 +1040,7 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0644"
-          when: aw_dlp_content_analysis_enabled | default(true) | bool
+          when: aw_dlp_content_analysis_enabled | default(false) | bool
 
         - name: Установить wrapper запуска DLP content analysis через virtualenv
           ansible.builtin.copy:
@@ -907,7 +1049,7 @@
             owner: root
             group: root
             mode: "0755"
-          when: aw_dlp_content_analysis_enabled | default(true) | bool
+          when: aw_dlp_content_analysis_enabled | default(false) | bool
 
         - name: Проверить локальный Rust DLP content analyzer
           ansible.builtin.stat:
@@ -915,7 +1057,7 @@
           delegate_to: localhost
           register: dlp_content_analyzer_rust_binary
           become: false
-          when: aw_dlp_content_analysis_enabled | default(true) | bool
+          when: aw_dlp_content_analysis_enabled | default(false) | bool
 
         - name: Установить Rust DLP content analyzer
           ansible.builtin.copy:
@@ -925,7 +1067,7 @@
             group: root
             mode: "0755"
           when:
-            - aw_dlp_content_analysis_enabled | default(true) | bool
+            - aw_dlp_content_analysis_enabled | default(false) | bool
             - dlp_content_analyzer_rust_binary.stat.exists | default(false)
 
         - name: Создать virtualenv DLP content analysis
@@ -933,13 +1075,13 @@
             cmd: python3 -m venv /opt/activitywatch/dlp-content-analysis/.venv
           args:
             creates: /opt/activitywatch/dlp-content-analysis/.venv/bin/python
-          when: aw_dlp_content_analysis_enabled | default(true) | bool
+          when: aw_dlp_content_analysis_enabled | default(false) | bool
 
         - name: Установить зависимости DLP content analysis
           ansible.builtin.pip:
             requirements: /opt/activitywatch/dlp-content-analysis/requirements.txt
             virtualenv: /opt/activitywatch/dlp-content-analysis/.venv
-          when: aw_dlp_content_analysis_enabled | default(true) | bool
+          when: aw_dlp_content_analysis_enabled | default(false) | bool
 
         - name: Создать каталог DLP integrations
           ansible.builtin.file:
@@ -948,7 +1090,9 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0755"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Скопировать файлы DLP integrations
           ansible.builtin.copy:
@@ -961,7 +1105,9 @@
             - cef-config.yaml
             - syslog-forwarder-config.yaml
             - webhook-config.yaml
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Создать state каталог DLP integrations
           ansible.builtin.file:
@@ -970,7 +1116,9 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0755"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Установить systemd unit CEF exporter
           ansible.builtin.copy:
@@ -979,7 +1127,9 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Установить systemd timer CEF exporter
           ansible.builtin.copy:
@@ -988,7 +1138,9 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Проверить локальный Rust CEF exporter
           ansible.builtin.stat:
@@ -996,14 +1148,16 @@
           delegate_to: localhost
           register: dlp_cef_exporter_rust_binary
           become: false
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Требовать Rust CEF exporter artifact
           ansible.builtin.assert:
             that:
               - dlp_cef_exporter_rust_binary.stat.exists | default(false)
             fail_msg: "Missing Rust artifact: {{ aw_rust_release_dir }}/dlp-cef-exporter"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Установить Rust CEF exporter
           ansible.builtin.copy:
@@ -1013,7 +1167,7 @@
             group: root
             mode: "0755"
           when:
-            - aw_dlp_integrations_enabled | default(true) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
             - dlp_cef_exporter_rust_binary.stat.exists | default(false)
 
         - name: Установить systemd unit syslog forwarder
@@ -1023,7 +1177,7 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Установить systemd timer syslog forwarder
           ansible.builtin.copy:
@@ -1032,7 +1186,7 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Проверить локальный Rust syslog forwarder
           ansible.builtin.stat:
@@ -1040,14 +1194,14 @@
           delegate_to: localhost
           register: dlp_syslog_forwarder_rust_binary
           become: false
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Требовать Rust syslog forwarder artifact
           ansible.builtin.assert:
             that:
               - dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
             fail_msg: "Missing Rust artifact: {{ aw_rust_release_dir }}/dlp-syslog-forwarder"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Установить Rust syslog forwarder
           ansible.builtin.copy:
@@ -1057,7 +1211,7 @@
             group: root
             mode: "0755"
           when:
-            - aw_dlp_integrations_enabled | default(true) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
             - dlp_syslog_forwarder_rust_binary.stat.exists | default(false)
 
         - name: Установить systemd unit webhook sender
@@ -1067,7 +1221,7 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Установить systemd timer webhook sender
           ansible.builtin.copy:
@@ -1076,7 +1230,7 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Проверить локальный Rust webhook sender
           ansible.builtin.stat:
@@ -1084,14 +1238,14 @@
           delegate_to: localhost
           register: dlp_webhook_sender_rust_binary
           become: false
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Требовать Rust webhook sender artifact
           ansible.builtin.assert:
             that:
               - dlp_webhook_sender_rust_binary.stat.exists | default(false)
             fail_msg: "Missing Rust artifact: {{ aw_rust_release_dir }}/dlp-webhook-sender"
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Установить Rust webhook sender
           ansible.builtin.copy:
@@ -1101,7 +1255,7 @@
             group: root
             mode: "0755"
           when:
-            - aw_dlp_integrations_enabled | default(true) | bool
+            - aw_dlp_integrations_enabled | default(false) | bool
             - dlp_webhook_sender_rust_binary.stat.exists | default(false)
 
         - name: Создать каталог DLP case management
@@ -1111,7 +1265,9 @@
             owner: "{{ aw_server_user }}"
             group: "{{ aw_server_group }}"
             mode: "0755"
-          when: aw_dlp_case_management_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_case_management_enabled | default(false) | bool
 
         - name: Установить systemd unit DLP case management
           ansible.builtin.copy:
@@ -1120,7 +1276,9 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_case_management_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_case_management_enabled | default(false) | bool
 
         - name: Проверить локальный Rust DLP case management
           ansible.builtin.stat:
@@ -1128,14 +1286,14 @@
           delegate_to: localhost
           register: aw_dlp_case_management_rust_binary
           become: false
-          when: aw_dlp_case_management_enabled | default(true) | bool
+          when: aw_dlp_case_management_enabled | default(false) | bool
 
         - name: Требовать Rust DLP case management artifact
           ansible.builtin.assert:
             that:
               - aw_dlp_case_management_rust_binary.stat.exists | default(false)
             fail_msg: "Missing Rust artifact: {{ aw_rust_release_dir }}/dlp-case-management"
-          when: aw_dlp_case_management_enabled | default(true) | bool
+          when: aw_dlp_case_management_enabled | default(false) | bool
 
         - name: Установить Rust DLP case management
           ansible.builtin.copy:
@@ -1145,7 +1303,7 @@
             group: root
             mode: "0755"
           when:
-            - aw_dlp_case_management_enabled | default(true) | bool
+            - aw_dlp_case_management_enabled | default(false) | bool
             - aw_dlp_case_management_rust_binary.stat.exists | default(false)
 
         - name: Создать каталоги DLP compliance
@@ -1159,7 +1317,9 @@
             - /opt/activitywatch/dlp-compliance
             - /opt/activitywatch/dlp-compliance/templates
             - "{{ aw_dlp_compliance_report_dir }}"
-          when: aw_dlp_compliance_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_compliance_enabled | default(false) | bool
 
         - name: Скопировать файлы DLP compliance
           ansible.builtin.copy:
@@ -1173,7 +1333,9 @@
             - { src: "templates/pci-dss-report.html", dest: "/opt/activitywatch/dlp-compliance/templates/pci-dss-report.html", mode: "0644" }
             - { src: "report-scheduler.service", dest: "/etc/systemd/system/aw-dlp-report-scheduler.service", mode: "0644" }
             - { src: "report-scheduler.timer", dest: "/etc/systemd/system/aw-dlp-report-scheduler.timer", mode: "0644" }
-          when: aw_dlp_compliance_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_compliance_enabled | default(false) | bool
 
         - name: Проверить локальный Rust DLP compliance
           ansible.builtin.stat:
@@ -1181,14 +1343,18 @@
           delegate_to: localhost
           register: aw_dlp_compliance_rust_binary
           become: false
-          when: aw_dlp_compliance_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_compliance_enabled | default(false) | bool
 
         - name: Требовать Rust DLP compliance artifact
           ansible.builtin.assert:
             that:
               - aw_dlp_compliance_rust_binary.stat.exists | default(false)
             fail_msg: "Missing Rust artifact: {{ aw_rust_release_dir }}/dlp-compliance"
-          when: aw_dlp_compliance_enabled | default(true) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_compliance_enabled | default(false) | bool
 
         - name: Установить Rust DLP compliance
           ansible.builtin.copy:
@@ -1198,7 +1364,7 @@
             group: root
             mode: "0755"
           when:
-            - aw_dlp_compliance_enabled | default(true) | bool
+            - aw_dlp_compliance_enabled | default(false) | bool
             - aw_dlp_compliance_rust_binary.stat.exists | default(false)
 
         - name: Проверить локальный Rust dlp-admin-cli
@@ -1437,6 +1603,47 @@
             mode: "0755"
           when: dlp_health_check_rust_binary.stat.exists | default(false)
 
+        - name: Проверить локальный Rust containment-engine
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/containment-engine"
+          delegate_to: localhost
+          register: containment_engine_rust_binary
+          become: false
+
+        - name: Установить Rust containment-engine
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/containment-engine"
+            dest: /usr/local/bin/containment-engine
+            owner: root
+            group: root
+            mode: "0755"
+          when: containment_engine_rust_binary.stat.exists | default(false)
+
+        - name: Проверить локальный Rust security-finding-inbox
+          ansible.builtin.stat:
+            path: "{{ aw_rust_release_dir }}/security-finding-inbox"
+          delegate_to: localhost
+          register: security_finding_inbox_rust_binary
+          become: false
+
+        - name: Установить Rust security-finding-inbox
+          ansible.builtin.copy:
+            src: "{{ aw_rust_release_dir }}/security-finding-inbox"
+            dest: /usr/local/bin/security-finding-inbox
+            owner: root
+            group: root
+            mode: "0755"
+          when: security_finding_inbox_rust_binary.stat.exists | default(false)
+
+        - name: Установить systemd unit Security Finding Inbox executor
+          ansible.builtin.copy:
+            src: "{{ aw_repo_root }}/ops/systemd/aw-security-finding-executor.service"
+            dest: /etc/systemd/system/aw-security-finding-executor.service
+            owner: root
+            group: root
+            mode: "0644"
+          notify: Перезагрузить systemd
+
         - name: Проверить локальный Rust AW-RUS healthd
           ansible.builtin.stat:
             path: "{{ aw_rust_release_dir }}/aw-rus-healthd"
@@ -1644,7 +1851,9 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_influx_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_influx_enabled | default(false) | bool
 
         - name: Проверить локальный Rust AW DLP Influx exporter
           ansible.builtin.stat:
@@ -1652,14 +1861,18 @@
           delegate_to: localhost
           register: aw_dlp_influx_exporter_rust_binary
           become: false
-          when: aw_dlp_influx_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_influx_enabled | default(false) | bool
 
         - name: Требовать Rust AW DLP Influx exporter artifact
           ansible.builtin.assert:
             that:
               - aw_dlp_influx_exporter_rust_binary.stat.exists | default(false)
             fail_msg: "Missing Rust artifact: {{ aw_rust_release_dir }}/dlp-influx-exporter"
-          when: aw_dlp_influx_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_influx_enabled | default(false) | bool
 
         - name: Установить Rust AW DLP Influx exporter
           ansible.builtin.copy:
@@ -1679,7 +1892,9 @@
             owner: root
             group: root
             mode: "0644"
-          when: aw_dlp_influx_enabled | default(false) | bool
+          when:
+            - aw_dlp_enabled | default(false) | bool
+            - aw_dlp_influx_enabled | default(false) | bool
 
         - name: Проверить локальный Rust DetMir readiness checker
           ansible.builtin.stat:
@@ -1831,42 +2046,42 @@
             name: aw-dlp-cef-exporter.timer
             enabled: true
             state: restarted
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Включить и перезапустить timer syslog forwarder
           ansible.builtin.systemd:
             name: aw-dlp-syslog-forwarder.timer
             enabled: true
             state: restarted
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Включить и перезапустить timer webhook sender
           ansible.builtin.systemd:
             name: aw-dlp-webhook-sender.timer
             enabled: true
             state: restarted
-          when: aw_dlp_integrations_enabled | default(true) | bool
+          when: aw_dlp_integrations_enabled | default(false) | bool
 
         - name: Включить и перезапустить DLP case management
           ansible.builtin.systemd:
             name: aw-dlp-case-management.service
             enabled: true
             state: restarted
-          when: aw_dlp_case_management_enabled | default(true) | bool
+          when: aw_dlp_case_management_enabled | default(false) | bool
 
         - name: Включить и перезапустить timer DLP compliance report
           ansible.builtin.systemd:
             name: aw-dlp-report-scheduler.timer
             enabled: true
             state: restarted
-          when: aw_dlp_compliance_enabled | default(true) | bool
+          when: aw_dlp_compliance_enabled | default(false) | bool
 
         - name: Выполнить разовый прогон DLP compliance report
           ansible.builtin.systemd:
             name: aw-dlp-report-scheduler.service
             state: started
           failed_when: false
-          when: aw_dlp_compliance_enabled | default(true) | bool
+          when: aw_dlp_compliance_enabled | default(false) | bool
 
         - name: Включить и перезапустить AW worktime API
           ansible.builtin.systemd:
@@ -2233,6 +2448,11 @@
             mode: "0755"
           when: dlp_aggregator_rust_binary.stat.exists | default(false)
 
+        - name: Удалить stale drop-in, переопределяющий lightweight DLP aggregator
+          ansible.builtin.file:
+            path: /etc/systemd/system/activitywatch-dlp-aggregator.service.d/20-rust-switch.conf
+            state: absent
+
         - name: Установить systemd unit для агрегатора
           ansible.builtin.copy:
             dest: /etc/systemd/system/activitywatch-dlp-aggregator.service
@@ -2241,7 +2461,7 @@
             mode: "0644"
             content: |
               [Unit]
-              Description=ActivityWatch DLP Event Aggregator
+              Description=ActivityWatch Lightweight DLP Event Aggregator
               After=activitywatch-server.service
 
               [Service]
@@ -2251,7 +2471,18 @@
               ExecStart=/usr/local/bin/dlp-aggregator-rust \
                 --aw-url http://127.0.0.1:{{ aw_server_port }}/api/0 \
                 --sqlite-path {{ aw_server_data_dir }}/dlp_warehouse.sqlite \
-                --state-path {{ aw_server_data_dir }}/dlp-aggregator-state.json
+                --state-path {{ aw_server_data_dir }}/dlp-aggregator-state.json \
+                --bucket-prefixes {{ aw_dlp_aggregator_bucket_prefixes | default('aw-file-operations_,aw-dlp-incidents_') }} \
+                --lookback-hours {{ aw_dlp_aggregator_lookback_hours | default(2) }} \
+                --overlap-seconds {{ aw_dlp_aggregator_overlap_seconds | default(60) }} \
+                --limit {{ aw_dlp_aggregator_limit | default(500) }} \
+                --timeout {{ aw_dlp_aggregator_timeout_seconds | default(8) }}
+              Nice=10
+              IOSchedulingClass=best-effort
+              IOSchedulingPriority=7
+              CPUQuota={{ aw_dlp_aggregator_cpu_quota | default('10%') }}
+              MemoryMax={{ aw_dlp_aggregator_memory_max | default('256M') }}
+              TimeoutStartSec={{ (aw_dlp_aggregator_timeout_seconds | default(8) | int) + 15 }}
 
               [Install]
               WantedBy=multi-user.target
@@ -2261,10 +2492,10 @@
             dest: /etc/systemd/system/activitywatch-dlp-aggregator.timer
             content: |
               [Unit]
-              Description=Run ActivityWatch DLP Aggregator every 5 minutes
+              Description=Run ActivityWatch Lightweight DLP Aggregator
 
               [Timer]
-              OnCalendar=*:3/10:10
+              OnCalendar={{ aw_dlp_aggregator_on_calendar | default('*:3/15:10') }}
               AccuracySec=30s
               RandomizedDelaySec=30s
               Persistent=false
@@ -2278,9 +2509,14 @@
             enabled: true
             state: started
             daemon_reload: true
+      when:
+        - aw_dlp_enabled | default(false) | bool
+        - aw_dlp_light_collector_enabled | default(false) | bool
 
     - name: Настроить IOC enrichment из Hayabusa Sigma
-      when: aw_dlp_ioc_enabled | default(false) | bool
+      when:
+        - aw_dlp_enabled | default(false) | bool
+        - aw_dlp_ioc_enabled | default(false) | bool
       block:
         - name: Создать каталог IOC enrichment
           ansible.builtin.file:

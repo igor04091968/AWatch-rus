@@ -26,19 +26,38 @@ logical host id остаётся `SHARKON2025`. Подробный post-restore 
   `653b22b0fbf29a22f7de42ade7b689490b1de16fa07e785e4e0efd3078e7a3bc`.
 - Бэкап предыдущего binary на сервере:
   `/usr/local/bin/detmir-portal.bak.20260625T045640Z`.
-- Runtime mode после phase 1 deploy:
-  `DETMIR_PORTAL_DLP_MODULE_ENABLED=false`.
+- Runtime mode после 2026-06-30 prod hardening:
+  server-side DLP runtime зафиксирован в `core_only/disabled`.
+  Portal DLP UI/API module может оставаться включённым для чтения исторического
+  SQLite/evidence-среза, но это не означает запуск DLP collectors/exporters.
 - Server-side optional DLP runtime control:
   `AW_DLP_ENABLED=false|true` и `DETMIR_DLP_ENABLED=false|true`.
+- Current resource profile: `AW_DLP_ENABLED=false`,
+  `AW_DLP_PROFILE=core_only`; возврат в `light` выполняется только вручную
+  после проверки нагрузки.
 - Runtime control/statistics script:
   `scripts/detmir_dlp_runtime_control.sh` / live
   `/usr/local/bin/detmir-dlp-runtime-control`.
-- Live DLP runtime state after 2026-06-25 controlled disable:
-  `AW_DLP_ENABLED=false`, `AW_DLP_INFLUX_ENABLED=false`;
-  active/enabled DLP units: `0/0`.
+- DLP runtime state after 2026-06-30 prod hardening:
+  `AW_DLP_ENABLED=false`, `AW_DLP_PROFILE=core_only`,
+  `AW_DLP_INFLUX_ENABLED=false`; optional DLP units should be
+  `inactive/disabled`. `detmir-dlp-load-guard.timer` remains enabled and active
+  as protection for any later operator re-enable.
 - Reason: DLP runtime materially increases Proxmox VM/LXC, InfluxDB, Grafana,
-  ClickHouse and AW server load. In production DetMir it is currently kept
-  disabled, but remains a documented optional module that can be enabled later.
+  ClickHouse and AW server load. In production DetMir the safe default is
+  `core_only`; `light` is a reconnectable profile, not the automatic default.
+- Auto-disable guard:
+  `scripts/detmir_dlp_load_guard.sh` / live
+  `/usr/local/bin/detmir-dlp-load-guard`. При перегрузе переводит DLP в
+  `core_only` через runtime-control и пишет evidence в
+  `/var/lib/activitywatch/health/dlp-light-guard-state.json`.
+- DLP warehouse sync для портала:
+  `scripts/detmir_dlp_warehouse_sync.sh` / live
+  `/usr/local/bin/detmir-dlp-warehouse-sync`. Доставляет локальный SQLite
+  snapshot на portal host для UEBA/DLP views без heavy DLP hot path.
+- Loki CT is intentionally excluded from the current DetMir production resource
+  profile. It must not be returned by routine deploy/recovery while the goal is
+  to keep Proxmox VM/LXC load low.
 - Health после деплоя: `/healthz` возвращал `status=ok`.
 - Readiness после деплоя: `/readyz` возвращал `status=ready`.
 
@@ -84,9 +103,11 @@ logical host id остаётся `SHARKON2025`. Подробный post-restore 
 - DLP evidence, screenshots, endpoint signals, case review и forensics
   enrichment требуют больше CPU/IO/сетевых операций, чем Workforce core.
 
-Вывод: DLP/evidence/forensics enrichment уже вынесен из обязательного hot path
-phase 1 через `DETMIR_PORTAL_DLP_MODULE_ENABLED=false`, но полная оптимизация
-тяжелого snapshot/prewarm остается отдельной инженерной задачей.
+Вывод: DLP/evidence/forensics enrichment вынесен из обязательного hot path.
+Phase 1 делал это через `DETMIR_PORTAL_DLP_MODULE_ENABLED=false`; текущий
+lightweight-профиль оставляет DLP-status/UEBA-сигналы включенными без тяжелого
+evidence/case/exporter path. Полная оптимизация тяжелого snapshot/prewarm
+остается отдельной инженерной задачей.
 
 ## Целевая граница после переработки
 
@@ -154,21 +175,43 @@ AW_DLP_ENABLED=true|false
 DETMIR_DLP_ENABLED=true|false
 ```
 
-Default остается `true`, чтобы существующее поведение не менялось без явного
-решения администратора. Для ускоренного Workforce/operator режима допускается
-`DETMIR_PORTAL_DLP_MODULE_ENABLED=false`; в этом режиме портал:
+DetMir production default после 2026-06-30 hardening:
+`AW_DLP_ENABLED=false` / `AW_DLP_PROFILE=core_only`. Portal DLP module may stay
+enabled for historical/security views, but server-side DLP collectors/exporters
+remain off. В этом режиме портал:
 
 - не читает DLP incident/case/review/audit файлы в основном report/operator
   path;
-- отключает security-events backend внутри snapshot, не меняя сохраненные
-  ClickHouse credentials;
-- возвращает disabled-state для DLP evidence API;
-- не считает отсутствие DLP ошибкой Workforce core.
+- использует только уже имеющийся лёгкий DLP-срез для UEBA и статуса;
+- не включает evidence/case/exporters/Loki/Influx-heavy path;
+- не считает отсутствие heavy DLP ошибкой Workforce core.
 
-Ansible-параметр поставки:
+Ansible-параметр поставки для старого disabled-профиля:
 
 ```yaml
 detmir_portal_dlp_module_enabled_override: false
+```
+
+Для текущего safe production профиля:
+
+```yaml
+detmir_portal_dlp_module_enabled_override: true
+aw_dlp_profile: "core_only"
+aw_dlp_enabled: false
+aw_dlp_influx_enabled: false
+aw_dlp_light_collector_enabled: false
+aw_dlp_light_guard_enabled: true
+```
+
+Возврат в `light` выполняется только после resource check:
+
+```bash
+sudo AW_DLP_DISABLED_REASON=operator_reenable_after_resource_check \
+  /usr/local/bin/detmir-dlp-runtime-control set-profile light
+sudo sed -i \
+  -e 's/^AW_DLP_ENABLED=.*/AW_DLP_ENABLED=true/' \
+  -e 's/^AW_DLP_PROFILE=.*/AW_DLP_PROFILE=light/' \
+  /etc/activitywatch/aw-server.env
 ```
 
 Отдельный `detmir-portal-evidence` сервис не отключается этим флагом и остается
@@ -189,6 +232,7 @@ Hayabusa/Velociraptor boundary:
 Server-side optional DLP runtime описан отдельно:
 
 - [DLP_OPTIONAL_RUNTIME_RU.md](DLP_OPTIONAL_RUNTIME_RU.md).
+- [DLP_RESOURCE_PROFILES_RU.md](DLP_RESOURCE_PROFILES_RU.md).
 
 При `AW_DLP_ENABLED=false`:
 
@@ -197,9 +241,26 @@ Server-side optional DLP runtime описан отдельно:
 - `detmir-check`, `check-aw-full` и `check-aw-data` не считают DLP buckets
   обязательными;
 - `detmir-readiness` не требует DLP Influx write и DLP systemd units;
+- DLP profile changes use
+  `/usr/local/bin/detmir-dlp-runtime-control set-profile <profile>` and keep a
+  rollback snapshot for `/usr/local/bin/detmir-dlp-runtime-control rollback`;
 - перед отключением и после отключения собираются JSON-срезы в
   `/var/lib/activitywatch/health/dlp-runtime-history/`, latest-срез остается в
   `/var/lib/activitywatch/health/dlp-runtime-state.json`.
+
+При `AW_DLP_PROFILE=light`:
+
+- `activitywatch-dlp-aggregator.timer` собирает только ограниченный набор DLP
+  events в локальный SQLite warehouse;
+- `detmir-dlp-warehouse-sync.timer` доставляет этот warehouse на portal host
+  атомарным snapshot;
+- UEBA может учитывать `dlp_warn`/`dlp_fail` без запуска Loki/Influx-heavy path;
+- `detmir-dlp-load-guard.timer` автоматически переводит профиль в `core_only`
+  при превышении порогов load/RAM/iowait;
+- тяжёлые DLP units (`aw-dlp-influx-exporter`, report/syslog/webhook/CEF,
+  policy engine, case management, evidence API) должны оставаться выключенными.
+- если `detmir-dlp-load-guard.timer` видит повторный перегруз, он автоматически
+  возвращает DLP runtime в `core_only`.
 
 Live disable evidence 2026-06-25:
 
@@ -307,6 +368,7 @@ curl -sS --max-time 5 http://10.10.10.2:8720/healthz
 - Не удалять DLP collectors и warehouse ради ускорения портала.
 - Не включать heavy DLP или Velociraptor server runtime автоматически при
   обычном deploy без ресурсного решения.
+- Не включать Loki CT автоматически при обычном deploy/recovery DetMir.
 - Не менять UI/API несовместимо: новые поля должны быть additive.
 - Не заявлять completed DLP decoupling до live deploy и browser/API smoke.
 - Не позиционировать AWatch-rus как сертифицированную DLP/SIEM/EDR/СЗИ.

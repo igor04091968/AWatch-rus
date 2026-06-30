@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -52,8 +53,9 @@ use path_query::{
 use portal_roles::PortalRole;
 use production::{
     build_healthz, build_readyz, build_version, is_limited_api_route, mark_request_started,
-    record_report_generated, render_prometheus_metrics, validate_api_query_limits,
-    validate_portal_config,
+    record_report_cache_hit, record_report_cache_miss, record_report_cache_stale_hit,
+    record_report_generated, record_report_request, render_prometheus_metrics,
+    validate_api_query_limits, validate_portal_config,
 };
 use readiness_api::{readiness_bundle, readiness_latest, readiness_verify};
 use risk_narrative::{
@@ -61,7 +63,8 @@ use risk_narrative::{
 };
 use role_access::{portal_role_from_request, respond_forbidden, role_envelope};
 use snapshot_cache::{
-    SnapshotCache, build_fast_health, cached_snapshot, clone_snapshot_cache, new_snapshot_cache,
+    SnapshotCache, build_fast_health, cached_snapshot, cached_snapshot_or_refresh,
+    clone_snapshot_cache, new_snapshot_cache,
 };
 use static_assets::{
     API_CONTRACT_OPENAPI, API_CONTRACT_TYPESCRIPT, APP_CSS, APP_JS, ARCHITECTURE_HTML, INDEX_HTML,
@@ -84,6 +87,9 @@ const DEFAULT_MAX_REPORT_DATE_RANGE_DAYS: i64 = 31;
 const DEFAULT_REQUEST_TIMEOUT_SECONDS: u64 = 20;
 const DEFAULT_MAX_REQUEST_BODY_BYTES: u64 = 16 * 1024 * 1024;
 const DEFAULT_SLOW_REQUEST_LOG_MS: u64 = 1_000;
+const TELEMETRY_TAIL_MAX_BYTES: u64 = 8 * 1024 * 1024;
+const TELEMETRY_TAIL_MAX_LINES: usize = 5_000;
+const REPORT_CACHE_TTL: Duration = Duration::from_secs(120);
 const MAX_ALLOWED_PAGE_SIZE: u32 = 5_000;
 const MAX_ALLOWED_REPORT_DATE_RANGE_DAYS: i64 = 366;
 const MAX_ALLOWED_REQUEST_TIMEOUT_SECONDS: u64 = 120;
@@ -125,18 +131,10 @@ struct Cli {
     )]
     failed_units_cmd: String,
 
-    #[arg(
-        long,
-        default_value = "http://192.0.2.13:5610",
-        env = "DETMIR_PORTAL_WORKTIME_URL"
-    )]
+    #[arg(long, default_value = "", env = "DETMIR_PORTAL_WORKTIME_URL")]
     worktime_url: String,
 
-    #[arg(
-        long,
-        default_value = "http://192.0.2.2:8710",
-        env = "DETMIR_PORTAL_ONE_C_URL"
-    )]
+    #[arg(long, default_value = "", env = "DETMIR_PORTAL_ONE_C_URL")]
     one_c_url: String,
 
     #[arg(
@@ -207,6 +205,9 @@ struct Cli {
         env = "AWATCH_PORTAL_ENABLED_MODULES"
     )]
     enabled_modules: String,
+
+    #[arg(long, default_value_t = true, env = "DETMIR_PORTAL_DLP_MODULE_ENABLED")]
+    dlp_module_enabled: bool,
 
     #[arg(
         long,
@@ -336,6 +337,61 @@ struct SecurityEventsSummary {
     fallback_used: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SecurityFindingInbox {
+    status: String,
+    backend: String,
+    open_count: u64,
+    critical_count: u64,
+    high_count: u64,
+    contained_count: u64,
+    query_ms: u128,
+    fallback_used: bool,
+    items: Vec<SecurityFindingInboxItem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SecurityFindingInboxItem {
+    finding_id: String,
+    first_seen_utc: String,
+    last_seen_utc: String,
+    host: String,
+    user: String,
+    ip: String,
+    department: String,
+    state: String,
+    severity: String,
+    confidence: String,
+    score: u64,
+    source: String,
+    rule_id: String,
+    rule_title: String,
+    summary: String,
+    recommended_action: String,
+    workflow_status: String,
+    last_workflow_event: String,
+    workflow_updated_at_utc: String,
+    workflow_actor: String,
+    decision_status: String,
+    rollback_plan_id: String,
+    plan_id: String,
+    management_channel_checked: bool,
+    evidence_ref: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SecurityFindingWorkflowRequest {
+    finding_id: String,
+    action: String,
+    comment: Option<String>,
+    decision_status: Option<String>,
+    rollback_plan_id: Option<String>,
+    plan_id: Option<String>,
 }
 
 impl SecurityEventsSummary {
@@ -1075,6 +1131,7 @@ struct PortalLinks {
 #[derive(Clone, Debug)]
 struct Snapshot {
     generated_at_utc: String,
+    dlp_module_enabled: bool,
     detmir_status: SourceStatus,
     detmir_check: SourceStatus,
     failed_units: SourceStatus,
@@ -1089,6 +1146,21 @@ struct Snapshot {
     agent_quality_nodes_summary: AgentQualityNodesSummary,
     agent_coverage_sla: AgentCoverageSla,
     security_events_summary: SecurityEventsSummary,
+}
+
+type ReportCache = Arc<Mutex<ReportCacheState>>;
+
+#[derive(Clone, Debug, Default)]
+struct ReportCacheState {
+    entry: Option<CachedReport>,
+    refresh_in_progress: bool,
+}
+
+#[derive(Clone, Debug)]
+struct CachedReport {
+    created: Instant,
+    anonymize: bool,
+    report: Value,
 }
 
 #[derive(Debug)]
@@ -1306,10 +1378,10 @@ fn run() -> Result<i32> {
     validate_portal_config(&args)?;
     if args.json_smoke {
         let snapshot = build_snapshot(&args);
-        let incident_state = load_incident_state_best_effort(&args);
-        let incident_reviews = load_incident_review_best_effort(&args);
-        let incident_review_audit = load_incident_review_audit_best_effort(&args);
-        let cases = load_cases_best_effort(&args);
+        let incident_state = load_incident_state_for_modules(&args);
+        let incident_reviews = load_incident_review_for_modules(&args);
+        let incident_review_audit = load_incident_review_audit_for_modules(&args);
+        let cases = load_cases_for_modules(&args);
         let evidence = build_dlp_evidence_response(&args);
         let ueba_baseline_path = ueba_baseline_state_path(&args);
         let smoke = json!({
@@ -1331,15 +1403,17 @@ fn run() -> Result<i32> {
 
     let server = Server::http(&args.bind).map_err(|err| anyhow!("bind {}: {err}", args.bind))?;
     let snapshot_cache: SnapshotCache = new_snapshot_cache();
+    let report_cache: ReportCache = new_report_cache();
     eprintln!("detmir-portal listening on http://{}", args.bind);
     for request in server.incoming_requests() {
         let args = args.clone();
         let snapshot_cache = clone_snapshot_cache(&snapshot_cache);
+        let report_cache = clone_report_cache(&report_cache);
         thread::spawn(move || {
             let result = if args.evidence_only {
                 handle_evidence_only_request(request, &args)
             } else {
-                handle_request(request, &args, &snapshot_cache)
+                handle_request(request, &args, &snapshot_cache, &report_cache)
             };
             if let Err(err) = result {
                 eprintln!("detmir-portal request failed: {err:#}");
@@ -1349,7 +1423,12 @@ fn run() -> Result<i32> {
     Ok(0)
 }
 
-fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) -> Result<()> {
+fn handle_request(
+    request: Request,
+    args: &Cli,
+    snapshot_cache: &SnapshotCache,
+    report_cache: &ReportCache,
+) -> Result<()> {
     mark_request_started();
     let method = request.method().clone();
     let url = request.url().to_string();
@@ -1367,6 +1446,12 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             return respond_forbidden(request, role, "security");
         }
         return handle_incident_review(request, args);
+    }
+    if method == Method::Post && path == "/api/security/findings/workflow" {
+        if !role.can_access("security") {
+            return respond_forbidden(request, role, "security");
+        }
+        return handle_security_finding_workflow(request, args);
     }
     if method == Method::Post && path == "/api/cases" {
         if !role.can_access("forensics") && !role.can_access("incidents") {
@@ -1460,14 +1545,21 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
         "/api/readiness/latest" => respond_json(request, &readiness_latest(args)),
         "/api/readiness/bundle" => respond_json(request, &readiness_bundle(args)),
         "/api/readiness/verify" => respond_json(request, &readiness_verify(args)),
-        "/api/summary" => respond_json(
-            request,
-            &build_summary(&cached_snapshot(args, snapshot_cache)),
-        ),
+        "/api/summary" => {
+            let summary = if let Some(snapshot) = cached_snapshot_or_refresh(args, snapshot_cache) {
+                build_summary(&snapshot)
+            } else {
+                build_initial_summary_payload(args)
+            };
+            respond_json(request, &summary)
+        }
         "/api/operator" => {
-            let snapshot = cached_snapshot(args, snapshot_cache);
-            let incident_state = load_incident_state_best_effort(args);
-            respond_json(request, &build_operator(&snapshot, &incident_state))
+            if let Some(snapshot) = cached_snapshot_or_refresh(args, snapshot_cache) {
+                let incident_state = load_incident_state_for_modules(args);
+                respond_json(request, &build_operator(&snapshot, &incident_state))
+            } else {
+                respond_json(request, &build_initial_operator_payload(args))
+            }
         }
         "/api/manager" => {
             if !role.can_access("workforce") {
@@ -1504,7 +1596,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             )
         }
         "/api/risk/narrative" => {
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             let query = RiskNarrativeQuery::from_url(&url);
             respond_json(
                 request,
@@ -1512,7 +1604,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             )
         }
         "/api/actions" => {
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             respond_json(request, &build_action_center_from_report(&report, role))
         }
         "/api/owner" => {
@@ -1523,42 +1615,53 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
             respond_json(request, &build_owner(&snapshot))
         }
         "/api/reports" => {
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             respond_json(request, &role_filtered_report(report, role))
         }
         "/api/executive" => {
             if !role.can_access("executive") {
                 return respond_forbidden(request, role, "executive");
             }
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             respond_json(request, &build_role_api_payload(report, role, "executive"))
         }
         "/api/workforce" => {
             if !role.can_access("workforce") {
                 return respond_forbidden(request, role, "workforce");
             }
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             respond_json(request, &build_role_api_payload(report, role, "workforce"))
         }
         "/api/security" => {
             if !role.can_access("security") {
                 return respond_forbidden(request, role, "security");
             }
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             respond_json(request, &build_role_api_payload(report, role, "security"))
+        }
+        "/api/security/findings" => {
+            if !role.can_access("security") {
+                return respond_forbidden(request, role, "security");
+            }
+            let config = security_events_config_from_args(
+                args,
+                Duration::from_secs(args.timeout_seconds).min(Duration::from_secs(5)),
+                false,
+            );
+            respond_json(request, &build_security_finding_inbox(&config))
         }
         "/api/forensics" => {
             if !role.can_access("forensics") {
                 return respond_forbidden(request, role, "forensics");
             }
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             respond_json(request, &build_role_api_payload(report, role, "forensics"))
         }
         "/api/ueba" => {
             if !role.can_access("ueba") {
                 return respond_forbidden(request, role, "ueba");
             }
-            let report = build_report_payload(args, snapshot_cache, anonymize);
+            let report = cached_report_payload(args, snapshot_cache, report_cache, anonymize);
             respond_json(request, &build_ueba_api_payload(&report, role))
         }
         "/api/pfsense" => {
@@ -1572,7 +1675,7 @@ fn handle_request(request: Request, args: &Cli, snapshot_cache: &SnapshotCache) 
                 return respond_forbidden(request, role, "incidents");
             }
             let snapshot = cached_snapshot(args, snapshot_cache);
-            let incident_state = load_incident_state_best_effort(args);
+            let incident_state = load_incident_state_for_modules(args);
             respond_json(request, &build_incidents(&snapshot, &incident_state))
         }
         "/api/cases" => {
@@ -1670,14 +1773,9 @@ fn handle_evidence_only_request(request: Request, args: &Cli) -> Result<()> {
 
 fn build_snapshot(args: &Cli) -> Snapshot {
     let timeout = Duration::from_secs(args.timeout_seconds);
-    let security_events_config = SecurityEventsConfig {
-        backend: args.security_events_backend.clone(),
-        clickhouse_url: args.clickhouse_url.clone(),
-        clickhouse_database: args.clickhouse_database.clone(),
-        clickhouse_user: args.clickhouse_user.clone(),
-        clickhouse_password: args.clickhouse_password.clone(),
-        timeout: timeout.min(Duration::from_secs(5)),
-    };
+    let dlp_enabled = dlp_module_enabled(args);
+    let security_events_config =
+        security_events_config_from_args(args, timeout.min(Duration::from_secs(5)), true);
     let agent_quality_history = load_agent_quality_history(&args.telemetry_store_path, 7);
     let agent_quality_history_summary = summarize_agent_quality_history(&agent_quality_history);
     let agent_quality_nodes = load_agent_quality_nodes(&args.telemetry_store_path, 7);
@@ -1686,6 +1784,7 @@ fn build_snapshot(args: &Cli) -> Snapshot {
         build_agent_coverage_sla(&args.expected_nodes_path, &agent_quality_nodes, Utc::now());
     Snapshot {
         generated_at_utc: now(),
+        dlp_module_enabled: dlp_enabled,
         detmir_status: command_json_source("detmir_status", &args.status_cmd, timeout),
         detmir_check: command_json_source("detmir_check", &args.check_cmd, timeout),
         failed_units: command_text_source("failed_units", &args.failed_units_cmd, timeout),
@@ -1728,6 +1827,25 @@ fn build_snapshot(args: &Cli) -> Snapshot {
     }
 }
 
+fn security_events_config_from_args(
+    args: &Cli,
+    timeout: Duration,
+    respect_dlp_gate: bool,
+) -> SecurityEventsConfig {
+    SecurityEventsConfig {
+        backend: if respect_dlp_gate && !dlp_module_enabled(args) {
+            "disabled".to_string()
+        } else {
+            args.security_events_backend.clone()
+        },
+        clickhouse_url: args.clickhouse_url.clone(),
+        clickhouse_database: args.clickhouse_database.clone(),
+        clickhouse_user: args.clickhouse_user.clone(),
+        clickhouse_password: args.clickhouse_password.clone(),
+        timeout,
+    }
+}
+
 fn load_agent_quality(path: &Path) -> AgentQuality {
     let Some(payload) = latest_telemetry_record(path) else {
         return AgentQuality::default();
@@ -1736,11 +1854,14 @@ fn load_agent_quality(path: &Path) -> AgentQuality {
 }
 
 fn latest_telemetry_record(path: &Path) -> Option<Value> {
-    let text = fs::read_to_string(path).ok()?;
-    text.lines().rev().find_map(|line| {
-        let envelope = serde_json::from_str::<Value>(line).ok()?;
-        envelope.get("record").cloned().or(Some(envelope))
-    })
+    tail_text_lines(path, TELEMETRY_TAIL_MAX_BYTES, TELEMETRY_TAIL_MAX_LINES)
+        .ok()?
+        .into_iter()
+        .rev()
+        .find_map(|line| {
+            let envelope = serde_json::from_str::<Value>(&line).ok()?;
+            envelope.get("record").cloned().or(Some(envelope))
+        })
 }
 
 fn load_agent_quality_history(path: &Path, days: i64) -> Vec<AgentQualityHistoryItem> {
@@ -1752,12 +1873,13 @@ fn load_agent_quality_history_for_date(
     days: i64,
     today: NaiveDate,
 ) -> Vec<AgentQualityHistoryItem> {
-    let Ok(text) = fs::read_to_string(path) else {
+    let Ok(lines) = tail_text_lines(path, TELEMETRY_TAIL_MAX_BYTES, TELEMETRY_TAIL_MAX_LINES)
+    else {
         return Vec::new();
     };
     let start = today - chrono::Duration::days(days.saturating_sub(1));
     let mut by_date = BTreeMap::new();
-    for line in text.lines() {
+    for line in &lines {
         let Some((date, record)) = telemetry_record_date_and_payload(line) else {
             continue;
         };
@@ -1845,12 +1967,13 @@ fn load_agent_quality_nodes_for_date(
     days: i64,
     today: NaiveDate,
 ) -> Vec<AgentQualityNodeItem> {
-    let Ok(text) = fs::read_to_string(path) else {
+    let Ok(lines) = tail_text_lines(path, TELEMETRY_TAIL_MAX_BYTES, TELEMETRY_TAIL_MAX_LINES)
+    else {
         return Vec::new();
     };
     let start = today - chrono::Duration::days(days.saturating_sub(1));
     let mut by_node: BTreeMap<String, (String, Value)> = BTreeMap::new();
-    for line in text.lines() {
+    for line in &lines {
         let Some((last_seen_utc, date, record)) = telemetry_record_time_date_and_payload(line)
         else {
             continue;
@@ -1877,6 +2000,29 @@ fn load_agent_quality_nodes_for_date(
             .then_with(|| left.hostname.cmp(&right.hostname))
     });
     nodes
+}
+
+fn tail_text_lines(path: &Path, max_bytes: u64, max_lines: usize) -> std::io::Result<Vec<String>> {
+    let mut file = File::open(path)?;
+    let size = file.metadata()?.len();
+    let start = size.saturating_sub(max_bytes);
+    file.seek(SeekFrom::Start(start))?;
+    let mut buffer = Vec::with_capacity((size - start).min(max_bytes) as usize);
+    file.read_to_end(&mut buffer)?;
+
+    let text = String::from_utf8_lossy(&buffer);
+    let mut lines = text.lines();
+    if start > 0 {
+        let _ = lines.next();
+    }
+    let mut out = lines
+        .filter(|line| !line.trim().is_empty())
+        .map(ToOwned::to_owned)
+        .collect::<Vec<_>>();
+    if out.len() > max_lines {
+        out = out.split_off(out.len() - max_lines);
+    }
+    Ok(out)
 }
 
 fn telemetry_node_key(record: &Value) -> String {
@@ -2476,6 +2622,164 @@ fn build_security_events_summary(config: &SecurityEventsConfig) -> SecurityEvent
     }
 }
 
+fn build_security_finding_inbox(config: &SecurityEventsConfig) -> SecurityFindingInbox {
+    let backend = config.backend.trim().to_ascii_lowercase();
+    if backend.is_empty() || backend == "disabled" {
+        return security_finding_inbox_disabled();
+    }
+    if backend != "clickhouse" {
+        return security_finding_inbox_fallback(
+            format!("неизвестный источник security finding inbox: {backend}"),
+            0,
+        );
+    }
+    let started = Instant::now();
+    match query_clickhouse_security_finding_inbox(config) {
+        Ok(mut inbox) => {
+            inbox.query_ms = started.elapsed().as_millis();
+            inbox
+        }
+        Err(err) => security_finding_inbox_fallback(err.to_string(), started.elapsed().as_millis()),
+    }
+}
+
+fn security_finding_inbox_disabled() -> SecurityFindingInbox {
+    SecurityFindingInbox {
+        status: "disabled".to_string(),
+        backend: "disabled".to_string(),
+        open_count: 0,
+        critical_count: 0,
+        high_count: 0,
+        contained_count: 0,
+        query_ms: 0,
+        fallback_used: false,
+        items: Vec::new(),
+        error: None,
+    }
+}
+
+fn security_finding_inbox_fallback(
+    error: impl Into<String>,
+    query_ms: u128,
+) -> SecurityFindingInbox {
+    SecurityFindingInbox {
+        status: "fallback".to_string(),
+        backend: "clickhouse".to_string(),
+        open_count: 0,
+        critical_count: 0,
+        high_count: 0,
+        contained_count: 0,
+        query_ms,
+        fallback_used: true,
+        items: Vec::new(),
+        error: Some(error.into()),
+    }
+}
+
+fn query_clickhouse_security_finding_inbox(
+    config: &SecurityEventsConfig,
+) -> Result<SecurityFindingInbox> {
+    let database = clickhouse_identifier(&config.clickhouse_database)
+        .ok_or_else(|| anyhow!("некорректное имя базы ClickHouse"))?;
+    let sql = format!(
+        r#"
+SELECT
+    finding_id,
+    formatDateTime(first_seen, '%Y-%m-%dT%H:%i:%SZ') AS first_seen_utc,
+    formatDateTime(last_seen, '%Y-%m-%dT%H:%i:%SZ') AS last_seen_utc,
+    host,
+    user,
+    ip,
+    department,
+    state,
+    severity,
+    confidence,
+    toUInt64(score) AS score,
+    source,
+    rule_id,
+    rule_title,
+    summary,
+    recommended_action,
+    workflow_status,
+    last_workflow_event,
+    if(isNull(workflow_updated_at), '', formatDateTime(workflow_updated_at, '%Y-%m-%dT%H:%i:%SZ')) AS workflow_updated_at_utc,
+    workflow_actor,
+    decision_status,
+    rollback_plan_id,
+    plan_id,
+    toUInt8(management_channel_checked) AS management_channel_checked,
+    evidence_ref
+FROM {database}.security_finding_inbox
+WHERE workflow_status NOT IN ('released', 'rollback_verified', 'rejected', 'false_positive')
+ORDER BY
+    multiIf(severity = 'critical', 4, severity = 'high', 3, severity = 'medium', 2, 1) DESC,
+    last_seen DESC,
+    host ASC
+LIMIT 100
+FORMAT JSONEachRow
+"#
+    );
+    let items = clickhouse_query_json_lines(config, &sql)?
+        .into_iter()
+        .map(security_finding_item_from_json)
+        .collect::<Vec<_>>();
+    let critical_count = items
+        .iter()
+        .filter(|item| item.severity == "critical")
+        .count() as u64;
+    let high_count = items.iter().filter(|item| item.severity == "high").count() as u64;
+    let contained_count = items
+        .iter()
+        .filter(|item| item.state == "contained" || item.workflow_status == "contained")
+        .count() as u64;
+    Ok(SecurityFindingInbox {
+        status: "ok".to_string(),
+        backend: "clickhouse".to_string(),
+        open_count: items.len() as u64,
+        critical_count,
+        high_count,
+        contained_count,
+        query_ms: 0,
+        fallback_used: false,
+        items,
+        error: None,
+    })
+}
+
+fn security_finding_item_from_json(row: Value) -> SecurityFindingInboxItem {
+    SecurityFindingInboxItem {
+        finding_id: json_string(&row, &["finding_id"]).unwrap_or_default(),
+        first_seen_utc: json_string(&row, &["first_seen_utc"]).unwrap_or_default(),
+        last_seen_utc: json_string(&row, &["last_seen_utc"]).unwrap_or_default(),
+        host: json_string(&row, &["host"]).unwrap_or_default(),
+        user: json_string(&row, &["user"]).unwrap_or_default(),
+        ip: json_string(&row, &["ip"]).unwrap_or_default(),
+        department: json_string(&row, &["department"]).unwrap_or_default(),
+        state: json_string(&row, &["state"]).unwrap_or_else(|| "new".to_string()),
+        severity: json_string(&row, &["severity"]).unwrap_or_else(|| "low".to_string()),
+        confidence: json_string(&row, &["confidence"]).unwrap_or_else(|| "low".to_string()),
+        score: json_u64(&row, "score"),
+        source: json_string(&row, &["source"]).unwrap_or_default(),
+        rule_id: json_string(&row, &["rule_id"]).unwrap_or_default(),
+        rule_title: json_string(&row, &["rule_title"]).unwrap_or_default(),
+        summary: json_string(&row, &["summary"]).unwrap_or_default(),
+        recommended_action: json_string(&row, &["recommended_action"])
+            .unwrap_or_else(|| "manual_review".to_string()),
+        workflow_status: json_string(&row, &["workflow_status"])
+            .unwrap_or_else(|| "new".to_string()),
+        last_workflow_event: json_string(&row, &["last_workflow_event"])
+            .unwrap_or_else(|| "created".to_string()),
+        workflow_updated_at_utc: json_string(&row, &["workflow_updated_at_utc"])
+            .unwrap_or_default(),
+        workflow_actor: json_string(&row, &["workflow_actor"]).unwrap_or_default(),
+        decision_status: json_string(&row, &["decision_status"]).unwrap_or_default(),
+        rollback_plan_id: json_string(&row, &["rollback_plan_id"]).unwrap_or_default(),
+        plan_id: json_string(&row, &["plan_id"]).unwrap_or_default(),
+        management_channel_checked: json_u64(&row, "management_channel_checked") > 0,
+        evidence_ref: json_string(&row, &["evidence_ref"]).unwrap_or_default(),
+    }
+}
+
 fn query_clickhouse_security_events(
     config: &SecurityEventsConfig,
 ) -> Result<SecurityEventsSummary> {
@@ -2592,6 +2896,31 @@ fn clickhouse_query_json_lines(config: &SecurityEventsConfig, sql: &str) -> Resu
         rows.push(serde_json::from_str::<Value>(line).context("ClickHouse JSONEachRow")?);
     }
     Ok(rows)
+}
+
+fn clickhouse_execute(config: &SecurityEventsConfig, sql: &str) -> Result<()> {
+    let client = Client::builder()
+        .timeout(config.timeout)
+        .no_proxy()
+        .build()
+        .context("ClickHouse HTTP client")?;
+    let url = config.clickhouse_url.trim_end_matches('/');
+    let mut request = client
+        .post(url)
+        .query(&[("database", config.clickhouse_database.trim())])
+        .body(sql.to_string());
+    if !config.clickhouse_user.trim().is_empty() {
+        request = request.basic_auth(
+            config.clickhouse_user.trim().to_string(),
+            Some(config.clickhouse_password.clone()),
+        );
+    }
+    request
+        .send()
+        .context("ClickHouse request")?
+        .error_for_status()
+        .context("ClickHouse HTTP status")?;
+    Ok(())
 }
 
 fn json_u64(value: &Value, key: &str) -> u64 {
@@ -2837,6 +3166,71 @@ fn build_operator(snapshot: &Snapshot, incident_state: &IncidentStateFile) -> Va
     })
 }
 
+fn build_initial_operator_payload(args: &Cli) -> Value {
+    let generated_at_utc = now();
+    let dlp_enabled = dlp_module_enabled(args);
+    json!({
+        "generated_at_utc": generated_at_utc,
+        "cache_status": "warming",
+        "modules": {
+            "dlp": dlp_module_payload(dlp_enabled)
+        },
+        "summary": {
+            "severity": "STALE",
+            "operator_ok": false,
+            "headline": "Портал прогревает первичный операционный срез",
+            "generated_at_utc": generated_at_utc,
+            "blocks": {
+                "portal": block("STALE", "Полный snapshot строится в фоне; быстрые health/readiness доступны"),
+                "dlp": if dlp_enabled {
+                    block("STALE", "DLP/security enrichment прогревается в фоне")
+                } else {
+                    block("DISABLED", "DLP module disabled; Workforce core доступен без DLP")
+                }
+            }
+        },
+        "detmir_status": {
+            "ok": false,
+            "status": "STALE",
+            "summary": "snapshot cache warming",
+            "error": null,
+            "payload": null
+        },
+        "detmir_check": {
+            "ok": false,
+            "status": "STALE",
+            "summary": "snapshot cache warming",
+            "error": null,
+            "payload": null
+        },
+        "failed_units": {
+            "ok": true,
+            "status": "UNKNOWN",
+            "summary": "not checked during cache warming",
+            "error": null,
+            "payload": null
+        },
+        "grafana_data": null,
+        "worktime_management": {
+            "ok": false,
+            "status": "STALE",
+            "summary": "snapshot cache warming",
+            "error": null,
+            "payload": null
+        },
+        "security_events_summary": {
+            "status": if dlp_enabled { "STALE" } else { "disabled" },
+            "summary": if dlp_enabled {
+                "Security/DLP enrichment прогревается в фоне"
+            } else {
+                "DLP module disabled; Workforce core remains available"
+            }
+        },
+        "links": links(),
+        "incidents": []
+    })
+}
+
 fn build_manager(snapshot: &Snapshot) -> Value {
     let worktime = snapshot
         .worktime
@@ -2969,6 +3363,7 @@ fn build_reports(
     );
     let trend = workforce_trend_json(snapshot);
     let insight_items = workforce_insight_items(snapshot);
+    let workforce_operations = workforce_operations_payload(snapshot, anonymize);
     let workforce_policy_explain =
         build_workforce_policy_explain(snapshot, workforce_policy_path, anonymize);
     let workforce_kpi_explain = build_workforce_kpi_explain(
@@ -3136,6 +3531,9 @@ fn build_reports(
         "generated_at_utc": snapshot.generated_at_utc,
         "period": "оперативный срез за сегодня и текущий runtime",
         "anonymized": anonymize,
+        "modules": {
+            "dlp": dlp_module_payload(snapshot.dlp_module_enabled)
+        },
         "severity": summary.severity,
         "operator_ok": summary.operator_ok,
         "headline": headline,
@@ -3148,6 +3546,7 @@ fn build_reports(
             report_kpi("Качество данных", agent_quality.quality_status.clone(), agent_quality.quality_status.clone(), &format!("источник: {}", agent_quality.collector_source)),
             report_kpi("Достоверность данных", agent_quality_explain.status.clone(), agent_quality_explain.status.clone(), &agent_quality_explain.title),
             report_kpi("Индекс активности", workforce_index_text(metrics.workforce_index), workforce_index_status(metrics.workforce_index), "proxy: активное время / плановое рабочее время"),
+            report_kpi("Операционная загрузка", workforce_operations.pointer("/summary/status").and_then(Value::as_str).unwrap_or("LOW_CONFIDENCE").to_string(), workforce_operations.pointer("/summary/status").and_then(Value::as_str).unwrap_or("LOW_CONFIDENCE").to_string(), "загрузка, простой, дисциплина процесса и confidence"),
             weighted_activity_kpi_from_policy(&workforce_policy_explain),
             report_kpi("Сотрудники", metrics.users_count.to_string(), worktime.status.clone(), "строки worktime за сегодня"),
             report_kpi("Активное время", human_duration(metrics.active_seconds), worktime.status.clone(), "сумма active_seconds"),
@@ -3177,6 +3576,18 @@ fn build_reports(
                     weighted_activity_item_from_policy(&workforce_policy_explain, workforce_policy_path),
                     report_item("Рабочее время", worktime.status.clone(), worktime.text.clone()),
                     report_item("Сводка руководителя", snapshot.worktime_management.status.clone(), snapshot.worktime_management.summary.clone()),
+                    report_item(
+                        "Операционная загрузка",
+                        workforce_operations.pointer("/summary/status").and_then(Value::as_str).unwrap_or("LOW_CONFIDENCE"),
+                        format!(
+                            "требует действия={}, перегруз={}, недогруз={}, простой={}, low confidence={}",
+                            workforce_operations.pointer("/summary/action_required_users").and_then(Value::as_i64).unwrap_or(0),
+                            workforce_operations.pointer("/summary/load/overloaded_users").and_then(Value::as_i64).unwrap_or(0),
+                            workforce_operations.pointer("/summary/load/underloaded_users").and_then(Value::as_i64).unwrap_or(0),
+                            workforce_operations.pointer("/summary/idle/idle_users").and_then(Value::as_i64).unwrap_or(0),
+                            workforce_operations.pointer("/summary/confidence/low_users").and_then(Value::as_i64).unwrap_or(0)
+                        ),
+                    ),
                     report_item("Активное время", worktime.status.clone(), human_duration(metrics.active_seconds)),
                     report_item("Приложения", worktime.status.clone(), metrics.apps_count.to_string()),
                     report_item("Отчет", "OK", "готов к передаче руководителю")
@@ -3232,11 +3643,13 @@ fn build_reports(
         "incident_review_audit_summary": incident_review_audit_summary,
         "workforce_policy": workforce_policy_explain,
         "workforce_kpi_explain": workforce_kpi_explain,
+        "workforce_operations": workforce_operations.clone(),
         "workforce": {
             "department_comparison": department_items,
             "owner_comparison": owner_items,
             "trend": trend,
             "insights": insight_items,
+            "operations": workforce_operations,
             "trend_status": trend_status(&trend),
             "history_note": "Месячный тренд требует накопленной daily history; текущий слой показывает validated daily management snapshot."
         },
@@ -3245,13 +3658,214 @@ fn build_reports(
     })
 }
 
+fn new_report_cache() -> ReportCache {
+    Arc::new(Mutex::new(ReportCacheState::default()))
+}
+
+fn clone_report_cache(cache: &ReportCache) -> ReportCache {
+    Arc::clone(cache)
+}
+
+fn cached_report_payload(
+    args: &Cli,
+    snapshot_cache: &SnapshotCache,
+    report_cache: &ReportCache,
+    anonymize: bool,
+) -> Value {
+    record_report_request();
+    {
+        let mut guard = report_cache.lock().expect("report cache mutex poisoned");
+        if let Some(cached) = guard.entry.as_ref() {
+            if cached.anonymize == anonymize && cached.created.elapsed() <= REPORT_CACHE_TTL {
+                record_report_cache_hit();
+                return cached.report.clone();
+            }
+            if cached.anonymize == anonymize {
+                let report = cached.report.clone();
+                if !guard.refresh_in_progress {
+                    guard.refresh_in_progress = true;
+                    spawn_report_cache_refresh(
+                        args.clone(),
+                        clone_snapshot_cache(snapshot_cache),
+                        clone_report_cache(report_cache),
+                        anonymize,
+                    );
+                }
+                record_report_cache_stale_hit();
+                return report;
+            }
+        }
+        if guard.refresh_in_progress {
+            record_report_cache_stale_hit();
+            return build_initial_report_payload(args, anonymize);
+        }
+        guard.refresh_in_progress = true;
+    }
+
+    record_report_cache_miss();
+    spawn_report_cache_refresh(
+        args.clone(),
+        clone_snapshot_cache(snapshot_cache),
+        clone_report_cache(report_cache),
+        anonymize,
+    );
+    build_initial_report_payload(args, anonymize)
+}
+
+fn spawn_report_cache_refresh(
+    args: Cli,
+    snapshot_cache: SnapshotCache,
+    report_cache: ReportCache,
+    anonymize: bool,
+) {
+    thread::spawn(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            build_report_payload(&args, &snapshot_cache, anonymize)
+        }));
+        match result {
+            Ok(report) => {
+                store_generated_report(&report_cache, anonymize, report);
+                record_report_generated();
+            }
+            Err(_) => {
+                mark_report_cache_refresh_finished(&report_cache);
+                eprintln!("detmir-portal report cache refresh panicked");
+            }
+        }
+    });
+}
+
+fn store_generated_report(report_cache: &ReportCache, anonymize: bool, report: Value) {
+    let mut guard = report_cache.lock().expect("report cache mutex poisoned");
+    guard.entry = Some(CachedReport {
+        created: Instant::now(),
+        anonymize,
+        report,
+    });
+    guard.refresh_in_progress = false;
+}
+
+fn mark_report_cache_refresh_finished(report_cache: &ReportCache) {
+    let mut guard = report_cache.lock().expect("report cache mutex poisoned");
+    guard.refresh_in_progress = false;
+}
+
+fn dlp_module_payload(enabled: bool) -> Value {
+    json!({
+        "enabled": enabled,
+        "hot_path": false,
+        "status": if enabled { "enabled" } else { "disabled" },
+        "note": if enabled {
+            "DLP module enabled; heavy DLP data is served through cached/report endpoints"
+        } else {
+            "DLP module disabled; Workforce core remains available"
+        }
+    })
+}
+
+fn build_initial_summary_payload(args: &Cli) -> SummaryResponse {
+    let mut blocks = BTreeMap::new();
+    blocks.insert(
+        "portal".to_string(),
+        block(
+            "STALE",
+            "Полный snapshot строится в фоне; быстрые health/readiness доступны",
+        ),
+    );
+    blocks.insert(
+        "dlp".to_string(),
+        if dlp_module_enabled(args) {
+            block("STALE", "DLP/security enrichment прогревается в фоне")
+        } else {
+            block(
+                "DISABLED",
+                "DLP module disabled; Workforce core доступен без DLP",
+            )
+        },
+    );
+    SummaryResponse {
+        severity: "STALE".to_string(),
+        operator_ok: false,
+        headline: "Портал прогревает первичный операционный срез".to_string(),
+        generated_at_utc: now(),
+        blocks,
+    }
+}
+
+fn build_initial_report_payload(args: &Cli, anonymize: bool) -> Value {
+    let dlp_enabled = dlp_module_enabled(args);
+    let workforce_operations = json!({
+        "summary": {
+            "status": "STALE",
+            "confidence": "LOW",
+            "note": "Первичный операционный срез прогревается в фоне"
+        },
+        "rows": [],
+        "model": "cache_warming"
+    });
+    json!({
+        "generated_at_utc": now(),
+        "period": "первичный срез прогревается",
+        "anonymized": anonymize,
+        "cache_status": "warming",
+        "severity": "STALE",
+        "operator_ok": false,
+        "headline": "Портал прогревает полный операционный срез",
+        "executive_points": [
+            "Быстрые health/readiness доступны.",
+            "Полный report cache строится в фоне.",
+            "Workforce core не зависит от тяжелого DLP hot path."
+        ],
+        "recommended_actions": [
+            {
+                "priority": "P2",
+                "title": "Дождаться завершения prewarm",
+                "owner": "ops",
+                "status": "OPEN",
+                "details": "Повторный запрос получит полный cached report после фоновой сборки."
+            }
+        ],
+        "modules": {
+            "dlp": dlp_module_payload(dlp_enabled)
+        },
+        "kpis": [
+            report_kpi(
+                "Статус отчета",
+                "STALE".to_string(),
+                "STALE".to_string(),
+                "первичный полный срез прогревается"
+            ),
+            report_kpi(
+                "Операционная загрузка",
+                "LOW_CONFIDENCE".to_string(),
+                "LOW_CONFIDENCE".to_string(),
+                "полные показатели будут доступны после cache/prewarm"
+            )
+        ],
+        "workforce_operations": workforce_operations.clone(),
+        "workforce": {
+            "operations": workforce_operations,
+            "history_note": "Первичный cache warming; полный validated daily management snapshot строится в фоне."
+        },
+        "security_events_summary": {
+            "status": if dlp_enabled { "STALE" } else { "DISABLED" },
+            "summary": if dlp_enabled {
+                "Security/DLP enrichment прогревается в фоне"
+            } else {
+                "DLP module disabled; Workforce core remains available"
+            }
+        },
+        "markdown": "Первичный полный отчет прогревается в фоне. Разделы с расчетными выводами и derived detections/cases будут доступны после cache/prewarm.",
+        "links": links()
+    })
+}
+
 fn build_report_payload(args: &Cli, snapshot_cache: &SnapshotCache, anonymize: bool) -> Value {
-    record_report_generated();
     let snapshot = cached_snapshot(args, snapshot_cache);
-    let incident_state = load_incident_state_best_effort(args);
-    let incident_reviews = load_incident_review_best_effort(args);
-    let incident_review_audit = load_incident_review_audit_best_effort(args);
-    let cases = load_cases_best_effort(args);
+    let incident_state = load_incident_state_for_modules(args);
+    let incident_reviews = load_incident_review_for_modules(args);
+    let incident_review_audit = load_incident_review_audit_for_modules(args);
+    let cases = load_cases_for_modules(args);
     let evidence = build_dlp_evidence_response(args);
     let ueba_baseline_path = ueba_baseline_state_path(args);
     build_reports(
@@ -3291,6 +3905,8 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
         "generated_at_utc",
         "period",
         "anonymized",
+        "cache_status",
+        "modules",
         "severity",
         "operator_ok",
         "headline",
@@ -3312,6 +3928,7 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
                 "risk_heatmap",
                 "security_events_summary",
                 "workforce",
+                "workforce_operations",
                 "workforce_kpi_explain",
                 "markdown",
             ] {
@@ -3331,6 +3948,7 @@ fn role_filtered_report(report: Value, role: PortalRole) -> Value {
                 "business_risk",
                 "risk_heatmap",
                 "workforce",
+                "workforce_operations",
                 "workforce_policy",
                 "workforce_kpi_explain",
                 "markdown",
@@ -5481,6 +6099,59 @@ fn workforce_insight_items(snapshot: &Snapshot) -> Vec<Value> {
                 "Worktime API пока не вернул trend_insights.",
             )]
         })
+}
+
+fn workforce_operations_payload(snapshot: &Snapshot, anonymize: bool) -> Value {
+    let Some(source) = snapshot
+        .worktime_management
+        .payload
+        .as_ref()
+        .and_then(|payload| payload.get("workforce_operations"))
+    else {
+        return json!({
+            "status": "NO_DATA",
+            "summary": {
+                "status": "LOW_CONFIDENCE",
+                "users_count": 0,
+                "action_required_users": 0,
+                "guardrail": "missing management payload"
+            },
+            "rows": [],
+            "model": {
+                "type": "rule_based",
+                "ml": false,
+                "llm": false,
+                "version": "workforce-operations-v1"
+            }
+        });
+    };
+    let mut payload = source.clone();
+    if let Some(object) = payload.as_object_mut() {
+        let rows = object
+            .get("rows")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .enumerate()
+            .map(|(idx, mut row)| {
+                if anonymize {
+                    if let Some(row_object) = row.as_object_mut() {
+                        row_object
+                            .insert("user".to_string(), json!(format!("Сотрудник {}", idx + 1)));
+                        row_object.insert(
+                            "manager_owner".to_string(),
+                            json!(format!("Ответственный {}", idx + 1)),
+                        );
+                    }
+                }
+                row
+            })
+            .collect::<Vec<_>>();
+        object.insert("rows".to_string(), Value::Array(rows));
+        object.insert("anonymized".to_string(), json!(anonymize));
+    }
+    payload
 }
 
 fn trend_status(trend: &Value) -> String {
@@ -8615,6 +9286,26 @@ fn handle_incident_review(mut request: Request, args: &Cli) -> Result<()> {
     }
 }
 
+fn handle_security_finding_workflow(mut request: Request, args: &Cli) -> Result<()> {
+    let actor = request_actor(&request);
+    let body = match read_limited_body(&mut request, 32 * 1024) {
+        Ok(body) => body,
+        Err(err) if is_payload_too_large(&err) => return respond_payload_too_large(request),
+        Err(err) => return Err(err),
+    };
+    match apply_security_finding_workflow(args, &actor, &body) {
+        Ok(response) => respond_json(request, &response),
+        Err(err) => respond_json_status(
+            request,
+            StatusCode(400),
+            &json!({
+                "ok": false,
+                "error": err.to_string()
+            }),
+        ),
+    }
+}
+
 fn handle_investigation_pack(
     request: Request,
     args: &Cli,
@@ -8921,6 +9612,67 @@ fn apply_case_status(args: &Cli, case_id: &str, body: &str) -> Result<CaseRespon
     Ok(CaseResponse { ok: true, case })
 }
 
+fn apply_security_finding_workflow(args: &Cli, actor: &str, body: &str) -> Result<Value> {
+    let request: SecurityFindingWorkflowRequest = serde_json::from_str(body)
+        .map_err(|err| anyhow!("invalid security finding workflow JSON: {err}"))?;
+    let finding_id = validate_short_token(&request.finding_id, "finding_id", 128)?;
+    let (event_type, status) = validate_security_finding_workflow_action(&request.action)?;
+    let config = security_events_config_from_args(
+        args,
+        Duration::from_secs(args.timeout_seconds).min(Duration::from_secs(5)),
+        false,
+    );
+    if !config.backend.trim().eq_ignore_ascii_case("clickhouse") {
+        return Err(anyhow!(
+            "Security Finding Inbox workflow requires ClickHouse backend"
+        ));
+    }
+    let database = clickhouse_identifier(&config.clickhouse_database)
+        .ok_or_else(|| anyhow!("некорректное имя базы ClickHouse"))?;
+    let row = json!({
+        "ts": now(),
+        "finding_id": finding_id,
+        "event_type": event_type,
+        "status": status,
+        "actor": sanitize_text(actor, 128),
+        "comment": sanitize_optional_text(request.comment, 512).unwrap_or_default(),
+        "decision_status": sanitize_optional_text(request.decision_status, 128).unwrap_or_default(),
+        "rollback_plan_id": sanitize_optional_text(request.rollback_plan_id, 128).unwrap_or_default(),
+        "plan_id": sanitize_optional_text(request.plan_id, 128).unwrap_or_default(),
+        "evidence_json": serde_json::to_string(&json!({
+            "source": "detmir_portal",
+            "mutation": "workflow_event_only",
+            "note": "Portal does not execute Windows Firewall apply"
+        }))?,
+    });
+    let sql = format!(
+        "INSERT INTO {database}.security_finding_workflow_events FORMAT JSONEachRow\n{}\n",
+        serde_json::to_string(&row)?
+    );
+    clickhouse_execute(&config, &sql)?;
+    Ok(json!({
+        "ok": true,
+        "finding_id": row.get("finding_id").cloned().unwrap_or(Value::Null),
+        "event_type": event_type,
+        "status": status,
+        "mutation": "workflow_event_only"
+    }))
+}
+
+fn validate_security_finding_workflow_action(value: &str) -> Result<(&'static str, &'static str)> {
+    match value.trim() {
+        "decide" | "decide_requested" => Ok(("decide_requested", "decision_pending")),
+        "plan" | "plan_requested" => Ok(("plan_requested", "plan_pending")),
+        "approve" | "approved" => Ok(("approved", "approved")),
+        "apply" | "apply_requested" => Ok(("apply_requested", "apply_pending")),
+        "verify" | "verify_requested" => Ok(("verify_requested", "verify_pending")),
+        "rollback" | "rollback_requested" => Ok(("rollback_requested", "rollback_pending")),
+        "reject" | "rejected" => Ok(("rejected", "rejected")),
+        "false_positive" => Ok(("false_positive", "false_positive")),
+        _ => Err(anyhow!("unsupported security finding workflow action")),
+    }
+}
+
 fn build_case_list(args: &Cli) -> CaseListResponse {
     let mut cases = load_cases_best_effort(args)
         .cases
@@ -9023,6 +9775,14 @@ fn load_incident_state_best_effort(args: &Cli) -> IncidentStateFile {
     }
 }
 
+fn load_incident_state_for_modules(args: &Cli) -> IncidentStateFile {
+    if dlp_module_enabled(args) {
+        load_incident_state_best_effort(args)
+    } else {
+        IncidentStateFile::default()
+    }
+}
+
 fn load_incident_review_best_effort(args: &Cli) -> IncidentReviewFile {
     match load_incident_review(args) {
         Ok(state) => state,
@@ -9030,6 +9790,14 @@ fn load_incident_review_best_effort(args: &Cli) -> IncidentReviewFile {
             eprintln!("detmir-portal incident review read failed: {err:#}");
             IncidentReviewFile::default()
         }
+    }
+}
+
+fn load_incident_review_for_modules(args: &Cli) -> IncidentReviewFile {
+    if dlp_module_enabled(args) {
+        load_incident_review_best_effort(args)
+    } else {
+        IncidentReviewFile::default()
     }
 }
 
@@ -9043,6 +9811,14 @@ fn load_incident_review_audit_best_effort(args: &Cli) -> Vec<IncidentReviewAudit
     }
 }
 
+fn load_incident_review_audit_for_modules(args: &Cli) -> Vec<IncidentReviewAuditEntry> {
+    if dlp_module_enabled(args) {
+        load_incident_review_audit_best_effort(args)
+    } else {
+        Vec::new()
+    }
+}
+
 fn load_cases_best_effort(args: &Cli) -> CaseFile {
     match load_cases(args) {
         Ok(state) => state,
@@ -9050,6 +9826,14 @@ fn load_cases_best_effort(args: &Cli) -> CaseFile {
             eprintln!("detmir-portal cases read failed: {err:#}");
             CaseFile::default()
         }
+    }
+}
+
+fn load_cases_for_modules(args: &Cli) -> CaseFile {
+    if dlp_module_enabled(args) {
+        load_cases_best_effort(args)
+    } else {
+        CaseFile::default()
     }
 }
 
@@ -9181,10 +9965,27 @@ fn cases_path(args: &Cli) -> PathBuf {
     args.state_dir.join("data").join("cases.json")
 }
 
+fn dlp_module_enabled(args: &Cli) -> bool {
+    args.dlp_module_enabled
+}
+
 fn build_dlp_evidence_response(args: &Cli) -> DlpEvidenceResponse {
     let generated_at_utc = now();
     let db_available = args.dlp_db_path.exists();
     let screenshot_root_available = args.evidence_root.exists();
+    if !dlp_module_enabled(args) {
+        return DlpEvidenceResponse {
+            ok: true,
+            generated_at_utc,
+            db_available,
+            screenshot_root_available,
+            limit: args.evidence_limit,
+            items: Vec::new(),
+            error: Some(
+                "DLP module disabled by DETMIR_PORTAL_DLP_MODULE_ENABLED=false".to_string(),
+            ),
+        };
+    }
     if !db_available {
         return DlpEvidenceResponse {
             ok: true,
@@ -10002,6 +10803,12 @@ fn grafana_block(snapshot: &Snapshot) -> SummaryBlock {
 }
 
 fn dlp_block(snapshot: &Snapshot) -> SummaryBlock {
+    if !snapshot.dlp_module_enabled {
+        return block(
+            "DISABLED",
+            "DLP module disabled; Workforce core доступен без DLP",
+        );
+    }
     let Some(status) = snapshot.detmir_status.payload.as_ref() else {
         return block("UNKNOWN", "Нет DLP данных");
     };
@@ -10130,6 +10937,9 @@ fn grafana_service(snapshot: &Snapshot) -> Option<Value> {
 }
 
 fn dlp_ok(snapshot: &Snapshot) -> bool {
+    if !snapshot.dlp_module_enabled {
+        return true;
+    }
     snapshot
         .detmir_status
         .payload
@@ -10294,6 +11104,7 @@ mod tests {
         };
         Snapshot {
             generated_at_utc: "2026-06-07T10:00:00Z".to_string(),
+            dlp_module_enabled: true,
             detmir_status: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),
@@ -10583,7 +11394,9 @@ mod tests {
     fn role_filtered_reports_do_not_cross_default_scopes() {
         let report = json!({
             "generated_at_utc": "2026-06-06T00:00:00Z",
+            "cache_status": "warming",
             "headline": "demo",
+            "modules": {"dlp": {"enabled": false, "status": "disabled", "hot_path": false}},
             "executive_dashboard": {"summary": {"main_risk": "demo"}},
             "workforce": {"department_comparison": []},
             "workforce_policy": {"configured": false},
@@ -10626,6 +11439,8 @@ mod tests {
         let executive = role_filtered_report(report.clone(), PortalRole::Executive);
         assert!(executive.get("workforce").is_some());
         assert!(executive.get("executive_dashboard").is_some());
+        assert_eq!(executive["cache_status"], "warming");
+        assert_eq!(executive["modules"]["dlp"]["status"], "disabled");
         assert!(executive.get("security_events_summary").is_some());
         assert!(executive.get("risk_incident_candidates").is_none());
         assert!(executive.get("security_correlation").is_none());
@@ -10740,6 +11555,7 @@ mod tests {
         let policy_path = dir.path().join("ueba-policy.yaml");
         let snapshot = Snapshot {
             generated_at_utc: "2026-06-07T10:00:00Z".to_string(),
+            dlp_module_enabled: true,
             detmir_status: ok_source(),
             detmir_check: ok_source(),
             failed_units: ok_source(),
@@ -11600,6 +12416,7 @@ mod tests {
             slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
             environment: "test".to_string(),
             enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: true,
             state_dir: dir.path().join("state"),
             dlp_db_path: dir.path().join("dlp.sqlite"),
             evidence_root: dir.path().to_path_buf(),
@@ -11716,6 +12533,7 @@ mod tests {
             slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
             environment: "test".to_string(),
             enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: true,
             state_dir: dir.path().join("state"),
             dlp_db_path: dir.path().join("dlp.sqlite"),
             evidence_root: dir.path().to_path_buf(),
@@ -11795,6 +12613,7 @@ mod tests {
             slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
             environment: "test".to_string(),
             enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: true,
             state_dir: dir.path().join("state"),
             dlp_db_path: dir.path().join("dlp.sqlite"),
             evidence_root: dir.path().to_path_buf(),
@@ -11953,9 +12772,260 @@ mod tests {
     }
 
     #[test]
+    fn disabled_dlp_module_is_not_workforce_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let state_data_dir = dir.path().join("state").join("data");
+        fs::create_dir_all(&state_data_dir).unwrap();
+        fs::write(state_data_dir.join("cases.json"), "{not-json").unwrap();
+        let args = Cli {
+            bind: "127.0.0.1:0".to_string(),
+            status_cmd: "true".to_string(),
+            check_cmd: "true".to_string(),
+            failed_units_cmd: "true".to_string(),
+            worktime_url: "http://127.0.0.1".to_string(),
+            one_c_url: "http://127.0.0.1".to_string(),
+            workforce_policy_path: dir.path().join("workforce-policy.json"),
+            ueba_policy_path: dir.path().join("ueba-policy.yaml"),
+            timeout_seconds: 1,
+            max_page_size: DEFAULT_MAX_PAGE_SIZE,
+            default_page_size: DEFAULT_PAGE_SIZE,
+            max_report_date_range_days: DEFAULT_MAX_REPORT_DATE_RANGE_DAYS,
+            request_timeout_seconds: DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            max_request_body_bytes: DEFAULT_MAX_REQUEST_BODY_BYTES,
+            slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
+            environment: "test".to_string(),
+            enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: false,
+            state_dir: dir.path().join("state"),
+            dlp_db_path: dir.path().join("missing-dlp.sqlite"),
+            evidence_root: dir.path().join("missing-evidence"),
+            readiness_bundle_dir: dir.path().join("readiness-bundle"),
+            evidence_limit: 10,
+            evidence_max_bytes: 1024,
+            json_smoke: false,
+            evidence_only: false,
+            evidence_upload_token: None,
+            telemetry_api_key: "dummy".to_string(),
+            telemetry_store_path: dir.path().join("telemetry.jsonl"),
+            expected_nodes_path: dir.path().join("expected_nodes.json"),
+            security_events_backend: "clickhouse".to_string(),
+            clickhouse_url: "http://127.0.0.1:1".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
+        };
+        let cases = load_cases_for_modules(&args);
+        assert!(cases.cases.is_empty());
+        let evidence = build_dlp_evidence_response(&args);
+        assert!(evidence.ok);
+        assert!(evidence.items.is_empty());
+        assert!(
+            evidence
+                .error
+                .as_deref()
+                .unwrap_or("")
+                .contains("DLP module disabled")
+        );
+        let snapshot = Snapshot {
+            generated_at_utc: "2026-06-25T10:00:00Z".to_string(),
+            dlp_module_enabled: false,
+            detmir_status: SourceStatus {
+                ok: true,
+                status: "WARN".to_string(),
+                summary: "dlp warn".to_string(),
+                error: None,
+                payload: Some(json!({
+                    "dlp_ok": false,
+                    "dlp_counts": {"ok": 1, "warn": 9, "fail": 3}
+                })),
+            },
+            detmir_check: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: String::new(),
+                error: None,
+                payload: None,
+            },
+            failed_units: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: String::new(),
+                error: None,
+                payload: None,
+            },
+            worktime: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: String::new(),
+                error: None,
+                payload: None,
+            },
+            worktime_management: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: String::new(),
+                error: None,
+                payload: None,
+            },
+            one_c: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: String::new(),
+                error: None,
+                payload: None,
+            },
+            one_c_overview: SourceStatus {
+                ok: true,
+                status: "OK".to_string(),
+                summary: String::new(),
+                error: None,
+                payload: None,
+            },
+            agent_quality: AgentQuality::default(),
+            agent_quality_history: Vec::new(),
+            agent_quality_history_summary: AgentQualityHistorySummary::default(),
+            agent_quality_nodes: Vec::new(),
+            agent_quality_nodes_summary: AgentQualityNodesSummary::default(),
+            agent_coverage_sla: AgentCoverageSla::default(),
+            security_events_summary: SecurityEventsSummary::disabled(),
+        };
+        assert!(dlp_ok(&snapshot));
+        assert_eq!(dlp_block(&snapshot).status, "DISABLED");
+    }
+
+    #[test]
+    fn cold_report_cache_returns_warming_payload_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = Cli {
+            bind: "127.0.0.1:0".to_string(),
+            status_cmd: "printf '{\"severity\":\"OK\",\"ok_for_operator\":true}'".to_string(),
+            check_cmd: "printf '{\"summary\":{\"bucket_ok\":1}}'".to_string(),
+            failed_units_cmd: "true".to_string(),
+            worktime_url: "http://127.0.0.1:1".to_string(),
+            one_c_url: "http://127.0.0.1:1".to_string(),
+            workforce_policy_path: dir.path().join("workforce-policy.json"),
+            ueba_policy_path: dir.path().join("ueba-policy.yaml"),
+            timeout_seconds: 1,
+            max_page_size: DEFAULT_MAX_PAGE_SIZE,
+            default_page_size: DEFAULT_PAGE_SIZE,
+            max_report_date_range_days: DEFAULT_MAX_REPORT_DATE_RANGE_DAYS,
+            request_timeout_seconds: DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            max_request_body_bytes: DEFAULT_MAX_REQUEST_BODY_BYTES,
+            slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
+            environment: "test".to_string(),
+            enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: false,
+            state_dir: dir.path().join("state"),
+            dlp_db_path: dir.path().join("missing-dlp.sqlite"),
+            evidence_root: dir.path().join("missing-evidence"),
+            readiness_bundle_dir: dir.path().join("readiness-bundle"),
+            evidence_limit: 10,
+            evidence_max_bytes: 1024,
+            json_smoke: false,
+            evidence_only: false,
+            evidence_upload_token: None,
+            telemetry_api_key: "dummy".to_string(),
+            telemetry_store_path: dir.path().join("telemetry.jsonl"),
+            expected_nodes_path: dir.path().join("expected_nodes.json"),
+            security_events_backend: "clickhouse".to_string(),
+            clickhouse_url: "http://127.0.0.1:1".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
+        };
+        let snapshot_cache = new_snapshot_cache();
+        let report_cache = new_report_cache();
+
+        let report = cached_report_payload(&args, &snapshot_cache, &report_cache, false);
+
+        assert_eq!(report["cache_status"], "warming");
+        assert_eq!(report["severity"], "STALE");
+        assert_eq!(report["modules"]["dlp"]["status"], "disabled");
+        assert!(
+            report["kpis"]
+                .as_array()
+                .is_some_and(|items| !items.is_empty())
+        );
+        assert!(
+            report["markdown"]
+                .as_str()
+                .unwrap_or("")
+                .contains("расчетными выводами")
+        );
+        let guard = report_cache.lock().unwrap();
+        assert!(guard.refresh_in_progress || guard.entry.is_some());
+    }
+
+    #[test]
+    fn cold_operator_snapshot_returns_warming_payload_without_blocking() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = Cli {
+            bind: "127.0.0.1:0".to_string(),
+            status_cmd: "sleep 1; printf '{\"severity\":\"OK\",\"ok_for_operator\":true}'"
+                .to_string(),
+            check_cmd: "printf '{\"summary\":{\"bucket_ok\":1}}'".to_string(),
+            failed_units_cmd: "true".to_string(),
+            worktime_url: "http://127.0.0.1:1".to_string(),
+            one_c_url: "http://127.0.0.1:1".to_string(),
+            workforce_policy_path: dir.path().join("workforce-policy.json"),
+            ueba_policy_path: dir.path().join("ueba-policy.yaml"),
+            timeout_seconds: 2,
+            max_page_size: DEFAULT_MAX_PAGE_SIZE,
+            default_page_size: DEFAULT_PAGE_SIZE,
+            max_report_date_range_days: DEFAULT_MAX_REPORT_DATE_RANGE_DAYS,
+            request_timeout_seconds: DEFAULT_REQUEST_TIMEOUT_SECONDS,
+            max_request_body_bytes: DEFAULT_MAX_REQUEST_BODY_BYTES,
+            slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
+            environment: "test".to_string(),
+            enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: false,
+            state_dir: dir.path().join("state"),
+            dlp_db_path: dir.path().join("missing-dlp.sqlite"),
+            evidence_root: dir.path().join("missing-evidence"),
+            readiness_bundle_dir: dir.path().join("readiness-bundle"),
+            evidence_limit: 10,
+            evidence_max_bytes: 1024,
+            json_smoke: false,
+            evidence_only: false,
+            evidence_upload_token: None,
+            telemetry_api_key: "dummy".to_string(),
+            telemetry_store_path: dir.path().join("telemetry.jsonl"),
+            expected_nodes_path: dir.path().join("expected_nodes.json"),
+            security_events_backend: "clickhouse".to_string(),
+            clickhouse_url: "http://127.0.0.1:1".to_string(),
+            clickhouse_database: "analytics_1c".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
+        };
+        let snapshot_cache = new_snapshot_cache();
+
+        let maybe_snapshot = cached_snapshot_or_refresh(&args, &snapshot_cache);
+        let operator = maybe_snapshot
+            .as_ref()
+            .map(|snapshot| build_operator(snapshot, &IncidentStateFile::default()))
+            .unwrap_or_else(|| build_initial_operator_payload(&args));
+
+        assert!(maybe_snapshot.is_none());
+        assert_eq!(operator["cache_status"], "warming");
+        assert_eq!(operator["summary"]["severity"], "STALE");
+        assert_eq!(operator["modules"]["dlp"]["status"], "disabled");
+        assert_eq!(operator["incidents"].as_array().map(Vec::len), Some(0));
+        let summary = maybe_snapshot
+            .as_ref()
+            .map(build_summary)
+            .unwrap_or_else(|| build_initial_summary_payload(&args));
+        assert_eq!(summary.severity, "STALE");
+        assert_eq!(summary.blocks["portal"].status, "STALE");
+        assert_eq!(summary.blocks["dlp"].status, "DISABLED");
+        let guard = snapshot_cache.lock().unwrap();
+        assert!(guard.refresh_in_progress || guard.entry.is_some());
+    }
+
+    #[test]
     fn reports_include_commercial_kpis_and_disclaimer() {
         let snapshot = Snapshot {
             generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            dlp_module_enabled: true,
             detmir_status: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),
@@ -12465,6 +13535,7 @@ mod tests {
             slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
             environment: "test".to_string(),
             enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: true,
             state_dir: case_dir.path().join("state"),
             dlp_db_path: case_dir.path().join("dlp.sqlite"),
             evidence_root: case_dir.path().to_path_buf(),
@@ -12700,6 +13771,7 @@ confidence:
         .unwrap();
         let snapshot = Snapshot {
             generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            dlp_module_enabled: true,
             detmir_status: SourceStatus {
                 ok: true,
                 status: "WARN".to_string(),
@@ -12799,6 +13871,7 @@ confidence:
         fn snapshot_for(date: &str, active_seconds: i64, department_coverage: f64) -> Snapshot {
             Snapshot {
                 generated_at_utc: format!("{date}T10:00:00Z"),
+                dlp_module_enabled: true,
                 detmir_status: SourceStatus {
                     ok: true,
                     status: "OK".to_string(),
@@ -12912,6 +13985,7 @@ confidence:
     fn weighted_activity_uses_role_application_policy() {
         let snapshot = Snapshot {
             generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            dlp_module_enabled: true,
             detmir_status: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),
@@ -13022,6 +14096,7 @@ confidence:
         .unwrap();
         let snapshot = Snapshot {
             generated_at_utc: "2026-06-03T10:00:00Z".to_string(),
+            dlp_module_enabled: true,
             detmir_status: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),

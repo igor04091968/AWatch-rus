@@ -22,7 +22,8 @@ pub(crate) use limits::{is_limited_api_route, validate_api_query_limits, validat
 pub(crate) use logging::log_http_request;
 pub(crate) use metrics::{
     record_http_metric, record_ingestion_accepted, record_ingestion_rejected,
-    record_report_generated, render_prometheus_metrics,
+    record_report_cache_hit, record_report_cache_miss, record_report_cache_stale_hit,
+    record_report_generated, record_report_request, render_prometheus_metrics,
 };
 pub(crate) use readiness::build_readyz;
 pub(crate) use request_context::{http_request_metadata, mark_request_started};
