@@ -15,8 +15,16 @@
     detmir_portal_workforce_policy_path: "/etc/detmir-portal-workforce-policy.json"
     detmir_portal_ueba_policy_path: "/etc/detmir-portal-ueba-policy.yaml"
     detmir_portal_readiness_bundle_dir: "{{ detmir_portal_readiness_bundle_dir_override | default('/var/lib/activitywatch/health/readiness-bundle', true) }}"
+    detmir_portal_dlp_module_enabled: "{{ detmir_portal_dlp_module_enabled_override | default(false) }}"
 
   tasks:
+    - name: Refuse inconsistent DetMir portal DLP profile
+      ansible.builtin.assert:
+        that:
+          - detmir_portal_dlp_profile | default('core_only') in ['core_only', 'light', 'on_demand', 'full']
+          - (detmir_portal_dlp_profile | default('core_only') != 'core_only') or not (detmir_portal_dlp_module_enabled | bool)
+        fail_msg: "Inconsistent DetMir portal DLP profile: core_only must keep DETMIR_PORTAL_DLP_MODULE_ENABLED=false."
+
     - name: Check local detmir-portal binary
       ansible.builtin.stat:
         path: "{{ aw_rust_release_dir }}/detmir-portal"
@@ -54,6 +62,8 @@
           DETMIR_PORTAL_UEBA_POLICY_PATH={{ detmir_portal_ueba_policy_path }}
           DETMIR_PORTAL_TIMEOUT_SECONDS=25
           DETMIR_PORTAL_STATE_DIR=/var/lib/detmir-portal
+          DETMIR_PORTAL_DLP_MODULE_ENABLED={{ detmir_portal_dlp_module_enabled | bool | ternary('true', 'false') }}
+          DETMIR_PORTAL_DLP_PROFILE={{ detmir_portal_dlp_profile | default('core_only') }}
           DETMIR_PORTAL_DLP_DB_PATH=/var/lib/activitywatch/dlp_warehouse.sqlite
           DETMIR_PORTAL_EVIDENCE_ROOT=/var/lib/detmir-portal/evidence
           DETMIR_PORTAL_READINESS_BUNDLE_DIR={{ detmir_portal_readiness_bundle_dir }}
@@ -64,6 +74,65 @@
           CLICKHOUSE_DATABASE={{ detmir_clickhouse_database | default('analytics_1c') }}
           CLICKHOUSE_USER={{ detmir_clickhouse_user | default('default') }}
           CLICKHOUSE_PASSWORD={{ detmir_clickhouse_password | default('') }}
+
+    - name: Install lightweight DLP warehouse sync helper
+      ansible.builtin.copy:
+        src: "{{ aw_repo_root }}/scripts/detmir_dlp_warehouse_sync.sh"
+        dest: /usr/local/bin/detmir-dlp-warehouse-sync
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install lightweight DLP warehouse sync service
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/detmir-dlp-warehouse-sync.service
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Sync lightweight DetMir DLP SQLite warehouse for portal
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=oneshot
+          Environment=AW_DLP_WAREHOUSE_SOURCE_HOST={{ detmir_portal_dlp_warehouse_source_host | default('igor@10.10.10.13') }}
+          Environment=AW_DLP_WAREHOUSE_SOURCE_PATH={{ detmir_portal_dlp_warehouse_source_path | default('/var/lib/activitywatch/dlp_warehouse.sqlite') }}
+          Environment=AW_DLP_WAREHOUSE_DEST_PATH={{ detmir_portal_dlp_warehouse_dest_path | default('/var/lib/activitywatch/dlp_warehouse.sqlite') }}
+          Environment=AW_DLP_WAREHOUSE_SYNC_STATE_DIR={{ detmir_portal_dlp_warehouse_sync_state_dir | default('/var/lib/activitywatch/health') }}
+          ExecStart=/usr/local/bin/detmir-dlp-warehouse-sync
+          Nice=10
+          IOSchedulingClass=best-effort
+          IOSchedulingPriority=7
+          TimeoutStartSec=60
+
+    - name: Install lightweight DLP warehouse sync timer
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/detmir-dlp-warehouse-sync.timer
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Run lightweight DetMir DLP SQLite warehouse sync
+
+          [Timer]
+          OnBootSec=4min
+          OnUnitActiveSec={{ detmir_portal_dlp_warehouse_sync_interval | default('2min') }}
+          AccuracySec=30s
+          Persistent=false
+
+          [Install]
+          WantedBy=timers.target
+
+    - name: Enable lightweight DLP warehouse sync timer
+      ansible.builtin.systemd:
+        name: detmir-dlp-warehouse-sync.timer
+        enabled: true
+        state: started
+        daemon_reload: true
+      when: detmir_portal_dlp_module_enabled | bool
 
     - name: Preserve local ClickHouse security-events settings when available
       ansible.builtin.shell: |
@@ -117,7 +186,9 @@
         state: absent
       loop:
         - /etc/systemd/system/detmir-portal.service.d/20-timeouts.conf
+        - /etc/systemd/system/detmir-portal.service.d/20-prod-timeout.conf
         - /etc/systemd/system/detmir-portal.service.d/30-warm-cache.conf
+        - /etc/systemd/system/detmir-portal.service.d/30-prewarm-after-start.conf
       register: detmir_portal_stale_overrides
 
     - name: Install initial workforce policy when absent
@@ -173,6 +244,11 @@
           [Install]
           WantedBy=multi-user.target
       register: detmir_portal_service_unit
+
+    - name: Remove stale detmir-portal timeout override
+      ansible.builtin.file:
+        path: /etc/systemd/system/detmir-portal.service.d/10-detmir-check-env.conf
+        state: absent
 
     - name: Reload systemd
       ansible.builtin.systemd:

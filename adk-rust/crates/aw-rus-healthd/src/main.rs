@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Duration as ChronoDuration, SecondsFormat, Utc};
 use clap::Parser;
 use detmir_core::{exit_codes, parse_utc_rfc3339};
@@ -25,10 +25,10 @@ struct Cli {
     #[arg(long, default_value = "http://127.0.0.1:5610")]
     worktime_api: String,
 
-    #[arg(long, default_value = "198.51.100.18")]
+    #[arg(long, default_value = "")]
     rdp_host: String,
 
-    #[arg(long, default_value = "HOST-EXAMPLE")]
+    #[arg(long, default_value = "")]
     rdp_hostname: String,
 
     #[arg(long, default_value = "/var/lib/activitywatch/health")]
@@ -60,6 +60,9 @@ struct Cli {
 
     #[arg(long, default_value_t = 3.0)]
     tcp_timeout_seconds: f64,
+
+    #[arg(long, default_value_t = true)]
+    rdp_tcp_required: bool,
 
     #[arg(long)]
     json: bool,
@@ -128,6 +131,10 @@ impl Cli {
                 "AW_RUS_HEALTH_TCP_TIMEOUT_SECONDS",
                 self.tcp_timeout_seconds,
             );
+        }
+        if !cli_arg_present("--rdp-tcp-required") {
+            self.rdp_tcp_required =
+                env_bool_default("AW_RUS_HEALTH_RDP_TCP_REQUIRED", self.rdp_tcp_required);
         }
         self
     }
@@ -221,9 +228,42 @@ fn env_f64(name: &str, fallback: f64) -> f64 {
 }
 
 fn env_bool(name: &str) -> bool {
+    env_bool_default(name, false)
+}
+
+fn env_bool_default(name: &str, fallback: bool) -> bool {
     env_string(name)
-        .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
-        .unwrap_or(false)
+        .map(|value| match value.to_ascii_lowercase().as_str() {
+            "1" | "true" | "yes" | "on" => true,
+            "0" | "false" | "no" | "off" => false,
+            _ => fallback,
+        })
+        .unwrap_or(fallback)
+}
+
+fn validate_cli_config(cli: &Cli) -> Result<()> {
+    validate_prod_host("rdp_host", &cli.rdp_host)?;
+    validate_prod_host("rdp_hostname", &cli.rdp_hostname)?;
+    Ok(())
+}
+
+fn validate_prod_host(name: &str, value: &str) -> Result<()> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err(anyhow!("invalid config {name}: value is empty"));
+    }
+    let lowered = value.to_ascii_lowercase();
+    if lowered == "host-example"
+        || lowered.ends_with(".example")
+        || lowered.starts_with("192.0.2.")
+        || lowered.starts_with("198.51.100.")
+        || lowered.starts_with("203.0.113.")
+    {
+        return Err(anyhow!(
+            "invalid config {name}: placeholder/documentation host is not allowed"
+        ));
+    }
+    Ok(())
 }
 
 fn load_env_file(path: &Path) {
@@ -681,6 +721,16 @@ fn normalize_aw_api_base(aw_server: &str) -> String {
     }
 }
 
+fn tcp_check_status(ok: bool, required: bool) -> &'static str {
+    if ok {
+        "ok"
+    } else if required {
+        "fail"
+    } else {
+        "warn"
+    }
+}
+
 fn validation_check(report: &mut ReportBuilder, validation_dir: &Path, max_age_seconds: i64) {
     let Some(path) = latest_validation_report(validation_dir) else {
         report.add(
@@ -812,15 +862,18 @@ fn run(cli: &Cli) -> Result<HealthReport> {
 
     for (port, label) in [(5985_u16, "winrm"), (3389_u16, "rdp")] {
         let (ok, message) = tcp_connect(&cli.rdp_host, port, cli.tcp_timeout_seconds);
+        let status = tcp_check_status(ok, cli.rdp_tcp_required);
         report.add(
             format!("tcp:{label}"),
-            if ok { "ok" } else { "fail" },
+            status,
             if ok {
                 message
-            } else {
+            } else if cli.rdp_tcp_required {
                 format!("unreachable: {message}")
+            } else {
+                format!("optional unreachable: {message}")
             },
-            json!({"host": cli.rdp_host, "port": port}),
+            json!({"host": cli.rdp_host, "port": port, "required": cli.rdp_tcp_required}),
         );
     }
 
@@ -949,6 +1002,7 @@ fn run(cli: &Cli) -> Result<HealthReport> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse().apply_env();
+    validate_cli_config(&cli)?;
     let report = run(&cli)?;
     let json_text = serde_json::to_string_pretty(&report)? + "\n";
     let text = render_text(&report) + "\n";
@@ -1028,5 +1082,21 @@ mod tests {
             normalize_aw_api_base("http://127.0.0.1:5600/api/0"),
             "http://127.0.0.1:5600/api/0"
         );
+    }
+
+    #[test]
+    fn optional_rdp_tcp_downgrades_unreachable_to_warn() {
+        assert_eq!(tcp_check_status(false, true), "fail");
+        assert_eq!(tcp_check_status(false, false), "warn");
+        assert_eq!(tcp_check_status(true, false), "ok");
+    }
+
+    #[test]
+    fn healthd_rejects_placeholder_hosts() {
+        assert!(validate_prod_host("rdp_host", "192.168.100.19").is_ok());
+        assert!(validate_prod_host("rdp_hostname", "SHARKON2025").is_ok());
+        assert!(validate_prod_host("rdp_host", "198.51.100.18").is_err());
+        assert!(validate_prod_host("rdp_hostname", "HOST-EXAMPLE").is_err());
+        assert!(validate_prod_host("rdp_host", "").is_err());
     }
 }

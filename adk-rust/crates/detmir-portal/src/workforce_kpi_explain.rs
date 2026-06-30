@@ -549,6 +549,7 @@ mod tests {
         };
         Snapshot {
             generated_at_utc: "2026-06-07T10:00:00Z".to_string(),
+            dlp_module_enabled: true,
             detmir_status: SourceStatus {
                 ok: true,
                 status: "OK".to_string(),

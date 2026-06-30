@@ -43,11 +43,27 @@ configure_detmir_env() {
     fi
   fi
 
-  export DETMIR_AW_API="${DETMIR_AW_API:-http://192.0.2.13:5600/api/0}"
-  export DETMIR_WORKTIME_URL="${DETMIR_WORKTIME_URL:-http://192.0.2.13:5610}"
-  export DETMIR_ONE_C_URL="${DETMIR_ONE_C_URL:-http://192.0.2.2:8710}"
-  export DETMIR_RDP_HOST="${DETMIR_RDP_HOST:-198.51.100.18}"
-  export DETMIR_HOSTNAME="${DETMIR_HOSTNAME:-HOST-EXAMPLE}"
+  export DETMIR_DLP_ENABLED="${DETMIR_DLP_ENABLED:-${AW_DLP_ENABLED:-false}}"
+  require_live_value DETMIR_AW_API
+  require_live_value DETMIR_WORKTIME_URL
+  require_live_value DETMIR_ONE_C_URL
+  require_live_value DETMIR_RDP_HOST
+  require_live_value DETMIR_HOSTNAME
+}
+
+require_live_value() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "${value}" ]]; then
+    printf 'Missing required live contour variable: %s. Set it in %s or the environment.\n' "${name}" "${ENV_FILE}" >&2
+    exit 2
+  fi
+  case "${value}" in
+    *192.0.2.*|*198.51.100.*|*203.0.113.*|*HOST-EXAMPLE*|*.example*)
+      printf 'Refusing placeholder value for %s: %s\n' "${name}" "${value}" >&2
+      exit 2
+      ;;
+  esac
 }
 
 write_summary() {
@@ -64,6 +80,7 @@ write_summary() {
     printf 'DETMIR_HOSTNAME=%s\n' "${DETMIR_HOSTNAME}"
     printf 'DETMIR_GATEWAY_HOST=%s\n' "${DETMIR_GATEWAY_HOST}"
     printf 'DETMIR_PORTAL_URL=%s\n' "${DETMIR_PORTAL_URL}"
+    printf 'DETMIR_DLP_ENABLED=%s\n' "${DETMIR_DLP_ENABLED}"
     printf 'DETMIR_DLP_COMMAND=%s\n' "${DETMIR_DLP_COMMAND}"
     printf 'DETMIR_DISABLE_PORTAL_CHECK=%s\n' "${DETMIR_DISABLE_PORTAL_CHECK:-0}"
     printf 'DETMIR_DISABLE_DLP_HEALTH_CHECK=%s\n' "${DETMIR_DISABLE_DLP_HEALTH_CHECK:-0}"
@@ -177,6 +194,13 @@ fi
 
 if [[ "${RUN_REGISTRY_CHECK:-0}" == "1" ]] && [[ -x "${REPO_ROOT}/scripts/registry_readiness_check.sh" ]]; then
   if ! run_and_log "registry-readiness-check" bash "${REPO_ROOT}/scripts/registry_readiness_check.sh"; then
+    status=1
+  fi
+fi
+
+if [[ "${RUN_RESILIENCE_CHECK:-0}" == "1" ]] && [[ -f "${REPO_ROOT}/scripts/detmir_resilience_check.sh" ]]; then
+  resilience_mode="${RESILIENCE_CHECK_MODE:-repo}"
+  if ! run_and_log "detmir-resilience-check" bash "${REPO_ROOT}/scripts/detmir_resilience_check.sh" "--${resilience_mode}"; then
     status=1
   fi
 fi

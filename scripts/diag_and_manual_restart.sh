@@ -53,6 +53,26 @@ done
 log() { printf "%s %s\n" "$(date +"%F %T")" "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
 
+is_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+require_real_value() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -z "$value" ]]; then
+    die "missing required variable: $name"
+  fi
+  case "$value" in
+    *192.0.2.*|*198.51.100.*|*203.0.113.*|*HOST-EXAMPLE*|*.example*)
+      die "refusing placeholder value for $name: $value"
+      ;;
+  esac
+}
+
 command -v ansible >/dev/null 2>&1 || die "ansible not found"
 command -v ansible-playbook >/dev/null 2>&1 || die "ansible-playbook not found"
 [[ -f "$INVENTORY" ]] || die "inventory not found: $INVENTORY"
@@ -68,10 +88,14 @@ restart_server_components() {
     "activitywatch-server"
     "aw-worktime-api"
     "aw-worktime-ui-bridge.timer"
-    "aw-dlp-policy-engine.service"
-    "aw-dlp-aggregator.timer"
-    "activitywatch-dlp-aggregator.timer"
   )
+  if is_truthy "${DETMIR_DLP_ENABLED:-${AW_DLP_ENABLED:-false}}"; then
+    units+=(
+      "aw-dlp-policy-engine.service"
+      "aw-dlp-aggregator.timer"
+      "activitywatch-dlp-aggregator.timer"
+    )
+  fi
   for unit in "${units[@]}"; do
     if ansible -i "$INVENTORY" aw_server -b -m ansible.builtin.command -a "systemctl status ${unit}" >/dev/null 2>&1; then
       ansible -i "$INVENTORY" aw_server -b -m ansible.builtin.systemd -a "name=${unit} state=restarted enabled=true" || true
@@ -80,24 +104,32 @@ restart_server_components() {
 }
 
 seed_server_dlp_events() {
+  if ! is_truthy "${ALLOW_DLP_SEED_EVENTS:-0}"; then
+    log "Skipping DLP freshness seeding; set ALLOW_DLP_SEED_EVENTS=1 with real DETMIR_HOSTNAME/DETMIR_AW_SERVER_HOST to allow it."
+    return 0
+  fi
+  require_real_value DETMIR_HOSTNAME
+  require_real_value DETMIR_AW_SERVER_HOST
   log "Seeding DLP freshness events on aw_server..."
-  local ts
+  local ts host server_host
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  host="${DETMIR_HOSTNAME}"
+  server_host="${DETMIR_AW_SERVER_HOST}"
   ansible -i "$INVENTORY" aw_server -b -m ansible.builtin.shell -a "cat >/tmp/aw-endpoint-seed.json <<'JSON'
-{\"timestamp\":\"${ts}\",\"duration\":0.0,\"data\":{\"hostname\":\"HOST-EXAMPLE\",\"signalType\":\"self_test\",\"source\":\"diag_and_manual_restart\",\"username\":\"system\",\"queueDepth\":0,\"eventsEnqueued\":0,\"eventsFlushed\":0,\"sendFailures\":0}}
+{\"timestamp\":\"${ts}\",\"duration\":0.0,\"data\":{\"hostname\":\"${host}\",\"signalType\":\"self_test\",\"source\":\"diag_and_manual_restart\",\"username\":\"system\",\"queueDepth\":0,\"eventsEnqueued\":0,\"eventsFlushed\":0,\"sendFailures\":0}}
 JSON
 cat >/tmp/aw-fileops-seed-host.json <<'JSON'
-{\"timestamp\":\"${ts}\",\"duration\":0.0,\"data\":{\"hostname\":\"HOST-EXAMPLE\",\"operation\":\"self_test\",\"source\":\"diag_and_manual_restart\"}}
+{\"timestamp\":\"${ts}\",\"duration\":0.0,\"data\":{\"hostname\":\"${host}\",\"operation\":\"self_test\",\"source\":\"diag_and_manual_restart\"}}
 JSON
 cat >/tmp/aw-fileops-seed-server.json <<'JSON'
-{\"timestamp\":\"${ts}\",\"duration\":0.0,\"data\":{\"hostname\":\"192.0.2.13\",\"operation\":\"self_test\",\"source\":\"diag_and_manual_restart\"}}
+{\"timestamp\":\"${ts}\",\"duration\":0.0,\"data\":{\"hostname\":\"${server_host}\",\"operation\":\"self_test\",\"source\":\"diag_and_manual_restart\"}}
 JSON
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE' -H 'Content-Type: application/json' -d '{\"client\":\"aw-dlp-endpoint-signals\",\"type\":\"aw.dlp.endpoint.signal\",\"hostname\":\"HOST-EXAMPLE\"}' >/dev/null 2>&1 || true
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_HOST-EXAMPLE' -H 'Content-Type: application/json' -d '{\"client\":\"aw-file-operations\",\"type\":\"aw.file.operation\",\"hostname\":\"HOST-EXAMPLE\"}' >/dev/null 2>&1 || true
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_192.0.2.13' -H 'Content-Type: application/json' -d '{\"client\":\"aw-file-operations\",\"type\":\"aw.file.operation\",\"hostname\":\"192.0.2.13\"}' >/dev/null 2>&1 || true
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-endpoint-seed.json >/dev/null
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_HOST-EXAMPLE/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-host.json >/dev/null
-curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_192.0.2.13/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-server.json >/dev/null
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_${host}' -H 'Content-Type: application/json' -d '{\"client\":\"aw-dlp-endpoint-signals\",\"type\":\"aw.dlp.endpoint.signal\",\"hostname\":\"${host}\"}' >/dev/null 2>&1 || true
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_${host}' -H 'Content-Type: application/json' -d '{\"client\":\"aw-file-operations\",\"type\":\"aw.file.operation\",\"hostname\":\"${host}\"}' >/dev/null 2>&1 || true
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_${server_host}' -H 'Content-Type: application/json' -d '{\"client\":\"aw-file-operations\",\"type\":\"aw.file.operation\",\"hostname\":\"${server_host}\"}' >/dev/null 2>&1 || true
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-dlp-endpoint-signals_${host}/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-endpoint-seed.json >/dev/null
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_${host}/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-host.json >/dev/null
+curl -sS -X POST 'http://127.0.0.1:5600/api/0/buckets/aw-file-operations_${server_host}/heartbeat?pulsetime=30' -H 'Content-Type: application/json' --data-binary @/tmp/aw-fileops-seed-server.json >/dev/null
 " >/dev/null
 }
 
@@ -107,8 +139,14 @@ restart_windows_collectors() {
 }
 
 seed_windows_dlp_events() {
+  if ! is_truthy "${ALLOW_DLP_SEED_EVENTS:-0}"; then
+    log "Skipping Windows DLP freshness seeding; set ALLOW_DLP_SEED_EVENTS=1 with real DETMIR_HOSTNAME/DETMIR_AW_API to allow it."
+    return 0
+  fi
+  require_real_value DETMIR_HOSTNAME
+  require_real_value DETMIR_AW_API
   log "Seeding endpoint/file-ops events from aw_windows..."
-  ansible -i "$INVENTORY" aw_windows -m ansible.windows.win_shell -a "powershell -NoProfile -ExecutionPolicy Bypass -Command \"\$ErrorActionPreference = 'Stop'; \$ts = (Get-Date).ToUniversalTime().ToString('o'); \$api='http://192.0.2.13:5600/api/0'; \$endpoint=@{timestamp=\$ts;duration=0.0;data=@{hostname='HOST-EXAMPLE';signalType='self_test';source='diag_and_manual_restart';username=\$env:USERNAME;queueDepth=0;eventsEnqueued=0;eventsFlushed=0;sendFailures=0}} | ConvertTo-Json -Depth 8 -Compress; \$fileops=@{timestamp=\$ts;duration=0.0;data=@{hostname='HOST-EXAMPLE';operation='self_test';source='diag_and_manual_restart';username=\$env:USERNAME}} | ConvertTo-Json -Depth 8 -Compress; Invoke-RestMethod -Method Post -Uri \$api'/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE' -ContentType 'application/json' -Body '{\\\"client\\\":\\\"aw-dlp-endpoint-signals\\\",\\\"type\\\":\\\"aw.dlp.endpoint.signal\\\",\\\"hostname\\\":\\\"HOST-EXAMPLE\\\"}' -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri \$api'/buckets/aw-file-operations_HOST-EXAMPLE' -ContentType 'application/json' -Body '{\\\"client\\\":\\\"aw-file-operations\\\",\\\"type\\\":\\\"aw.file.operation\\\",\\\"hostname\\\":\\\"HOST-EXAMPLE\\\"}' -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri \$api'/buckets/aw-dlp-endpoint-signals_HOST-EXAMPLE/heartbeat?pulsetime=30' -ContentType 'application/json' -Body \$endpoint -TimeoutSec 15 -DisableKeepAlive | Out-Null; Invoke-RestMethod -Method Post -Uri \$api'/buckets/aw-file-operations_HOST-EXAMPLE/heartbeat?pulsetime=30' -ContentType 'application/json' -Body \$fileops -TimeoutSec 15 -DisableKeepAlive | Out-Null; Write-Output 'windows-dlp-seeded'\""
+  ansible -i "$INVENTORY" aw_windows -m ansible.windows.win_shell -a "powershell -NoProfile -ExecutionPolicy Bypass -Command \"\$ErrorActionPreference = 'Stop'; \$ts = (Get-Date).ToUniversalTime().ToString('o'); \$api='${DETMIR_AW_API}'; \$hostName='${DETMIR_HOSTNAME}'; \$endpointBucket=\$api + '/buckets/aw-dlp-endpoint-signals_' + \$hostName; \$fileopsBucket=\$api + '/buckets/aw-file-operations_' + \$hostName; \$endpoint=@{timestamp=\$ts;duration=0.0;data=@{hostname=\$hostName;signalType='self_test';source='diag_and_manual_restart';username=\$env:USERNAME;queueDepth=0;eventsEnqueued=0;eventsFlushed=0;sendFailures=0}} | ConvertTo-Json -Depth 8 -Compress; \$fileops=@{timestamp=\$ts;duration=0.0;data=@{hostname=\$hostName;operation='self_test';source='diag_and_manual_restart';username=\$env:USERNAME}} | ConvertTo-Json -Depth 8 -Compress; Invoke-RestMethod -Method Post -Uri \$endpointBucket -ContentType 'application/json' -Body (@{client='aw-dlp-endpoint-signals';type='aw.dlp.endpoint.signal';hostname=\$hostName} | ConvertTo-Json -Compress) -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri \$fileopsBucket -ContentType 'application/json' -Body (@{client='aw-file-operations';type='aw.file.operation';hostname=\$hostName} | ConvertTo-Json -Compress) -TimeoutSec 15 -DisableKeepAlive -ErrorAction SilentlyContinue | Out-Null; Invoke-RestMethod -Method Post -Uri (\$endpointBucket + '/heartbeat?pulsetime=30') -ContentType 'application/json' -Body \$endpoint -TimeoutSec 15 -DisableKeepAlive | Out-Null; Invoke-RestMethod -Method Post -Uri (\$fileopsBucket + '/heartbeat?pulsetime=30') -ContentType 'application/json' -Body \$fileops -TimeoutSec 15 -DisableKeepAlive | Out-Null; Write-Output 'windows-dlp-seeded'\""
 }
 
 confirm_restart() {

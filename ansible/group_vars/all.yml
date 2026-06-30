@@ -33,7 +33,10 @@ aw_worktime_manager_trend_min_points: 3
 aw_worktime_manager_trend_delta_pct: 10
 aw_worktime_manager_off_hours_threshold_seconds: 1800
 aw_worktime_interpretation_policy_path: "/etc/activitywatch/worktime-interpretation-policy.json"
-aw_dlp_influx_enabled: true
+aw_dlp_profile: "core_only"
+detmir_portal_dlp_profile: "light"
+detmir_portal_dlp_module_enabled_override: true
+aw_dlp_influx_enabled: false
 aw_dlp_influx_url: "http://192.0.2.10:8086"
 aw_dlp_influx_org: "proxmox"
 aw_dlp_influx_bucket: "aw_metrics"
@@ -47,6 +50,7 @@ aw_worktime_host: "{{ aw_monitored_windows_hostname }}"
 aw_rus_health_worktime_api_base: "http://127.0.0.1:5610"
 aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
 aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
+aw_rus_health_rdp_tcp_required: false
 aw_hayabusa_auto_case_enabled: true
 aw_hayabusa_auto_case_min_severity: "medium"
 aw_hayabusa_telegram_enabled: true
@@ -65,22 +69,46 @@ aw_server_cors_origins:
 
 aw_apply_worktime_settings: true
 
-aw_dlp_ioc_enabled: true
+aw_dlp_ioc_enabled: false
+aw_dlp_enabled: false
+aw_dlp_disabled_reason: ""
+aw_dlp_disabled_since: ""
+aw_dlp_light_collector_enabled: false
+aw_dlp_light_guard_enabled: true
+aw_dlp_light_guard_load_ratio: "1.50"
+aw_dlp_light_guard_mem_available_pct_min: "15"
+aw_dlp_light_guard_iowait_pct_max: "20"
+aw_dlp_light_guard_strikes_required: 3
+aw_dlp_light_guard_state_dir: "{{ aw_server_data_dir }}/health"
+aw_dlp_aggregator_bucket_prefixes: "aw-file-operations_,aw-dlp-incidents_"
+aw_dlp_aggregator_limit: 500
+aw_dlp_aggregator_lookback_hours: 2
+aw_dlp_aggregator_overlap_seconds: 60
+aw_dlp_aggregator_timeout_seconds: 8
+aw_dlp_aggregator_on_calendar: "*:3/15:10"
+aw_dlp_aggregator_cpu_quota: "10%"
+aw_dlp_aggregator_memory_max: "256M"
+aw_containment_enabled: false
+aw_containment_mode: "shadow"
+aw_containment_policy_path: "/etc/activitywatch/containment-policy.json"
+aw_containment_default_ttl_minutes: 60
+aw_containment_require_admin_channel_check: true
+aw_containment_allow_auto_for_servers: false
 aw_dlp_ioc_workdir: "/opt/activitywatch/dlp-ioc"
 aw_dlp_ioc_rules_zip_url: "https://github.com/Yamato-Security/hayabusa-rules/archive/refs/heads/main.zip"
 aw_dlp_ioc_refresh_on_boot_sec: "5min"
 aw_dlp_ioc_refresh_interval: "6h"
-aw_dlp_policy_engine_enabled: true
+aw_dlp_policy_engine_enabled: false
 aw_dlp_policy_engine_bind_host: "0.0.0.0"
 aw_dlp_policy_engine_port: 5601
 aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
-aw_dlp_content_analysis_enabled: true
-aw_dlp_integrations_enabled: true
-aw_dlp_case_management_enabled: true
+aw_dlp_content_analysis_enabled: false
+aw_dlp_integrations_enabled: false
+aw_dlp_case_management_enabled: false
 aw_dlp_case_bind_host: "0.0.0.0"
 aw_dlp_case_port: 5602
 aw_dlp_case_db_path: "/opt/activitywatch/dlp-case-management/cases.db"
-aw_dlp_compliance_enabled: true
+aw_dlp_compliance_enabled: false
 aw_dlp_compliance_report_dir: "/opt/activitywatch/dlp-compliance/reports"
 aw_dlp_compliance_template_path: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html"
 aw_server_post_deploy_health_check_enabled: true

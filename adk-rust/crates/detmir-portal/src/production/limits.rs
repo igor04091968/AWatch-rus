@@ -11,6 +11,7 @@ use anyhow::{Result, anyhow};
 use chrono::NaiveDate;
 use serde_json::{Value, json};
 use tiny_http::StatusCode;
+use url::Url;
 
 use crate::{
     Cli, MAX_ALLOWED_PAGE_SIZE, MAX_ALLOWED_REPORT_DATE_RANGE_DAYS, MAX_ALLOWED_REQUEST_BODY_BYTES,
@@ -77,6 +78,11 @@ pub(crate) fn validate_portal_config(args: &Cli) -> Result<()> {
             "invalid config max_request_body_bytes: expected 1024..={MAX_ALLOWED_REQUEST_BODY_BYTES}"
         ));
     }
+    validate_runtime_url("worktime_url", &args.worktime_url)?;
+    validate_runtime_url("one_c_url", &args.one_c_url)?;
+    validate_probe_command("status_cmd", &args.status_cmd)?;
+    validate_probe_command("check_cmd", &args.check_cmd)?;
+    validate_probe_command("failed_units_cmd", &args.failed_units_cmd)?;
 
     // SECURITY: environment and module names can reach metrics/log labels.
     // Restrict them to short ASCII tokens to avoid label injection and runaway
@@ -108,6 +114,46 @@ pub(crate) fn validate_portal_config(args: &Cli) -> Result<()> {
                 "invalid config enabled_modules: unsupported module {module}"
             ));
         }
+    }
+    Ok(())
+}
+
+fn validate_runtime_url(name: &str, value: &str) -> Result<()> {
+    let url = Url::parse(value).map_err(|err| anyhow!("invalid config {name}: {err}"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(anyhow!("invalid config {name}: expected http or https URL"));
+    }
+    let Some(host) = url.host_str() else {
+        return Err(anyhow!("invalid config {name}: missing host"));
+    };
+    if is_placeholder_host(host) {
+        return Err(anyhow!(
+            "invalid config {name}: placeholder/documentation host is not allowed in production"
+        ));
+    }
+    Ok(())
+}
+
+fn is_placeholder_host(host: &str) -> bool {
+    let host = host.trim().to_ascii_lowercase();
+    host.is_empty()
+        || host == "host-example"
+        || host.ends_with(".example")
+        || host.starts_with("192.0.2.")
+        || host.starts_with("198.51.100.")
+        || host.starts_with("203.0.113.")
+}
+
+fn validate_probe_command(name: &str, command: &str) -> Result<()> {
+    let command = command.trim();
+    if command.is_empty() {
+        return Err(anyhow!("invalid config {name}: command is empty"));
+    }
+    let forbidden = ['\n', '\r', '\0', ';', '|', '&', '<', '>', '`'];
+    if command.contains("$(") || command.chars().any(|ch| forbidden.contains(&ch)) {
+        return Err(anyhow!(
+            "invalid config {name}: shell control operators are not allowed"
+        ));
     }
     Ok(())
 }
@@ -230,6 +276,7 @@ mod tests {
             slow_request_log_ms: DEFAULT_SLOW_REQUEST_LOG_MS,
             environment: "test".to_string(),
             enabled_modules: "executive,workforce,security,forensics,admin".to_string(),
+            dlp_module_enabled: true,
             state_dir: dir.join("state"),
             dlp_db_path: dir.join("dlp.sqlite"),
             evidence_root: dir.to_path_buf(),
@@ -290,6 +337,39 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("request_timeout_seconds")
+        );
+    }
+
+    #[test]
+    fn config_validation_rejects_placeholder_endpoints_and_shell_operators() {
+        let dir = tempfile::tempdir().unwrap();
+        let args = test_cli(dir.path());
+
+        let mut invalid = args.clone();
+        invalid.worktime_url = "http://192.0.2.13:5610".to_string();
+        assert!(
+            validate_portal_config(&invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("placeholder")
+        );
+
+        let mut invalid = args.clone();
+        invalid.one_c_url = "http://198.51.100.2:8710".to_string();
+        assert!(
+            validate_portal_config(&invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("placeholder")
+        );
+
+        let mut invalid = args.clone();
+        invalid.check_cmd = "detmir-check --json; curl http://127.0.0.1".to_string();
+        assert!(
+            validate_portal_config(&invalid)
+                .unwrap_err()
+                .to_string()
+                .contains("shell control")
         );
     }
 

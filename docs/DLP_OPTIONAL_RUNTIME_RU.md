@@ -1,14 +1,37 @@
 # Optional DLP runtime for DetMir
 
-Цель: DLP-контур должен отключаться управляемо, без ложных аварий в health/readiness и без автоматического подъема heavy-пайплайна, когда задача контура - снизить нагрузку на InfluxDB, Grafana и ClickHouse.
+Цель: DLP-контур должен оставаться подключаемым, но production default для
+DetMir сейчас `core_only/disabled`. Возврат в лёгкий режим выполняется вручную
+после resource check; при перегрузе guard снова переводит DLP в `core_only`.
+
+Ресурсные профили и rollback-процедура описаны отдельно:
+[DLP_RESOURCE_PROFILES_RU.md](DLP_RESOURCE_PROFILES_RU.md).
 
 ## Что отключается
+
+Текущий production-профиль DetMir после 2026-06-30 prod hardening -
+`core_only/disabled`:
+
+- `AW_DLP_ENABLED=false`;
+- `AW_DLP_PROFILE=core_only`;
+- `AW_DLP_INFLUX_ENABLED=false`;
+- optional DLP timers/services inactive/disabled;
+- `detmir-dlp-load-guard.timer` остаётся enabled/active как защита на случай
+  последующего operator re-enable;
+- heavy DLP units, Influx exporter, evidence/case/report/integration units и
+  Loki остаются выключенными.
+
+Автоотключение выполняет `detmir-dlp-load-guard`: при превышении порогов
+load/RAM/iowait он переводит DLP в `core_only` через
+`detmir-dlp-runtime-control set-profile core_only`. После стабилизации контур
+возвращается вручную командой `set-profile light`.
 
 Штатный runtime off включает:
 
 - `AW_DLP_ENABLED=false` на AW server;
 - `DETMIR_DLP_ENABLED=false` в управляющем DetMir contour check;
-- `DETMIR_PORTAL_DLP_MODULE_ENABLED=false` для portal UI/API DLP-модуля;
+- portal UI/API DLP-модуль может оставаться включённым для исторического
+  SQLite/evidence-среза; это не запускает server-side DLP runtime;
 - остановку DLP timers/services:
   - `aw-dlp-influx-exporter.timer`;
   - `activitywatch-dlp-aggregator.timer`;
@@ -137,10 +160,31 @@ AW_DLP_ENABLED=false check-aw-full
 
 ## Возврат DLP
 
+Для DetMir предпочтительно возвращать не весь DLP сразу, а лёгкий профиль.
+Перед этим проверить load/RAM/iowait на Proxmox/AW/Influx/Grafana/ClickHouse.
+
 ```bash
-sudo sed -i 's/^AW_DLP_ENABLED=.*/AW_DLP_ENABLED=true/' /etc/activitywatch/aw-server.env
-sudo /usr/local/bin/detmir-dlp-runtime-control enable
-sudo systemctl restart aw-worktime-api.service || true
+sudo AW_DLP_DISABLED_REASON=operator_reenable_after_resource_check \
+  /usr/local/bin/detmir-dlp-runtime-control set-profile light
+sudo sed -i \
+  -e 's/^AW_DLP_ENABLED=.*/AW_DLP_ENABLED=true/' \
+  -e 's/^AW_DLP_PROFILE=.*/AW_DLP_PROFILE=light/' \
+  -e 's/^AW_DLP_INFLUX_ENABLED=.*/AW_DLP_INFLUX_ENABLED=false/' \
+  /etc/activitywatch/aw-server.env
+```
+
+Если профиль ухудшил состояние контура:
+
+```bash
+sudo /usr/local/bin/detmir-dlp-runtime-control rollback
+```
+
+`on_demand` и `full` включаются только вручную после отдельного resource
+preflight:
+
+```bash
+sudo /usr/local/bin/detmir-dlp-runtime-control set-profile on_demand
+sudo /usr/local/bin/detmir-dlp-runtime-control set-profile full
 ```
 
 Для portal:
@@ -187,13 +231,27 @@ production DetMir без отдельного ресурсного решени�
 В inventory/group vars:
 
 ```yaml
+aw_dlp_profile: "core_only"
 aw_dlp_enabled: false
-aw_dlp_disabled_reason: "operator_disabled_to_reduce_influx_grafana_clickhouse_load"
-aw_dlp_disabled_since: "2026-06-25"
-detmir_portal_dlp_module_enabled_override: false
+aw_dlp_influx_enabled: false
+aw_dlp_light_collector_enabled: false
+aw_dlp_light_guard_enabled: true
+detmir_portal_dlp_module_enabled_override: true
 ```
 
-При `aw_dlp_enabled: false` playbook пишет `AW_DLP_ENABLED=false`, не включает DLP service/timer runtime и не должен возвращать DLP Influx exporter/aggregator в active state.
+Для временного operator re-enable в `light`:
+
+```yaml
+aw_dlp_profile: "light"
+aw_dlp_enabled: true
+aw_dlp_influx_enabled: false
+aw_dlp_light_collector_enabled: true
+aw_dlp_light_guard_enabled: true
+```
+
+При `aw_dlp_profile: light` playbook включает только лёгкий агрегатор, IOC
+refresh и load guard. DLP Influx exporter, report/syslog/webhook/CEF,
+policy/case/evidence и Loki не должны возвращаться в active state.
 
 ## Ограничения
 
