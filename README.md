@@ -200,6 +200,8 @@ collectors.
 
 Модульная схема комплекса с GitHub/Gitea-viewable Mermaid-графами:
 [docs/MODULE_ARCHITECTURE_GRAPH_RU.md](docs/MODULE_ARCHITECTURE_GRAPH_RU.md).
+Карта orchestration entrypoints:
+[docs/ORCHESTRATION_MAP_RU.md](docs/ORCHESTRATION_MAP_RU.md).
 
 ## Если дашборд пустой
 
@@ -363,6 +365,7 @@ collectors.
 - [Сторонние лицензии](THIRD_PARTY_LICENSES_RU.md)
 - [Архитектура](docs/ARCHITECTURE_RU.md)
 - [Модульная схема комплекса](docs/MODULE_ARCHITECTURE_GRAPH_RU.md)
+- [Карта оркестрации](docs/ORCHESTRATION_MAP_RU.md)
 - [Установка](docs/INSTALL_RU.md)
 - [Руководство администратора](docs/ADMIN_GUIDE_RU.md)
 - [Руководство оператора](docs/OPERATOR_GUIDE_RU.md)

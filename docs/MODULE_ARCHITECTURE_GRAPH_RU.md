@@ -211,6 +211,7 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
   DailyCheck["daily / weekly contour checks"] --> Healthd["aw-rus-healthd"]
+  Orchestration["Ansible and scripts<br/>deploy / validate / support"] --> DailyCheck
   Healthd --> AwCheck["AW server and bucket freshness"]
   Healthd --> WorktimeCheck["Worktime API health"]
   Healthd --> ClickHouseCheck["ClickHouse health"]
@@ -244,7 +245,25 @@ GitHub полезен для публичной проверяемости: PR, 
 Но для российского реестрового release evidence нужен отдельный российский
 контур сборки и хранения артефактов.
 
-## 10. Где смотреть руками
+## 10. Оркестрация и поддержание актуальности
+
+Оркестрационные entrypoints отдельно зафиксированы в
+[docs/ORCHESTRATION_MAP_RU.md](ORCHESTRATION_MAP_RU.md). Этот документ
+связывает архитектурные модули с Ansible playbooks, systemd timers, Windows
+Scheduled Tasks и read-only check scripts.
+
+В репозитории есть guard:
+
+```bash
+bash scripts/check_orchestration_map.sh
+```
+
+Он не ходит в production и не меняет runtime. Его задача - проверить, что
+карта оркестрации ссылается на реальные playbooks/scripts и содержит
+обязательные safety-маркеры: DLP optional mode, Hayabusa/Velociraptor boundary,
+approval gate для containment и разделение GitHub/Gitea release контуров.
+
+## 11. Где смотреть руками
 
 | Что проверить | Где смотреть |
 |---|---|
@@ -258,13 +277,11 @@ GitHub полезен для публичной проверяемости: PR, 
 | Runtime checks | `aw-rus-healthd`, contour check scripts, portal status |
 | Код и evidence процесса | GitHub PR/issues, private Gitea mirror |
 
-## 11. Связанные документы
+## 12. Связанные документы
 
 - [docs/ARCHITECTURE_RU.md](ARCHITECTURE_RU.md)
 - [docs/UNIFIED_OPERATING_MODEL_RU.md](UNIFIED_OPERATING_MODEL_RU.md)
-- [docs/WORKFORCE_OPERATIONS_MODEL_RU.md](WORKFORCE_OPERATIONS_MODEL_RU.md)
+- [docs/ORCHESTRATION_MAP_RU.md](ORCHESTRATION_MAP_RU.md)
 - [docs/GRAFANA_DASHBOARDS_RU.md](GRAFANA_DASHBOARDS_RU.md)
-- [docs/SECURITY_FINDING_INBOX_RU.md](SECURITY_FINDING_INBOX_RU.md)
-- [docs/LOW_COST_SIGMA_HAYABUSA_VELOCIRAPTOR_ADDON_RU.md](LOW_COST_SIGMA_HAYABUSA_VELOCIRAPTOR_ADDON_RU.md)
 - [docs/DLP_OPTIONAL_RUNTIME_RU.md](DLP_OPTIONAL_RUNTIME_RU.md)
 - [docs/PRODUCTION_READINESS_RU.md](PRODUCTION_READINESS_RU.md)
