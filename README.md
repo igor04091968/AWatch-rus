@@ -198,6 +198,9 @@ Markdown-отчет собирает главный вывод, риски по�
 extensions и future-направления без создания новых API или фиктивных
 collectors.
 
+Модульная схема комплекса с GitHub/Gitea-viewable Mermaid-графами:
+[docs/MODULE_ARCHITECTURE_GRAPH_RU.md](docs/MODULE_ARCHITECTURE_GRAPH_RU.md).
+
 ## Если дашборд пустой
 
 Обычно это значит одно из трех: выбран слишком узкий период времени, рабочий компьютер давно не присылал события или временно не обновилась витрина в Grafana. Начните с периода `Last 24 hours`, затем переходите к техническим разделам ниже.
@@ -359,6 +362,7 @@ collectors.
 - [Сторонние компоненты](THIRD_PARTY_COMPONENTS.md)
 - [Сторонние лицензии](THIRD_PARTY_LICENSES_RU.md)
 - [Архитектура](docs/ARCHITECTURE_RU.md)
+- [Модульная схема комплекса](docs/MODULE_ARCHITECTURE_GRAPH_RU.md)
 - [Установка](docs/INSTALL_RU.md)
 - [Руководство администратора](docs/ADMIN_GUIDE_RU.md)
 - [Руководство оператора](docs/OPERATOR_GUIDE_RU.md)
