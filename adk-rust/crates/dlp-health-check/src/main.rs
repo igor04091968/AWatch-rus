@@ -1440,9 +1440,7 @@ fn build_report(cli: &Cli, client: &Client) -> HealthReport {
             }),
         );
     }
-    for unit in ["aw-worktime-ui-bridge.timer"] {
-        check_systemd_unit(&mut report, unit, "timer");
-    }
+    check_systemd_unit(&mut report, "aw-worktime-ui-bridge.timer", "timer");
 
     match http_json(client, &format!("{aw_api_base}/buckets"), 15, 2) {
         Ok(Value::Object(map)) => {
