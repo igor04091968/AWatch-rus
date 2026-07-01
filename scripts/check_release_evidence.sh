@@ -48,7 +48,10 @@ if [[ -s "$EVIDENCE_DIR/release-evidence-manifest.json" ]]; then
     jq -e '
       .product == "AWatch-rus"
       and (.release_version | type == "string" and length > 0)
-      and (.release_commit | type == "string" and length > 0)
+      and (.release_commit | type == "string" and test("^[0-9a-f]{40}$"))
+      and (.release_commit_input | type == "string" and length > 0)
+      and (.source_date_epoch | type == "number")
+      and (.build_time_utc | type == "string" and test("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"))
       and (.build_runner | type == "string" and length > 0)
       and .primary_source_repository == "https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus"
       and .github_role == "public_mirror_only"
@@ -72,9 +75,13 @@ required = {
 for key, value in required.items():
     if data.get(key) != value:
         raise SystemExit(f"{key} mismatch")
-for key in ("release_version", "release_commit", "build_runner", "generated_at"):
+for key in ("release_version", "release_commit", "release_commit_input", "build_time_utc", "build_runner", "generated_at"):
     if not isinstance(data.get(key), str) or not data[key]:
         raise SystemExit(f"{key} missing")
+if len(data["release_commit"]) != 40 or any(char not in "0123456789abcdef" for char in data["release_commit"]):
+    raise SystemExit("release_commit must be a full lowercase git SHA")
+if not isinstance(data.get("source_date_epoch"), int):
+    raise SystemExit("source_date_epoch missing")
 if not isinstance(data.get("checks"), list):
     raise SystemExit("checks missing")
 if not isinstance(data.get("artifacts"), list):

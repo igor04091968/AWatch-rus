@@ -118,11 +118,21 @@ if [[ "$RELEASE_COMMIT" != "$(git rev-parse HEAD)" ]]; then
   git -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false checkout --detach "$RELEASE_COMMIT"
 fi
 
+RELEASE_COMMIT_INPUT="$RELEASE_COMMIT"
+RELEASE_COMMIT="$(git rev-parse HEAD)"
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct "$RELEASE_COMMIT")}"
+BUILD_TIME_UTC="$(date -u -d "@${SOURCE_DATE_EPOCH}" +%Y-%m-%dT%H:%M:%SZ)"
+export GIT_COMMIT="$RELEASE_COMMIT"
+export BUILD_TIME="$BUILD_TIME_UTC"
+export SOURCE_DATE_EPOCH
+
 {
   git remote -v
 } > "$LOG_DIR/git-remotes.log" 2>&1
 git status --short > "$LOG_DIR/git-status-short.log" 2>&1
 git rev-parse HEAD > "$LOG_DIR/git-rev-parse-head.log" 2>&1
+printf '%s\n' "$SOURCE_DATE_EPOCH" > "$LOG_DIR/source-date-epoch.log"
+printf '%s\n' "$BUILD_TIME_UTC" > "$LOG_DIR/build-time-utc.log"
 git log --oneline -20 > "$LOG_DIR/git-log-oneline-20.log" 2>&1
 capture_command rustc-version rustc --version
 capture_command cargo-version cargo --version
@@ -198,14 +208,21 @@ git -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false ar
 record_check "source_archive" "ok" "$SOURCE_ARCHIVE"
 
 BINARY_ARCHIVE="$ARTIFACT_DIR/${RELEASE_VERSION}-binaries.tar.gz"
+if [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+  BINARY_RELEASE_DIR="${CARGO_TARGET_DIR%/}/release"
+elif [[ -n "$CARGO_WORKSPACE_DIR" ]]; then
+  BINARY_RELEASE_DIR="$CARGO_WORKSPACE_DIR/target/release"
+else
+  BINARY_RELEASE_DIR="$ROOT/target/release"
+fi
 if [[ "$DOCS_ONLY" == "1" ]]; then
   printf 'skipped: DOCS_ONLY=1\n' > "$BINARY_ARCHIVE.skip"
   skip_check "binary_archive" "DOCS_ONLY=1"
-elif [[ -d target/release ]]; then
-  tar -czf "$BINARY_ARCHIVE" target/release
+elif [[ -d "$BINARY_RELEASE_DIR" ]]; then
+  tar -czf "$BINARY_ARCHIVE" -C "$BINARY_RELEASE_DIR" .
   record_check "binary_archive" "ok" "$BINARY_ARCHIVE"
 else
-  skip_check "binary_archive" "target/release missing"
+  skip_check "binary_archive" "$BINARY_RELEASE_DIR missing"
 fi
 
 if command -v cargo-cyclonedx >/dev/null 2>&1; then
@@ -226,12 +243,22 @@ GENERATED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BUILD_RUNNER_HOST="$(hostname 2>/dev/null || printf unknown)"
 PRIMARY_SOURCE_REPOSITORY="https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus"
 
-python3 - "$OUTPUT_DIR/release-evidence-manifest.json" "$RELEASE_VERSION" "$RELEASE_COMMIT" "$GENERATED_AT" "$BUILD_RUNNER_HOST" "$PRIMARY_SOURCE_REPOSITORY" <<'PY'
+python3 - "$OUTPUT_DIR/release-evidence-manifest.json" "$RELEASE_VERSION" "$RELEASE_COMMIT_INPUT" "$RELEASE_COMMIT" "$SOURCE_DATE_EPOCH" "$BUILD_TIME_UTC" "$GENERATED_AT" "$BUILD_RUNNER_HOST" "$PRIMARY_SOURCE_REPOSITORY" <<'PY'
 import json
 import sys
 from pathlib import Path
 
-manifest_path, release_version, release_commit, generated_at, build_runner, primary_source = sys.argv[1:]
+(
+    manifest_path,
+    release_version,
+    release_commit_input,
+    release_commit,
+    source_date_epoch,
+    build_time_utc,
+    generated_at,
+    build_runner,
+    primary_source,
+) = sys.argv[1:]
 root = Path(manifest_path).parent
 checks = []
 checks_file = root / "checks.tsv"
@@ -248,7 +275,10 @@ for path in sorted((root / "artifacts").glob("*")):
 data = {
     "product": "AWatch-rus",
     "release_version": release_version,
+    "release_commit_input": release_commit_input,
     "release_commit": release_commit,
+    "source_date_epoch": int(source_date_epoch),
+    "build_time_utc": build_time_utc,
     "build_runner": build_runner,
     "primary_source_repository": primary_source,
     "github_role": "public_mirror_only",
@@ -268,6 +298,12 @@ Product: AWatch-rus
 Release version: ${RELEASE_VERSION}
 
 Release commit: ${RELEASE_COMMIT}
+
+Release commit input: ${RELEASE_COMMIT_INPUT}
+
+SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH}
+
+Build time UTC: ${BUILD_TIME_UTC}
 
 Generated at: ${GENERATED_AT}
 
@@ -300,7 +336,10 @@ EOF
 
 (
   cd "$OUTPUT_DIR"
-  find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS
+  sums_tmp="$(mktemp)"
+  trap 'rm -f "$sums_tmp"' EXIT
+  find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > "$sums_tmp"
+  mv "$sums_tmp" SHA256SUMS
 )
 
 if [[ -f scripts/check_release_evidence.sh ]]; then

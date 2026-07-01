@@ -129,7 +129,16 @@ trap cleanup_on_failure EXIT
 
 mkdir -p "$OUT_DIR"
 
-git rev-parse HEAD > "$OUT_DIR/git-commit.txt"
+GIT_COMMIT="$(git rev-parse HEAD)"
+SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$(git show -s --format=%ct "$GIT_COMMIT")}"
+BUILD_TIME="$(date -u -d "@${SOURCE_DATE_EPOCH}" +%Y-%m-%dT%H:%M:%SZ)"
+export GIT_COMMIT
+export SOURCE_DATE_EPOCH
+export BUILD_TIME
+
+printf '%s\n' "$GIT_COMMIT" > "$OUT_DIR/git-commit.txt"
+printf '%s\n' "$SOURCE_DATE_EPOCH" > "$OUT_DIR/source-date-epoch.txt"
+printf '%s\n' "$BUILD_TIME" > "$OUT_DIR/build-time-utc.txt"
 
 cargo fmt --manifest-path adk-rust/Cargo.toml --all -- --check
 cargo test --manifest-path adk-rust/Cargo.toml --workspace

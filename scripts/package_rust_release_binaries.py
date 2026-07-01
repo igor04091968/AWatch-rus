@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import stat
 import tarfile
@@ -84,6 +85,18 @@ def create_compatibility_aliases(out_dir: Path, archive: Path) -> None:
         write_archive_checksum(archive_alias)
 
 
+def build_time_utc() -> str:
+    source_date_epoch = os.environ.get("SOURCE_DATE_EPOCH")
+    if source_date_epoch:
+        try:
+            stamp = datetime.fromtimestamp(int(source_date_epoch), timezone.utc)
+        except ValueError as exc:
+            raise SystemExit("SOURCE_DATE_EPOCH must be an integer Unix timestamp") from exc
+    else:
+        stamp = datetime.now(timezone.utc)
+    return stamp.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--release-dir", type=Path, required=True)
@@ -127,7 +140,8 @@ def main() -> None:
         "commit": args.commit,
         "ref": args.ref,
         "run_id": args.run_id,
-        "build_time_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "source_date_epoch": os.environ.get("SOURCE_DATE_EPOCH", ""),
+        "build_time_utc": build_time_utc(),
         "binaries": manifest_binaries,
     }
     write(out_dir / "BUILD_MANIFEST.json", json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")

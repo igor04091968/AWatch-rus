@@ -106,6 +106,11 @@ Expected benefit: release and production state become auditable.
 
 ### P0-2. Controlled release evidence build
 
+Status: addressed by TASK_070. Existing release evidence tooling now records
+resolved Git SHA, deterministic `SOURCE_DATE_EPOCH` / `BUILD_TIME`, runner
+environment and artifact checksums, and the evidence checker enforces the
+required provenance fields.
+
 Purpose: produce Production 1.0 release evidence outside GitHub public mirror.
 
 Reason: `docs/PROJECT_STATUS_RU.md`, `docs/QUALITY_STATUS_RU.md` and

@@ -34,6 +34,19 @@ produced on the Russian build-runner.
 17. Сохранить logs.
 18. Сохранить final report.
 
+Build provenance requirements:
+
+- `RELEASE_COMMIT` may be a SHA or tag, but manifest `release_commit` must be
+  the resolved full 40-character Git SHA.
+- `GIT_COMMIT` must be exported during Rust build so `/version` and other
+  build/version probes can report the source revision.
+- `SOURCE_DATE_EPOCH` defaults to the resolved commit timestamp and must be
+  recorded in release evidence.
+- `BUILD_TIME` must be derived from `SOURCE_DATE_EPOCH`, not from wall-clock
+  build time.
+- Wall-clock `generated_at` is evidence generation time only; it is not the
+  embedded build timestamp.
+
 Если smoke требует live stand, не удалять и не скрывать его. В release report
 фиксировать: `skipped: requires live stand`.
 
@@ -63,6 +76,8 @@ product/runtime release candidate.
 - `RELEASE_EVIDENCE_REPORT_RU.md`.
 - `SHA256SUMS`.
 - `logs/`.
+- `logs/source-date-epoch.log`.
+- `logs/build-time-utc.log`.
 - Source archive.
 - Binary artifacts archive или documented skip только для `DOCS_ONLY=1`.
 - `cargo-metadata.json` или documented skip.

@@ -58,6 +58,9 @@ checks only. They are not primary registry release evidence.
 - `rustc` / `cargo` versions;
 - git commit;
 - tag/version;
+- resolved 40-character Git commit SHA;
+- `SOURCE_DATE_EPOCH`;
+- deterministic `BUILD_TIME` derived from `SOURCE_DATE_EPOCH`;
 - checks;
 - artifacts;
 - SBOM;
