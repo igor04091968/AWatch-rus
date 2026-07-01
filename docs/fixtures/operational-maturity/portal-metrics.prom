@@ -1,0 +1,26 @@
+# HELP awatch_http_requests_total HTTP requests handled by AWatch-rus portal
+# TYPE awatch_http_requests_total counter
+awatch_http_requests_total{method="GET",route="/healthz",status="200",module="portal"} 1
+# HELP awatch_http_request_duration_seconds HTTP request duration in seconds
+# TYPE awatch_http_request_duration_seconds summary
+awatch_http_request_duration_seconds_sum{method="GET",route="/healthz",status="200",module="portal"} 0.001
+awatch_http_request_duration_seconds_count{method="GET",route="/healthz",status="200",module="portal"} 1
+# TYPE awatch_report_requests_total counter
+awatch_report_requests_total 1
+# TYPE awatch_report_cache_hits_total counter
+awatch_report_cache_hits_total 0
+# TYPE awatch_report_cache_misses_total counter
+awatch_report_cache_misses_total 1
+# TYPE awatch_report_cache_stale_hits_total counter
+awatch_report_cache_stale_hits_total 0
+# TYPE awatch_reports_generated_total counter
+awatch_reports_generated_total 1
+# TYPE awatch_ingestion_records_total counter
+awatch_ingestion_records_total 0
+# TYPE awatch_ingestion_rejected_total counter
+awatch_ingestion_rejected_total 0
+# TYPE awatch_role_denied_total counter
+awatch_role_denied_total 0
+# HELP awatch_readyz_status Portal readiness status, 1=ready, 0=not_ready
+# TYPE awatch_readyz_status gauge
+awatch_readyz_status 1

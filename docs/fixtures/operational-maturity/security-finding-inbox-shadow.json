@@ -1,0 +1,18 @@
+{
+  "mode": "shadow",
+  "auto_apply": false,
+  "workflow": ["decide", "plan", "approve", "apply", "verify"],
+  "findings": [
+    {
+      "id": "fixture-001",
+      "source": "hayabusa",
+      "severity": "medium",
+      "status": "new",
+      "containment": {
+        "recommended": true,
+        "approved": false,
+        "applied": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "version": "2026-07-01.operational-maturity-v1",
+  "apiCompatibility": {
+    "openapiPath": "adk-rust/crates/detmir-portal/src/contracts/openapi.json",
+    "requiredOpenApiPaths": {
+      "/contracts": ["get"],
+      "/contracts/openapi.json": ["get"],
+      "/health": ["get"],
+      "/operator": ["get"],
+      "/reports": ["get"],
+      "/workforce/kpi/explain": ["get"],
+      "/ueba": ["get"],
+      "/risk/narrative": ["get"],
+      "/actions": ["get"],
+      "/readiness/latest": ["get"],
+      "/telemetry": ["post"]
+    },
+    "requiredSchemas": [
+      "ContractIndex",
+      "JsonObject",
+      "ActionCenterResponse",
+      "RiskNarrative",
+      "UebaPayload",
+      "WorkforceKpiExplain"
+    ],
+    "runtimeEndpoints": [
+      "/healthz",
+      "/readyz",
+      "/version",
+      "/metrics"
+    ],
+    "runtimeSourcePath": "adk-rust/crates/detmir-portal/src/main.rs"
+  },
+  "integrationFixtures": [
+    {
+      "path": "/healthz",
+      "fixture": "docs/fixtures/operational-maturity/portal-healthz.json",
+      "status": 200,
+      "contentType": "application/json",
+      "requiredFields": ["status", "service", "schema_version"],
+      "equals": { "status": "ok", "schema_version": "pilot-v1" }
+    },
+    {
+      "path": "/readyz",
+      "fixture": "docs/fixtures/operational-maturity/portal-readyz.json",
+      "status": 200,
+      "contentType": "application/json",
+      "requiredFields": ["status", "checks.portal", "checks.dlp_runtime"],
+      "equals": { "status": "ready", "checks.dlp_runtime.status": "skipped" }
+    },
+    {
+      "path": "/version",
+      "fixture": "docs/fixtures/operational-maturity/portal-version.json",
+      "status": 200,
+      "contentType": "application/json",
+      "requiredFields": ["app_version", "schema_version", "environment"],
+      "equals": { "schema_version": "pilot-v1" }
+    },
+    {
+      "path": "/reports/worktime/management",
+      "fixture": "docs/fixtures/operational-maturity/worktime-management-ok.json",
+      "status": 200,
+      "contentType": "application/json",
+      "requiredFields": ["status", "stale", "report_cache_hit", "aw_query_duration_ms"],
+      "equals": { "status": "OK", "stale": false }
+    },
+    {
+      "path": "/reports/worktime/management?fault=aw_timeout",
+      "fixture": "docs/fixtures/operational-maturity/worktime-management-degraded.json",
+      "status": 200,
+      "contentType": "application/json",
+      "requiredFields": ["status", "reason", "stale", "report_stale_served", "aw_query_timeout_count"],
+      "equals": { "status": "DEGRADED", "reason": "report_unavailable", "stale": false }
+    },
+    {
+      "path": "/security/finding-inbox",
+      "fixture": "docs/fixtures/operational-maturity/security-finding-inbox-shadow.json",
+      "status": 200,
+      "contentType": "application/json",
+      "requiredFields": ["mode", "auto_apply", "workflow"],
+      "equals": { "mode": "shadow", "auto_apply": false }
+    }
+  ],
+  "observability": {
+    "metricsFixture": "docs/fixtures/operational-maturity/portal-metrics.prom",
+    "requiredMetrics": [
+      "awatch_http_requests_total",
+      "awatch_http_request_duration_seconds_sum",
+      "awatch_http_request_duration_seconds_count",
+      "awatch_report_requests_total",
+      "awatch_report_cache_hits_total",
+      "awatch_report_cache_misses_total",
+      "awatch_report_cache_stale_hits_total",
+      "awatch_reports_generated_total",
+      "awatch_ingestion_records_total",
+      "awatch_ingestion_rejected_total",
+      "awatch_role_denied_total",
+      "awatch_readyz_status"
+    ],
+    "sourcePath": "adk-rust/crates/detmir-portal/src/production/metrics.rs",
+    "diagnosticHeaders": ["x-request-id", "x-correlation-id"]
+  },
+  "configValidation": {
+    "jsonFiles": [
+      "configs/worktime-interpretation-policy.example.json",
+      "configs/detmir-workforce-policy.example.json",
+      "adk-rust/crates/detmir-portal/src/contracts/openapi.json",
+      "docs/fixtures/operational-maturity/portal-healthz.json",
+      "docs/fixtures/operational-maturity/portal-readyz.json",
+      "docs/fixtures/operational-maturity/portal-version.json",
+      "docs/fixtures/operational-maturity/worktime-management-ok.json",
+      "docs/fixtures/operational-maturity/worktime-management-degraded.json",
+      "docs/fixtures/operational-maturity/security-finding-inbox-shadow.json"
+    ],
+    "systemdDirs": [
+      "ops/systemd",
+      "clickhouse-1c/ops"
+    ],
+    "clickhouseInitDir": "clickhouse-1c/clickhouse/init",
+    "yamlFiles": [
+      "configs/detmir-ueba-risk-policy.example.yaml",
+      "clickhouse-1c/etl/config.example.yml",
+      "clickhouse-1c/grafana/provisioning/datasources/clickhouse.yml",
+      "clickhouse-1c/grafana/provisioning/dashboards/dashboards.yml"
+    ]
+  },
+  "faultInjection": {
+    "clientTimeoutMs": 350,
+    "maxFailureClassificationMs": 1200
+  },
+  "boundedLoad": {
+    "requests": 60,
+    "concurrency": 8,
+    "p95MaxMs": 750,
+    "heapGrowthMaxBytes": 20971520,
+    "paths": [
+      "/healthz",
+      "/readyz",
+      "/version",
+      "/reports/worktime/management"
+    ]
+  }
+}

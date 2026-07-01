@@ -1,0 +1,10 @@
+{
+  "app_name": "AWatch-rus DetMir Portal",
+  "app_version": "0.1.0",
+  "schema_version": "pilot-v1",
+  "environment": "test",
+  "build": {
+    "profile": "ci",
+    "source": "fixture"
+  }
+}

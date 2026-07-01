@@ -51,11 +51,15 @@ Repository-specific gate:
 ```bash
 cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
 python3 scripts/public_secret_pattern_check.py
+node scripts/operational-maturity-check.mjs --json
 
 cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/adk-rust
 export CARGO_TARGET_DIR=/home/igor/.cache/detmir-adk-rust-target
 cargo run -p quality-gate -- --root /mnt/usb_hdd2/Projects/ActivityWatch-Russian
 ```
+
+Подробности эксплуатационного maturity harness: [эксплуатационная зрелость
+DetMir/AWatch-rus](OPERATIONAL_MATURITY_RU.md).
 
 ## Browser smoke
 
