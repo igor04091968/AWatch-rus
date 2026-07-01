@@ -125,3 +125,9 @@ EOF
 fi
 
 echo "detmir rust release artifacts: OK scope=$SCOPE ($RELEASE_DIR)"
+
+if [[ -n "${PRODUCTION_BINARY_PARITY_EVIDENCE:-}" ]]; then
+  python3 "$ROOT_DIR/scripts/check_production_binary_parity.py" \
+    --evidence "$PRODUCTION_BINARY_PARITY_EVIDENCE" \
+    --release-dir "$RELEASE_DIR"
+fi

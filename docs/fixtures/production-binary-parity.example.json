@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-07-01T00:00:00Z",
+  "git_sha": "0123456789abcdef0123456789abcdef01234567",
+  "items": [
+    {
+      "id": "aw-server:detmir-readiness.service",
+      "host": "aw-server-prod",
+      "kind": "systemd_service",
+      "unit_or_task": "detmir-readiness.service",
+      "binary_path": "/usr/local/bin/detmir-readiness-rust",
+      "crate": "detmir-readiness",
+      "release_artifact": "detmir-readiness",
+      "runtime_role": "readiness check",
+      "production_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "active": true
+    },
+    {
+      "id": "rdp:aw-windows-telemetry",
+      "host": "rdp-host-prod",
+      "kind": "windows_scheduled_task",
+      "unit_or_task": "AWatch-rus telemetry collector",
+      "binary_path": "C:\\Program Files\\AWatch-rus\\windows\\aw-windows-telemetry.exe",
+      "crate": "aw-windows-telemetry",
+      "release_artifact": "aw-windows-telemetry.exe",
+      "runtime_role": "Windows telemetry collector",
+      "production_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "platform": "windows",
+      "active": true
+    },
+    {
+      "id": "optional:dlp-aggregator",
+      "host": "aw-server-prod",
+      "kind": "systemd_service",
+      "unit_or_task": "dlp-aggregator.service",
+      "binary_path": "/usr/local/bin/dlp-aggregator-rust",
+      "crate": "dlp-aggregator",
+      "release_artifact": "dlp-aggregator",
+      "runtime_role": "optional DLP aggregator",
+      "active": false,
+      "skip_reason": "DLP runtime intentionally disabled for production load control"
+    }
+  ]
+}

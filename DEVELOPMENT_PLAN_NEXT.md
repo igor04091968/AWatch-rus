@@ -64,6 +64,10 @@ Confirmed Production 1.0 blockers and material risks are organized below.
 
 ### P0-1. Production binary parity gate
 
+Status: repository gate addressed by TASK_072. Live production execution remains
+External Production Validation: operators must collect current production
+SHA256 evidence and run the gate before Release Candidate approval.
+
 Purpose: prove that every binary actually running in production matches the
 reviewed release artifact.
 
@@ -82,6 +86,7 @@ Estimated effort: 3-5 days.
 Affected modules:
 
 - `scripts/check_detmir_rust_release_artifacts.sh`
+- `scripts/check_production_binary_parity.py`
 - `scripts/package_rust_release_binaries.py`
 - `scripts/detmir-full-diagnostics/`
 - `adk-rust/crates/detmir-readiness/`
@@ -95,6 +100,8 @@ Acceptance criteria:
 - Report includes local release SHA256, production SHA256 and git SHA.
 - Missing or mismatched binaries fail the gate.
 - DLP/Loki/Velociraptor heavy runtime is not enabled by the check.
+- Repository validator accepts inactive optional contours only with explicit
+  `skip_reason`.
 
 Validation steps:
 

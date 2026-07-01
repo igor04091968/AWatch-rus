@@ -38,20 +38,26 @@ Why it matters: Release Candidate confidence depends on proving that binaries
 actually running in production match reviewed release artifacts. Otherwise test
 results can refer to one binary while production runs another.
 
-Current state: Missing. The backlog still lists `P0-1. Production binary parity
-gate` as open. The existing local artifact check verifies release artifacts, but
-the backlog says Production 1.0 also needs deployed unit/timer/task to
-production SHA256 and source crate mapping.
+Current state: repository gate implemented by TASK_072; live production
+evidence still missing. The existing local artifact check verifies release
+artifacts, and `scripts/check_production_binary_parity.py` now validates
+deployed unit/timer/task to production SHA256 and source crate mapping against
+local release artifacts and repository Git SHA. Release Candidate approval still
+requires an operator-collected production evidence JSON from the current
+production deployment.
 
 Repository evidence:
 
 - `DEVELOPMENT_PLAN_NEXT.md:65-105`
 - `PRODUCTION_READINESS_REPORT.md:209-212`
 - `scripts/check_detmir_rust_release_artifacts.sh`
+- `scripts/check_production_binary_parity.py`
+- `docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md`
 
 How it could be verified: collect production binary paths from actual
 systemd/timer/Windows scheduled task inventory, compute production SHA256,
-compare with local release artifact SHA256, and record
+save evidence JSON, then run `scripts/check_production_binary_parity.py` to
+compare with local release artifact SHA256 and record
 `service/timer/task -> binary path -> crate -> runtime role -> production sha256
 -> release sha256 -> git sha`.
 

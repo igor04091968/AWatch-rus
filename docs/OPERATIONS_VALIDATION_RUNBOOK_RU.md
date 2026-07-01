@@ -61,6 +61,76 @@ cargo run -p quality-gate -- --root /mnt/usb_hdd2/Projects/ActivityWatch-Russian
 Подробности эксплуатационного maturity harness: [эксплуатационная зрелость
 DetMir/AWatch-rus](OPERATIONAL_MATURITY_RU.md).
 
+## Production binary parity gate
+
+Production binary parity gate доказывает, что production unit/timer/task
+запускает тот же бинарник, который собран из проверяемого Git commit. Gate не
+собирает данные с production самостоятельно и не включает DLP/Loki/Velociraptor:
+оператор подготавливает evidence JSON, затем репозиторий проверяет SHA256.
+
+Формат evidence: [пример production-binary-parity.example.json](fixtures/production-binary-parity.example.json).
+
+Минимальные поля для каждого активного бинарника:
+
+- `unit_or_task` - systemd unit/timer или Windows scheduled task.
+- `binary_path` - фактический путь production executable.
+- `crate` - Rust crate, из которого собран бинарник.
+- `release_artifact` - имя файла в release directory.
+- `runtime_role` - роль в production runtime.
+- `production_sha256` - SHA256 production executable.
+- `git_sha` - Git commit, из которого собран release.
+
+Опциональные отключенные контуры, включая DLP runtime, указывать как
+`"active": false` с `skip_reason`. Это фиксирует намеренное отключение без
+ложного отказа gate.
+
+Пример сбора SHA256 на Linux-хосте:
+
+```bash
+sha256sum /usr/local/bin/detmir-readiness-rust
+systemctl show -p FragmentPath -p ExecStart detmir-readiness.service
+```
+
+Пример сбора SHA256 на Windows RDP host:
+
+```powershell
+Get-FileHash 'C:\Program Files\AWatch-rus\windows\aw-windows-telemetry.exe' -Algorithm SHA256
+Get-ScheduledTask | Where-Object {$_.TaskName -like '*AWatch*'}
+```
+
+Проверка evidence против локальных release artifacts:
+
+```bash
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+export CARGO_TARGET_DIR=/home/igor/.cache/detmir-adk-rust-target
+
+python3 scripts/check_production_binary_parity.py \
+  --evidence /path/to/production-binary-parity.json \
+  --output-json /path/to/production-binary-parity-report.json
+```
+
+Та же проверка может быть включена в существующий gate локальных release
+artifacts:
+
+```bash
+PRODUCTION_BINARY_PARITY_EVIDENCE=/path/to/production-binary-parity.json \
+  scripts/check_detmir_rust_release_artifacts.sh
+```
+
+Ожидаемый результат:
+
+```text
+production_binary_parity=ok
+```
+
+Gate должен падать при:
+
+- отсутствии активных production binaries;
+- отсутствии обязательных полей;
+- несовпадении `git_sha` с текущим repository HEAD;
+- отсутствии локального release artifact;
+- несовпадении production SHA256 и release SHA256.
+
 ## Browser smoke
 
 Browser smoke не заменяет API/CLI проверки. Он подтверждает, что операторский
