@@ -13,6 +13,3 @@ clap.workspace = true
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true
