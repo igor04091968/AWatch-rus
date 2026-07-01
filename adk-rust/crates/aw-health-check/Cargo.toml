@@ -10,6 +10,3 @@ publish.workspace = true
 anyhow.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true

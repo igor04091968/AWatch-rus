@@ -201,7 +201,6 @@ dependencies = [
  "clap",
  "reqwest",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -248,7 +247,6 @@ dependencies = [
  "anyhow",
  "reqwest",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -457,7 +455,6 @@ dependencies = [
  "clap",
  "reqwest",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -469,7 +466,6 @@ dependencies = [
  "clap",
  "reqwest",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
@@ -785,7 +781,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
- "tempfile",
 ]
 
 [[package]]
@@ -1929,7 +1924,6 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
- "tempfile",
 ]
 
 [[package]]
