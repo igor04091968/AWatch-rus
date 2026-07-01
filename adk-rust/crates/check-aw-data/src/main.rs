@@ -43,6 +43,9 @@ struct Cli {
 
     #[arg(long, default_value_t = false)]
     no_color: bool,
+
+    #[arg(long, default_value_t = true)]
+    dlp_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -109,7 +112,12 @@ fn main() {
 }
 
 fn run() -> Result<i32> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+    if let Some(value) =
+        env_nonempty("AW_DLP_ENABLED").or_else(|| env_nonempty("DETMIR_DLP_ENABLED"))
+    {
+        cli.dlp_enabled = parse_env_flag(&value);
+    }
     let server = cli
         .server
         .or_else(|| env_nonempty("AW_CHECK_SERVER"))
@@ -172,7 +180,11 @@ fn run() -> Result<i32> {
         "---------------------------------------------", "--------", "----------------------"
     );
 
-    for bucket in BUCKETS {
+    for bucket in BUCKETS
+        .iter()
+        .copied()
+        .filter(|bucket| cli.dlp_enabled || !bucket.starts_with("aw-dlp-"))
+    {
         let bucket_full = format!("{bucket}_{host}");
         let event = bucket_event(
             &server,
@@ -188,6 +200,15 @@ fn run() -> Result<i32> {
             last_id,
             format!("{last_ts} ({age})"),
             render_status(&colors, status)
+        );
+    }
+    if !cli.dlp_enabled {
+        println!(
+            "{:<45} {:<8} {:<22} {}",
+            "aw-dlp-*",
+            "-",
+            "disabled",
+            colors.paint(colors.cyan, "SKIPPED")
         );
     }
 
@@ -491,6 +512,13 @@ fn env_nonempty(name: &str) -> Option<String> {
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
+}
+
+fn parse_env_flag(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().as_str(),
+        "1" | "true" | "yes" | "on"
+    )
 }
 
 #[cfg(test)]

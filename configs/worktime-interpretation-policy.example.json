@@ -1,5 +1,5 @@
 {
-  "overload_threshold": 0.92,
+  "overload_threshold": 1.15,
   "underload_threshold": 0.45,
   "drop_threshold_pct": 20,
   "night_work_after": "20:00",

@@ -1,6 +1,7 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::symlink;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output, Stdio};
 use std::time::{Duration, SystemTime};
@@ -198,6 +199,7 @@ fn run_to_file(
 
     let mut child = Command::new(command)
         .args(args)
+        .process_group(0)
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .spawn()
@@ -209,7 +211,7 @@ fn run_to_file(
             break status.code().unwrap_or(1);
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
+            terminate_process_group(child.id());
             let _ = child.wait();
             let mut stderr = OpenOptions::new().append(true).open(&stderr_path)?;
             writeln!(
@@ -232,6 +234,17 @@ fn run_to_file(
 
     fs::write(rc_path, format!("{rc}\n"))?;
     Ok(rc)
+}
+
+fn terminate_process_group(child_pid: u32) {
+    let process_group = format!("-{child_pid}");
+    let _ = Command::new("/bin/kill")
+        .args(["-TERM", "--", &process_group])
+        .status();
+    std::thread::sleep(Duration::from_secs(2));
+    let _ = Command::new("/bin/kill")
+        .args(["-KILL", "--", &process_group])
+        .status();
 }
 
 fn read_rc(path: &Path) -> i32 {
@@ -411,6 +424,7 @@ fn write_report(
 fn run_report_command(polli_bin: &str, bundle: File, timeout: Duration) -> Result<Output> {
     let mut child = Command::new(polli_bin)
         .args(["--model", "text.daily", "--max-tokens", "900"])
+        .process_group(0)
         .stdin(Stdio::from(bundle))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -425,7 +439,7 @@ fn run_report_command(polli_bin: &str, bundle: File, timeout: Duration) -> Resul
                 .with_context(|| format!("failed to collect {polli_bin} output"));
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
+            terminate_process_group(child.id());
             let _ = child.wait();
             anyhow::bail!(
                 "Pollinations report timed out after {} seconds",

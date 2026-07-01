@@ -275,9 +275,19 @@ impl AwClient {
     ) -> Result<()> {
         for chunk in events.chunks(chunk_size.max(1)) {
             let path = format!("/api/0/buckets/{bucket_id}/events");
-            self.request_json(Method::POST, &path, Some(json!(chunk)), false)?;
+            self.request_status(Method::POST, &path, Some(json!(chunk)))?;
         }
         Ok(())
+    }
+
+    fn request_status(&self, method: Method, path: &str, payload: Option<Value>) -> Result<()> {
+        let response = self.send_retry(method, path, payload)?;
+        let status = response.status();
+        if status.is_success() {
+            Ok(())
+        } else {
+            Err(anyhow!("ActivityWatch {path} returned HTTP {status}"))
+        }
     }
 }
 

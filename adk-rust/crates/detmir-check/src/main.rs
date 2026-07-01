@@ -1,5 +1,6 @@
 use std::io::Read;
 use std::net::{SocketAddr, TcpStream};
+use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -89,8 +90,14 @@ struct Cli {
     #[arg(long, default_value_t = 45)]
     dlp_timeout_seconds: u64,
 
+    #[arg(long, default_value_t = 150)]
+    overall_timeout_seconds: u64,
+
     #[arg(long, default_value_t = false)]
     disable_dlp_health_check: bool,
+
+    #[arg(long, default_value_t = true)]
+    dlp_enabled: bool,
 
     #[arg(long, default_value_t = false)]
     disable_portal_check: bool,
@@ -193,8 +200,8 @@ fn parse_env_flag(value: &str) -> bool {
     )
 }
 
-fn bucket_specs(hostname: &str) -> Vec<BucketSpec> {
-    vec![
+fn bucket_specs(hostname: &str, dlp_enabled: bool) -> Vec<BucketSpec> {
+    let mut specs = vec![
         BucketSpec {
             label: "AFK watcher",
             bucket: format!("aw-watcher-afk_{hostname}"),
@@ -219,31 +226,36 @@ fn bucket_specs(hostname: &str) -> Vec<BucketSpec> {
             max_age_seconds: None,
             mode: BucketMode::EventDriven,
         },
-        BucketSpec {
-            label: "DLP signals",
-            bucket: format!("aw-dlp-endpoint-signals_{hostname}"),
-            max_age_seconds: Some(10 * 60),
-            mode: BucketMode::InteractiveFresh,
-        },
-        BucketSpec {
-            label: "DLP incidents",
-            bucket: format!("aw-dlp-incidents_{hostname}"),
-            max_age_seconds: None,
-            mode: BucketMode::EventDriven,
-        },
-        BucketSpec {
-            label: "DLP review",
-            bucket: format!("aw-dlp-review_{hostname}"),
-            max_age_seconds: None,
-            mode: BucketMode::EventDriven,
-        },
-        BucketSpec {
-            label: "DLP rules",
-            bucket: format!("aw-dlp-rules_{hostname}"),
-            max_age_seconds: None,
-            mode: BucketMode::EventDriven,
-        },
-    ]
+    ];
+    if dlp_enabled {
+        specs.extend([
+            BucketSpec {
+                label: "DLP signals",
+                bucket: format!("aw-dlp-endpoint-signals_{hostname}"),
+                max_age_seconds: Some(10 * 60),
+                mode: BucketMode::InteractiveFresh,
+            },
+            BucketSpec {
+                label: "DLP incidents",
+                bucket: format!("aw-dlp-incidents_{hostname}"),
+                max_age_seconds: None,
+                mode: BucketMode::EventDriven,
+            },
+            BucketSpec {
+                label: "DLP review",
+                bucket: format!("aw-dlp-review_{hostname}"),
+                max_age_seconds: None,
+                mode: BucketMode::EventDriven,
+            },
+            BucketSpec {
+                label: "DLP rules",
+                bucket: format!("aw-dlp-rules_{hostname}"),
+                max_age_seconds: None,
+                mode: BucketMode::EventDriven,
+            },
+        ]);
+    }
+    specs
 }
 
 fn build_headers(items: &[(&str, &str)]) -> Result<HeaderMap> {
@@ -387,7 +399,20 @@ fn service_checks(args: &Cli) -> Vec<ServiceCheck> {
     if security_events_clickhouse_enabled(args) {
         checks.push(clickhouse_security_events_check(args));
     }
-    if !args.disable_dlp_health_check {
+    if !args.dlp_enabled {
+        checks.push(ServiceCheck {
+            name: "aw-dlp-mode".to_string(),
+            required: false,
+            ok: true,
+            url: None,
+            payload: Some(serde_json::json!({
+                "mode": "disabled",
+                "reason": "DETMIR_DLP_ENABLED=false",
+                "checks_skipped": ["DLP health command", "DLP buckets"]
+            })),
+            error: None,
+        });
+    } else if !args.disable_dlp_health_check {
         checks.push(dlp_health_check(args));
     }
     checks
@@ -500,6 +525,7 @@ fn run_shell_command_timeout(command: &str, timeout: Duration) -> Result<Command
     let mut child = Command::new("/bin/sh")
         .arg("-lc")
         .arg(command)
+        .process_group(0)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -510,12 +536,23 @@ fn run_shell_command_timeout(command: &str, timeout: Duration) -> Result<Command
             return read_command_output(child, status.code(), false);
         }
         if started.elapsed() >= timeout {
-            let _ = child.kill();
+            terminate_process_group(child.id());
             let _ = child.wait();
             return read_command_output(child, None, true);
         }
         std::thread::sleep(Duration::from_millis(100));
     }
+}
+
+fn terminate_process_group(child_pid: u32) {
+    let process_group = format!("-{child_pid}");
+    let _ = Command::new("/bin/kill")
+        .args(["-TERM", "--", &process_group])
+        .status();
+    std::thread::sleep(Duration::from_secs(2));
+    let _ = Command::new("/bin/kill")
+        .args(["-KILL", "--", &process_group])
+        .status();
 }
 
 fn read_command_output(
@@ -796,7 +833,7 @@ fn bucket_health(args: &Cli) -> Result<Vec<BucketCheck>> {
     let interactive_required = interactive_required(&client, &args.hostname, now);
     let mut out = Vec::new();
 
-    for spec in bucket_specs(&args.hostname) {
+    for spec in bucket_specs(&args.hostname, args.dlp_enabled) {
         if matches!(spec.mode, BucketMode::EventDriven) {
             out.push(BucketCheck {
                 label: spec.label.to_string(),
@@ -993,6 +1030,19 @@ fn render_text(report: &CheckReport) -> String {
 
 fn main() -> Result<()> {
     let mut args = Cli::parse();
+    args.service_timeout_seconds = env_u64(
+        "DETMIR_SERVICE_TIMEOUT_SECONDS",
+        args.service_timeout_seconds,
+    );
+    args.bucket_timeout_seconds =
+        env_u64("DETMIR_BUCKET_TIMEOUT_SECONDS", args.bucket_timeout_seconds);
+    args.tcp_timeout_seconds = env_f64("DETMIR_TCP_TIMEOUT_SECONDS", args.tcp_timeout_seconds);
+    args.dlp_timeout_seconds = env_u64("DETMIR_DLP_TIMEOUT_SECONDS", args.dlp_timeout_seconds);
+    args.overall_timeout_seconds = env_u64(
+        "DETMIR_CHECK_OVERALL_TIMEOUT_SECONDS",
+        args.overall_timeout_seconds,
+    );
+    start_overall_timeout_watchdog(args.overall_timeout_seconds);
     args.aw_api = env_or_default("DETMIR_AW_API", &args.aw_api);
     args.worktime_url = env_or_default("DETMIR_WORKTIME_URL", &args.worktime_url);
     args.one_c_url = env_or_default("DETMIR_ONE_C_URL", &args.one_c_url);
@@ -1011,6 +1061,12 @@ fn main() -> Result<()> {
     if env_flag_enabled("DETMIR_DISABLE_DLP_HEALTH_CHECK") {
         args.disable_dlp_health_check = true;
     }
+    if let Some(value) = std::env::var("DETMIR_DLP_ENABLED")
+        .ok()
+        .filter(|value| !value.is_empty())
+    {
+        args.dlp_enabled = parse_env_flag(&value);
+    }
     if env_flag_enabled("DETMIR_DISABLE_PORTAL_CHECK") {
         args.disable_portal_check = true;
     }
@@ -1025,6 +1081,31 @@ fn main() -> Result<()> {
         exit_codes::OK
     } else {
         exit_codes::CHECK_FAILED
+    });
+}
+
+fn env_u64(name: &str, fallback: u64) -> u64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(fallback)
+}
+
+fn env_f64(name: &str, fallback: f64) -> f64 {
+    std::env::var(name)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(fallback)
+}
+
+fn start_overall_timeout_watchdog(seconds: u64) {
+    if seconds == 0 {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(seconds));
+        eprintln!("detmir-check timed out after {seconds} seconds");
+        std::process::exit(124);
     });
 }
 
@@ -1093,6 +1174,28 @@ mod tests {
         assert!(parse_env_flag("on"));
         assert!(!parse_env_flag("0"));
         assert!(!parse_env_flag("false"));
+    }
+
+    #[test]
+    fn dlp_disabled_removes_dlp_bucket_specs() {
+        let enabled = bucket_specs("HOST-EXAMPLE", true);
+        assert!(
+            enabled
+                .iter()
+                .any(|spec| spec.bucket.starts_with("aw-dlp-"))
+        );
+
+        let disabled = bucket_specs("HOST-EXAMPLE", false);
+        assert!(
+            disabled
+                .iter()
+                .all(|spec| !spec.bucket.starts_with("aw-dlp-"))
+        );
+        assert!(
+            disabled
+                .iter()
+                .any(|spec| spec.bucket.starts_with("aw-worktime-sessions_"))
+        );
     }
 
     #[test]

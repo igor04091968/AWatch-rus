@@ -77,6 +77,7 @@ struct Config {
     management_history_retention_days: i64,
     true_active_evidence_window_seconds: i64,
     true_active_max_event_seconds: i64,
+    dlp_evidence_enabled: bool,
     offset: FixedOffset,
 }
 
@@ -227,6 +228,14 @@ fn threshold_to_pct(value: f64) -> f64 {
     }
 }
 
+fn overload_threshold_to_pct(value: f64) -> f64 {
+    if (0.0..=3.0).contains(&value) {
+        value * 100.0
+    } else {
+        value
+    }
+}
+
 fn parse_hhmm(value: &str) -> Option<NaiveTime> {
     NaiveTime::parse_from_str(value.trim(), "%H:%M").ok()
 }
@@ -262,7 +271,7 @@ fn load_config() -> Config {
         }
         if let Some(value) = policy.overload_threshold {
             manager_overload_coverage_pct =
-                threshold_to_pct(value).round().clamp(1.0, 300.0) as i64;
+                overload_threshold_to_pct(value).round().clamp(100.0, 300.0) as i64;
         }
         if let Some(value) = policy.drop_threshold_pct {
             manager_trend_delta_pct = threshold_to_pct(value).clamp(1.0, 100.0);
@@ -371,6 +380,10 @@ fn load_config() -> Config {
         .max(30),
         true_active_max_event_seconds: env_i64("AW_WORKTIME_TRUE_ACTIVE_MAX_EVENT_SECONDS", 600)
             .max(30),
+        dlp_evidence_enabled: env_bool(
+            "AW_WORKTIME_DLP_EVIDENCE_ENABLED",
+            env_bool("AW_DLP_ENABLED", true),
+        ),
         offset: FixedOffset::east_opt(3 * 3600).expect("valid Moscow offset"),
     }
 }
@@ -1010,13 +1023,7 @@ impl App {
             }
         };
         let mut evidence = HashMap::new();
-        for bucket in [
-            format!("aw-file-operations_{host}"),
-            format!("aw-dlp-endpoint-signals_{host}"),
-            format!("aw-watcher-web-chrome_{host}"),
-            format!("aw-watcher-web-edge_{host}"),
-            format!("aw-detmir-web-category_{host}"),
-        ] {
+        for bucket in evidence_bucket_ids(&self.config, host) {
             evidence.insert(
                 bucket.clone(),
                 self.fetch_bucket_events(&bucket, Some(bounds.0), Some(bounds.1)),
@@ -1154,6 +1161,19 @@ fn sanitize_bucket_for_log(bucket_id: &str) -> String {
         }
     }
     bucket_id.to_string()
+}
+
+fn evidence_bucket_ids(config: &Config, host: &str) -> Vec<String> {
+    let mut buckets = vec![format!("aw-file-operations_{host}")];
+    if config.dlp_evidence_enabled {
+        buckets.push(format!("aw-dlp-endpoint-signals_{host}"));
+    }
+    buckets.extend([
+        format!("aw-watcher-web-chrome_{host}"),
+        format!("aw-watcher-web-edge_{host}"),
+        format!("aw-detmir-web-category_{host}"),
+    ]);
+    buckets
 }
 
 fn sanitize_error_for_log(value: &str) -> String {
@@ -1605,6 +1625,156 @@ fn interval_overlap_seconds(
     (total, first, last)
 }
 
+#[derive(Clone, Copy)]
+struct EmployeeOperationsInput {
+    expected_seconds: i64,
+    low_seconds: i64,
+    target_seconds: i64,
+    overload_seconds: i64,
+    work_secs: i64,
+    calendar_secs: i64,
+    work_first: Option<DateTime<Utc>>,
+    work_last: Option<DateTime<Utc>>,
+    is_today: bool,
+    late_start: DateTime<FixedOffset>,
+    early_finish: DateTime<FixedOffset>,
+    samples_count: i64,
+    active_samples: i64,
+    sessions_count: i64,
+}
+
+fn build_employee_operations_status(config: &Config, input: EmployeeOperationsInput) -> Value {
+    let workday_idle_seconds = (input.expected_seconds - input.work_secs).max(0);
+    let off_hours_seconds = (input.calendar_secs - input.work_secs).max(0);
+    let coverage = if input.expected_seconds > 0 {
+        clamp_pct(input.work_secs as f64 / input.expected_seconds as f64 * 100.0)
+    } else {
+        0.0
+    };
+    let load_status = if input.expected_seconds <= 0 {
+        "insufficient_data"
+    } else if input.sessions_count <= 0 || input.samples_count <= 0 {
+        "no_data"
+    } else if input.work_secs <= 0 {
+        "no_activity"
+    } else if input.work_secs < input.low_seconds {
+        "underloaded"
+    } else if input.work_secs >= input.overload_seconds {
+        "overloaded"
+    } else if input.work_secs < input.target_seconds {
+        "below_target"
+    } else {
+        "normal"
+    };
+    let idle_status = if input.expected_seconds <= 0 {
+        "not_applicable"
+    } else if input.sessions_count <= 0 || input.samples_count <= 0 {
+        "unknown"
+    } else if input.work_secs <= 0 {
+        "full_workday_idle_or_absent"
+    } else if workday_idle_seconds >= config.manager_off_hours_threshold_seconds {
+        "idle_detected"
+    } else {
+        "no_significant_idle"
+    };
+    let mut discipline_flags = Vec::new();
+    if off_hours_seconds >= config.manager_off_hours_threshold_seconds {
+        discipline_flags.push("off_hours");
+    }
+    if input
+        .work_first
+        .is_some_and(|dt| dt.with_timezone(&config.offset) > input.late_start)
+    {
+        discipline_flags.push("late_start");
+    }
+    if !input.is_today
+        && input
+            .work_last
+            .is_some_and(|dt| dt.with_timezone(&config.offset) < input.early_finish)
+    {
+        discipline_flags.push("early_finish");
+    }
+    let discipline_status = match discipline_flags.as_slice() {
+        [] => "ok",
+        [single] => single,
+        _ => "multiple_flags",
+    };
+    let mut confidence_reasons = Vec::new();
+    if input.sessions_count <= 0 {
+        confidence_reasons.push("missing_session_samples");
+    }
+    if input.samples_count <= 0 {
+        confidence_reasons.push("missing_worktime_samples");
+    } else if input.samples_count < 3 {
+        confidence_reasons.push("few_worktime_samples");
+    } else {
+        confidence_reasons.push("worktime_samples_present");
+    }
+    if input.active_samples <= 0 {
+        confidence_reasons.push("missing_active_samples");
+    } else {
+        confidence_reasons.push("active_samples_present");
+    }
+    if input.expected_seconds <= 0 {
+        confidence_reasons.push("workday_window_not_started_or_empty");
+    }
+    let data_confidence =
+        if input.expected_seconds <= 0 || input.sessions_count <= 0 || input.samples_count <= 0 {
+            "low"
+        } else if input.samples_count < 3 || input.active_samples <= 0 {
+            "medium"
+        } else {
+            "high"
+        };
+    let recommended_action = match (data_confidence, load_status, discipline_status, idle_status) {
+        ("low", _, _, _) => {
+            "Сначала проверить свежесть источников и наличие сессии; вывод по сотруднику не использовать как дисциплинарный."
+        }
+        (_, "overloaded", _, _) => {
+            "Проверить переработку, перераспределение задач и риск аврального процесса."
+        }
+        (_, "underloaded" | "below_target" | "no_activity", _, _) => {
+            "Проверить фактическую загрузку, задачи, доступ к рабочим системам и отсутствие сбоя сбора."
+        }
+        (_, _, "off_hours" | "late_start" | "early_finish" | "multiple_flags", _) => {
+            "Проверить согласование рабочего графика и причину отклонения от процесса."
+        }
+        (_, _, _, "idle_detected" | "full_workday_idle_or_absent") => {
+            "Проверить простой: отсутствие задач, ожидание внешнего процесса или техническую проблему."
+        }
+        _ => "Наблюдать; отклонений, требующих немедленного действия, не выявлено.",
+    };
+    json!({
+        "load_status": load_status,
+        "idle_status": idle_status,
+        "discipline_status": discipline_status,
+        "discipline_flags": discipline_flags,
+        "data_confidence": data_confidence,
+        "confidence_reasons": confidence_reasons,
+        "workday_idle_seconds": workday_idle_seconds,
+        "workday_idle_hhmm": hhmm(workday_idle_seconds),
+        "off_hours_seconds": off_hours_seconds,
+        "off_hours_hhmm": hhmm(off_hours_seconds),
+        "coverage_pct": coverage,
+        "evidence": {
+            "expected_hhmm": hhmm(input.expected_seconds),
+            "workday_active_hhmm": hhmm(input.work_secs),
+            "calendar_active_hhmm": hhmm(input.calendar_secs),
+            "sessions_count": input.sessions_count,
+            "samples_count": input.samples_count,
+            "active_samples": input.active_samples,
+            "first_workday_activity_local": input.work_first.map(|dt| dt.with_timezone(&config.offset).to_rfc3339()).unwrap_or_default(),
+            "last_workday_activity_local": input.work_last.map(|dt| dt.with_timezone(&config.offset).to_rfc3339()).unwrap_or_default()
+        },
+        "guardrail": if data_confidence == "low" {
+            "low_confidence_not_for_discipline"
+        } else {
+            "evidence_backed_manual_review_only"
+        },
+        "recommended_action": recommended_action,
+    })
+}
+
 impl App {
     fn build_management_payload(
         &self,
@@ -1634,6 +1804,7 @@ impl App {
         };
         let target_seconds = expected_seconds * self.config.manager_target_coverage_pct / 100;
         let low_seconds = expected_seconds * self.config.manager_low_coverage_pct / 100;
+        let overload_seconds = expected_seconds * self.config.manager_overload_coverage_pct / 100;
         let late_start =
             work_start_local + TimeDelta::minutes(self.config.manager_late_start_grace_minutes);
         let early_finish =
@@ -1706,6 +1877,37 @@ impl App {
                 .map(|dt| dt.with_timezone(&self.config.offset))
                 .map(|dt| dt.to_rfc3339())
                 .unwrap_or_default();
+            let samples_count = row
+                .get("samples_count")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let active_samples = row
+                .get("active_samples")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let sessions_count = row
+                .get("sessions_count")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let operations = build_employee_operations_status(
+                &self.config,
+                EmployeeOperationsInput {
+                    expected_seconds,
+                    low_seconds,
+                    target_seconds,
+                    overload_seconds,
+                    work_secs,
+                    calendar_secs,
+                    work_first,
+                    work_last,
+                    is_today,
+                    late_start,
+                    early_finish,
+                    samples_count,
+                    active_samples,
+                    sessions_count,
+                },
+            );
             let mut public = row.as_object().cloned().unwrap_or_default();
             public.remove("_intervals");
             public.insert("user".into(), json!(alias.display_name));
@@ -1719,8 +1921,52 @@ impl App {
             public.insert("calendar_active_hhmm".into(), json!(hhmm(calendar_secs)));
             public.insert("workday_active_seconds".into(), json!(work_secs));
             public.insert("workday_active_hhmm".into(), json!(hhmm(work_secs)));
+            public.insert(
+                "workday_idle_seconds".into(),
+                json!((expected_seconds - work_secs).max(0)),
+            );
+            public.insert(
+                "workday_idle_hhmm".into(),
+                json!(hhmm((expected_seconds - work_secs).max(0))),
+            );
             public.insert("coverage_pct".into(), json!(coverage));
             public.insert("status".into(), json!(status));
+            public.insert(
+                "load_status".into(),
+                operations
+                    .get("load_status")
+                    .cloned()
+                    .unwrap_or_else(|| json!("unknown")),
+            );
+            public.insert(
+                "idle_status".into(),
+                operations
+                    .get("idle_status")
+                    .cloned()
+                    .unwrap_or_else(|| json!("unknown")),
+            );
+            public.insert(
+                "discipline_status".into(),
+                operations
+                    .get("discipline_status")
+                    .cloned()
+                    .unwrap_or_else(|| json!("unknown")),
+            );
+            public.insert(
+                "data_confidence".into(),
+                operations
+                    .get("data_confidence")
+                    .cloned()
+                    .unwrap_or_else(|| json!("low")),
+            );
+            public.insert(
+                "operations_recommended_action".into(),
+                operations
+                    .get("recommended_action")
+                    .cloned()
+                    .unwrap_or_else(|| json!("Проверить первичные источники.")),
+            );
+            public.insert("operations".into(), operations.clone());
             public.insert("first_activity_local".into(), json!(first_local));
             public.insert("last_activity_local".into(), json!(last_local));
             public.insert(
@@ -1739,6 +1985,10 @@ impl App {
                 "manager_owner": public.get("manager_owner").cloned().unwrap_or(json!("")),
                 "department": public.get("department").cloned().unwrap_or(json!("")),
                 "role": public.get("role").cloned().unwrap_or(json!("")),
+                "load_status": public.get("load_status").cloned().unwrap_or(json!("unknown")),
+                "idle_status": public.get("idle_status").cloned().unwrap_or(json!("unknown")),
+                "discipline_status": public.get("discipline_status").cloned().unwrap_or(json!("unknown")),
+                "data_confidence": public.get("data_confidence").cloned().unwrap_or(json!("low")),
             });
             let owner = public
                 .get("manager_owner")
@@ -1762,6 +2012,9 @@ impl App {
                     actions.push(action("low_activity_review", "high", &owner, "24h", &format!("У сотрудника {display} активное время в рабочем окне {} ниже {}% от ожидаемого окна.", hhmm(work_secs), self.config.manager_low_coverage_pct), &format!("Проверить загрузку сотрудника {display}, задачи и фактическое присутствие в рабочем процессе."), &canonical, evidence.clone()));
                 } else if expected_seconds > 0 && work_secs < target_seconds {
                     actions.push(action("target_gap_review", "medium", &owner, "24h", &format!("У сотрудника {display} активное время в рабочем окне {} ниже управленческого целевого порога {}%.", hhmm(work_secs), self.config.manager_target_coverage_pct), &format!("Уточнить причину отклонения по сотруднику {display} и подтвердить план работ."), &canonical, evidence.clone()));
+                }
+                if expected_seconds > 0 && work_secs >= overload_seconds {
+                    actions.push(action("overload_review", "high", &owner, "24h", &format!("У сотрудника {display} активное время в рабочем окне {} выше порога перегруза {}%.", hhmm(work_secs), self.config.manager_overload_coverage_pct), &format!("Проверить переработку сотрудника {display}, распределение задач и риск аврального процесса."), &canonical, evidence.clone()));
                 }
                 if work_first.is_some_and(|dt| dt.with_timezone(&self.config.offset) > late_start) {
                     actions.push(action("late_start_review", "medium", &owner, "24h", &format!("У сотрудника {display} первая активность в рабочем окне зафиксирована поздно."), &format!("Проверить причину позднего старта сотрудника {display} и подтвердить, что это не проблема доступа или дисциплины."), &canonical, evidence.clone()));
@@ -1810,6 +2063,37 @@ impl App {
             )
         });
         let summary = summarize_management_rows(&roster, &actions, expected_seconds);
+        let workforce_operations = json!({
+            "status": summary.pointer("/workforce_operations/status").cloned().unwrap_or_else(|| json!("LOW_CONFIDENCE")),
+            "summary": summary.pointer("/workforce_operations").cloned().unwrap_or_else(|| json!({})),
+            "rows": roster.iter().map(|row| {
+                json!({
+                    "user": row.get("user").cloned().unwrap_or(json!("")),
+                    "manager_owner": row.get("manager_owner").cloned().unwrap_or(json!("")),
+                    "department": row.get("department").cloned().unwrap_or(json!("")),
+                    "role": row.get("role").cloned().unwrap_or(json!("")),
+                    "load_status": row.get("load_status").cloned().unwrap_or(json!("unknown")),
+                    "idle_status": row.get("idle_status").cloned().unwrap_or(json!("unknown")),
+                    "discipline_status": row.get("discipline_status").cloned().unwrap_or(json!("unknown")),
+                    "data_confidence": row.get("data_confidence").cloned().unwrap_or(json!("low")),
+                    "coverage_pct": row.get("coverage_pct").cloned().unwrap_or(json!(0.0)),
+                    "workday_active_hhmm": row.get("workday_active_hhmm").cloned().unwrap_or(json!("00:00")),
+                    "workday_idle_hhmm": row.get("workday_idle_hhmm").cloned().unwrap_or(json!("00:00")),
+                    "recommended_action": row.get("operations_recommended_action").cloned().unwrap_or(json!("Проверить первичные источники."))
+                })
+            }).collect::<Vec<_>>(),
+            "model": {
+                "type": "rule_based",
+                "ml": false,
+                "llm": false,
+                "version": "workforce-operations-v1"
+            },
+            "guardrails": [
+                "Строки low confidence требуют проверки источников до персонального вывода",
+                "Отсутствие данных не считается простоем",
+                "Все статусы предназначены только для ручного операционного разбора"
+            ]
+        });
         let owner_rollups = build_rollups(&roster, &actions, "manager_owner");
         let department_rollups = build_rollups(&roster, &actions, "department");
         let owner_roster = owner_rollups.clone();
@@ -1865,8 +2149,10 @@ impl App {
                 "expected_hhmm_per_user": hhmm(expected_seconds),
                 "target_coverage_pct": self.config.manager_target_coverage_pct,
                 "low_coverage_pct": self.config.manager_low_coverage_pct,
+                "overload_coverage_pct": self.config.manager_overload_coverage_pct,
             },
             "summary": summary,
+            "workforce_operations": workforce_operations,
             "actions": actions,
             "rows": roster,
             "sources": sources,
@@ -2329,6 +2615,7 @@ fn summarize_management_rows(rows: &[Value], actions: &[Value], expected_seconds
             .and_then(Value::as_i64)
             .unwrap_or(0)
     });
+    let operations_summary = summarize_operations(rows);
     json!({
         "users_count": users_count,
         "active_users": active_users,
@@ -2349,6 +2636,85 @@ fn summarize_management_rows(rows: &[Value], actions: &[Value], expected_seconds
         "last_activity": rows.iter().filter_map(|r| r.get("workday_last_activity_local").and_then(Value::as_str)).filter(|s| !s.is_empty()).max().unwrap_or(""),
         "top_user": top.and_then(|r| r.get("user")).and_then(Value::as_str).unwrap_or(""),
         "top_user_active_hhmm": top.and_then(|r| r.get("workday_active_hhmm")).and_then(Value::as_str).unwrap_or("00:00"),
+        "workforce_operations": operations_summary,
+    })
+}
+
+fn row_str<'a>(row: &'a Value, key: &str) -> &'a str {
+    row.get(key).and_then(Value::as_str).unwrap_or("")
+}
+
+fn count_rows_by(rows: &[Value], key: &str, expected: &[&str]) -> i64 {
+    rows.iter()
+        .filter(|row| expected.contains(&row_str(row, key)))
+        .count() as i64
+}
+
+fn summarize_operations(rows: &[Value]) -> Value {
+    let users_count = rows.len() as i64;
+    let low_confidence_users = count_rows_by(rows, "data_confidence", &["low"]);
+    let medium_confidence_users = count_rows_by(rows, "data_confidence", &["medium"]);
+    let high_confidence_users = count_rows_by(rows, "data_confidence", &["high"]);
+    let unknown_or_no_data_users = count_rows_by(
+        rows,
+        "load_status",
+        &["no_data", "insufficient_data", "no_activity"],
+    );
+    let underloaded_users = count_rows_by(rows, "load_status", &["underloaded", "below_target"]);
+    let normal_users = count_rows_by(rows, "load_status", &["normal"]);
+    let overloaded_users = count_rows_by(rows, "load_status", &["overloaded"]);
+    let idle_users = count_rows_by(
+        rows,
+        "idle_status",
+        &["idle_detected", "full_workday_idle_or_absent"],
+    );
+    let discipline_review_users = rows
+        .iter()
+        .filter(|row| !matches!(row_str(row, "discipline_status"), "" | "ok"))
+        .count() as i64;
+    let action_required_users = rows
+        .iter()
+        .filter(|row| {
+            !matches!(row_str(row, "load_status"), "normal" | "")
+                || !matches!(row_str(row, "discipline_status"), "ok" | "")
+                || matches!(
+                    row_str(row, "idle_status"),
+                    "idle_detected" | "full_workday_idle_or_absent"
+                )
+                || row_str(row, "data_confidence") == "low"
+        })
+        .count() as i64;
+    let status = if users_count == 0 || low_confidence_users == users_count {
+        "LOW_CONFIDENCE"
+    } else if overloaded_users > 0 || discipline_review_users > 0 || idle_users > 0 {
+        "ATTENTION"
+    } else if underloaded_users > 0 || unknown_or_no_data_users > 0 || medium_confidence_users > 0 {
+        "WATCH"
+    } else {
+        "OK"
+    };
+    json!({
+        "status": status,
+        "users_count": users_count,
+        "action_required_users": action_required_users,
+        "load": {
+            "unknown_or_no_data_users": unknown_or_no_data_users,
+            "underloaded_users": underloaded_users,
+            "normal_users": normal_users,
+            "overloaded_users": overloaded_users
+        },
+        "idle": {
+            "idle_users": idle_users
+        },
+        "discipline": {
+            "review_users": discipline_review_users
+        },
+        "confidence": {
+            "low_users": low_confidence_users,
+            "medium_users": medium_confidence_users,
+            "high_users": high_confidence_users
+        },
+        "guardrail": "Строки low confidence требуют проверки источников до персонального вывода"
     })
 }
 
@@ -2369,6 +2735,11 @@ fn build_rollups(rows: &[Value], actions: &[Value], field: &str) -> Vec<Value> {
                 "active_users",
                 "inactive_users",
                 "below_target_users",
+                "underloaded_users",
+                "overloaded_users",
+                "idle_users",
+                "discipline_review_users",
+                "low_confidence_users",
                 "workday_total_active_seconds",
                 "actions_count",
                 "critical_actions_count",
@@ -2389,6 +2760,24 @@ fn build_rollups(rows: &[Value], actions: &[Value], field: &str) -> Vec<Value> {
         }
         if row.get("status").and_then(Value::as_str) == Some("below_target") {
             inc(group, "below_target_users", 1);
+        }
+        if matches!(row_str(row, "load_status"), "underloaded" | "below_target") {
+            inc(group, "underloaded_users", 1);
+        }
+        if row_str(row, "load_status") == "overloaded" {
+            inc(group, "overloaded_users", 1);
+        }
+        if matches!(
+            row_str(row, "idle_status"),
+            "idle_detected" | "full_workday_idle_or_absent"
+        ) {
+            inc(group, "idle_users", 1);
+        }
+        if !matches!(row_str(row, "discipline_status"), "" | "ok") {
+            inc(group, "discipline_review_users", 1);
+        }
+        if row_str(row, "data_confidence") == "low" {
+            inc(group, "low_confidence_users", 1);
         }
         inc(
             group,
@@ -3350,9 +3739,9 @@ fn render_management_html(payload: &Value) -> String {
             .collect()
     };
     let user_rows = if rows.is_empty() {
-        "<tr><td colspan='8'>Нет сотрудников в выборке.</td></tr>".to_string()
+        "<tr><td colspan='12'>Нет сотрудников в выборке.</td></tr>".to_string()
     } else {
-        rows.iter().map(|r| format!("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class='good'>{}</td><td>{}%</td><td>{}</td><td>{}</td></tr>", esc(r["user"].as_str().unwrap_or("")), esc(r["manager_owner"].as_str().unwrap_or("")), esc(r["department"].as_str().unwrap_or("")), esc(r["status"].as_str().unwrap_or("")), esc(r["workday_active_hhmm"].as_str().unwrap_or("")), r["coverage_pct"].as_f64().unwrap_or(0.0), esc(r["workday_first_activity_local"].as_str().unwrap_or("")), esc(r["workday_last_activity_local"].as_str().unwrap_or("")))).collect()
+        rows.iter().map(|r| format!("<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td class='good'>{}</td><td>{}</td><td>{}%</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>", esc(r["user"].as_str().unwrap_or("")), esc(r["manager_owner"].as_str().unwrap_or("")), esc(r["department"].as_str().unwrap_or("")), esc(r["status"].as_str().unwrap_or("")), esc(r["workday_active_hhmm"].as_str().unwrap_or("")), esc(r["workday_idle_hhmm"].as_str().unwrap_or("00:00")), r["coverage_pct"].as_f64().unwrap_or(0.0), esc(r["load_status"].as_str().unwrap_or("unknown")), esc(r["idle_status"].as_str().unwrap_or("unknown")), esc(r["discipline_status"].as_str().unwrap_or("unknown")), esc(r["data_confidence"].as_str().unwrap_or("low")), esc(r["operations_recommended_action"].as_str().unwrap_or("")))).collect()
     };
     let source_rows = sources
         .iter()
@@ -3369,7 +3758,7 @@ fn render_management_html(payload: &Value) -> String {
         })
         .collect::<String>();
     format!(
-        r#"<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AW-rus Управленческий отчёт по работе в RDP</title><style>{}</style></head><body><main><section class="hero"><h1>AW-rus Управленческий отчёт по работе в RDP</h1><p>{} · {} · {}</p><h2>Что делать сегодня</h2><p>{}</p><nav><a href="/reports/worktime/management?format=json&host={}">JSON</a><a href="/reports/worktime/management?format=csv&host={}">CSV</a><a href="/reports/worktime/today?format=html&host={}">Классический отчёт</a><a href="/reports/worktime/management?format=html&host={}">Сбросить</a></nav></section><section><h2>Очередь действий руководителя</h2><table><tbody>{}</tbody></table></section><section><h2>Сотрудники</h2><table><tbody>{}</tbody></table></section><section><h2>Тренд за период</h2><p>Тренд за {} дней</p></section><section><h2>По ответственным</h2><pre>{}</pre></section><section><h2>Ответственные и эскалация</h2><pre>{}</pre></section><section><h2>По подразделениям</h2><pre>{}</pre></section><section><h2>Свежесть источников данных</h2><table><tbody>{}</tbody></table></section><p>Фильтр: {}</p></main></body></html>"#,
+        r#"<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>AW-rus Управленческий отчёт по работе в RDP</title><style>{}</style></head><body><main><section class="hero"><h1>AW-rus Управленческий отчёт по работе в RDP</h1><p>{} · {} · {}</p><h2>Что делать сегодня</h2><p>{}</p><nav><a href="/reports/worktime/management?format=json&host={}">JSON</a><a href="/reports/worktime/management?format=csv&host={}">CSV</a><a href="/reports/worktime/today?format=html&host={}">Классический отчёт</a><a href="/reports/worktime/management?format=html&host={}">Сбросить</a></nav></section><section><h2>Очередь действий руководителя</h2><table><tbody>{}</tbody></table></section><section><h2>Рабочая активность сотрудников</h2><p>Статусы загрузки, простоя, дисциплины процесса и достоверности. Low confidence означает: сначала проверить источники, не делать персональный вывод.</p><table><thead><tr><th>Сотрудник</th><th>Ответственный</th><th>Подразделение</th><th>Статус</th><th>Активно</th><th>Простой</th><th>Coverage</th><th>Загрузка</th><th>Простой</th><th>Дисциплина</th><th>Confidence</th><th>Действие</th></tr></thead><tbody>{}</tbody></table></section><section><h2>Тренд за период</h2><p>Тренд за {} дней</p></section><section><h2>По ответственным</h2><pre>{}</pre></section><section><h2>Ответственные и эскалация</h2><pre>{}</pre></section><section><h2>По подразделениям</h2><pre>{}</pre></section><section><h2>Свежесть источников данных</h2><table><tbody>{}</tbody></table></section><p>Фильтр: {}</p></main></body></html>"#,
         base_css(),
         esc(payload["host"].as_str().unwrap_or("")),
         esc(payload["report_date"].as_str().unwrap_or("")),
@@ -3640,6 +4029,36 @@ mod tests {
     }
 
     #[test]
+    fn dlp_evidence_bucket_is_optional_for_true_active_hot_path() {
+        let mut cfg = test_config();
+        cfg.dlp_evidence_enabled = false;
+        let buckets = evidence_bucket_ids(&cfg, "SHARKON2025");
+        assert!(
+            buckets
+                .iter()
+                .any(|bucket| bucket == "aw-file-operations_SHARKON2025")
+        );
+        assert!(
+            buckets
+                .iter()
+                .any(|bucket| bucket == "aw-watcher-web-chrome_SHARKON2025")
+        );
+        assert!(
+            !buckets
+                .iter()
+                .any(|bucket| bucket == "aw-dlp-endpoint-signals_SHARKON2025")
+        );
+
+        cfg.dlp_evidence_enabled = true;
+        let buckets = evidence_bucket_ids(&cfg, "SHARKON2025");
+        assert!(
+            buckets
+                .iter()
+                .any(|bucket| bucket == "aw-dlp-endpoint-signals_SHARKON2025")
+        );
+    }
+
+    #[test]
     fn management_insights_detect_falling_portfolio_trend() {
         let cfg = test_config();
         let trend = vec![
@@ -3756,6 +4175,85 @@ mod tests {
         assert_eq!(rollups.len(), 1);
         assert_eq!(rollups[0]["name"], "Руководитель");
         assert_eq!(rollups[0]["actions_count"], 1);
+    }
+
+    #[test]
+    fn employee_operations_detects_overload_and_off_hours() {
+        let cfg = test_config();
+        let report_date = NaiveDate::from_ymd_opt(2026, 5, 14).unwrap();
+        let (work_start, work_end, expected_seconds) = workday_bounds(&cfg, report_date);
+        let input = EmployeeOperationsInput {
+            expected_seconds,
+            low_seconds: expected_seconds * cfg.manager_low_coverage_pct / 100,
+            target_seconds: expected_seconds * cfg.manager_target_coverage_pct / 100,
+            overload_seconds: expected_seconds * cfg.manager_overload_coverage_pct / 100,
+            work_secs: expected_seconds * 2,
+            calendar_secs: expected_seconds * 2 + 3600,
+            work_first: Some(work_start.with_timezone(&Utc)),
+            work_last: Some(work_end.with_timezone(&Utc)),
+            is_today: false,
+            late_start: work_start + TimeDelta::minutes(cfg.manager_late_start_grace_minutes),
+            early_finish: work_end - TimeDelta::minutes(cfg.manager_early_finish_grace_minutes),
+            samples_count: 20,
+            active_samples: 18,
+            sessions_count: 1,
+        };
+        let status = build_employee_operations_status(&cfg, input);
+        assert_eq!(status["load_status"], "overloaded");
+        assert_eq!(status["discipline_status"], "off_hours");
+        assert_eq!(status["data_confidence"], "high");
+        assert_eq!(status["guardrail"], "evidence_backed_manual_review_only");
+    }
+
+    #[test]
+    fn employee_operations_low_confidence_blocks_personnel_conclusion() {
+        let cfg = test_config();
+        let report_date = NaiveDate::from_ymd_opt(2026, 5, 14).unwrap();
+        let (work_start, work_end, expected_seconds) = workday_bounds(&cfg, report_date);
+        let input = EmployeeOperationsInput {
+            expected_seconds,
+            low_seconds: expected_seconds * cfg.manager_low_coverage_pct / 100,
+            target_seconds: expected_seconds * cfg.manager_target_coverage_pct / 100,
+            overload_seconds: expected_seconds * cfg.manager_overload_coverage_pct / 100,
+            work_secs: 0,
+            calendar_secs: 0,
+            work_first: None,
+            work_last: None,
+            is_today: false,
+            late_start: work_start + TimeDelta::minutes(cfg.manager_late_start_grace_minutes),
+            early_finish: work_end - TimeDelta::minutes(cfg.manager_early_finish_grace_minutes),
+            samples_count: 0,
+            active_samples: 0,
+            sessions_count: 0,
+        };
+        let status = build_employee_operations_status(&cfg, input);
+        assert_eq!(status["load_status"], "no_data");
+        assert_eq!(status["idle_status"], "unknown");
+        assert_eq!(status["data_confidence"], "low");
+        assert_eq!(status["guardrail"], "low_confidence_not_for_discipline");
+        assert!(
+            status["recommended_action"]
+                .as_str()
+                .unwrap()
+                .contains("не использовать как дисциплинарный")
+        );
+    }
+
+    #[test]
+    fn operations_summary_counts_attention_groups() {
+        let rows = vec![
+            json!({"load_status":"overloaded","idle_status":"no_significant_idle","discipline_status":"ok","data_confidence":"high"}),
+            json!({"load_status":"underloaded","idle_status":"idle_detected","discipline_status":"late_start","data_confidence":"medium"}),
+            json!({"load_status":"no_data","idle_status":"unknown","discipline_status":"ok","data_confidence":"low"}),
+        ];
+        let summary = summarize_operations(&rows);
+        assert_eq!(summary["status"], "ATTENTION");
+        assert_eq!(summary["load"]["overloaded_users"], 1);
+        assert_eq!(summary["load"]["underloaded_users"], 1);
+        assert_eq!(summary["idle"]["idle_users"], 1);
+        assert_eq!(summary["discipline"]["review_users"], 1);
+        assert_eq!(summary["confidence"]["low_users"], 1);
+        assert_eq!(summary["action_required_users"], 3);
     }
 
     #[test]
@@ -3888,14 +4386,17 @@ mod tests {
     #[test]
     fn interpretation_policy_accepts_fraction_thresholds() {
         let policy: InterpretationPolicy = serde_json::from_value(json!({
-            "overload_threshold": 0.92,
+            "overload_threshold": 1.15,
             "underload_threshold": 0.45,
             "drop_threshold_pct": 20,
             "night_work_after": "20:00",
             "weekend_work": true
         }))
         .unwrap();
-        assert_eq!(threshold_to_pct(policy.overload_threshold.unwrap()), 92.0);
+        assert_eq!(
+            overload_threshold_to_pct(policy.overload_threshold.unwrap()).round(),
+            115.0
+        );
         assert_eq!(threshold_to_pct(policy.underload_threshold.unwrap()), 45.0);
         assert_eq!(threshold_to_pct(policy.drop_threshold_pct.unwrap()), 20.0);
         assert_eq!(
