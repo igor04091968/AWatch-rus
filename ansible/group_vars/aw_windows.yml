@@ -15,6 +15,10 @@ aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases
 aw_windows_package_zip_path: ""
 
 aw_windows_domain: "HOST-EXAMPLE"
+# Stable ActivityWatch host identity for bucket ids, Grafana variables and
+# ClickHouse workforce keys. This is separate from aw_windows_domain.
+# Production host_vars must override both values explicitly.
+aw_windows_logical_host_id: "HOST-EXAMPLE"
 aw_windows_builtin_administrator_name: "Администратор"
 aw_windows_users:
   - Администратор

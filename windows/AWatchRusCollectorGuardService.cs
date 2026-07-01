@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.ServiceProcess;
+using System.Threading;
 
 namespace AWatchRus
 {
@@ -9,6 +10,12 @@ namespace AWatchRus
     {
         private Process child;
         private readonly ServiceOptions options;
+        private readonly object sync = new object();
+        private bool stopping;
+        private string childFileName;
+        private string childArguments;
+        private DateTime restartWindowStartedUtc = DateTime.UtcNow;
+        private int restartCountInWindow;
 
         public CollectorGuardService(ServiceOptions options)
         {
@@ -21,29 +28,113 @@ namespace AWatchRus
         protected override void OnStart(string[] args)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(options.LogPath));
-            File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " service starting" + Environment.NewLine);
+            Log("service starting");
 
-            var fileName = string.IsNullOrWhiteSpace(options.ExecPath) ? options.PowerShellPath : options.ExecPath;
-            var arguments = string.IsNullOrWhiteSpace(options.ExecPath)
+            childFileName = string.IsNullOrWhiteSpace(options.ExecPath) ? options.PowerShellPath : options.ExecPath;
+            childArguments = string.IsNullOrWhiteSpace(options.ExecPath)
                 ? string.Format(
                     "-NoProfile -ExecutionPolicy Bypass -File \"{0}\" -ConfigPath \"{1}\" -Mode {2} -LoopSeconds {3}",
                     options.ScriptPath,
                     options.ConfigPath,
                     options.Mode,
                     options.LoopSeconds)
-                : options.ExecArgs;
+                : (options.ExecArgs ?? string.Empty);
+
+            StartChild("initial start");
+        }
+
+        private void StartChild(string reason)
+        {
+            lock (sync)
+            {
+                if (stopping)
+                {
+                    return;
+                }
+                if (child != null && !child.HasExited)
+                {
+                    return;
+                }
+            }
 
             var psi = new ProcessStartInfo
             {
-                FileName = fileName,
-                Arguments = arguments,
+                FileName = childFileName,
+                Arguments = childArguments,
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 RedirectStandardOutput = false,
                 RedirectStandardError = false,
             };
-            child = Process.Start(psi);
-            File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " child pid=" + child.Id + " exec=" + fileName + Environment.NewLine);
+            var process = new Process
+            {
+                StartInfo = psi,
+                EnableRaisingEvents = true,
+            };
+            process.Exited += ChildExited;
+            process.Start();
+            lock (sync)
+            {
+                child = process;
+            }
+            Log("child pid=" + process.Id + " exec=" + childFileName + " reason=" + reason);
+        }
+
+        private void ChildExited(object sender, EventArgs args)
+        {
+            var process = sender as Process;
+            var exitCode = "unknown";
+            try
+            {
+                if (process != null)
+                {
+                    exitCode = process.ExitCode.ToString();
+                }
+            }
+            catch
+            {
+            }
+
+            lock (sync)
+            {
+                if (stopping)
+                {
+                    Log("child exited during stop exitCode=" + exitCode);
+                    return;
+                }
+            }
+
+            Log("child exited unexpectedly exitCode=" + exitCode);
+            if (!RegisterChildRestart())
+            {
+                Log("child restart budget exhausted; exiting service for SCM recovery");
+                Environment.Exit(1);
+                return;
+            }
+
+            var restartThread = new Thread(new ThreadStart(delegate
+            {
+                Thread.Sleep(Math.Max(1, options.ChildRestartDelaySeconds) * 1000);
+                StartChild("child-exit restart");
+            }));
+            restartThread.IsBackground = true;
+            restartThread.Start();
+        }
+
+        private bool RegisterChildRestart()
+        {
+            lock (sync)
+            {
+                var now = DateTime.UtcNow;
+                if ((now - restartWindowStartedUtc).TotalSeconds > options.ChildRestartWindowSeconds)
+                {
+                    restartWindowStartedUtc = now;
+                    restartCountInWindow = 0;
+                }
+                restartCountInWindow++;
+                Log("child restart budget count=" + restartCountInWindow + " windowSeconds=" + options.ChildRestartWindowSeconds);
+                return restartCountInWindow <= options.MaxChildRestartsInWindow;
+            }
         }
 
         protected override void OnStop()
@@ -60,23 +151,34 @@ namespace AWatchRus
         {
             try
             {
-                File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " " + reason + Environment.NewLine);
-                if (child != null && !child.HasExited)
+                Log(reason);
+                Process process;
+                lock (sync)
                 {
-                    child.Kill();
-                    child.WaitForExit(10000);
+                    stopping = true;
+                    process = child;
+                }
+                if (process != null && !process.HasExited)
+                {
+                    process.Kill();
+                    process.WaitForExit(10000);
                 }
             }
             catch (Exception ex)
             {
                 try
                 {
-                    File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " stop error: " + ex.Message + Environment.NewLine);
+                    Log("stop error: " + ex.Message);
                 }
                 catch
                 {
                 }
             }
+        }
+
+        private void Log(string message)
+        {
+            File.AppendAllText(options.LogPath, DateTime.Now.ToString("s") + " " + message + Environment.NewLine);
         }
     }
 
@@ -91,6 +193,9 @@ namespace AWatchRus
         public string LogPath = @"C:\ProgramData\AWatch-rus\logs\collector-guard-service.log";
         public string ExecPath = null;
         public string ExecArgs = null;
+        public int ChildRestartDelaySeconds = 5;
+        public int MaxChildRestartsInWindow = 5;
+        public int ChildRestartWindowSeconds = 600;
     }
 
     internal static class Program

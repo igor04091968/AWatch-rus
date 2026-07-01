@@ -312,11 +312,6 @@ function Get-ActivityWatchBuiltInAdministratorName {
     catch {
     }
 
-    if ([string]$env:COMPUTERNAME -ieq 'SHARKON2025') {
-        $script:ActivityWatchBuiltInAdministratorName = 'Администратор'
-        return $script:ActivityWatchBuiltInAdministratorName
-    }
-
     $script:ActivityWatchBuiltInAdministratorName = 'Administrator'
     return $script:ActivityWatchBuiltInAdministratorName
 }

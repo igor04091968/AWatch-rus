@@ -6,7 +6,7 @@ use std::{
     io::{BufRead, BufReader, Write},
     path::{Path, PathBuf},
     process::Command,
-    sync::mpsc,
+    sync::{Arc, Mutex, mpsc},
     time::{Duration, SystemTime},
 };
 
@@ -16,7 +16,7 @@ use chrono::{DateTime, Timelike, Utc};
 use clap::{Parser, Subcommand};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher, event::RenameMode};
 use regex::Regex;
-use reqwest::blocking::Client;
+use reqwest::{StatusCode, blocking::Client};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
@@ -1462,13 +1462,10 @@ fn ensure_aw_bucket(
     hostname: &str,
 ) -> Result<()> {
     let url = format!("{}/buckets/{bucket_id}", api_base.trim_end_matches('/'));
-    if client
-        .get(&url)
-        .send()
-        .map(|response| response.status().is_success())
-        .unwrap_or(false)
-    {
-        return Ok(());
+    if let Ok(response) = client.get(&url).send() {
+        if aw_bucket_status_accepts_existing(response.status()) {
+            return Ok(());
+        }
     }
     let response = client
         .post(&url)
@@ -1479,7 +1476,7 @@ fn ensure_aw_bucket(
         }))
         .send()
         .with_context(|| format!("POST {url}"))?;
-    if !response.status().is_success() {
+    if !aw_bucket_status_accepts_existing(response.status()) {
         bail!(
             "bucket create failed {} status={}",
             bucket_id,
@@ -1487,6 +1484,10 @@ fn ensure_aw_bucket(
         );
     }
     Ok(())
+}
+
+fn aw_bucket_status_accepts_existing(status: StatusCode) -> bool {
+    status.is_success() || status == StatusCode::NOT_MODIFIED
 }
 
 fn append_file_ops_log(runtime: &FileOpsRuntime, message: &str) -> Result<()> {
@@ -1599,6 +1600,7 @@ struct RustCollectorRuntime {
     rules_path: PathBuf,
     policy_path: PathBuf,
     incident_screenshot_enabled: bool,
+    ensured_buckets: Arc<Mutex<HashSet<String>>>,
 }
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -2045,6 +2047,7 @@ fn build_rust_collector_runtime(
         rules_path,
         policy_path,
         incident_screenshot_enabled,
+        ensured_buckets: Arc::new(Mutex::new(HashSet::new())),
     })
 }
 
@@ -3127,14 +3130,7 @@ fn send_collector_aw_event(
         return Ok(());
     }
     let client = Client::builder().timeout(Duration::from_secs(15)).build()?;
-    ensure_aw_bucket(
-        &client,
-        &runtime.api_base,
-        bucket_id,
-        client_name,
-        bucket_type,
-        &runtime.hostname,
-    )?;
+    ensure_runtime_aw_bucket(runtime, &client, bucket_id, client_name, bucket_type)?;
     let url = format!(
         "{}/buckets/{bucket_id}/heartbeat?pulsetime={}",
         runtime.api_base.trim_end_matches('/'),
@@ -3151,6 +3147,37 @@ fn send_collector_aw_event(
             bucket_id,
             response.status()
         );
+    }
+    Ok(())
+}
+
+fn ensure_runtime_aw_bucket(
+    runtime: &RustCollectorRuntime,
+    client: &Client,
+    bucket_id: &str,
+    client_name: &str,
+    bucket_type: &str,
+) -> Result<()> {
+    if runtime
+        .ensured_buckets
+        .lock()
+        .map(|cache| cache.contains(bucket_id))
+        .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    ensure_aw_bucket(
+        client,
+        &runtime.api_base,
+        bucket_id,
+        client_name,
+        bucket_type,
+        &runtime.hostname,
+    )?;
+
+    if let Ok(mut cache) = runtime.ensured_buckets.lock() {
+        cache.insert(bucket_id.to_string());
     }
     Ok(())
 }
@@ -6027,6 +6054,17 @@ Connect=Srvr="srv";Ref="x";
         fs::write(&file, "\u{feff}{\"ok\":true}").unwrap();
         let value = read_json_file(&file).unwrap();
         assert_eq!(value.get("ok").and_then(Value::as_bool), Some(true));
+    }
+
+    #[test]
+    fn bucket_status_accepts_only_success_or_not_modified() {
+        assert!(aw_bucket_status_accepts_existing(StatusCode::OK));
+        assert!(aw_bucket_status_accepts_existing(StatusCode::NO_CONTENT));
+        assert!(aw_bucket_status_accepts_existing(StatusCode::NOT_MODIFIED));
+        assert!(!aw_bucket_status_accepts_existing(StatusCode::NOT_FOUND));
+        assert!(!aw_bucket_status_accepts_existing(
+            StatusCode::SERVICE_UNAVAILABLE
+        ));
     }
 
     #[test]
