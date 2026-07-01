@@ -7,6 +7,20 @@ ClickHouse не является обязательной зависимость
 перезапускайте ClickHouse для восстановления отчетов рабочего времени, если нет
 отдельного подтвержденного отказа ClickHouse.
 
+## Stable host id
+
+Worktime reports используют stable logical host id, а не обязательно текущее
+Windows `COMPUTERNAME`. Для DetMir production текущий logical id:
+
+```text
+SHARKON2025
+```
+
+При переименовании RDP-сервера не меняйте `awHostname` автоматически. Сначала
+обновите Windows account domain для задач, затем проверьте, что collectors
+продолжают писать в bucket-и `*_SHARKON2025`. Подробный порядок:
+`docs/WINDOWS_LOGICAL_HOST_ID_RU.md`.
+
 ## Симптомы перегруза
 
 - `/portal/api/reports?role=executive` открывается медленно или отвечает
@@ -225,6 +239,153 @@ curl -sS --max-time 12 \
 curl -sS --max-time 8 http://<PORTAL_HOST>/portal/api/health | jq
 curl -sS --max-time 12 "http://<PORTAL_HOST>/portal/api/reports?role=executive" | jq '.status'
 ```
+
+## Production repair: AW SQLite hot path, 2026-06-30
+
+Симптомы:
+
+- `activitywatch-server` отвечает `503` на bucket API;
+- журнал содержит `poisoned lock` / `database is locked`;
+- `aw-worktime-api` уходит в bounded `DEGRADED`;
+- `/buckets/aw-worktime-sessions_<HOST>/events?limit=...` тайм-аутится даже
+  при малом лимите;
+- RDP browser/category collector пишет `bucket create failed` или timeout.
+
+Порядок безопасного восстановления:
+
+1. Остановить RDP guard и процессы `aw-windows-telemetry`, чтобы не продолжать
+   штурмовать AW API.
+2. Остановить `aw-worktime-*` timers/services и другие локальные потребители AW
+   API.
+3. Перезапустить `activitywatch-server` отдельно и проверить `/api/0/info`.
+4. Если bucket metadata отвечает, но `/events` медленный, проверить SQLite plan:
+
+```sql
+EXPLAIN QUERY PLAN
+SELECT id,starttime,endtime,data
+FROM events
+WHERE bucketrow=(SELECT id FROM buckets WHERE name='aw-worktime-sessions_<HOST>')
+ORDER BY starttime DESC
+LIMIT 100;
+```
+
+Если план строит `TEMP B-TREE FOR ORDER BY`, нужен составной индекс:
+
+```sql
+CREATE INDEX IF NOT EXISTS events_bucketrow_starttime_desc_index
+ON events(bucketrow, starttime DESC);
+ANALYZE;
+PRAGMA optimize;
+PRAGMA integrity_check;
+```
+
+Индекс добавлять только в controlled window:
+
+- остановить `activitywatch-server`;
+- сделать rollback backup SQLite DB;
+- создать индекс;
+- проверить `PRAGMA integrity_check = ok`;
+- запустить `activitywatch-server`;
+- проверить, что `/events?limit=100` больше не тайм-аутится.
+
+Production DetMir repair 2026-06-30:
+
+- оставлены две свежие ежедневные SQLite VACUUM backup-копии, старые backup-и
+  ротированы для освобождения места;
+- создан rollback backup:
+  `/var/lib/activitywatch/backups/db/aw-sqlite-before-hotpath-index-20260630T035032Z.db`;
+- добавлен индекс `events_bucketrow_starttime_desc_index`;
+- `ROCKET_WORKERS=8` добавлен в `/etc/activitywatch/aw-server.env`;
+- для `aw-worktime-api.service` добавлен stabilization drop-in:
+  `AW_WORKTIME_EVENTS_LIMIT=100`,
+  `AW_WORKTIME_AW_HTTP_TIMEOUT_SECONDS=25`,
+  `AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS=600`,
+  `AW_WORKTIME_REPORT_STALE_TTL_SECONDS=7200`.
+
+После ремонта проверить:
+
+```bash
+curl -sS --max-time 10 http://127.0.0.1:5600/api/0/info
+curl -sS --max-time 15 \
+  'http://127.0.0.1:5600/api/0/buckets/aw-worktime-sessions_SHARKON2025/events?limit=100'
+curl -sS --max-time 15 \
+  'http://127.0.0.1:5610/reports/worktime/today?format=json' | jq '{rows:(.rows|length),degraded,runtime}'
+```
+
+Также проверить отсутствие новых `poisoned lock` после финального старта:
+
+```bash
+journalctl -u activitywatch-server --since '<FINAL_START_TIME>' --no-pager |
+  grep -E 'poisoned lock|Taking datastore lock failed|database is locked'
+```
+
+## Crash/readiness test after AW repair
+
+Цель: проверить, что контур выдерживает restart и короткую параллельную
+нагрузку, а проверки не путают `systemctl active` с готовым API.
+
+Порядок:
+
+1. Зафиксировать baseline:
+
+```bash
+./check-aw-full.sh
+```
+
+2. На AW server проверить readiness, hot-path и Worktime API:
+
+```bash
+AW_API=http://127.0.0.1:5600 \
+AW_WORKTIME_API=http://127.0.0.1:5610 \
+AW_LOGICAL_HOST_ID=SHARKON2025 \
+scripts/detmir_resilience_check.sh --live
+```
+
+Если скрипт запускается с ноутбука, live-mode нужно выполнять на самом
+AW-сервере через SSH/Ansible, потому что он проверяет local systemd и SQLite.
+
+3. Controlled restart:
+
+```bash
+systemctl restart aw-worktime-api
+curl -sS --max-time 12 \
+  'http://127.0.0.1:5610/reports/worktime/today?format=json&host=SHARKON2025&allow_stale=1' |
+  jq '{rows:(.rows|length),degraded}'
+
+systemctl restart activitywatch-server
+# Не считать "active" готовностью: дождаться HTTP readiness.
+timeout 90 bash -c 'until curl -fsS --max-time 8 http://127.0.0.1:5600/api/0/info >/dev/null; do sleep 2; done'
+curl -sS --max-time 15 \
+  'http://127.0.0.1:5600/api/0/buckets/aw-worktime-sessions_SHARKON2025/events?limit=100' >/dev/null
+```
+
+4. Проверить, что после рестарта нет новых lock/503:
+
+```bash
+journalctl -u activitywatch-server --since '<RESTART_TIME>' --no-pager |
+  grep -E 'poisoned lock|Taking datastore lock failed|database is locked|503'
+```
+
+5. Проверить RDP guard restart отдельно:
+
+```powershell
+Restart-Service AWatchRusCollectorGuard -Force
+Start-Sleep -Seconds 75
+Get-Service AWatchRusCollectorGuard
+Get-Process aw-windows-telemetry -ErrorAction SilentlyContinue | Measure-Object
+```
+
+Ожидаемый результат для DetMir после ремонта 2026-06-30:
+
+- `check-aw-full.sh`: `FRESH=8`, `STALE=0`, `DEAD=0`;
+- `/events?limit=100` отвечает за bounded time и использует
+  `events_bucketrow_starttime_desc_index`;
+- `aw-rus-healthd.service` завершается `status=0/SUCCESS`;
+- server-side TCP до RDP может быть `warn`, если
+  `AW_RUS_HEALTH_RDP_TCP_REQUIRED=false`, но bucket freshness и WinRM/SSH
+  через admin path должны оставаться зелёными;
+- optional DLP/Loki heavy runtime units должны быть inactive в экономном
+  production profile.
 
 ## Rollback
 

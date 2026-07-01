@@ -13,6 +13,7 @@ Environment=DETMIR_DLP_COMMAND=detmir-dlp
 Environment=CONTOUR_CHECK_OUTPUT_ROOT=/var/lib/detmir-ai/contour-check-runs
 Environment=CONTOUR_CHECK_ENV_FILE=/etc/detmir/detmir-check.env
 Environment=DETMIR_PORTAL_URL=http://127.0.0.1:8720
+Environment=DETMIR_DLP_ENABLED=false
 EnvironmentFile=-/etc/detmir/detmir-check.env
 EnvironmentFile=-/etc/awatch-rus/contour-check.env
 ExecStart=/usr/bin/env bash /usr/local/sbin/awatch-contour-check

@@ -62,6 +62,21 @@ struct Cli {
 
     #[arg(long)]
     json: bool,
+
+    #[arg(long, default_value_t = 120)]
+    overall_timeout_seconds: u64,
+
+    #[arg(long, default_value = "full")]
+    profile: String,
+
+    #[arg(long, default_value_t = true)]
+    enabled: bool,
+
+    #[arg(long, default_value = "operator_disabled")]
+    disabled_reason: String,
+
+    #[arg(long, default_value = "")]
+    disabled_since: String,
 }
 
 impl Cli {
@@ -128,6 +143,28 @@ impl Cli {
         }
         if !cli_arg_present("--profiles") {
             self.profiles = env_string("AW_DLP_COMPLIANCE_PROFILES").unwrap_or(self.profiles);
+        }
+        if !cli_arg_present("--overall-timeout-seconds") {
+            self.overall_timeout_seconds = env_u64(
+                "AW_DLP_HEALTH_OVERALL_TIMEOUT_SECONDS",
+                self.overall_timeout_seconds,
+            );
+        }
+        if !cli_arg_present("--profile") {
+            self.profile = env_string("AW_DLP_PROFILE")
+                .or_else(|| env_string("DETMIR_PORTAL_DLP_PROFILE"))
+                .unwrap_or(self.profile);
+        }
+        if !cli_arg_present("--enabled") {
+            self.enabled = env_bool_default("AW_DLP_ENABLED", self.enabled);
+        }
+        if !cli_arg_present("--disabled-reason") {
+            self.disabled_reason =
+                env_string("AW_DLP_DISABLED_REASON").unwrap_or(self.disabled_reason);
+        }
+        if !cli_arg_present("--disabled-since") {
+            self.disabled_since =
+                env_string("AW_DLP_DISABLED_SINCE").unwrap_or(self.disabled_since);
         }
         self
     }
@@ -1270,8 +1307,66 @@ fn check_compliance_reports(
     }
 }
 
+fn normalized_profile(profile: &str) -> String {
+    match profile.trim().to_ascii_lowercase().as_str() {
+        "disabled" | "off" => "core_only".to_string(),
+        "core-only" | "core_only" => "core_only".to_string(),
+        "light" | "lite" => "light".to_string(),
+        "on-demand" | "on_demand" => "on_demand".to_string(),
+        "enabled" | "on" | "full" => "full".to_string(),
+        "" => "full".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn profile_is_disabled(profile: &str) -> bool {
+    matches!(normalized_profile(profile).as_str(), "core_only")
+}
+
+fn profile_checks_heavy_services(profile: &str) -> bool {
+    matches!(normalized_profile(profile).as_str(), "full" | "on_demand")
+}
+
 fn build_report(cli: &Cli, client: &Client) -> HealthReport {
     let mut report = HealthReport::default();
+    let profile = normalized_profile(&cli.profile);
+    if !cli.enabled || profile_is_disabled(&profile) {
+        report.add(
+            "dlp:mode",
+            "ok",
+            "DLP runtime disabled by production profile",
+            json!({
+                "mode": "disabled",
+                "profile": profile,
+                "reason": &cli.disabled_reason,
+                "disabled_since": empty_string_as_null(&cli.disabled_since),
+                "checks_skipped": [
+                    "policy API",
+                    "case API",
+                    "DLP systemd units",
+                    "DLP ActivityWatch buckets",
+                    "DLP compliance reports"
+                ],
+                "load_reduction": [
+                    "no DLP bucket freshness reads",
+                    "no DLP case/policy HTTP checks",
+                    "no DLP compliance filesystem scan"
+                ]
+            }),
+        );
+        return report;
+    }
+    report.add(
+        "dlp:mode",
+        "ok",
+        format!("DLP runtime profile {profile}"),
+        json!({
+            "mode": if profile == "light" { "light" } else { "enabled" },
+            "profile": profile,
+            "heavy_services_checked": profile_checks_heavy_services(&cli.profile)
+        }),
+    );
+
     let aw_api_base = format!("{}/api/0", cli.aw_server.trim_end_matches('/'));
     let counter_state_path = cli.state_dir.join("dlp-health-check-counters.json");
     let mut counter_state = load_counter_state(&counter_state_path);
@@ -1282,36 +1377,70 @@ fn build_report(cli: &Cli, client: &Client) -> HealthReport {
         "http:aw",
         &format!("{aw_api_base}/info"),
     );
-    check_http_endpoint(
-        &mut report,
-        client,
-        "http:policy",
-        &format!("{}/healthz", cli.policy_server.trim_end_matches('/')),
-    );
-    check_http_endpoint(
-        &mut report,
-        client,
-        "http:cases",
-        &format!("{}/health", cli.case_server.trim_end_matches('/')),
-    );
+    if profile_checks_heavy_services(&cli.profile) {
+        check_http_endpoint(
+            &mut report,
+            client,
+            "http:policy",
+            &format!("{}/healthz", cli.policy_server.trim_end_matches('/')),
+        );
+        check_http_endpoint(
+            &mut report,
+            client,
+            "http:cases",
+            &format!("{}/health", cli.case_server.trim_end_matches('/')),
+        );
+    } else {
+        report.add(
+            "http:heavy-dlp",
+            "ok",
+            "heavy DLP policy/case HTTP checks skipped for lightweight profile",
+            json!({
+                "profile": profile,
+                "skipped": ["policy API", "case API"]
+            }),
+        );
+    }
 
-    for unit in [
-        "activitywatch-server",
-        "aw-dlp-policy-engine.service",
-        "aw-dlp-case-management.service",
-        "aw-worktime-api.service",
-    ] {
+    for unit in ["activitywatch-server", "aw-worktime-api.service"] {
         check_systemd_unit(&mut report, unit, "service");
     }
-    for unit in [
-        "aw-dlp-report-scheduler.timer",
-        "aw-dlp-syslog-forwarder.timer",
-        "aw-dlp-webhook-sender.timer",
-        "aw-dlp-cef-exporter.timer",
-        "activitywatch-dlp-aggregator.timer",
-        "aw-dlp-ioc-refresh.timer",
-        "aw-worktime-ui-bridge.timer",
-    ] {
+    if profile_checks_heavy_services(&cli.profile) {
+        for unit in [
+            "aw-dlp-policy-engine.service",
+            "aw-dlp-case-management.service",
+        ] {
+            check_systemd_unit(&mut report, unit, "service");
+        }
+        for unit in [
+            "aw-dlp-report-scheduler.timer",
+            "aw-dlp-syslog-forwarder.timer",
+            "aw-dlp-webhook-sender.timer",
+            "aw-dlp-cef-exporter.timer",
+            "activitywatch-dlp-aggregator.timer",
+            "aw-dlp-ioc-refresh.timer",
+        ] {
+            check_systemd_unit(&mut report, unit, "timer");
+        }
+    } else {
+        report.add(
+            "systemd:heavy-dlp",
+            "ok",
+            "heavy DLP systemd checks skipped for lightweight profile",
+            json!({
+                "profile": profile,
+                "skipped": [
+                    "aw-dlp-policy-engine.service",
+                    "aw-dlp-case-management.service",
+                    "aw-dlp-report-scheduler.timer",
+                    "aw-dlp-syslog-forwarder.timer",
+                    "aw-dlp-webhook-sender.timer",
+                    "aw-dlp-cef-exporter.timer"
+                ]
+            }),
+        );
+    }
+    for unit in ["aw-worktime-ui-bridge.timer"] {
         check_systemd_unit(&mut report, unit, "timer");
     }
 
@@ -1462,6 +1591,12 @@ fn env_i64(name: &str, default: i64) -> i64 {
         .unwrap_or(default)
 }
 
+fn env_u64(name: &str, default: u64) -> u64 {
+    env_string(name)
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(default)
+}
+
 fn env_bool(name: &str) -> bool {
     env_string(name)
         .map(|value| {
@@ -1473,8 +1608,39 @@ fn env_bool(name: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn env_bool_default(name: &str, default: bool) -> bool {
+    env_string(name)
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(default)
+}
+
+fn empty_string_as_null(value: &str) -> Value {
+    if value.trim().is_empty() {
+        Value::Null
+    } else {
+        json!(value)
+    }
+}
+
+fn start_overall_timeout_watchdog(seconds: u64) {
+    if seconds == 0 {
+        return;
+    }
+    std::thread::spawn(move || {
+        sleep(Duration::from_secs(seconds));
+        eprintln!("dlp-health-check timed out after {seconds} seconds");
+        std::process::exit(124);
+    });
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse().apply_env();
+    start_overall_timeout_watchdog(cli.overall_timeout_seconds);
     let client = Client::builder()
         .no_proxy()
         .build()
@@ -1546,5 +1712,23 @@ mod tests {
         assert_eq!(payload.counts.ok, 1);
         assert_eq!(payload.counts.warn, 1);
         assert_eq!(payload.counts.fail, 0);
+    }
+
+    #[test]
+    fn dlp_profile_normalization_matches_runtime_control_names() {
+        assert_eq!(normalized_profile("disabled"), "core_only");
+        assert_eq!(normalized_profile("core-only"), "core_only");
+        assert_eq!(normalized_profile("light"), "light");
+        assert_eq!(normalized_profile("lite"), "light");
+        assert_eq!(normalized_profile("on-demand"), "on_demand");
+        assert_eq!(normalized_profile("enabled"), "full");
+    }
+
+    #[test]
+    fn light_profile_does_not_require_heavy_services() {
+        assert!(!profile_checks_heavy_services("light"));
+        assert!(!profile_checks_heavy_services("core_only"));
+        assert!(profile_checks_heavy_services("on_demand"));
+        assert!(profile_checks_heavy_services("full"));
     }
 }

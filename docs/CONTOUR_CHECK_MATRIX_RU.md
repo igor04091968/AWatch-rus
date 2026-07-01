@@ -55,6 +55,21 @@ Live endpoints, hostnames, tokens and passwords must be supplied through
 `/etc/detmir/detmir-check.env` (systemd units) or another private environment
 file outside the public repository.
 
+Production note checked on 2026-06-24:
+
+- `DETMIR_PORTAL_URL` must point to the local DetMir portal listener,
+  currently `http://127.0.0.1:8720`, for server-side health checks. If it is
+  omitted, `detmir-check` falls back to the public HTTPS gateway and protected
+  `/readyz`, `/version` and `/metrics` can correctly return `401`, producing a
+  false operational failure.
+- `DETMIR_GATEWAY_HOST=127.0.0.1` is used with the local listener so the Host
+  header does not accidentally select the public protected gateway path.
+- Cold `/api/reports` builds can take more than 60 seconds on the live contour
+  when cache is empty or concurrent checks are active. The production
+  `detmir-portal-prewarm.service` therefore uses `curl --max-time 180` and
+  `TimeoutStartSec=210`. Shorter 45-60 second limits caused false failed
+  systemd states while the portal eventually returned HTTP 200.
+
 ## Текущий планировщик Proxmox, проверено 2026-06-21
 
 На Proxmox уже присутствуют следующие регулярные проверки:
@@ -75,10 +90,10 @@ file outside the public repository.
 Наблюдение: отдельный ежедневный полный gate по всей матрице AWatch-rus
 отсутствует. Его роль должен закрыть `awatch-contour-daily-check.timer`.
 
-Наблюдение: последняя проверка `detmir-portal-prewarm.service` на момент осмотра
-имела `Result=exit-code` и `ExecMainStatus=28`. Это не надо маскировать:
-канонический check должен показывать такой сбой как fail/warn в зависимости от
-политики эксплуатации.
+Историческое наблюдение 2026-06-24: `detmir-portal-prewarm.service` был найден
+в failed state из-за устаревшего `curl --max-time 60` для холодной сборки
+`/api/reports`. В текущей ветке это оформлено как отдельный prewarm/resilience
+пакет, а не как обязательная часть DLP production hot path.
 
 ## Матрица требований и проверок
 
@@ -91,13 +106,35 @@ file outside the public repository.
 | Portal hardening | `/healthz`, `/readyz`, `/version`, `/metrics` | `detmir-check` | да | да |
 | Windows/RDP | TCP 5985 и 22 | `detmir-check` | да | да |
 | ActivityWatch buckets | AFK/window/worktime/session events | `detmir-check` | да | да |
-| AWatch DLP buckets | endpoint signals/incidents/review/rules | `detmir-check` | да | да |
-| AWatch DLP health | remote `dlp-health-check --json` через `detmir-dlp` | `detmir-check` | да | да |
+| AWatch DLP buckets | endpoint signals/incidents/review/rules, только если DLP включен | `detmir-check` | условно | условно |
+| AWatch DLP health | disabled/core_only должен быть SKIPPED/WARN, `light/full` проверяются через `detmir-dlp` | `detmir-check` | да | да |
 | Grafana evidence | свежий JSON артефакт Grafana check | `detmir-check` | да | да |
 | Security events backend | ClickHouse events, если включено | `detmir-check` | да | да |
 | Portal contract | role/API smoke | `scripts/awatch-production-hardening-smoke.mjs` | нет | да |
 | Pilot contract | demo/API smoke | `scripts/detmir-pilot-demo-smoke.mjs` | нет | да |
 | Registry/readiness docs | registry readiness check | `scripts/registry_readiness_check.sh` | опционально | да |
+
+## Timeout/fail-closed параметры live contour
+
+После ручного live-прогона 2026-06-24 production
+`/etc/detmir/detmir-check.env` должен содержать bounded timeouts, соответствующие
+фактической latency AW datastore:
+
+```env
+DETMIR_SERVICE_TIMEOUT_SECONDS=35
+DETMIR_BUCKET_TIMEOUT_SECONDS=35
+DETMIR_DLP_TIMEOUT_SECONDS=120
+DETMIR_CHECK_OVERALL_TIMEOUT_SECONDS=300
+```
+
+Назначение:
+
+- не считать bucket `DEAD` только из-за штатной 15-30 секундной latency
+  большого SQLite datastore;
+- не оставлять `detmir-check`, `detmir-dlp`, `ssh` и remote
+  `dlp-health-check` хвосты при timeout;
+- сохранять красный non-zero результат при реальной недоступности, но
+  завершать проверку bounded.
 
 ## Fail-closed политика
 
@@ -108,7 +145,9 @@ file outside the public repository.
 - Gateway/Portal health;
 - RDP/Windows reachability;
 - свежесть обязательных bucket streams;
-- AWatch DLP health;
+- AWatch DLP health только если DLP runtime включен; при штатном
+  `AW_DLP_ENABLED=false`/`core_only` disabled-state не является отказом
+  Workforce/Worktime core;
 - Grafana evidence freshness.
 
 Event-driven buckets не должны считаться stale только из-за отсутствия новых
