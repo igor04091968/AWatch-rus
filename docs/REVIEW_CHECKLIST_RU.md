@@ -2,7 +2,7 @@
 
 Дата: 2026-06-22
 
-Статус: advisory checklist for public review process.
+Статус: canonical checklist for production-first PR review.
 
 Этот документ описывает проверочный чеклист для pull requests и внешнего
 инженерного review. Он не утверждает, что внешний peer review уже выполняется
@@ -13,7 +13,15 @@ release evidence должен производиться на российско
 
 ## Общая безопасность изменений
 
+- Изменение соответствует production-first стандарту:
+  `docs/ENTERPRISE_QUALITY_STANDARD_RU.md`.
+- Цель PR относится к reliability, operational maturity, security,
+  maintainability, reproducibility, performance или simplicity. Если PR добавляет
+  функциональность, он также объясняет measurable operational benefit.
 - Изменение имеет понятную цель, ограниченный scope and documented impact.
+- Изменение additive/backward-compatible, если нет отдельного
+  operator-approved breaking-change решения.
+- Не перепроектируются работающие подсистемы без измеримой пользы.
 - Нет секретов, токенов, паролей, приватных ключей, recovery codes or live
   credentials.
 - Нет персональных данных сотрудников, реальных employee logs or customer
@@ -52,6 +60,8 @@ release evidence должен производиться на российско
 - No runtime behavior is changed by documentation/governance-only PRs.
 - No service restart, migration or production config change is implied unless
   explicitly documented.
+- Existing production deployment remains compatible, including logical host ids,
+  bucket suffixes, Grafana variables and ClickHouse workforce keys.
 
 ## Registry-readiness impact
 
@@ -80,6 +90,9 @@ release evidence должен производиться на российско
 
 - README, `docs/PROJECT_STATUS_RU.md`, registry docs and operational runbooks
   are updated when claims, checks, workflows or procedures change.
+- Behavior changes update the relevant runbook and validation commands.
+- Architecture docs are updated when an interface, data flow, deployment
+  boundary or security boundary changes.
 - New claims are conservative and evidence-backed.
 - Pending work remains marked as planned/pending until evidence exists.
 - Public mirror wording remains separate from registry release evidence.
@@ -88,6 +101,8 @@ release evidence должен производиться на российско
 
 - PR states whether deployment action is required.
 - Rollback path is documented for runtime or automation changes.
+- Dependency changes are isolated, justified and include rollback by reverting
+  the dependency/lockfile PR.
 - Documentation-only PRs state that runtime/API/UI impact is unchanged.
 - Changes to scripts include syntax checks and a clear operator failure mode.
 
@@ -103,6 +118,9 @@ release evidence должен производиться на российско
 - For Rust/product changes, use
   `docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md` as the default local validation
   contour.
+- Dependency hygiene and operational maturity checks are expected when touched
+  files can affect Rust dependencies, runtime contracts, configuration,
+  migrations, observability or CI governance.
 - For operator-facing web, gateway, worktime reports or Grafana dashboards,
   browser smoke through the rendered pages is required in addition to API checks.
 
