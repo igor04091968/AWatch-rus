@@ -50,6 +50,13 @@ Security layer:
 
 Это не полноценная SIEM и не сертифицированная DLP.
 
+Heavy DLP processing is not part of the required Workforce hot path. DLP
+endpoint signals, screenshots, evidence review, heavy correlation and forensics
+enrichment are treated as optional/deployment-specific modules. If the DLP
+module is disabled or not configured, core Workforce reports and portal
+readiness must remain available and the Security/Forensics views must show an
+honest disabled/not configured state.
+
 ## Forensics Core
 
 Forensics layer:
@@ -68,6 +75,7 @@ Optional addons and deployment-specific directions:
 
 - pfSense;
 - 1C;
+- DLP endpoint signals and evidence workflow;
 - AD/LDAP;
 - SIEM/syslog;
 - external storage;

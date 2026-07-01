@@ -1,0 +1,12 @@
+[Unit]
+Description=Pre-warm DetMir portal report cache every 30 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+AccuracySec=1min
+Persistent=true
+Unit=detmir-portal-prewarm.service
+
+[Install]
+WantedBy=timers.target

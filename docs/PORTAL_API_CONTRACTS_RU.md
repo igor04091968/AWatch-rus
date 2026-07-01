@@ -46,6 +46,51 @@ React/Tauri-интерфейса без переписывания backend-ло�
 - `GET /api/readiness/latest` - готовность системы;
 - `GET /api/workforce/policy/explain` - объяснение расчёта показателей.
 
+`GET /api/reports` должен сохранять additive payload `workforce_operations`.
+Это основной contract для экрана руководителя по загрузке, простоям, перегрузу,
+дисциплине процесса и достоверности данных. Клиент должен читать:
+
+- `workforce_operations.summary`;
+- `workforce_operations.rows`;
+- `workforce_operations.model`;
+- `workforce_operations.rows[].load_status`;
+- `workforce_operations.rows[].idle_status`;
+- `workforce_operations.rows[].discipline_status`;
+- `workforce_operations.rows[].data_confidence`;
+- `workforce_operations.rows[].recommended_action`.
+
+Подробная семантика статусов:
+[WORKFORCE_OPERATIONS_MODEL_RU.md](WORKFORCE_OPERATIONS_MODEL_RU.md).
+
+`GET /api/reports` также публикует additive payload `modules.dlp`.
+Клиент должен трактовать его как runtime capability, а не как claim
+сертифицированной DLP:
+
+- `modules.dlp.enabled`;
+- `modules.dlp.status`;
+- `modules.dlp.hot_path`;
+- `modules.dlp.note`.
+
+Если `modules.dlp.enabled=false`, Workforce UI должен продолжать работу и
+показывать DLP/Security/Forensics как disabled или not configured, не превращая
+это в ошибку основного рабочего экрана.
+
+`GET /api/operator` также публикует additive runtime-state поля для первичного
+экрана:
+
+- `cache_status`;
+- `modules.dlp.enabled`;
+- `modules.dlp.status`;
+- `modules.dlp.hot_path`;
+- `modules.dlp.note`;
+- `summary.severity`;
+- `summary.blocks`.
+
+Если `cache_status=warming`, клиент должен показать bounded stale/warming
+state и не держать бесконечный loading indicator. Если
+`modules.dlp.enabled=false`, operator screen должен считать DLP disabled-state
+допустимым состоянием, а не ошибкой Workforce core.
+
 ## Что не меняется
 
 - HTML-портал не удаляется.

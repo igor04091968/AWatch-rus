@@ -1,0 +1,12 @@
+# Secret handling:
+# - put the real Proxmox SSH password into env var before running Ansible:
+#   export AW_PROXMOX_SSH_PASSWORD='...'
+# - if Proxmox and AW server share the same SSH credential, AW_SSH_PASSWORD is
+#   accepted as a fallback.
+ansible_password: "{{ lookup('env', 'AW_PROXMOX_SSH_PASSWORD') | default(lookup('env', 'AW_SSH_PASSWORD'), true) }}"
+
+ansible_become: true
+ansible_become_method: sudo
+# If sudo password differs, set AW_PROXMOX_SUDO_PASSWORD. Otherwise it reuses
+# AW_PROXMOX_SSH_PASSWORD and then AW_SSH_PASSWORD.
+ansible_become_password: "{{ lookup('env', 'AW_PROXMOX_SUDO_PASSWORD') | default(lookup('env', 'AW_PROXMOX_SSH_PASSWORD'), true) | default(lookup('env', 'AW_SUDO_PASSWORD'), true) | default(lookup('env', 'AW_SSH_PASSWORD'), true) }}"

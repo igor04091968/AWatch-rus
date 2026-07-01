@@ -9,6 +9,7 @@ const state = {
   cases: null,
   kpiExplain: null,
   pendingScrollSelector: null,
+  refreshSeq: 0,
   load: {
     status: "LOADING",
     stage: "Инициализация портала",
@@ -81,7 +82,7 @@ function apiBase() {
 
 function apiRole() {
   if (state.tab === "employees" || state.tab === "departments") return "manager";
-  if (state.tab === "owner" || state.tab === "perimeter") return "security";
+  if (state.tab === "owner" || state.tab === "perimeter" || state.tab === "securityFindings") return "security";
   if (state.tab === "incidents") return "forensics";
   if (state.tab === "settings") return "admin";
   const mode = currentViewMode();
@@ -104,6 +105,22 @@ async function loadJson(path) {
   return response.json();
 }
 
+async function loadJsonWithTimeout(path, timeoutMs) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(`${apiBase()}${path}`, {
+      cache: "no-store",
+      headers: roleHeaders(),
+      signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
+    return response.json();
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function postJson(path, payload) {
   const response = await fetch(`${apiBase()}${path}`, {
     method: "POST",
@@ -112,6 +129,19 @@ async function postJson(path, payload) {
   });
   if (!response.ok) throw new Error(`${path}: HTTP ${response.status}`);
   return response.json();
+}
+
+function fallbackSummary(error) {
+  return {
+    operator_ok: false,
+    severity: "STALE",
+    blocks: {
+      collection: {
+        status: "STALE",
+        text: `Портал прогревает первичный срез; быстрый summary временно недоступен: ${error?.message || "timeout"}`
+      }
+    }
+  };
 }
 
 function statusClass(status) {
@@ -478,6 +508,9 @@ function hasTabData(tab, payload) {
       && payload.data.workforce.department_comparison.length > 0;
   }
   if (tab === "owner" || tab === "perimeter") {
+    return Boolean(payload.data && Object.keys(payload.data).length > 0);
+  }
+  if (tab === "securityFindings") {
     return Boolean(payload.data && Object.keys(payload.data).length > 0);
   }
   if (tab === "incidents") {
@@ -1370,6 +1403,7 @@ function renderSecurityView(data, report, extras = {}) {
   return `
     ${renderActionCenter(report?.recommended_actions, { title: "Рекомендуемые действия ИБ", security: true })}
     ${renderSecurityEventsSummary(report?.security_events_summary)}
+    ${renderSecurityFindingInbox(extras.securityFindings)}
     ${renderRiskIncidentCandidates(report?.risk_incident_candidates)}
     ${renderSecurityCorrelation(report?.security_correlation)}
     ${renderCases(cases)}
@@ -1382,10 +1416,84 @@ function renderSecurityView(data, report, extras = {}) {
   `;
 }
 
+function renderSecurityFindingInbox(inbox) {
+  if (!inbox) {
+    return `<section class="card security-findings-card"><h3>Подозрительные станции</h3><p class="muted">Очередь подозрительных станций загружается.</p></section>`;
+  }
+  const disabled = inbox.backend === "disabled" || inbox.status === "disabled";
+  const fallback = Boolean(inbox.fallback_used);
+  const status = disabled ? "UNKNOWN" : fallback ? "WARN" : Number(inbox.critical_count || 0) > 0 ? "FAIL" : Number(inbox.open_count || 0) > 0 ? "WARN" : "OK";
+  const items = Array.isArray(inbox.items) ? inbox.items : [];
+  const rows = items.map(item => `
+    <tr>
+      <td>
+        <strong>${ui(item.host || "-")}</strong>
+        <div class="muted small">${ui(item.ip || "-")} · ${ui(item.user || "-")} · ${ui(item.department || "-")}</div>
+      </td>
+      <td><span class="badge ${statusClass(item.severity)}">${ui(item.severity || "-")}</span></td>
+      <td>
+        <strong>${ui(item.state || "-")}</strong>
+        <div class="muted small">${ui(item.workflow_status || "new")} · ${ui(item.last_workflow_event || "created")}</div>
+      </td>
+      <td>
+        <strong>${ui(item.source || "-")}</strong>
+        <div class="muted small">${ui(item.rule_id || "-")}</div>
+      </td>
+      <td>${ui(item.summary || item.rule_title || "-")}</td>
+      <td>
+        <div class="actions compact-actions">
+          <button class="small-button" data-security-finding-action="decide" data-security-finding-id="${escapeHtml(item.finding_id)}">decide</button>
+          <button class="small-button" data-security-finding-action="plan" data-security-finding-id="${escapeHtml(item.finding_id)}">plan</button>
+          <button class="small-button" data-security-finding-action="approve" data-security-finding-id="${escapeHtml(item.finding_id)}">approve</button>
+          <button class="small-button" data-security-finding-action="apply" data-security-finding-id="${escapeHtml(item.finding_id)}">apply</button>
+          <button class="small-button" data-security-finding-action="rollback" data-security-finding-id="${escapeHtml(item.finding_id)}">rollback</button>
+        </div>
+      </td>
+    </tr>
+  `).join("");
+  return `
+    <section class="card security-findings-card">
+      <div class="section-head">
+        <div>
+          <h3 ${tooltip("Очередь подозрительных рабочих станций из Hayabusa/Sigma/Velociraptor/AWatch. Кнопки фиксируют workflow-события, но не выполняют firewall apply.")}>Подозрительные станции</h3>
+          <p class="muted">Security Finding Inbox: triage -> decide -> plan -> approve -> apply. Реальное применение выполняется отдельным executor.</p>
+        </div>
+        <span class="badge ${statusClass(status)}">${ui(status)}</span>
+      </div>
+      <div class="quality-grid">
+        <div><span class="muted">Открыто</span><strong>${ui(inbox.open_count ?? 0)}</strong></div>
+        <div><span class="muted">Critical</span><strong>${ui(inbox.critical_count ?? 0)}</strong></div>
+        <div><span class="muted">High</span><strong>${ui(inbox.high_count ?? 0)}</strong></div>
+        <div><span class="muted">Contained</span><strong>${ui(inbox.contained_count ?? 0)}</strong></div>
+      </div>
+      ${fallback ? `<div class="quality-warning">Security Finding Inbox временно недоступен: ${ui(inbox.error || "ошибка источника")}</div>` : ""}
+      ${disabled ? `<p class="muted small">Security Finding Inbox отключен: включите SECURITY_EVENTS_BACKEND=clickhouse и примените схему ClickHouse.</p>` : ""}
+      ${items.length === 0 ? `<p class="muted">Подозрительных станций в очереди нет.</p>` : `
+        <div class="table-scroll">
+          <table class="data-table security-findings-table">
+            <thead>
+              <tr>
+                <th>Станция</th>
+                <th>Риск</th>
+                <th>Статус</th>
+                <th>Источник</th>
+                <th>Описание</th>
+                <th>Workflow</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `}
+    </section>
+  `;
+}
+
 function renderManagerView(report) {
   return `
     ${renderExecutiveDashboard(report)}
     ${renderKpiExplain(report?.workforce_kpi_explain)}
+    ${renderWorkforceOperations(report?.workforce_operations || report?.workforce?.operations)}
     ${renderDepartmentRanking(report)}
     ${renderDepartmentHeatMap(report)}
     ${renderOverviewAnalytics(report)}
@@ -1706,6 +1814,134 @@ function renderSimpleItems(items, emptyText) {
       <span class="badge ${statusClass(item.status)}">${ui(item.status || "INFO")}</span>
     </div>
   `).join("")}</div>`;
+}
+
+function renderWorkforceOperations(ops) {
+  if (!ops || typeof ops !== "object") return "";
+  const summary = ops.summary || {};
+  const load = summary.load || {};
+  const idle = summary.idle || {};
+  const discipline = summary.discipline || {};
+  const confidence = summary.confidence || {};
+  const rows = Array.isArray(ops.rows) ? ops.rows.slice(0, 18) : [];
+  const model = ops.model || {};
+  const guardrail = summary.guardrail || "Low confidence строки требуют проверки источников до персонального вывода.";
+  return `
+    <section class="dashboard-band workforce-ops-band">
+      <div class="band-head">
+        <div>
+          <h3>Операционная загрузка</h3>
+          <span class="muted">загрузка, простои, перегруз, дисциплина процесса и достоверность</span>
+        </div>
+        <span class="badge ${statusClass(summary.status || ops.status)}">${ui(summary.status || ops.status || "UNKNOWN")}</span>
+      </div>
+      <div class="quality-grid">
+        <div><span class="muted">Требуют разбора</span><strong>${ui(summary.action_required_users ?? 0)}</strong></div>
+        <div><span class="muted">Недогруз / ниже цели</span><strong>${ui(load.underloaded_users ?? 0)}</strong></div>
+        <div><span class="muted">Перегруз</span><strong>${ui(load.overloaded_users ?? 0)}</strong></div>
+        <div><span class="muted">Простой</span><strong>${ui(idle.idle_users ?? 0)}</strong></div>
+        <div><span class="muted">Дисциплина процесса</span><strong>${ui(discipline.review_users ?? 0)}</strong></div>
+        <div><span class="muted">Low confidence</span><strong>${ui(confidence.low_users ?? 0)}</strong></div>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Сотрудник</th>
+              <th>Ответственный</th>
+              <th>Активно</th>
+              <th>Простой</th>
+              <th>Coverage</th>
+              <th>Загрузка</th>
+              <th>Простой</th>
+              <th>Дисциплина</th>
+              <th>Достоверность</th>
+              <th>Действие</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.length ? rows.map(row => `
+              <tr>
+                <td><strong>${ui(row.user || "-")}</strong><small>${ui(row.department || "-")}</small></td>
+                <td>${ui(row.manager_owner || "-")}</td>
+                <td>${ui(row.workday_active_hhmm || "00:00")}</td>
+                <td>${ui(row.workday_idle_hhmm || "00:00")}</td>
+                <td>${ui(Math.round(Number(row.coverage_pct || 0)))}%</td>
+                <td><span class="badge ${statusClass(workforceOpsSeverity("load", row.load_status))}">${ui(workforceOpsLabel("load", row.load_status))}</span></td>
+                <td><span class="badge ${statusClass(workforceOpsSeverity("idle", row.idle_status))}">${ui(workforceOpsLabel("idle", row.idle_status))}</span></td>
+                <td><span class="badge ${statusClass(workforceOpsSeverity("discipline", row.discipline_status))}">${ui(workforceOpsLabel("discipline", row.discipline_status))}</span></td>
+                <td><span class="badge ${statusClass(workforceOpsSeverity("confidence", row.data_confidence))}">${ui(workforceOpsLabel("confidence", row.data_confidence))}</span></td>
+                <td>${ui(row.recommended_action || row.operations_recommended_action || row.operations?.recommended_action || "-")}</td>
+              </tr>
+            `).join("") : `
+              <tr><td colspan="10"><strong>Нет данных</strong><small>Управленческий срез Worktime пока не сформирован.</small></td></tr>
+            `}
+          </tbody>
+        </table>
+      </div>
+      <p class="muted small">${ui(guardrail)} · модель: <code>${escapeHtml(model.version || "workforce-operations-v1")}</code> / <code>${escapeHtml(model.type || "rule_based")}</code>.</p>
+    </section>
+  `;
+}
+
+function workforceOpsSeverity(kind, value) {
+  const status = String(value || "").toLowerCase();
+  if (kind === "load") {
+    if (status === "normal") return "OK";
+    if (status === "overloaded") return "HIGH";
+    if (["underloaded", "below_target", "no_activity"].includes(status)) return "WARN";
+    if (["no_data", "insufficient_data"].includes(status)) return "MISSING";
+  }
+  if (kind === "idle") {
+    if (status === "no_significant_idle") return "OK";
+    if (["idle_detected", "full_workday_idle_or_absent"].includes(status)) return "WARN";
+    if (status === "unknown") return "MISSING";
+  }
+  if (kind === "discipline") {
+    if (status === "ok") return "OK";
+    if (status) return "WARN";
+  }
+  if (kind === "confidence") {
+    if (status === "high") return "OK";
+    if (status === "medium") return "WARN";
+    if (status === "low") return "MISSING";
+  }
+  return "UNKNOWN";
+}
+
+function workforceOpsLabel(kind, value) {
+  const status = String(value || "").toLowerCase();
+  const labels = {
+    load: {
+      insufficient_data: "нет окна",
+      no_data: "нет данных",
+      no_activity: "нет активности",
+      underloaded: "недогруз",
+      below_target: "ниже цели",
+      normal: "норма",
+      overloaded: "перегруз",
+    },
+    idle: {
+      not_applicable: "не применимо",
+      unknown: "нет данных",
+      full_workday_idle_or_absent: "пустой день",
+      idle_detected: "простой",
+      no_significant_idle: "без простоя",
+    },
+    discipline: {
+      ok: "процесс в норме",
+      off_hours: "вне графика",
+      late_start: "поздний старт",
+      early_finish: "раннее завершение",
+      multiple_flags: "несколько отклонений",
+    },
+    confidence: {
+      high: "high",
+      medium: "medium",
+      low: "low",
+    },
+  };
+  return labels[kind]?.[status] || value || "unknown";
 }
 
 function workforceIndexText(usersCount, activeSeconds) {
@@ -3037,6 +3273,7 @@ function renderReports(data) {
     <h3 class="section-title">Ключевые показатели</h3>
     ${renderKpiCards(data.kpis)}
     ${renderKpiExplain(data.workforce_kpi_explain)}
+    ${renderWorkforceOperations(data.workforce_operations || data.workforce?.operations)}
     ${renderAgentQuality(data.agent_quality, data.agent_quality_explain)}
     ${renderAgentQualityHistory(data.agent_quality_history, data.agent_quality_history_summary)}
     ${renderAgentQualityNodes(data.agent_quality_nodes, data.agent_quality_nodes_summary)}
@@ -3107,28 +3344,41 @@ async function refresh(options = {}) {
   const content = document.getElementById("content");
   const background = Boolean(options.background);
   const stage = options.stage || "Получение данных";
+  const refreshSeq = ++state.refreshSeq;
+  const isCurrentRefresh = () => refreshSeq === state.refreshSeq;
   const progress = (status, label, value) => {
-    if (!background) setLoadStatus(status, label, value);
+    if (!background && isCurrentRefresh()) setLoadStatus(status, label, value);
   };
   try {
     progress("LOADING", stage, 8);
-    if (!background && content) content.innerHTML = renderLoadingContent(stage);
+    if (!background && content && isCurrentRefresh()) {
+      content.innerHTML = renderLoadingContent(stage);
+    }
     if (!state.links) {
       progress("LOADING", "Получение данных", 18);
       state.links = await loadJson("/links");
+      if (!isCurrentRefresh()) return;
     }
     progress("LOADING", "Расчёт показателей", 34);
-    const summary = await loadJson("/summary");
+    const summary = await loadJsonWithTimeout("/summary", 5000).catch(fallbackSummary);
+    if (!isCurrentRefresh()) return;
     progress("LOADING", "Расчёт показателей", 46);
     state.readiness = {
-      bundle: await loadJson("/readiness/bundle").catch(error => ({ ok: false, error: error.message })),
+      bundle: await loadJsonWithTimeout("/readiness/bundle", 3000).catch(error => ({ ok: false, error: error.message })),
       verify: state.readiness?.verify || null
     };
+    if (!isCurrentRefresh()) return;
     renderSummary(summary, state.readiness);
     progress("LOADING", "Формирование главного вывода", 68);
     const tabResult = await loadCurrentTab();
+    if (!isCurrentRefresh()) return;
     progress("LOADING", "Подготовка разделов", 88);
     if (!hasTabData(state.tab, tabResult)) {
+      if (tabResult.html && tabResult.html.includes("data-loading-state=\"STALE\"")) {
+        setLoadStatus("STALE", "Первичный срез прогревается", 100, { error: "cache/prewarm in progress" });
+        if (content) content.innerHTML = tabResult.html;
+        return;
+      }
       setLoadStatus("EMPTY", "Данные отсутствуют", 100);
       if (content) {
         content.innerHTML = `${renderEmptyState("Источники ответили, но полезные записи для текущего раздела пока не найдены.")}${tabResult.html || ""}`;
@@ -3139,20 +3389,29 @@ async function refresh(options = {}) {
     setLoadStatus("READY", "Данные готовы", 100);
     consumePendingScroll();
   } catch (error) {
+    if (!isCurrentRefresh()) return;
     showError(error);
   }
 }
 
 async function loadCurrentTab() {
   if (state.tab === "operator") {
-    const data = await loadJson("/operator");
+    const data = await loadJsonWithTimeout("/operator", 7000).catch(error => null);
+    if (!data) {
+      return {
+        data: {},
+        html: staleBanner("Портал прогревает первичный срез. Быстрые health/readiness доступны, тяжелый операционный срез будет подставлен после cache/prewarm.")
+      };
+    }
     state.operatorData = data;
-    state.reports = await loadJson("/reports").catch(() => state.reports);
+    state.reports = await loadJsonWithTimeout("/reports", 3000).catch(() => state.reports);
+    let securityFindings = null;
     if (currentViewMode() === "security" || currentViewMode() === "forensics") {
       state.cases = await loadJson("/cases").catch(error => ({ ok: false, error: error.message, cases: [] }));
+      securityFindings = await loadJson("/security/findings").catch(error => ({ status: "fallback", fallback_used: true, error: error.message, items: [] }));
     }
     updateFilters(state.reports);
-    return { data, report: state.reports, cases: state.cases, html: renderOperator(data, state.reports, { cases: state.cases }) };
+    return { data, report: state.reports, cases: state.cases, securityFindings, html: renderOperator(data, state.reports, { cases: state.cases, securityFindings }) };
   }
   if (state.tab === "manager") {
     const data = await loadJson("/manager");
@@ -3177,6 +3436,19 @@ async function loadCurrentTab() {
   if (state.tab === "owner") {
     const data = await loadJson("/owner");
     return { data, html: renderOwner(data) };
+  }
+  if (state.tab === "securityFindings") {
+    const data = await loadJson("/security/findings");
+    return { data, html: `
+      <div class="page-head">
+        <div>
+          <h2 class="section-title">Подозрительные станции</h2>
+          <p class="muted">Очередь triage для Hayabusa/Sigma/Velociraptor/AWatch findings. Реальное применение containment выполняется отдельным executor.</p>
+        </div>
+        <span class="badge ${statusClass(data.status)}">${ui(data.status || "unknown")}</span>
+      </div>
+      ${renderSecurityFindingInbox(data)}
+    ` };
   }
   if (state.tab === "incidents") {
     const data = await loadJson("/incidents");
@@ -3213,6 +3485,7 @@ function tabLoadingStage(tab) {
     employees: "Получение данных сотрудников",
     departments: "Расчёт показателей подразделений",
     owner: "Формирование главного вывода по рискам",
+    securityFindings: "Загрузка очереди подозрительных станций",
     incidents: "Подготовка разделов расследований",
     perimeter: "Подготовка разделов сетевого периметра",
     reports: "Подготовка разделов отчета",
@@ -3230,7 +3503,7 @@ function setTab(tab) {
 }
 
 function applySecurityMode(tab) {
-  document.body.classList.toggle("security-mode", tab === "owner" || tab === "incidents" || tab === "perimeter");
+  document.body.classList.toggle("security-mode", tab === "owner" || tab === "incidents" || tab === "perimeter" || tab === "securityFindings");
 }
 
 function consumePendingScroll() {
@@ -3309,6 +3582,12 @@ document.addEventListener("click", event => {
   const button = event.target.closest("[data-incident-action]");
   if (!button) return;
   incidentAction(button).catch(showError);
+});
+
+document.addEventListener("click", event => {
+  const button = event.target.closest("[data-security-finding-action]");
+  if (!button) return;
+  securityFindingWorkflowAction(button).catch(showError);
 });
 
 document.addEventListener("click", event => {
@@ -3423,6 +3702,23 @@ async function incidentAction(button) {
   button.disabled = true;
   await postJson("/incidents/action", payload);
   await refresh({ stage: "Обновление статуса инцидента" });
+}
+
+async function securityFindingWorkflowAction(button) {
+  const findingId = button.dataset.securityFindingId;
+  const action = button.dataset.securityFindingAction;
+  const promptText = action === "apply"
+    ? "Комментарий к apply request. Реальное применение firewall отсюда не выполняется."
+    : `Комментарий к действию ${action}`;
+  const comment = window.prompt(promptText, "");
+  if (comment === null) return;
+  button.disabled = true;
+  await postJson("/security/findings/workflow", {
+    finding_id: findingId,
+    action,
+    comment,
+  });
+  await refresh({ stage: "Обновление очереди подозрительных станций" });
 }
 
 async function candidateReviewAction(button) {

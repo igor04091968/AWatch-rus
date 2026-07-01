@@ -83,6 +83,11 @@ gateway:
 /d/detmir-rdp-user-activity/detmir3a-rabota-pol-zovatelej-v-rdp?orgId=1&from=now-7d&to=now&timezone=browser&var-host=SHARKON2025&refresh=5m
 ```
 
+`var-host=SHARKON2025` здесь является stable logical host id, а не требованием
+к физическому Windows `COMPUTERNAME`. При переименовании RDP-сервера dashboard
+должен продолжать смотреть на тот же logical id до отдельной planned migration.
+См. `docs/WINDOWS_LOGICAL_HOST_ID_RU.md`.
+
 В портале он доступен как кнопка `Графики сотрудников`.
 
 Не включайте `[auth.anonymous]` для решения этой задачи: это откроет Grafana на

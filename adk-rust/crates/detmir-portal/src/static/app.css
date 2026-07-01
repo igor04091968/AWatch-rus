@@ -97,6 +97,17 @@ body.security-mode .demo-button.is-active {
   color: var(--link);
 }
 
+.compact-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.security-findings-table td {
+  vertical-align: top;
+}
+
 .shell {
   max-width: none;
   min-width: 0;
