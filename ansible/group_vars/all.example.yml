@@ -47,6 +47,7 @@ aw_worktime_host: "{{ aw_monitored_windows_hostname }}"
 aw_rus_health_worktime_api_base: "http://127.0.0.1:5610"
 aw_rus_health_state_dir: "{{ aw_server_data_dir }}/health"
 aw_rus_health_validation_dir: "{{ aw_rus_health_state_dir }}/windows-validation"
+aw_rus_health_rdp_tcp_required: true
 aw_browser_smoke_enabled: true
 aw_browser_smoke_engine: "chromium-cli"
 aw_legacy_db_merge_enabled: false
@@ -58,6 +59,15 @@ aw_hayabusa_telegram_enabled: true
 aw_hayabusa_telegram_min_severity: "high"
 aw_hayabusa_telegram_bot_token: ""
 aw_hayabusa_telegram_chat_ids: ""
+aw_security_finding_inbox_enabled: false
+aw_security_finding_inbox_required: false
+aw_security_finding_inbox_bin: "/usr/local/bin/security-finding-inbox"
+aw_security_finding_inbox_min_severity: "medium"
+aw_security_finding_executor_work_dir: "{{ aw_server_data_dir }}/security-finding-executor"
+aw_security_finding_executor_lock: "/var/lock/aw-security-finding-executor.lock"
+aw_containment_engine_bin: "/usr/local/bin/containment-engine"
+aw_containment_management_allowlist: ""
+aw_containment_blocked_remote_addresses: ""
 
 aw_repo_root: "{{ playbook_dir | dirname }}"
 
@@ -85,17 +95,44 @@ aw_server_always_active_pattern: "aw-watcher-window"
 aw_server_landingpage: "/#/activity/HOST-EXAMPLE/view/"
 aw_health_strict_fileops: 0
 
-aw_dlp_policy_engine_enabled: true
+aw_dlp_profile: "core_only"
+detmir_portal_dlp_profile: "core_only"
+detmir_portal_dlp_module_enabled_override: false
+aw_dlp_enabled: false
+aw_dlp_disabled_reason: "operator_disabled_to_reduce_proxmox_influx_grafana_clickhouse_load"
+aw_dlp_disabled_since: ""
+aw_dlp_light_collector_enabled: false
+aw_dlp_light_guard_enabled: true
+aw_dlp_light_guard_load_ratio: "1.50"
+aw_dlp_light_guard_mem_available_pct_min: "15"
+aw_dlp_light_guard_iowait_pct_max: "20"
+aw_dlp_light_guard_strikes_required: 3
+aw_dlp_light_guard_state_dir: "{{ aw_server_data_dir }}/health"
+aw_dlp_aggregator_bucket_prefixes: "aw-file-operations_,aw-dlp-incidents_"
+aw_dlp_aggregator_limit: 500
+aw_dlp_aggregator_lookback_hours: 2
+aw_dlp_aggregator_overlap_seconds: 60
+aw_dlp_aggregator_timeout_seconds: 8
+aw_dlp_aggregator_on_calendar: "*:3/15:10"
+aw_dlp_aggregator_cpu_quota: "10%"
+aw_dlp_aggregator_memory_max: "256M"
+aw_containment_enabled: false
+aw_containment_mode: "shadow"
+aw_containment_policy_path: "/etc/activitywatch/containment-policy.json"
+aw_containment_default_ttl_minutes: 60
+aw_containment_require_admin_channel_check: true
+aw_containment_allow_auto_for_servers: false
+aw_dlp_policy_engine_enabled: false
 aw_dlp_policy_engine_bind_host: "0.0.0.0"
 aw_dlp_policy_engine_port: 5601
 aw_dlp_policy_engine_db_path: "{{ aw_server_data_dir }}/dlp-policy-engine.sqlite"
-aw_dlp_content_analysis_enabled: true
-aw_dlp_integrations_enabled: true
-aw_dlp_case_management_enabled: true
+aw_dlp_content_analysis_enabled: false
+aw_dlp_integrations_enabled: false
+aw_dlp_case_management_enabled: false
 aw_dlp_case_bind_host: "0.0.0.0"
 aw_dlp_case_port: 5602
 aw_dlp_case_db_path: "/opt/activitywatch/dlp-case-management/cases.db"
-aw_dlp_compliance_enabled: true
+aw_dlp_compliance_enabled: false
 aw_dlp_compliance_report_dir: "/opt/activitywatch/dlp-compliance/reports"
 aw_dlp_compliance_template_path: "/opt/activitywatch/dlp-compliance/templates/152-fz-report.html"
 aw_server_post_deploy_health_check_enabled: true

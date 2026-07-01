@@ -2,7 +2,7 @@
   "use strict";
 
   var BAD_HOST = ["HOST", "EXAMPLE"].join("-");
-  var DEFAULT_HOST = "SHARKON2025";
+  var DEFAULT_HOST = "HOST-EXAMPLE";
 
   function decode(value) {
     try {

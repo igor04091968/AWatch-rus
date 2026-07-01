@@ -38,9 +38,15 @@ ansible-playbook -i inventory.ini deploy_aw_server.yml
 Рекомендуемый способ не хранить пароли в репозитории — перед запуском экспортировать их в переменные окружения:
 
 - Linux `aw_server` (SSH пароль root): `AW_SSH_PASSWORD`
+- Linux `proxmox` (SSH пароль): `AW_PROXMOX_SSH_PASSWORD`
+- Sudo для Linux, если отличается от SSH: `AW_SUDO_PASSWORD` или
+  `AW_PROXMOX_SUDO_PASSWORD`
 - Windows `aw_windows` (WinRM пароль): `AW_WINRM_PASSWORD`
 
-В `group_vars/aw_server.yml` и `group_vars/windows.yml` они читаются через `lookup('env', ...)`.
+В `group_vars/aw_server.yml`, `group_vars/proxmox.yml` и
+`group_vars/aw_windows.yml` они читаются через `lookup('env', ...)`.
+В `ansible/inventory.ini` пароли хранить нельзя: там остаются только host,
+user, port и connection-параметры.
 
 ## Полный установочный playbook (всё за один запуск)
 
@@ -125,8 +131,8 @@ Playbook:
 - после deploy принудительно запускает `ActivityWatch Recovery` и managed `ActivityWatch Launch *` задачи;
 - включает (`Enable-ScheduledTask`) `ActivityWatch Recovery` и managed `ActivityWatch Launch *` задачи перед запуском (иначе WebUI может показывать `Active time: 0s`);
 - оставляет `ActivityWatch Recovery` включённым даже при активном `AWatchRusCollectorGuard`: guard является основным контроллером, recovery остаётся fallback/bootstrap path;
-- выполняет API smoke-check bucket `aw-watcher-afk_<COMPUTERNAME>` и ожидает свежие события;
-- выполняет API smoke-check bucket `aw-watcher-window_<COMPUTERNAME>` и ожидает свежие события (по умолчанию включено);
+- выполняет API smoke-check bucket `aw-watcher-afk_<aw_windows_logical_host_id>` и ожидает свежие события;
+- выполняет API smoke-check bucket `aw-watcher-window_<aw_windows_logical_host_id>` и ожидает свежие события (по умолчанию включено);
 - запускает `validate-deployment.ps1`;
 - забирает JSON-отчёт в локальную директорию (`/tmp/aw-rus-validation-<USER>` по умолчанию).
 - настраивает scheduled task `ActivityWatch Hayabusa Upload` с периодом и lookback по vars.
@@ -146,8 +152,10 @@ Playbook:
 - `aw_windows_legacy_install_root` / `aw_windows_legacy_state_root` — старые production paths, откуда выполняется перенос;
 - `aw_windows_migration_report_remote_path` — JSON-отчёт о миграции на Windows-хосте;
 - `aw_windows_package_version`, `aw_windows_package_url`, `aw_windows_package_zip_path` — версия и источник Windows-пакета ActivityWatch;
-- `aw_windows_api_smoke_check_bucket: ""` — автоматически использовать `aw-watcher-afk_<COMPUTERNAME>`;
-- `aw_windows_api_smoke_check_window_enabled: true` — включить дополнительный smoke-check `aw-watcher-window_<COMPUTERNAME>`;
+- `aw_windows_domain: ""` — Windows account domain/local logon prefix. Если пусто или `HOST-EXAMPLE`, playbook берёт текущий `$env:COMPUTERNAME` с Windows-хоста через WinRM;
+- `aw_windows_logical_host_id: ""` — stable ActivityWatch id для bucket-ов/дашбордов; если пусто, fallback к `COMPUTERNAME`;
+- `aw_windows_api_smoke_check_bucket: ""` — автоматически использовать `aw-watcher-afk_<aw_windows_logical_host_id>`;
+- `aw_windows_api_smoke_check_window_enabled: true` — включить дополнительный smoke-check `aw-watcher-window_<aw_windows_logical_host_id>` с fallback к физическому `COMPUTERNAME`;
 - `aw_windows_api_smoke_check_window_bucket: ""` — переопределить bucket для window smoke-check;
 - `aw_windows_api_smoke_check_min_events: 1` — минимум событий, ожидаемых в smoke-check;
 - `aw_windows_fail_on_validation_error: true` — завершать playbook ошибкой, если `validate-deployment.ps1` возвращает `overallOk=false`;
@@ -157,7 +165,7 @@ Playbook:
 - `aw_windows_hayabusa_auto_upload_hours_back: 6` — lookback для каждого запуска;
 - `aw_windows_hayabusa_auto_upload_mode: "incident"` — mode для server-side processing;
 - `aw_windows_hayabusa_auto_upload_task_name: "ActivityWatch Hayabusa Upload"` — имя scheduled task.
-- `aw_windows_hayabusa_auto_upload_run_as_user: "Администратор"` — production principal для scheduled task на RDP-хосте. На `SHARKON2025` запуск `powershell.exe` из `SYSTEM` возвращал `0xC0000142`, поэтому авто-upload должен идти как interactive/highest task от локального администратора.
+- `aw_windows_hayabusa_auto_upload_run_as_user: "Администратор"` — production principal для scheduled task на RDP-хосте. На текущем DetMir RDP-контуре запуск `powershell.exe` из `SYSTEM` возвращал `0xC0000142`, поэтому auto-upload должен идти как interactive/highest task от локального администратора.
 
 ## Server-side Hayabusa auto-case и Telegram alerting
 
@@ -290,3 +298,5 @@ bash scripts/prod_rollout.sh
 ```
 
 Скрипт попросит `AW_SSH_PASSWORD` и `AW_WINRM_PASSWORD` интерактивно (ввод скрыт) и сложит логи в `.rollout-logs/`.
+Для Proxmox можно дополнительно экспортировать `AW_PROXMOX_SSH_PASSWORD`, если
+он отличается от `AW_SSH_PASSWORD`.

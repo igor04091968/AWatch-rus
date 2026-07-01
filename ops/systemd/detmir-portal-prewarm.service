@@ -1,0 +1,15 @@
+[Unit]
+Description=DetMir portal report cache prewarm
+After=network-online.target detmir-portal.service
+Wants=network-online.target detmir-portal.service
+
+[Service]
+Type=oneshot
+User=igor
+Group=igor
+Environment=no_proxy=localhost,127.0.0.1,10.10.10.2
+Environment=NO_PROXY=localhost,127.0.0.1,10.10.10.2
+ExecStart=/usr/bin/curl -fsS --max-time 180 http://127.0.0.1:8720/api/reports -o /dev/null
+TimeoutStartSec=210
+Nice=19
+IOSchedulingClass=idle

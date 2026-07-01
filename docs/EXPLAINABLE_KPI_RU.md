@@ -4,6 +4,12 @@ Explainable Workforce KPI отвечает на вопрос: почему по�
 активности. Слой предназначен для руководителя, ИБ и администратора, но не
 является HR-оценкой сотрудника и не использует ML/LLM.
 
+Смежный, но отдельный contract по операционной загрузке описан в
+[WORKFORCE_OPERATIONS_MODEL_RU.md](WORKFORCE_OPERATIONS_MODEL_RU.md). KPI
+объясняет процент активности, а Workforce Operations показывает загрузку,
+простои, перегруз, дисциплину процесса, достоверность данных и рекомендуемое
+ручное действие.
+
 ## API
 
 Endpoint:
@@ -101,6 +107,10 @@ Security и Forensics не получают Workforce Dashboard через `/api
 
 Раздел содержит KPI score, confidence, coverage, факторы, warnings и
 рекомендации.
+
+Блок `Операционная загрузка` в портале использует другой payload:
+`workforce_operations`. Он не заменяет explainable KPI и не должен
+интерпретироваться как автоматическая HR-оценка.
 
 ## Ограничения Pilot v1
 

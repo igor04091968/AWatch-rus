@@ -1796,6 +1796,76 @@ systemctl is-active tsj-guardian-bot tsj-guardian-watchdog gost-tg
 - требует laptop-only path или интерактивный shell;
 - выводит секреты в stdout/journald/report.
 
+## 12a. DetMir hardline resilience deltas
+
+2026-06-24 Hayabusa poison-package isolation:
+
+- `aw-hayabusa-autoprocess-rust` validates drop zip packages before `accept`;
+- corrupt/empty/unsafe packages and invalid sidecars are quarantined under
+  `/opt/hayabusa/quarantine/drop/...` with `reason.json`;
+- `aw-hayabusa process-inbox` isolates failed incoming packages under
+  `/opt/hayabusa/quarantine/incoming/...` and continues with the rest of the
+  queue;
+- one poison zip no longer blocks the whole Hayabusa batch or trips systemd
+  start-limit by itself;
+- verification: `bash -n aw-server/hayabusa/aw-hayabusa.sh` and
+  `cargo test -p hayabusa-tools` passed locally;
+- live rollout on AW server completed on 2026-06-24 with backups, `doctor` OK,
+  isolated empty-drop dry-run OK, production `incoming_zip=0`, `DROP_COUNT=0`,
+  `staged_dirs=0`; stale 2026-06-20 staging residue moved to quarantine with
+  `reason.json`.
+
+2026-06-24 Windows collector guard child watchdog:
+
+- `AWatchRusCollectorGuardService.cs` now watches the child process via
+  `Process.Exited`;
+- unexpected child exit triggers bounded restart inside the service wrapper;
+- restart budget exhaustion exits the service with a non-zero code so SCM
+  recovery can restart the wrapper instead of leaving `running/no child`;
+- `install-collector-guard-service.ps1` sets `sc.exe failureflag <service> 1`;
+- runtime contract is unchanged: Rust collector guard remains the preferred
+  child, PowerShell guard remains fallback, and `ActivityWatch Recovery` remains
+  enabled as bootstrap fallback;
+- local static verification passed: C# wrapper compiled through PowerShell
+  `Add-Type`; PowerShell installer parsed through the PowerShell parser;
+- live rollout on RDP completed on 2026-06-24 with backup, reinstall in
+  `enforce` mode, `failureflag` enabled, controlled child-kill fault injection,
+  and final validation `service=Running`, `child_count=1`, latest Rust guard
+  cycle `status=ok`.
+
+2026-06-24 DetMir contour resilience check:
+
+- added `scripts/detmir_resilience_check.sh`;
+- repo mode verifies hardening presence for Hayabusa poison quarantine, Windows
+  child watchdog, SCM `failureflag`, and resilience docs;
+- live mode is read-only and checks local AW service/API state, failed systemd
+  units, Hayabusa queues/quarantine, and AW SQLite DB/WAL size thresholds;
+- `scripts/run_awatch_contour_check.sh` can include it with
+  `RUN_RESILIENCE_CHECK=1` and `RESILIENCE_CHECK_MODE=repo|live|all`;
+- strict secret mode (`DETMIR_RESILIENCE_STRICT_SECRETS=1`) fails literal
+  Ansible password assignments without printing secret values;
+- local verification: shell syntax passed, repo mode passed with `ok=15`,
+  `fail=0`, and one WARN for literal private inventory password assignments;
+- live AW server verification passed with `ok=9`, `fail=0`; one expected WARN
+  remains for the deliberate quarantine `reason.json` created during stale
+  staging cleanup.
+
+2026-06-24 live healthd wrapper timeout correction:
+
+- `aw-rus-healthd-rust` had a 20 second default wrapper timeout for
+  `/usr/local/bin/aw-health-check` and `/usr/local/bin/dlp-health-check --json`;
+- under concurrent contour checks the DLP health command could exceed that
+  limit, be killed, and leave partial stdout that healthd reported as
+  `invalid JSON output`;
+- production `/etc/activitywatch/aw-server.env` now sets
+  `AW_RUS_HEALTH_WRAPPER_TIMEOUT_SECONDS=90`, still below the service
+  `TimeoutStartSec=180`;
+- `aw-server/aw-server.env.example` carries the same value so redeploys do not
+  restore the false-fail default;
+- live verification after the change: `aw-rus-healthd.service` finished with
+  `status=0/SUCCESS`, `fail=0`, while AW API, Worktime API and DLP health were
+  independently reachable.
+
 ## 13. Рабочий принцип
 
 Правильный перенос на Rust - это не переписывание строк один-в-один.
