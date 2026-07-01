@@ -31,6 +31,7 @@
 /.github/workflows/ci.yml @igor04091968 @rachkovii68-bisness
 /.github/workflows/security.yml @igor04091968 @rachkovii68-bisness
 /.github/workflows/coverage.yml @igor04091968 @rachkovii68-bisness
+/.github/GOVERNANCE.md @igor04091968 @rachkovii68-bisness
 /.github/pull_request_template.md @igor04091968 @rachkovii68-bisness
 /.github/ISSUE_TEMPLATE/ @igor04091968 @rachkovii68-bisness
 /.github/CODEOWNERS @igor04091968 @rachkovii68-bisness
@@ -38,6 +39,9 @@
 /docs/BRANCH_PROTECTION_EVIDENCE_RU.md @igor04091968 @rachkovii68-bisness
 /docs/PR_REVIEW_WORKFLOW_RU.md @igor04091968 @rachkovii68-bisness
 /docs/PR_REVIEW_EVIDENCE_RU.md @igor04091968 @rachkovii68-bisness
+/docs/ENTERPRISE_QUALITY_STANDARD_RU.md @igor04091968 @rachkovii68-bisness
+/docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md @igor04091968 @rachkovii68-bisness
+/docs/OPERATIONAL_MATURITY_RU.md @igor04091968 @rachkovii68-bisness
 
 # Ansible deployment automation.
 /ansible/ @igor04091968 @rachkovii68-bisness

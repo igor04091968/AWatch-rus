@@ -271,8 +271,16 @@ collectors.
 
 ### Engineering governance and residual risks
 
+- Enterprise quality standard:
+  [docs/ENTERPRISE_QUALITY_STANDARD_RU.md](docs/ENTERPRISE_QUALITY_STANDARD_RU.md).
+- GitHub governance entrypoint:
+  [.github/GOVERNANCE.md](.github/GOVERNANCE.md).
 - Review checklist:
   [docs/REVIEW_CHECKLIST_RU.md](docs/REVIEW_CHECKLIST_RU.md).
+- Operational validation runbook:
+  [docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md](docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md).
+- Operational maturity harness:
+  [docs/OPERATIONAL_MATURITY_RU.md](docs/OPERATIONAL_MATURITY_RU.md).
 - Residual risks register:
   [docs/RESIDUAL_RISKS_RU.md](docs/RESIDUAL_RISKS_RU.md).
 - Public issues plan:

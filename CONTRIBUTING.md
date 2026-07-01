@@ -4,6 +4,11 @@ GitHub is public mirror validation only. Primary registry release evidence is
 produced separately on the Russian build-runner and documented under
 `docs/registry/`.
 
+All contributions must follow the production-first governance entrypoint:
+`.github/GOVERNANCE.md`. AWatch-rus is already deployed in a real company, so
+reliability, operational maturity, security and backward compatibility take
+priority over new functionality.
+
 ## Branching
 
 - Работайте в feature-ветке, не пушьте напрямую в `main`.
@@ -49,6 +54,11 @@ produced separately on the Russian build-runner and documented under
 ## PR content
 
 - Изменения и обоснование.
-- Риск и rollback.
+- Purpose.
+- Operational impact.
+- Risk assessment.
+- Rollback strategy.
 - Какие команды валидации были выполнены.
+- Documentation changes.
+- Acceptance criteria.
 - Какие проверки были пропущены и почему, если пропуск был необходим.
