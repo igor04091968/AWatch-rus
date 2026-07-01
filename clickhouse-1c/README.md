@@ -66,6 +66,9 @@ File 1C + reglog + host telemetry
 - `grafana/provisioning/dashboards/files/1c-telemetry-board.json` — telemetry dashboard по состоянию файловых баз, reglog growth, busy markers и host load.
 - `detections/build_entity_timeline.sql` — сборка единого timeline слоя.
 - `detections/open_cases_from_detections.sql` — шаблон открытия cases из detections.
+- `security/security_finding_inbox.sql` — schema Security Finding Inbox:
+  подозрительные станции, raw finding evidence, workflow/executor events и
+  latest-state view для DetMir Portal.
 - `ops/etl-cron.example` — legacy cron example; production использует
   `aw-1c-ingest.timer`.
 - `ops/retention-policy.md` — минимальная retention policy.

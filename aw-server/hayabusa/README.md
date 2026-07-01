@@ -79,6 +79,13 @@ Behavior:
 - optional `*.caseid` sidecar with the same basename triggers automatic bounded case linkage
 - processed `*.zip` is moved out of `drop/` into `report_dir/input-drop/` to avoid repeated re-trigger loops
 - sidecars are archived into `report_dir/input-sidecars/`
+- bad drop packages are rejected before `accept`, moved to
+  `/opt/hayabusa/quarantine/drop/<timestamp>_<package>/`, and recorded with a
+  `reason.json` file instead of blocking later packages
+- bad or partially extracted incoming packages are moved to
+  `/opt/hayabusa/quarantine/incoming/<timestamp>_<package>/`; `process-inbox`
+  continues with the remaining queue and does not trip systemd start-limit only
+  because of one poison archive
 
 ## Windows direct upload into the drop zone
 
@@ -118,4 +125,43 @@ Production scheduled task on `SHARKON2025`:
 
 Do not switch this task back to `SYSTEM` on the current RDP host: Task Scheduler starts `powershell.exe` under `SYSTEM`, but the process exits with `0xC0000142` before the upload script starts.
 
-Server-side processing accepts Windows zip packages with backslash path separators and UTF-8 BOM in sidecar JSON. `aw-hayabusa-autoprocess` processes the full incoming queue after accepting a drop package, so stale incoming files from an earlier failed run are drained before the latest intake is recorded.
+Server-side processing accepts Windows zip packages with backslash path
+separators and UTF-8 BOM in sidecar JSON. `aw-hayabusa-autoprocess` processes
+the full incoming queue after accepting a drop package, so stale incoming files
+from an earlier failed run are drained before the latest intake is recorded.
+
+Poison-package handling is fail-closed:
+
+- Rust `aw-hayabusa-autoprocess-rust` validates the zip and sidecars before
+  calling `aw-hayabusa accept`.
+- A corrupt/empty/unsafe drop package is quarantined with its `.meta.json`,
+  `.caseid`, optional checksum sidecar and `reason.json`.
+- `aw-hayabusa process-inbox` isolates a failed incoming package instead of
+  aborting the whole batch.
+- Operators replay only a fixed/re-exported package by moving it back to the
+  drop zone or incoming queue. Do not edit quarantined evidence in place.
+
+## Security Finding Inbox integration
+
+`aw-hayabusa-autoprocess-rust` can publish a normalized suspicious-workstation
+finding after a successful intake is written to `/opt/hayabusa/state/latest-intake.json`.
+
+Default is disabled to keep forensic processing independent from ClickHouse:
+
+```bash
+AW_SECURITY_FINDING_INBOX_ENABLED=false
+```
+
+Enable after the ClickHouse schema and CLI are installed:
+
+```bash
+AW_SECURITY_FINDING_INBOX_ENABLED=true
+AW_SECURITY_FINDING_INBOX_BIN=/usr/local/bin/security-finding-inbox
+AW_SECURITY_FINDING_INBOX_MIN_SEVERITY=medium
+AW_SECURITY_FINDING_INBOX_REQUIRED=false
+```
+
+With `AW_SECURITY_FINDING_INBOX_REQUIRED=false`, a temporary ClickHouse/inbox
+failure is logged as warning and does not poison the Hayabusa backlog. Use
+`true` only when the operator wants inbox publication failure to become an
+operational failure for the drop service.

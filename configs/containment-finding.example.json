@@ -1,0 +1,21 @@
+{
+  "host": "HOST-EXAMPLE",
+  "host_role": "workstation",
+  "state": "suspected_infected",
+  "confidence": "high",
+  "signals": [
+    {
+      "source": "hayabusa",
+      "rule_id": "sigma-placeholder-critical",
+      "confidence": "critical"
+    },
+    {
+      "source": "velociraptor",
+      "rule_id": "Windows.Hayabusa.Monitoring",
+      "confidence": "high"
+    }
+  ],
+  "recommended_action": "windows_firewall_quarantine",
+  "management_channel_checked": true,
+  "manual_operator_flag": false
+}

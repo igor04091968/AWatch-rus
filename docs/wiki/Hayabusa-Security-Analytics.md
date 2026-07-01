@@ -31,7 +31,7 @@ journalctl -u aw-hayabusa-drop.service -n 80 --no-pager
 curl -fsS http://127.0.0.1:5602/api/0/dlp/cases/30
 ```
 
-Ожидаемо: `drop` и `incoming` пустые, `latest-intake.json` имеет `status=ok`, `host=SHARKON2025`, а `LastTaskResult` Windows-задачи равен `0`.
+Ожидаемо: `drop` и `incoming` пустые, `latest-intake.json` имеет `status=ok`, `host=<stable-aw-logical-host-id>`, а `LastTaskResult` Windows-задачи равен `0`. Для текущего DetMir production historical logical id может оставаться `SHARKON2025`, даже если физический `COMPUTERNAME` RDP-сервера изменён.
 
 ## Что получает оператор
 

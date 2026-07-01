@@ -32,6 +32,8 @@ reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 urlencoding.workspace = true
+sha2.workspace = true
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile.workspace = true
