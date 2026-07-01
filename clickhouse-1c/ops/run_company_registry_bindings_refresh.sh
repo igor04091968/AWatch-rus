@@ -15,17 +15,19 @@ if [[ ! -x "${VENV}/bin/python" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
+set -a
+# shellcheck source=/dev/null
 . "${ENV_FILE}"
+set +a
 
 CH_RUNTIME_HOST="${AW_1C_CLICKHOUSE_RUNTIME_HOST:-${CLICKHOUSE_HOST}}"
 if [[ "${CH_RUNTIME_HOST}" == "clickhouse" ]]; then
   CH_RUNTIME_HOST="127.0.0.1"
 fi
+: "${CLICKHOUSE_PORT:?CLICKHOUSE_PORT is required}"
 
 "${VENV}/bin/python" "${ROOT}/ai/refresh_company_registry_bindings.py" \
   --host "${CH_RUNTIME_HOST}" \
   --port "${CLICKHOUSE_PORT}" \
   --user "${CLICKHOUSE_USER}" \
-  --password "${CLICKHOUSE_PASSWORD}" \
   --database "${CLICKHOUSE_DB}"

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2119
 set -euo pipefail
 
 ROOT="${AW_1C_ROOT:-/opt/activitywatch/clickhouse-1c}"
@@ -21,18 +22,20 @@ if ! docker ps --format '{{.Names}}' | grep -qx "${CH_CONTAINER}"; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
+set -a
+# shellcheck source=/dev/null
 . "${ENV_FILE}"
+set +a
+# shellcheck source=clickhouse-1c/ops/clickhouse-client-safe.sh
+. "${ROOT}/ops/clickhouse-client-safe.sh"
 
 CH_RUNTIME_HOST="${AW_1C_CLICKHOUSE_RUNTIME_HOST:-${CLICKHOUSE_HOST}}"
 if [[ "${CH_RUNTIME_HOST}" == "clickhouse" ]]; then
   CH_RUNTIME_HOST="127.0.0.1"
 fi
+: "${CLICKHOUSE_PORT:?CLICKHOUSE_PORT is required}"
 
-docker exec -i "${CH_CONTAINER}" clickhouse-client \
-  --user "${CLICKHOUSE_USER}" \
-  --password "${CLICKHOUSE_PASSWORD}" \
-  --database "${CLICKHOUSE_DB}" \
+aw_1c_clickhouse_client \
   < "${ROOT}/clickhouse/init/04_company_intelligence.sql"
 
 "${ROOT}/ops/run_company_registry_bindings_refresh.sh"
@@ -41,5 +44,4 @@ docker exec -i "${CH_CONTAINER}" clickhouse-client \
   --host "${CH_RUNTIME_HOST}" \
   --port "${CLICKHOUSE_PORT}" \
   --user "${CLICKHOUSE_USER}" \
-  --password "${CLICKHOUSE_PASSWORD}" \
   --database "${CLICKHOUSE_DB}"

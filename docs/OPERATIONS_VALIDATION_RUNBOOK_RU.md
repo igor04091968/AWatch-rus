@@ -228,3 +228,38 @@ powershell.exe -ExecutionPolicy Bypass `
 Запрещено вручную удалять Windows collector queues, incident artifacts, DLP
 evidence, Hayabusa archives, Grafana data или ClickHouse tables без отдельного
 operator approval и backup/restore plan.
+
+## Проверка отсутствия ClickHouse-пароля в argv
+
+Цель проверки - убедиться, что ClickHouse/1C runtime wrappers не передают
+`CLICKHOUSE_PASSWORD` через аргументы процессов. Пароль должен поступать из
+`/opt/activitywatch/clickhouse-1c/.env` в окружение или временный client config,
+а не через `--password`.
+
+Статическая проверка wrappers:
+
+```bash
+rg -n -- '--password[= ]+"?\$[{]?CLICKHOUSE_PASSWORD' \
+  /opt/activitywatch/clickhouse-1c/ops
+```
+
+Ожидаемый результат: команда не выводит совпадений.
+
+Runtime smoke во время ingest/brief refresh:
+
+```bash
+set -a
+. /opt/activitywatch/clickhouse-1c/.env
+set +a
+
+ps -eo args= | grep -E 'clickhouse-client|generate_.*brief|refresh_company' |
+while IFS= read -r line; do
+  if printf '%s' "${line}" | grep -F -- "${CLICKHOUSE_PASSWORD}" >/dev/null; then
+    echo "FAIL: ClickHouse password is visible in process argv" >&2
+    exit 1
+  fi
+done
+```
+
+Ожидаемый результат: команда завершается с кодом `0` и не печатает секрет.
+Если проверка падает, остановить rollout и вернуть предыдущий release artifact.

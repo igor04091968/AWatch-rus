@@ -230,6 +230,10 @@ Expected benefit: long-running production operation has bounded disk behavior.
 
 ### P0-5. Remove ClickHouse password exposure from process arguments
 
+Status: addressed by TASK_068. Runtime ClickHouse/1C wrappers keep
+`CLICKHOUSE_PASSWORD` in the environment/config path and no longer pass it in
+process arguments.
+
 Purpose: keep production credentials out of `ps`/process argv.
 
 Reason: `rg` confirmed `clickhouse-1c/ops/run_*.sh` wrappers pass

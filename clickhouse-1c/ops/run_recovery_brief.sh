@@ -19,8 +19,8 @@ if [[ ! -x "${VENV}/bin/python" ]]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
 set -a
+# shellcheck source=/dev/null
 . "${ENV_FILE}"
 set +a
 
@@ -28,6 +28,7 @@ CH_RUNTIME_HOST="${AW_1C_CLICKHOUSE_RUNTIME_HOST:-${CLICKHOUSE_HOST}}"
 if [[ "${CH_RUNTIME_HOST}" == "clickhouse" ]]; then
   CH_RUNTIME_HOST="127.0.0.1"
 fi
+: "${CLICKHOUSE_PORT:?CLICKHOUSE_PORT is required}"
 
 exec 9>"${LOCK_FILE}"
 if ! flock -w "${LOCK_WAIT_SEC}" 9; then
@@ -41,7 +42,6 @@ while (( attempt <= RETRIES )); do
     --host "${CH_RUNTIME_HOST}" \
     --port "${CLICKHOUSE_PORT}" \
     --user "${CLICKHOUSE_USER}" \
-    --password "${CLICKHOUSE_PASSWORD}" \
     --database "${CLICKHOUSE_DB}"; then
     exit 0
   fi

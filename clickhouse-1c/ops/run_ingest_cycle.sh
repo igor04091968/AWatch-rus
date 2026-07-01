@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2119
 set -euo pipefail
 
 ROOT="${AW_1C_ROOT:-/opt/activitywatch/clickhouse-1c}"
@@ -40,6 +41,8 @@ fi
 
 # shellcheck disable=SC1090
 . "${ENV_FILE}"
+# shellcheck source=clickhouse-1c/ops/clickhouse-client-safe.sh
+. "${ROOT}/ops/clickhouse-client-safe.sh"
 
 if [[ "${RUN_MCP_TOOLKIT_EXTRACT_BEFORE_INGEST}" == "1" ]]; then
   "${VENV}/bin/python" "${ROOT}/etl/extract_1c_mcp_toolkit.py" --config "${CONFIG}"
@@ -49,31 +52,19 @@ fi
 "${VENV}/bin/python" "${ROOT}/etl/load_1c_exports.py" --config "${CONFIG}"
 "${VENV}/bin/python" "${ROOT}/etl/load_company_registry_xlsx.py" --config "${CONFIG}" --landing "${ROOT}/landing/registry"
 
-docker exec -i "${CH_CONTAINER}" clickhouse-client \
-  --user "${CLICKHOUSE_USER}" \
-  --password "${CLICKHOUSE_PASSWORD}" \
-  --database "${CLICKHOUSE_DB}" \
+aw_1c_clickhouse_client \
   < "${ROOT}/detections/build_entity_timeline.sql"
 
-docker exec -i "${CH_CONTAINER}" clickhouse-client \
-  --user "${CLICKHOUSE_USER}" \
-  --password "${CLICKHOUSE_PASSWORD}" \
-  --database "${CLICKHOUSE_DB}" \
+aw_1c_clickhouse_client \
   < "${ROOT}/clickhouse/init/04_company_intelligence.sql"
 
 "${ROOT}/ops/run_company_registry_bindings_refresh.sh"
 "${ROOT}/ops/run_company_intelligence_refresh.sh"
 
-docker exec -i "${CH_CONTAINER}" clickhouse-client \
-  --user "${CLICKHOUSE_USER}" \
-  --password "${CLICKHOUSE_PASSWORD}" \
-  --database "${CLICKHOUSE_DB}" \
+aw_1c_clickhouse_client \
   < "${ROOT}/detections/insert_detections.sql"
 
-docker exec -i "${CH_CONTAINER}" clickhouse-client \
-  --user "${CLICKHOUSE_USER}" \
-  --password "${CLICKHOUSE_PASSWORD}" \
-  --database "${CLICKHOUSE_DB}" \
+aw_1c_clickhouse_client \
   < "${ROOT}/detections/open_cases_from_detections.sql"
 
 if [[ "${RUN_MANAGER_BRIEF_AFTER_INGEST}" == "1" ]]; then

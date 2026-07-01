@@ -18,13 +18,12 @@ fi
 
 # shellcheck disable=SC1090
 . "${ENV_FILE}"
+# shellcheck source=clickhouse-1c/ops/clickhouse-client-safe.sh
+. "${ROOT}/ops/clickhouse-client-safe.sh"
 
 query_max_age() {
   local table="$1"
-  docker exec "${CH_CONTAINER}" clickhouse-client \
-    --user "${CLICKHOUSE_USER}" \
-    --password "${CLICKHOUSE_PASSWORD}" \
-    --database "${CLICKHOUSE_DB}" \
+  aw_1c_clickhouse_client \
     -q "SELECT if(count()=0, -1, dateDiff('hour', max(ts), now())) FROM ${table}"
 }
 
