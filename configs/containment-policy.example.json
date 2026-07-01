@@ -1,0 +1,17 @@
+{
+  "enabled": false,
+  "mode": "shadow",
+  "default_ttl_minutes": 60,
+  "require_admin_channel_check": true,
+  "allow_auto_for_servers": false,
+  "allowed_actions": [
+    "windows_firewall_quarantine",
+    "pfsense_host_block"
+  ],
+  "management_allowlist": [
+    "aw_server",
+    "velociraptor_server",
+    "admin_jump_host"
+  ],
+  "minimum_high_signals_for_auto": 2
+}

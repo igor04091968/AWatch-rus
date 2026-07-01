@@ -1,17 +1,22 @@
 use std::fs::{self, File};
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use chrono::Utc;
 use clap::Parser;
 use fs2::FileExt;
-use hayabusa_tools::{guess_host_from_filename, read_json_file};
+use hayabusa_tools::{env_bool, env_string, guess_host_from_filename, read_json_file};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use zip::ZipArchive;
 
 const LOCK_PATH: &str = "/opt/hayabusa/state/aw-hayabusa-autoprocess.lock";
 const WRAPPER: &str = "/usr/local/bin/aw-hayabusa";
 const LINKER: &str = "/usr/local/bin/aw-hayabusa-link-case";
 const CASE_ALERT: &str = "/usr/local/bin/aw-hayabusa-case-alert";
+const SECURITY_FINDING_INBOX: &str = "/usr/local/bin/security-finding-inbox";
 const LATEST_INTAKE: &str = "/opt/hayabusa/state/latest-intake.json";
 
 #[derive(Debug, Parser)]
@@ -19,6 +24,9 @@ const LATEST_INTAKE: &str = "/opt/hayabusa/state/latest-intake.json";
 struct Cli {
     #[arg(long, default_value = "/opt/activitywatch/aw-rus-ops/drop")]
     drop_dir: PathBuf,
+
+    #[arg(long, default_value = "/opt/hayabusa/quarantine/drop")]
+    quarantine_dir: PathBuf,
 
     #[arg(long, default_value_t = true)]
     once: bool,
@@ -65,16 +73,43 @@ fn run() -> Result<i32> {
         println!("no zip packages in drop dir");
         return Ok(0);
     }
+    let mut operational_failures = 0usize;
     for zip_path in zips {
-        let result = process_one(&zip_path)?;
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "processed": zip_path.display().to_string(),
-                "latest_intake": result.latest_intake,
-                "case_alert": result.case_alert,
-            }))?
-        );
+        if let Err(err) = validate_drop_inputs(&zip_path) {
+            let quarantine_dir = quarantine_drop_package(&cli.quarantine_dir, &zip_path, &err)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "quarantined": zip_path.display().to_string(),
+                    "quarantine_dir": quarantine_dir.display().to_string(),
+                    "reason": err.to_string(),
+                }))?
+            );
+            continue;
+        }
+        match process_one(&zip_path) {
+            Ok(result) => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "processed": zip_path.display().to_string(),
+                        "latest_intake": result.latest_intake,
+                        "case_alert": result.case_alert,
+                        "security_finding_ingest": result.security_finding_ingest,
+                    }))?
+                );
+            }
+            Err(err) => {
+                operational_failures += 1;
+                eprintln!(
+                    "ERROR: operational failure while processing {}: {err:#}",
+                    zip_path.display()
+                );
+            }
+        }
+    }
+    if operational_failures > 0 {
+        bail!("{operational_failures} operational Hayabusa package failure(s)");
     }
     Ok(0)
 }
@@ -82,6 +117,7 @@ fn run() -> Result<i32> {
 struct ProcessResult {
     latest_intake: Value,
     case_alert: Option<Value>,
+    security_finding_ingest: Option<Value>,
 }
 
 fn list_zips(drop_dir: &Path) -> Result<Vec<PathBuf>> {
@@ -94,6 +130,42 @@ fn list_zips(drop_dir: &Path) -> Result<Vec<PathBuf>> {
     }
     zips.sort();
     Ok(zips)
+}
+
+fn validate_drop_inputs(zip_path: &Path) -> Result<()> {
+    validate_zip_package(zip_path)?;
+    load_sidecars(zip_path)?;
+    Ok(())
+}
+
+fn validate_zip_package(zip_path: &Path) -> Result<()> {
+    let file = File::open(zip_path).with_context(|| format!("open {}", zip_path.display()))?;
+    let mut archive =
+        ZipArchive::new(file).with_context(|| format!("read zip {}", zip_path.display()))?;
+    if archive.is_empty() {
+        bail!("zip package has no entries: {}", zip_path.display());
+    }
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .with_context(|| format!("read zip entry {index} from {}", zip_path.display()))?;
+        let name = entry.name().replace('\\', "/");
+        if name.starts_with('/') || name.split('/').any(|part| part == "..") {
+            bail!(
+                "unsafe zip entry in {}: {}",
+                zip_path.display(),
+                entry.name()
+            );
+        }
+        io::copy(&mut entry, &mut io::sink()).with_context(|| {
+            format!(
+                "test zip entry {} from {}",
+                entry.name(),
+                zip_path.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn process_one(zip_path: &Path) -> Result<ProcessResult> {
@@ -123,6 +195,7 @@ fn process_one(zip_path: &Path) -> Result<ProcessResult> {
         ],
     )?;
     let latest = read_json_file(Path::new(LATEST_INTAKE))?;
+    let security_finding_ingest = ingest_security_finding_best_effort(Path::new(LATEST_INTAKE))?;
     let report_dir = PathBuf::from(
         latest
             .get("report_dir")
@@ -154,6 +227,7 @@ fn process_one(zip_path: &Path) -> Result<ProcessResult> {
             return Ok(ProcessResult {
                 latest_intake: latest,
                 case_alert,
+                security_finding_ingest,
             });
         }
         run_checked(
@@ -171,7 +245,61 @@ fn process_one(zip_path: &Path) -> Result<ProcessResult> {
     Ok(ProcessResult {
         latest_intake: latest,
         case_alert,
+        security_finding_ingest,
     })
+}
+
+fn ingest_security_finding_best_effort(intake_path: &Path) -> Result<Option<Value>> {
+    if !env_bool("AW_SECURITY_FINDING_INBOX_ENABLED", false) {
+        return Ok(None);
+    }
+    let binary = PathBuf::from(env_string(
+        "AW_SECURITY_FINDING_INBOX_BIN",
+        SECURITY_FINDING_INBOX,
+    ));
+    let required = env_bool("AW_SECURITY_FINDING_INBOX_REQUIRED", false);
+    if !binary.is_file() {
+        let message = format!(
+            "security finding inbox binary not found: {}",
+            binary.display()
+        );
+        if required {
+            bail!("{message}");
+        }
+        eprintln!("WARNING: {message}");
+        return Ok(Some(json!({"ok": false, "warning": message})));
+    }
+    let min_severity = env_string("AW_SECURITY_FINDING_INBOX_MIN_SEVERITY", "medium");
+    let output = Command::new(&binary)
+        .arg("ingest-hayabusa")
+        .arg("--intake")
+        .arg(intake_path)
+        .arg("--min-severity")
+        .arg(min_severity)
+        .output()
+        .with_context(|| format!("run {}", binary.display()))?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !output.status.success() {
+        let message = format!(
+            "security finding ingest failed: status={} stderr={}",
+            output.status,
+            stderr.trim()
+        );
+        if required {
+            bail!("{message}");
+        }
+        eprintln!("WARNING: {message}");
+        return Ok(Some(json!({"ok": false, "warning": message})));
+    }
+    let payload = serde_json::from_str(stdout.trim()).unwrap_or_else(|_| {
+        json!({
+            "ok": true,
+            "stdout": stdout.trim(),
+            "stderr": stderr.trim()
+        })
+    });
+    Ok(Some(payload))
 }
 
 fn load_sidecars(zip_path: &Path) -> Result<Sidecars> {
@@ -241,6 +369,108 @@ fn archive_drop_package(report_dir: &Path, zip_path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn quarantine_drop_package(
+    quarantine_root: &Path,
+    zip_path: &Path,
+    err: &anyhow::Error,
+) -> Result<PathBuf> {
+    fs::create_dir_all(quarantine_root)
+        .with_context(|| format!("create {}", quarantine_root.display()))?;
+    let name = zip_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("package.zip");
+    let stamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+    let mut quarantine_dir = quarantine_root.join(format!("{stamp}_{}", sanitize_component(name)));
+    if quarantine_dir.exists() {
+        quarantine_dir = quarantine_root.join(format!(
+            "{stamp}_{}_{}",
+            sanitize_component(name),
+            std::process::id()
+        ));
+    }
+    fs::create_dir_all(&quarantine_dir)
+        .with_context(|| format!("create {}", quarantine_dir.display()))?;
+
+    let sha256 = if zip_path.is_file() {
+        Some(sha256_file(zip_path)?)
+    } else {
+        None
+    };
+    move_if_exists(zip_path, &quarantine_dir)?;
+    let base = zip_path.with_extension("");
+    for sidecar in [
+        base.with_extension("caseid"),
+        base.with_extension("meta.json"),
+        zip_path.with_extension("zip.sha256"),
+    ] {
+        move_if_exists(&sidecar, &quarantine_dir)?;
+    }
+    let reason = json!({
+        "quarantined_at": Utc::now().to_rfc3339(),
+        "source": "aw-hayabusa-autoprocess-rust",
+        "original_path": zip_path.display().to_string(),
+        "sha256": sha256,
+        "reason": err.to_string(),
+        "detail": format!("{err:#}"),
+        "operator_action": "inspect source package, re-export EVTX archive if needed, then replay by moving a fixed package back to the drop directory",
+    });
+    fs::write(
+        quarantine_dir.join("reason.json"),
+        serde_json::to_string_pretty(&reason)?,
+    )
+    .with_context(|| format!("write {}", quarantine_dir.join("reason.json").display()))?;
+    Ok(quarantine_dir)
+}
+
+fn move_if_exists(path: &Path, target_dir: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let target = target_dir.join(path.file_name().context("quarantine file name")?);
+    fs::rename(path, &target)
+        .or_else(|_| {
+            fs::copy(path, &target)?;
+            fs::remove_file(path)
+        })
+        .with_context(|| format!("move {} to {}", path.display(), target.display()))?;
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    let mut file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let read = file
+            .read(&mut buf)
+            .with_context(|| format!("read {}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buf[..read]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+fn sanitize_component(value: &str) -> String {
+    let clean = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    if clean.is_empty() {
+        "package".to_string()
+    } else {
+        clean
+    }
+}
+
 fn guess_host(zip_path: &Path, sidecars: &Sidecars) -> Option<String> {
     if let Some(host) = &sidecars.host {
         if !host.is_empty() {
@@ -301,4 +531,58 @@ fn run_capture(program: &Path, args: &[String]) -> Result<Captured> {
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+
+    #[test]
+    fn invalid_zip_is_rejected_before_accept() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("bad.zip");
+        fs::write(&zip_path, b"not a zip").unwrap();
+
+        let err = validate_drop_inputs(&zip_path).unwrap_err();
+        assert!(err.to_string().contains("read zip"));
+    }
+
+    #[test]
+    fn quarantine_moves_package_sidecars_and_writes_reason() {
+        let dir = tempfile::tempdir().unwrap();
+        let drop = dir.path().join("drop");
+        let quarantine = dir.path().join("quarantine");
+        fs::create_dir_all(&drop).unwrap();
+        let zip_path = drop.join("HOST-20260624.zip");
+        fs::write(&zip_path, b"bad").unwrap();
+        fs::write(drop.join("HOST-20260624.meta.json"), b"{bad").unwrap();
+        fs::write(drop.join("HOST-20260624.caseid"), b"30").unwrap();
+
+        let err = anyhow::anyhow!("bad zip");
+        let target = quarantine_drop_package(&quarantine, &zip_path, &err).unwrap();
+
+        assert!(!zip_path.exists());
+        assert!(target.join("HOST-20260624.zip").is_file());
+        assert!(target.join("HOST-20260624.meta.json").is_file());
+        assert!(target.join("HOST-20260624.caseid").is_file());
+        let reason = fs::read_to_string(target.join("reason.json")).unwrap();
+        assert!(reason.contains("bad zip"));
+        assert!(reason.contains("aw-hayabusa-autoprocess-rust"));
+    }
+
+    #[test]
+    fn valid_zip_with_backslash_entry_is_accepted_by_precheck() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = dir.path().join("ok.zip");
+        let file = File::create(&zip_path).unwrap();
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        zip.start_file("evtx\\sample.evtx", options).unwrap();
+        zip.write_all(b"evtx").unwrap();
+        zip.finish().unwrap();
+
+        validate_drop_inputs(&zip_path).unwrap();
+    }
 }

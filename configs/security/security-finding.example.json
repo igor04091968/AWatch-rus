@@ -1,0 +1,21 @@
+{
+  "ts": "2026-06-25T10:00:00Z",
+  "host": "HOST-EXAMPLE",
+  "user": "user-example",
+  "ip": "10.10.20.42",
+  "department": "demo",
+  "state": "suspected_infected",
+  "severity": "critical",
+  "confidence": "high",
+  "score": 95,
+  "source": "hayabusa",
+  "rule_id": "demo-sigma-critical",
+  "rule_title": "Demo high-confidence suspicious workstation",
+  "summary": "Demo finding for Security Finding Inbox validation.",
+  "recommended_action": "windows_firewall_quarantine",
+  "management_channel_checked": true,
+  "evidence_ref": "demo://hayabusa/HOST-EXAMPLE/demo-sigma-critical",
+  "metadata": {
+    "sample": "true"
+  }
+}

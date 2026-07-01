@@ -36,6 +36,7 @@ members = [
     "crates/aw-rus-healthd",
     "crates/detmir-check",
     "crates/detmir-core",
+    "crates/security-finding-inbox",
     "crates/dlp-health-check",
     "crates/dlp-content-analyzer",
     "crates/dlp-admin-cli",
@@ -57,6 +58,7 @@ members = [
     "crates/detmir-heal-safe",
     "crates/detmir-status",
     "crates/detmir-state",
+    "crates/containment-engine",
     "crates/tsj-guardian-status",
     "crates/tsj-guardian-watchdog",
 ]

@@ -1,0 +1,18 @@
+{
+  "target_host": "HOST-EXAMPLE",
+  "plan_id": "rollback-host-example-001",
+  "ttl_minutes": 60,
+  "reason": "High-confidence Hayabusa and Velociraptor containment drill",
+  "management_allowlist": [
+    "10.10.10.10",
+    "10.10.10.11",
+    "10.10.10.12"
+  ],
+  "blocked_remote_addresses": [
+    "10.10.20.0/24",
+    "10.10.30.0/24"
+  ],
+  "profiles": [
+    "Domain"
+  ]
+}

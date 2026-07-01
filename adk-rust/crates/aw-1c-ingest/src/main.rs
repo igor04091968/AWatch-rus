@@ -176,6 +176,10 @@ fn run() -> Result<i32> {
             &root.join("detections/open_cases_from_detections.sql"),
             &mut summary,
         )?;
+        let security_inbox_schema = root.join("security/security_finding_inbox.sql");
+        if security_inbox_schema.exists() {
+            run_sql_file(&client, &security_inbox_schema, &mut summary)?;
+        }
         if !cli.skip_briefs {
             let _ = run_optional_script(&root.join("ops/run_manager_brief.sh"));
             let _ = run_optional_script(&root.join("ops/run_recovery_brief.sh"));

@@ -14,6 +14,7 @@ HAYA_STAGING_DIR="${AW_HAYABUSA_STAGING_DIR:-${HAYA_ROOT}/inbox/staging}"
 HAYA_ARCHIVE_PACKAGES_DIR="${AW_HAYABUSA_ARCHIVE_PACKAGES_DIR:-${HAYA_ROOT}/archive/packages}"
 HAYA_ARCHIVE_EXTRACTED_DIR="${AW_HAYABUSA_ARCHIVE_EXTRACTED_DIR:-${HAYA_ROOT}/archive/extracted}"
 HAYA_LOGS_DIR="${AW_HAYABUSA_LOGS_DIR:-${HAYA_ROOT}/state/logs}"
+HAYA_QUARANTINE_DIR="${AW_HAYABUSA_QUARANTINE_DIR:-${HAYA_ROOT}/quarantine/incoming}"
 LAST_REPORT_DIR=""
 
 usage() {
@@ -57,7 +58,8 @@ ensure_layout() {
     "${HAYA_INCOMING_DIR}" \
     "${HAYA_STAGING_DIR}" \
     "${HAYA_ARCHIVE_PACKAGES_DIR}" \
-    "${HAYA_ARCHIVE_EXTRACTED_DIR}"
+    "${HAYA_ARCHIVE_EXTRACTED_DIR}" \
+    "${HAYA_QUARANTINE_DIR}"
 }
 
 run_logged() {
@@ -405,7 +407,8 @@ process_one_package() {
 
   package_sha256="$(sha256sum "${package_path}" | awk '{print $1}')"
   if ! extract_zip_normalized "${package_path}" "${stage_dir}"; then
-    fail "normalized zip extraction failed for ${package_path}"
+    echo "ERROR: normalized zip extraction failed for ${package_path}" >&2
+    return 1
   fi
 
   local manifest_path host evtx_root archive_pkg_dir archive_extract_dir status report_dir
@@ -453,7 +456,47 @@ process_one_package() {
   if [ -n "${report_dir}" ]; then
     echo "Report directory: ${report_dir}"
   fi
-  [ "${status}" = "ok" ] || fail "Package workflow ended with status=${status}; archived for inspection"
+  if [ "${status}" != "ok" ]; then
+    echo "ERROR: Package workflow ended with status=${status}; archived for inspection" >&2
+    return 1
+  fi
+}
+
+quarantine_incoming_package() {
+  local package_path="$1"
+  local reason="$2"
+  local ts package_name package_base safe_base target_dir stage_dir sha256
+  ts="$(date -u +%Y%m%dT%H%M%SZ)"
+  package_name="$(basename "${package_path}")"
+  package_base="${package_name%.zip}"
+  safe_base="$(sanitize "${package_name}")"
+  [ -n "${safe_base}" ] || safe_base="package.zip"
+  target_dir="${HAYA_QUARANTINE_DIR}/${ts}_${safe_base}"
+  mkdir -p "${target_dir}"
+  sha256=""
+  if [ -f "${package_path}" ] && command -v sha256sum >/dev/null 2>&1; then
+    sha256="$(sha256sum "${package_path}" | awk '{print $1}')"
+  fi
+  for candidate in "${package_path}" "${package_path}.sha256" "${package_path}.host"; do
+    if [ -e "${candidate}" ]; then
+      mv "${candidate}" "${target_dir}/"
+    fi
+  done
+  stage_dir="${HAYA_STAGING_DIR}/${package_base}"
+  if [ -d "${stage_dir}" ]; then
+    mv "${stage_dir}" "${target_dir}/staging-partial"
+  fi
+  cat >"${target_dir}/reason.json" <<EOF
+{
+  "quarantined_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "source": "aw-hayabusa process-inbox",
+  "original_path": "${package_path}",
+  "sha256": "${sha256}",
+  "reason": "${reason}",
+  "operator_action": "inspect source package, re-export EVTX archive if needed, then replay by moving a fixed package back to incoming or drop"
+}
+EOF
+  echo "Quarantined failed incoming package: ${target_dir}" >&2
 }
 
 process_inbox() {
@@ -482,15 +525,26 @@ process_inbox() {
   esac
   ensure_layout
 
-  local count=0 pkg
+  local count=0 failed=0 pkg
   while IFS= read -r pkg; do
-    process_one_package "${pkg}" "${mode}"
-    count=$((count + 1))
+    if process_one_package "${pkg}" "${mode}"; then
+      count=$((count + 1))
+    else
+      failed=$((failed + 1))
+      if [ -f "${pkg}" ]; then
+        quarantine_incoming_package "${pkg}" "process_one_package failed"
+      else
+        echo "Package failed after archive/move, see archive intake manifest for details: ${pkg}" >&2
+      fi
+    fi
     if [ "${limit}" -gt 0 ] && [ "${count}" -ge "${limit}" ]; then
       break
     fi
   done < <(find "${HAYA_INCOMING_DIR}" -maxdepth 1 -type f -name '*.zip' | sort)
   [ "${count}" -gt 0 ] || echo "No packages in ${HAYA_INCOMING_DIR}"
+  if [ "${failed}" -gt 0 ]; then
+    echo "process-inbox completed with quarantined_or_archived_failures=${failed}" >&2
+  fi
 }
 
 main() {

@@ -1,0 +1,21 @@
+[Unit]
+Description=AWatch-rus Security Finding Inbox executor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/activitywatch/aw-server.env
+ExecStart=/usr/local/bin/security-finding-inbox executor \
+  --poll-seconds 30 \
+  --dry-run
+Restart=on-failure
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/lib/activitywatch /var/lock
+
+[Install]
+WantedBy=multi-user.target
