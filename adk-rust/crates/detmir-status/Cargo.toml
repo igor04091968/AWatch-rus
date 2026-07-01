@@ -19,5 +19,4 @@ adk-rust.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 detmir-state.workspace = true
-serde.workspace = true
 serde_json.workspace = true

@@ -198,12 +198,10 @@ name = "aw-contour-smoke"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "clap",
  "reqwest",
  "serde_json",
  "tempfile",
- "url",
 ]
 
 [[package]]
@@ -777,7 +775,6 @@ dependencies = [
  "anyhow",
  "clap",
  "detmir-state",
- "serde",
  "serde_json",
 ]
 
@@ -1257,7 +1254,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "urlencoding",
 ]
 
 [[package]]
@@ -3293,7 +3289,6 @@ dependencies = [
  "tempfile",
  "tiny_http",
  "url",
- "urlencoding",
 ]
 
 [[package]]
