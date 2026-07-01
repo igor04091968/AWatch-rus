@@ -249,6 +249,8 @@
           Environment=AW_BACKUP_RETENTION_DAYS={{ aw_server_backup_retention_days }}
           Environment=AW_BACKUP_KEEP_LAST_DB={{ aw_server_backup_keep_last_db }}
           Environment=AW_BACKUP_KEEP_LAST_JSON={{ aw_server_backup_keep_last_json }}
+          Environment=AW_WORKTIME_REPORT_DISK_CACHE_DIR={{ aw_worktime_report_disk_cache_dir | default(aw_server_data_dir ~ '/worktime-report-cache') }}
+          Environment=AW_WORKTIME_REPORT_DISK_STALE_TTL_SECONDS={{ aw_worktime_report_disk_stale_ttl_seconds | default(86400) }}
           ExecStart=/usr/local/bin/aw-prune-local-state.sh
 
     - name: Установить systemd timer prune локального state
@@ -792,6 +794,7 @@
               AW_WORKTIME_EVENTS_CACHE_TTL_SECONDS={{ aw_worktime_events_cache_ttl_seconds | default(300) }}
               AW_WORKTIME_REPORT_CACHE_TTL_SECONDS={{ aw_worktime_report_cache_ttl_seconds | default(300) }}
               AW_WORKTIME_REPORT_STALE_TTL_SECONDS={{ aw_worktime_report_stale_ttl_seconds | default(3600) }}
+              AW_WORKTIME_REPORT_DISK_CACHE_DIR={{ aw_worktime_report_disk_cache_dir | default(aw_server_data_dir ~ '/worktime-report-cache') }}
               AW_WORKTIME_REPORT_DISK_STALE_TTL_SECONDS={{ aw_worktime_report_disk_stale_ttl_seconds | default(86400) }}
               AW_DLP_IOC_DIR={{ aw_dlp_ioc_workdir }}/output
               AW_DLP_POLICY_ENGINE_BIND_HOST={{ aw_dlp_policy_engine_bind_host }}

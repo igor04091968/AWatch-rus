@@ -17,6 +17,7 @@ aw_worktime_aw_http_timeout_seconds: 6
 aw_worktime_events_cache_ttl_seconds: 300
 aw_worktime_report_cache_ttl_seconds: 300
 aw_worktime_report_stale_ttl_seconds: 3600
+aw_worktime_report_disk_cache_dir: "{{ aw_server_data_dir }}/worktime-report-cache"
 aw_worktime_report_disk_stale_ttl_seconds: 86400
 aw_worktime_influx_enabled: false
 aw_worktime_influx_url: "http://<INFLUXDB_HOST>:8086"

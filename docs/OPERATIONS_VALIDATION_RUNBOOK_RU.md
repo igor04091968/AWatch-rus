@@ -131,3 +131,100 @@ SELECT
 ```
 
 Ожидаемое состояние после cleanup/normalization: все четыре значения равны `0`.
+
+## Retention / cleanup validation
+
+Политика хранения описана в [Retention and Cleanup Policy](RETENTION_POLICY_RU.md).
+Перед изменением сроков хранения или включением нового cleanup scope сначала
+выполнить dry-run и сохранить вывод в change evidence.
+
+Проверить активные timers:
+
+```bash
+systemctl list-timers \
+  aw-prune-local-state.timer \
+  aw-db-maintenance.timer \
+  aw-db-vacuum.timer \
+  detmir-readiness.timer
+```
+
+Dry-run локальной очистки:
+
+```bash
+sudo AW_DATA_DIR=/var/lib/activitywatch \
+  AW_WORKTIME_REPORT_DISK_CACHE_DIR=/var/lib/activitywatch/worktime-report-cache \
+  AW_WORKTIME_REPORT_DISK_STALE_TTL_SECONDS=86400 \
+  /usr/local/bin/aw-prune-local-state-rust --json
+```
+
+Проверить, что в planned items нет:
+
+- production database outside `/var/lib/activitywatch/backups/db`;
+- config/env files;
+- dashboards;
+- Hayabusa forensic archive;
+- DLP evidence/cases/compliance reports;
+- release evidence;
+- Windows queues.
+
+Apply разрешен только после dry-run review:
+
+```bash
+sudo /usr/local/bin/aw-prune-local-state-rust --apply --json
+```
+
+Проверить журналы cleanup и DB maintenance:
+
+```bash
+journalctl \
+  -u aw-prune-local-state.service \
+  -u aw-db-maintenance.service \
+  -u aw-db-vacuum.service \
+  -u detmir-readiness.service \
+  -n 160 --no-pager
+```
+
+Оценить disk usage до и после:
+
+```bash
+du -sh \
+  /var/lib/activitywatch \
+  /var/log/activitywatch \
+  /opt/hayabusa \
+  /opt/activitywatch/clickhouse-1c \
+  /opt/activitywatch/clickhouse-workforce 2>/dev/null || true
+
+docker system df 2>/dev/null || true
+```
+
+Для ClickHouse 1C/workforce проверить размер таблиц без удаления данных:
+
+```bash
+docker exec aw-rus-1c-clickhouse clickhouse-client --query \
+  "SELECT database, table, formatReadableSize(sum(bytes_on_disk)) AS size FROM system.parts WHERE active GROUP BY database, table ORDER BY sum(bytes_on_disk) DESC" \
+  2>/dev/null || true
+
+docker exec aw-rus-workforce-clickhouse clickhouse-client --query \
+  "SELECT database, table, formatReadableSize(sum(bytes_on_disk)) AS size FROM system.parts WHERE active GROUP BY database, table ORDER BY sum(bytes_on_disk) DESC" \
+  2>/dev/null || true
+```
+
+Проверить, что cleanup не повлиял на running services:
+
+```bash
+systemctl status activitywatch-server aw-worktime-api --no-pager
+curl -fsS http://127.0.0.1:5600/api/0/info >/dev/null
+curl -fsS http://127.0.0.1:5610/healthz >/dev/null
+```
+
+Windows EVTX retention проверяется отдельно, потому что выполняется на RDP host:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass `
+  -File C:\ProgramData\AWatch-rus\export-evtx-for-hayabusa.ps1 `
+  -RetentionDays 14
+```
+
+Запрещено вручную удалять Windows collector queues, incident artifacts, DLP
+evidence, Hayabusa archives, Grafana data или ClickHouse tables без отдельного
+operator approval и backup/restore plan.

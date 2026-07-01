@@ -7,6 +7,7 @@ use clap::Parser;
 use serde::Serialize;
 
 const DEFAULT_DATA_DIR: &str = "/var/lib/activitywatch";
+const DEFAULT_WORKTIME_REPORT_CACHE_RETENTION_SECONDS: u64 = 86_400;
 const TMP_ARCHIVE_PATTERNS: &[NamePattern] = &[
     NamePattern::PrefixSuffix("activitywatch-", ".zip"),
     NamePattern::PrefixSuffix("hayabusa-", ".zip"),
@@ -31,6 +32,9 @@ struct Cli {
     browser_smoke_dir: Option<PathBuf>,
 
     #[arg(long)]
+    worktime_report_cache_dir: Option<PathBuf>,
+
+    #[arg(long)]
     tmp_dir: Option<PathBuf>,
 
     #[arg(long, default_value_t = 7)]
@@ -47,6 +51,9 @@ struct Cli {
 
     #[arg(long, default_value_t = 1)]
     browser_smoke_retention_days: u64,
+
+    #[arg(long, default_value_t = DEFAULT_WORKTIME_REPORT_CACHE_RETENTION_SECONDS)]
+    worktime_report_cache_retention_seconds: u64,
 
     #[arg(long, default_value_t = 1)]
     tmp_archive_retention_days: u64,
@@ -66,12 +73,14 @@ struct Config {
     data_dir: PathBuf,
     backup_dir: PathBuf,
     browser_smoke_dir: PathBuf,
+    worktime_report_cache_dir: PathBuf,
     tmp_dir: PathBuf,
     backup_retention_days: u64,
     backup_keep_last_db: usize,
     backup_keep_last_json: usize,
     browser_smoke_keep_runs: usize,
     browser_smoke_retention_days: u64,
+    worktime_report_cache_retention_seconds: u64,
     tmp_archive_retention_days: u64,
     tmp_webui_retention_days: u64,
     apply: bool,
@@ -154,6 +163,7 @@ fn run() -> Result<i32> {
         &mut items,
     )?;
     plan_browser_smoke(&cfg, &mut items)?;
+    plan_worktime_report_cache(&cfg, &mut items)?;
     plan_tmp(
         &cfg.tmp_dir,
         TMP_ARCHIVE_PATTERNS,
@@ -200,6 +210,10 @@ impl Config {
             .browser_smoke_dir
             .or_else(|| env_path("AW_BROWSER_SMOKE_OUTPUT_DIR"))
             .unwrap_or_else(|| data_dir.join("browser-smoke"));
+        let worktime_report_cache_dir = cli
+            .worktime_report_cache_dir
+            .or_else(|| env_path("AW_WORKTIME_REPORT_DISK_CACHE_DIR"))
+            .unwrap_or_else(|| data_dir.join("worktime-report-cache"));
         let tmp_dir = cli
             .tmp_dir
             .or_else(|| env_path("AW_TMP_DIR"))
@@ -208,6 +222,7 @@ impl Config {
             data_dir,
             backup_dir,
             browser_smoke_dir,
+            worktime_report_cache_dir,
             tmp_dir,
             backup_retention_days: env_u64("AW_BACKUP_RETENTION_DAYS", cli.backup_retention_days),
             backup_keep_last_db: env_usize("AW_BACKUP_KEEP_LAST_DB", cli.backup_keep_last_db),
@@ -219,6 +234,10 @@ impl Config {
             browser_smoke_retention_days: env_u64(
                 "AW_BROWSER_SMOKE_RETENTION_DAYS",
                 cli.browser_smoke_retention_days,
+            ),
+            worktime_report_cache_retention_seconds: env_u64(
+                "AW_WORKTIME_REPORT_DISK_STALE_TTL_SECONDS",
+                cli.worktime_report_cache_retention_seconds,
             ),
             tmp_archive_retention_days: env_u64(
                 "AW_TMP_ARCHIVE_RETENTION_DAYS",
@@ -263,6 +282,41 @@ fn plan_browser_smoke(cfg: &Config, items: &mut Vec<PruneItem>) -> Result<()> {
             continue;
         }
         items.push(candidate.into_item("browser_smoke_run"));
+    }
+    Ok(())
+}
+
+fn plan_worktime_report_cache(cfg: &Config, items: &mut Vec<PruneItem>) -> Result<()> {
+    if cfg.worktime_report_cache_retention_seconds == 0 || !cfg.worktime_report_cache_dir.exists() {
+        return Ok(());
+    }
+    let cutoff = cutoff_seconds(cfg.worktime_report_cache_retention_seconds);
+    for entry in fs::read_dir(&cfg.worktime_report_cache_dir)
+        .with_context(|| format!("read {}", cfg.worktime_report_cache_dir.display()))?
+    {
+        let entry = entry?;
+        if !entry.file_type()?.is_file() {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !name.ends_with(".json") {
+            continue;
+        }
+        let meta = entry.metadata()?;
+        let modified = meta.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        if modified >= cutoff {
+            continue;
+        }
+        items.push(
+            Candidate {
+                path: entry.path(),
+                kind: ItemKind::File,
+                modified,
+                size_bytes: meta.len(),
+            }
+            .into_item("worktime_report_disk_cache"),
+        );
     }
     Ok(())
 }
@@ -395,6 +449,9 @@ fn validate_plan(cfg: &Config, items: &[PruneItem]) -> Result<()> {
             "backup_db" => is_under_or_equal(&item.path, &cfg.backup_dir.join("db")),
             "backup_root" => is_under_or_equal(&item.path, &cfg.backup_dir),
             "browser_smoke_run" => is_under_or_equal(&item.path, &cfg.browser_smoke_dir),
+            "worktime_report_disk_cache" => {
+                is_under_or_equal(&item.path, &cfg.worktime_report_cache_dir)
+            }
             "tmp_archive" | "tmp_webui" => is_under_or_equal(&item.path, &cfg.tmp_dir),
             _ => false,
         };
@@ -410,6 +467,7 @@ fn validate_plan(cfg: &Config, items: &[PruneItem]) -> Result<()> {
         if item.path == cfg.data_dir
             || item.path == cfg.backup_dir
             || item.path == cfg.browser_smoke_dir
+            || item.path == cfg.worktime_report_cache_dir
         {
             bail!("refusing to delete root directory {}", item.path.display());
         }
@@ -486,8 +544,12 @@ fn print_summary(summary: &Summary, json: bool) -> Result<()> {
 }
 
 fn cutoff(days: u64) -> SystemTime {
+    cutoff_seconds(days.saturating_mul(86_400))
+}
+
+fn cutoff_seconds(seconds: u64) -> SystemTime {
     SystemTime::now()
-        .checked_sub(Duration::from_secs(days.saturating_mul(86_400)))
+        .checked_sub(Duration::from_secs(seconds))
         .unwrap_or(SystemTime::UNIX_EPOCH)
 }
 
@@ -598,12 +660,14 @@ mod tests {
             data_dir: tmp.path().to_path_buf(),
             backup_dir: tmp.path().join("backups"),
             browser_smoke_dir: tmp.path().join("browser-smoke"),
+            worktime_report_cache_dir: tmp.path().join("worktime-report-cache"),
             tmp_dir: tmp.path().join("tmp"),
             backup_retention_days: 1,
             backup_keep_last_db: 1,
             backup_keep_last_json: 1,
             browser_smoke_keep_runs: 1,
             browser_smoke_retention_days: 1,
+            worktime_report_cache_retention_seconds: 1,
             tmp_archive_retention_days: 1,
             tmp_webui_retention_days: 1,
             apply: false,
@@ -617,5 +681,44 @@ mod tests {
             size_bytes: 1,
         };
         assert!(validate_plan(&cfg, &[item]).is_err());
+    }
+
+    #[test]
+    fn worktime_report_cache_prunes_only_json_files_inside_cache_dir() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let cache_dir = tmp.path().join("worktime-report-cache");
+        fs::create_dir_all(&cache_dir).expect("cache dir");
+        fs::write(cache_dir.join("old-cache.json"), b"{}").expect("cache json");
+        fs::write(cache_dir.join("keep.txt"), b"keep").expect("non-json");
+        fs::create_dir_all(cache_dir.join("nested")).expect("nested dir");
+        fs::write(cache_dir.join("nested").join("nested-cache.json"), b"{}")
+            .expect("nested cache json");
+
+        let cfg = Config {
+            data_dir: tmp.path().to_path_buf(),
+            backup_dir: tmp.path().join("backups"),
+            browser_smoke_dir: tmp.path().join("browser-smoke"),
+            worktime_report_cache_dir: cache_dir.clone(),
+            tmp_dir: tmp.path().join("tmp"),
+            backup_retention_days: 1,
+            backup_keep_last_db: 1,
+            backup_keep_last_json: 1,
+            browser_smoke_keep_runs: 1,
+            browser_smoke_retention_days: 1,
+            worktime_report_cache_retention_seconds: 1,
+            tmp_archive_retention_days: 1,
+            tmp_webui_retention_days: 1,
+            apply: false,
+            json: false,
+        };
+
+        std::thread::sleep(Duration::from_secs(2));
+        let mut items = Vec::new();
+        plan_worktime_report_cache(&cfg, &mut items).expect("plan cache");
+
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].reason, "worktime_report_disk_cache");
+        assert_eq!(items[0].path, cache_dir.join("old-cache.json"));
+        validate_plan(&cfg, &items).expect("valid cache plan");
     }
 }
