@@ -40,10 +40,12 @@ Get-ScheduledTask -TaskName 'ActivityWatch*' |
 - по одной задаче `ActivityWatch Launch [...]` на пользователя;
 - одна задача `ActivityWatch Recovery`.
 
-Точечная проверка:
+Точечная проверка. В имени `ActivityWatch Launch [...]` используется stable ActivityWatch logical host id из `deployment-config.json` (`awHostname`), а не обязательно физический `COMPUTERNAME`:
 
 ```powershell
-Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Launch [SHARKON2025_user1]'
+$cfg = Get-Content 'C:\ProgramData\AWatch-rus\deployment-config.json' -Raw | ConvertFrom-Json
+$logicalHost = if ($cfg.awHostname) { [string]$cfg.awHostname } else { [string]$env:COMPUTERNAME }
+Get-ScheduledTask | Where-Object TaskName -eq "ActivityWatch Launch [$($logicalHost)_user1]"
 Get-ScheduledTask | Where-Object TaskName -eq 'ActivityWatch Recovery'
 ```
 

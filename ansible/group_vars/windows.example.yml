@@ -14,6 +14,11 @@ aw_windows_package_version: "v0.13.2"
 aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
 aw_windows_package_zip_path: ""
 aw_windows_domain: "HOST-EXAMPLE"
+# Stable ActivityWatch host identity for bucket ids and dashboards.
+# This is not necessarily the Windows computer name. Keep it stable across
+# Windows/RDP host renames, and change aw_windows_domain separately when the
+# local Windows logon domain changes.
+aw_windows_logical_host_id: "HOST-EXAMPLE"
 # Localized name of the built-in local Administrator account (SID ending in -500).
 # On the current Russian Windows host this must stay "Администратор";
 # do not replace it with "Administrator" unless the target OS account is actually named that way.
@@ -33,7 +38,7 @@ aw_windows_extra_users: []
 # Единые Windows/RDP пути: те же, что использует InnoSetup.
 aw_windows_install_root: "C:\\Program Files\\AWatch-rus\\bin"
 aw_windows_state_root: "C:\\ProgramData\\AWatch-rus"
-aw_windows_hostname_override: ""  # Например: HOST-EXAMPLE
+aw_windows_hostname_override: ""  # Legacy alias; prefer aw_windows_logical_host_id.
 aw_windows_afk_enabled: true
 aw_windows_window_enabled: true
 aw_windows_file_ops_enabled: true
@@ -74,8 +79,8 @@ aw_windows_legacy_install_root: "C:\\Program Files\\ActivityWatch-Phase2"
 aw_windows_legacy_state_root: "C:\\ProgramData\\ActivityWatch-Phase2"
 aw_windows_migration_report_remote_path: "{{ aw_windows_state_root }}\\aw_migration_ansible.json"
 
-# По умолчанию AFK bucket вычисляется как aw-watcher-afk_<COMPUTERNAME>.
-# Задайте явное значение только если watcher пишет в нестандартный bucket.
+# По умолчанию smoke-check bucket вычисляется как aw-watcher-*_<aw_windows_logical_host_id>.
+# Если logical id не задан, используется физический COMPUTERNAME как fallback.
 aw_windows_api_smoke_check_enabled: true
 aw_windows_api_smoke_check_bucket: ""
 aw_windows_api_smoke_check_limit: 10

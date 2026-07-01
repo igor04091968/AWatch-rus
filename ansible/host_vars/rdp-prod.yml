@@ -1,5 +1,15 @@
 ---
-# SHARKON2025 uses aw-windows-telemetry browser-domains-collector as the
-# per-user currentwindow source. The legacy aw-watcher-window process emits
-# no-user duplicate rows in this RDP setup, so keep it disabled for this host.
+# Production DetMir keeps SHARKON2025 as the stable ActivityWatch logical host
+# id for historical buckets, Grafana variables and ClickHouse workforce keys.
+# This value is intentionally independent from the physical Windows computer
+# name, which may change during RDP server maintenance.
+aw_windows_logical_host_id: "SHARKON2025"
+aw_windows_hostname_override: "{{ aw_windows_logical_host_id }}"
+
+# Set aw_windows_domain to the current Windows local/domain logon prefix after
+# a server rename. Do not use aw_windows_logical_host_id as a logon domain.
+
+# This host uses aw-windows-telemetry browser-domains-collector as the per-user
+# currentwindow source. The legacy aw-watcher-window process emits no-user
+# duplicate rows in this RDP setup, so keep it disabled for this host.
 aw_windows_window_enabled: false

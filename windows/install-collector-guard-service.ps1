@@ -79,6 +79,7 @@ else {
 New-Service -Name $ServiceName -BinaryPathName $binPath -DisplayName 'AWatch-rus Collector Guard' -StartupType Automatic | Out-Null
 sc.exe description $ServiceName "Session-aware ActivityWatch collector guard for AWatch-rus" | Out-Null
 sc.exe failure $ServiceName reset= 300 actions= restart/5000/restart/15000/restart/60000 | Out-Null
+sc.exe failureflag $ServiceName 1 | Out-Null
 
 if ($DisableRecoveryTask) {
     Write-Warning 'DisableRecoveryTask is deprecated and ignored: ActivityWatch Recovery must remain enabled as collector guard fallback.'

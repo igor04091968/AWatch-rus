@@ -42,13 +42,13 @@ aw_windows_builtin_administrator_name: "Администратор"
 
 Назначение: явно фиксировать локализованное имя встроенной учетной записи Administrator с SID `*-500`.
 
-Для текущего Windows host `SHARKON2025` task name должен строиться как:
+Task name должен строиться из stable ActivityWatch logical host id и локализованного имени пользователя. Для текущего DetMir production historical logical id остаётся `SHARKON2025`, даже если физический `COMPUTERNAME` RDP-сервера изменён:
 
 ```text
 ActivityWatch Launch [SHARKON2025_Администратор]
 ```
 
-Если task по `SHARKON2025_Administrator` не найден, recovery/deploy path обязан пробовать кириллическое имя `Администратор`. Это зафиксировано через:
+Если task по `<logical-host>_Administrator` не найден, recovery/deploy path обязан пробовать кириллическое имя `Администратор`. Это зафиксировано через:
 
 - default vars в `ansible/deploy_aw_windows.yml`;
 - `ansible/group_vars/aw_windows.yml`;
@@ -60,9 +60,9 @@ ActivityWatch Launch [SHARKON2025_Администратор]
 
 `ActivityWatch.Windows.Common.psm1` усилил recovery path:
 
-- `Get-ActivityWatchBuiltInAdministratorName` сначала смотрит env override, затем SID-500 lookup, затем host-specific fallback `SHARKON2025 -> Администратор`;
+- `Get-ActivityWatchBuiltInAdministratorName` сначала смотрит env override, затем SID-500 lookup, затем общий fallback `Administrator`;
 - `Normalize-ActivityWatchUsers` стабилизирован для pipeline/list cases;
 - удаление scheduled tasks стало устойчивее к частично удаленным task definitions;
 - recovery task может ориентироваться на live interactive session и запускаться в interactive logon context, когда это безопаснее для watcher'ов.
 
-Операционный вывод: для RDP/console telemetry нельзя полагаться на task name с английским `Administrator` на русифицированной Windows. Локализованное имя должно быть частью deploy vars.
+Операционный вывод: для RDP/console telemetry нельзя полагаться на task name с английским `Administrator` на русифицированной Windows. Локализованное имя должно быть частью deploy vars, а `awHostname` должен оставаться stable logical id и не обязан совпадать с физическим именем Windows.

@@ -18,7 +18,13 @@
     aw_windows_package_version: "v0.13.2"
     aw_windows_package_url: "https://github.com/ActivityWatch/activitywatch/releases/download/v0.13.2/activitywatch-v0.13.2-windows-x86_64.zip"
     aw_windows_package_zip_path: ""
-    aw_windows_domain: "SHARKON2025"
+    # Windows account domain is the physical/local Windows logon domain. It may
+    # change when the RDP server is renamed. Do not use it as the ActivityWatch
+    # bucket identity.
+    aw_windows_domain: ""
+    # Stable ActivityWatch identity used in bucket ids, dashboards and reports.
+    # Keep this stable across Windows/RDP host renames.
+    aw_windows_logical_host_id: ""
     aw_windows_builtin_administrator_name: "Администратор"
     aw_windows_users:
       - Администратор
@@ -143,13 +149,44 @@
               )
           }}
 
+    - name: Получить Windows COMPUTERNAME для account-domain fallback
+      ansible.windows.win_command: powershell.exe -NoProfile -Command "$env:COMPUTERNAME"
+      register: aw_windows_computername_result
+      changed_when: false
+
+    - name: Вычислить effective Windows account domain
+      ansible.builtin.set_fact:
+        aw_windows_domain_effective: >-
+          {{
+            aw_windows_domain
+            if (
+              (aw_windows_domain | default('') | string | length) > 0
+              and (aw_windows_domain | string) != 'HOST-EXAMPLE'
+            )
+            else (aw_windows_computername_result.stdout | trim)
+          }}
+
+    - name: Вычислить effective File1C upload principal
+      ansible.builtin.set_fact:
+        aw_windows_file_1c_auto_upload_run_as_user_effective: >-
+          {{
+            aw_windows_file_1c_auto_upload_run_as_user
+            if (
+              (aw_windows_file_1c_auto_upload_run_as_user | default('') | string | length) > 0
+              and 'HOST-EXAMPLE' not in (aw_windows_file_1c_auto_upload_run_as_user | string)
+              and not ((aw_windows_file_1c_auto_upload_run_as_user | string).startswith('\\'))
+            )
+            else (aw_windows_domain_effective ~ '\\' ~ aw_windows_builtin_administrator_name)
+          }}
+
     - name: Проверить обязательные переменные
       ansible.builtin.assert:
         that:
           - aw_windows_server_host_effective | length > 0
           - aw_windows_server_port is defined
           - aw_windows_server_scheme is defined
-          - aw_windows_domain is defined
+          - aw_windows_domain_effective is defined
+          - aw_windows_domain_effective | string | length > 0
           - aw_windows_builtin_administrator_name is defined
           - aw_windows_builtin_administrator_name | length > 0
           - aw_windows_users_effective | length > 0
@@ -157,6 +194,25 @@
           - aw_windows_state_root is defined
           - (not (aw_windows_file_1c_auto_upload_enabled | bool)) or (aw_windows_file_1c_target_host_effective | length > 0)
         fail_msg: "Не заданы обязательные переменные Windows-развёртывания."
+
+    - name: Вычислить stable ActivityWatch host identity
+      ansible.builtin.set_fact:
+        aw_windows_logical_host_id_effective: >-
+          {{
+            aw_windows_logical_host_id
+            if (
+              (aw_windows_logical_host_id | default('') | string | length) > 0
+              and (aw_windows_logical_host_id | string) != 'HOST-EXAMPLE'
+            )
+            else (
+              aw_windows_hostname_override
+              if (
+                (aw_windows_hostname_override | default('') | string | length) > 0
+                and (aw_windows_hostname_override | string) != 'HOST-EXAMPLE'
+              )
+              else ''
+            )
+          }}
 
     - name: Нормализовать effective флаги collector'ов и smoke-check
       ansible.builtin.set_fact:
@@ -286,7 +342,7 @@
             ServerHost = "{{ aw_windows_server_host_effective }}"
             ServerPort = {{ aw_windows_server_port }}
             Version = "{{ aw_windows_package_version }}"
-            Domain = "{{ aw_windows_domain }}"
+            Domain = "{{ aw_windows_domain_effective }}"
             UserListPath = "{{ aw_windows_deploy_root }}\windows\users.txt"
             InstallRoot = "{{ aw_windows_install_root }}"
             StateRoot = "{{ aw_windows_state_root }}"
@@ -316,7 +372,7 @@
             File1CAutoUploadEnabled = {{ '$true' if (aw_windows_file_1c_auto_upload_enabled | bool) else '$false' }}
             File1CAutoUploadIntervalMinutes = {{ aw_windows_file_1c_auto_upload_interval_minutes | int }}
             File1CAutoUploadTaskName = "{{ aw_windows_file_1c_auto_upload_task_name }}"
-            File1CAutoUploadRunAsUser = "{{ aw_windows_file_1c_auto_upload_run_as_user }}"
+            File1CAutoUploadRunAsUser = "{{ aw_windows_file_1c_auto_upload_run_as_user_effective }}"
             File1CTargetHost = "{{ aw_windows_file_1c_target_host_effective }}"
             File1CTargetUser = "{{ aw_windows_file_1c_target_user }}"
             File1CRegistryWorkbookPath = "{{ aw_windows_file_1c_registry_workbook_path }}"
@@ -336,8 +392,8 @@
           {% endfor %}
           )
           {% endif %}
-          {% if (aw_windows_hostname_override | default('') | string | length) > 0 %}
-          $params.AwHostname = "{{ aw_windows_hostname_override }}"
+          {% if (aw_windows_logical_host_id_effective | default('') | string | length) > 0 %}
+          $params.AwHostname = "{{ aw_windows_logical_host_id_effective }}"
           {% endif %}
           {% if aw_windows_skip_hardening | bool %}
           $params.SkipHardening = $true
@@ -465,7 +521,7 @@
           }
           & "{{ aw_windows_deploy_root }}\windows\install-collector-guard-service.ps1" @guardParams
 
-    - name: Получить Windows hostname для AW smoke-check bucket
+    - name: Получить Windows hostname для fallback AW smoke-check bucket
       when:
         - aw_windows_api_smoke_check_enabled | bool
       ansible.windows.win_command: powershell.exe -NoProfile -Command "$env:COMPUTERNAME"
@@ -481,7 +537,11 @@
           {{
             aw_windows_api_smoke_check_bucket
             if (aw_windows_api_smoke_check_bucket | default('') | string | length) > 0
-            else 'aw-worktime-sessions_' ~ (aw_windows_hostname_result.stdout | trim)
+            else 'aw-worktime-sessions_' ~ (
+              aw_windows_logical_host_id_effective
+              if (aw_windows_logical_host_id_effective | default('') | string | length) > 0
+              else (aw_windows_hostname_result.stdout | trim)
+            )
           }}
 
     - name: Вычислить AW Window smoke-check bucket
@@ -495,7 +555,11 @@
           {{
             aw_windows_api_smoke_check_window_bucket
             if (aw_windows_api_smoke_check_window_bucket | default('') | string | length) > 0
-            else 'aw-watcher-window_' ~ (aw_windows_hostname_result.stdout | trim)
+            else 'aw-watcher-window_' ~ (
+              aw_windows_logical_host_id_effective
+              if (aw_windows_logical_host_id_effective | default('') | string | length) > 0
+              else (aw_windows_hostname_result.stdout | trim)
+            )
           }}
 
     - name: Выполнить AW API smoke-check (worktime bucket должен получать события)
