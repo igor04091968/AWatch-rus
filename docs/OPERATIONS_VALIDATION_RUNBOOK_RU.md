@@ -1,6 +1,6 @@
 # Эксплуатационная проверка контура
 
-Дата актуализации: 2026-06-23
+Дата актуализации: 2026-07-01
 
 Документ фиксирует минимальный профессиональный контур проверки после
 существенных изменений Rust-кода, сборщиков telemetry, ClickHouse workforce
@@ -31,6 +31,41 @@ cargo deny --manifest-path adk-rust/Cargo.toml check \
   --hide-inclusion-graph \
   --show-stats
 ```
+
+Dependency hygiene для production/high-load Rust contour:
+
+```bash
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/adk-rust
+
+cargo metadata --locked --format-version 1 >/tmp/aw-rus-cargo-metadata.json
+cargo tree --duplicates --locked > /tmp/aw-rus-cargo-tree-duplicates.txt
+cargo update --locked
+cargo audit --deny warnings
+
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian
+cargo deny --manifest-path adk-rust/Cargo.toml check \
+  --config deny.toml \
+  --hide-inclusion-graph \
+  --show-stats
+```
+
+`cargo update --locked` используется как drift probe: он не должен менять
+`Cargo.lock`, но может показать доступные совместимые обновления и завершиться
+ошибкой из-за `--locked`. Такой результат фиксировать как сигнал для отдельного
+dependency-refresh PR, а не как повод молча обновлять lockfile в функциональной
+ветке.
+
+Периодически, особенно перед dependency cleanup или production binary refresh,
+проверять неиспользуемые зависимости:
+
+```bash
+cd /mnt/usb_hdd2/Projects/ActivityWatch-Russian/adk-rust
+cargo machete
+```
+
+Удалять найденные зависимости только после ручной проверки через `rg` и
+целевого `cargo test -p <crate> --locked`: `cargo machete` может ошибаться на
+feature-gated, generated или metadata-driven usage.
 
 Windows/RDP collector дополнительно проверяется под целевой ABI:
 
