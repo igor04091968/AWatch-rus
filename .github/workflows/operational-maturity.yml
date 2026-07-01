@@ -1,0 +1,73 @@
+name: Operational maturity
+
+# GitHub Actions is public mirror validation only.
+# Live DetMir production checks must be run explicitly by an operator with
+# private network access and must not enable heavy DLP, Loki or always-on
+# Velociraptor.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      live:
+        description: "Run live endpoint contract if AWATCH_OPS_LIVE_URL is configured"
+        required: false
+        default: "false"
+  schedule:
+    - cron: "41 3 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  offline-operational-maturity:
+    name: Offline operational maturity
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Script syntax
+        run: node --check scripts/operational-maturity-check.mjs
+
+      - name: Operational maturity harness
+        run: node scripts/operational-maturity-check.mjs --json
+
+  live-operational-contract:
+    name: Live operational contract
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && inputs.live == 'true'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Run live contract when URL is available
+        env:
+          AWATCH_OPS_LIVE_URL: ${{ secrets.AWATCH_OPS_LIVE_URL }}
+        run: |
+          if [[ -z "${AWATCH_OPS_LIVE_URL}" ]]; then
+            echo "skipped: AWATCH_OPS_LIVE_URL secret is not configured"
+            exit 0
+          fi
+          node scripts/operational-maturity-check.mjs --json --live

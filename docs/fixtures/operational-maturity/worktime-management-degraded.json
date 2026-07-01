@@ -1,0 +1,11 @@
+{
+  "status": "DEGRADED",
+  "stale": false,
+  "reason": "report_unavailable",
+  "report_cache_hit": false,
+  "report_stale_served": false,
+  "aw_query_duration_ms": 350,
+  "aw_query_timeout_count": 1,
+  "report_build_error_count": 1,
+  "users": []
+}

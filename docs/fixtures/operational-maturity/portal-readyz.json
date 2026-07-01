@@ -1,0 +1,26 @@
+{
+  "status": "ready",
+  "checks": {
+    "portal": {
+      "status": "ok",
+      "latency_ms": 1
+    },
+    "worktime_api": {
+      "status": "ok",
+      "stale": false
+    },
+    "clickhouse": {
+      "status": "ok",
+      "mode": "external"
+    },
+    "dlp_runtime": {
+      "status": "skipped",
+      "profile": "core_only",
+      "reason": "disabled_by_production_default"
+    },
+    "security_finding_inbox": {
+      "status": "ok",
+      "mode": "shadow"
+    }
+  }
+}
