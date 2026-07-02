@@ -7,6 +7,22 @@ production IP Windows/RDP host теперь `192.168.100.19`; stable ActivityWat
 logical host id остаётся `SHARKON2025`. Подробный post-restore baseline:
 `docs/DETMIR_RESTORE_BASELINE_2026-06-29_RU.md`.
 
+Обновление 2026-07-02 после ремонта portal telemetry ingest: Windows
+`awatch-agent-rs` был запущен и отправлял `POST /api/telemetry`, но
+`detmir-portal.service` на gateway работал без production
+`DETMIR_PORTAL_TELEMETRY_API_KEY` и принимал default `change-me`. Поэтому
+запросы telemetry получали `401`, `/var/lib/detmir-portal/telemetry.jsonl`
+оставался stale с `2026-06-25`, а portal ошибочно показывал
+`SHARKON2025` как `MISSING node`, `agent_coverage_pct=0` и высокий риск.
+Исправление: API key синхронизирован из production agent config
+`C:\ProgramData\AWatch-rus\agent\awatch-agent.toml` в
+`/etc/detmir-portal.env`, предварительно создан backup
+`/etc/detmir-portal.env.bak.telemetry-key.<timestamp>`, затем перезапущен
+только `detmir-portal.service`. После проверки: telemetry свежая
+`2026-07-02T07:20:09Z SHARKON2025`, `/portal/api/summary` вернул
+`severity=OK`, `operator_ok=true`, executive report показал
+`trust_kpi_score=100`, `agent_coverage_pct=100`, `critical_candidates=0`.
+
 Документ фиксирует фактическое состояние DetMir/AWatch-rus и первую границу
 переработки горячего пути портала. Это не release evidence для реестра
 российского ПО, не заявление о сертификации и не claim замены DLP/SIEM/EDR.
