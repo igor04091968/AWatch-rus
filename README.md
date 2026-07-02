@@ -279,6 +279,8 @@ collectors.
   [docs/REVIEW_CHECKLIST_RU.md](docs/REVIEW_CHECKLIST_RU.md).
 - Operational validation runbook:
   [docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md](docs/OPERATIONS_VALIDATION_RUNBOOK_RU.md).
+- Daily maintenance runbook with optional Pollinations AI evidence assistant:
+  [docs/DAILY_MAINTENANCE_RU.md](docs/DAILY_MAINTENANCE_RU.md).
 - Operational maturity harness:
   [docs/OPERATIONAL_MATURITY_RU.md](docs/OPERATIONAL_MATURITY_RU.md).
 - Residual risks register:

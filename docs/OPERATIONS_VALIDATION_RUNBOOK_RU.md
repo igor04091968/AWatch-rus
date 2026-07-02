@@ -61,6 +61,14 @@ cargo run -p quality-gate -- --root /mnt/usb_hdd2/Projects/ActivityWatch-Russian
 Подробности эксплуатационного maturity harness: [эксплуатационная зрелость
 DetMir/AWatch-rus](OPERATIONAL_MATURITY_RU.md).
 
+Единый автономный entry point для unattended validation, runtime diagnostics,
+history, regression detection, alerts и reports описан отдельно:
+[автономная проверка AWatch-rus](AUTONOMOUS_VALIDATION_RU.md).
+
+Ежедневный maintenance-порядок с optional Pollinations AI assistant для
+sanitized evidence summaries описан в отдельном runbook:
+[ежедневное обслуживание AWatch-rus](DAILY_MAINTENANCE_RU.md).
+
 ## Production binary parity gate
 
 Production binary parity gate доказывает, что production unit/timer/task

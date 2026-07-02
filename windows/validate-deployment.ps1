@@ -594,7 +594,15 @@ $watcherCountsOk = $true
 $endpointProcessOk = $true
 $fileProcessOk = $true
 $browserProcessOk = $true
-$sessionCollectorOk = (@($sessionCollectorProcesses).Count -eq 1)
+$sessionCollectorOk = if (@($sessionCollectorProcesses).Count -eq 1) {
+    $true
+}
+elseif (-not $liveSessionScopedCollectorsRequired) {
+    $true
+}
+else {
+    $false
+}
 
 $result = [ordered]@{
     generatedAtUtc = (Get-Date).ToUniversalTime().ToString('o')

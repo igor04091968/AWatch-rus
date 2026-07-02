@@ -4037,6 +4037,7 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
         .unwrap_or_else(|| "powershell_primary".to_string());
     let worktime_legacy_fallback_enabled =
         json_bool(&config, &["collectors", "worktimeLegacyFallbackEnabled"]).unwrap_or(true);
+    let window_enabled = json_bool(&config, &["collectors", "windowEnabled"]).unwrap_or(true);
     let file_ops_enabled = json_bool(&config, &["collectors", "fileOpsEnabled"]).unwrap_or(true);
     let file_ops_mode = json_string(&config, &["collectors", "fileOpsMode"])
         .unwrap_or_else(|| "powershell_primary".to_string());
@@ -4047,7 +4048,7 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
         args.interactive_max_age_seconds,
         15,
     );
-    let bucket_checks = vec![
+    let mut bucket_checks = vec![
         worktime_bucket.clone(),
         get_bucket_health(
             &api_base,
@@ -4055,19 +4056,21 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
             args.interactive_max_age_seconds,
             15,
         ),
-        get_bucket_health(
+    ];
+    if window_enabled {
+        bucket_checks.push(get_bucket_health(
             &api_base,
             &format!("aw-watcher-window_{aw_hostname}"),
             args.interactive_max_age_seconds,
             15,
-        ),
-        get_bucket_health(
-            &api_base,
-            &format!("aw-dlp-endpoint-signals_{aw_hostname}"),
-            args.interactive_max_age_seconds,
-            15,
-        ),
-    ];
+        ));
+    }
+    bucket_checks.push(get_bucket_health(
+        &api_base,
+        &format!("aw-dlp-endpoint-signals_{aw_hostname}"),
+        args.interactive_max_age_seconds,
+        15,
+    ));
     let interactive_stale = bucket_checks
         .iter()
         .skip(1)

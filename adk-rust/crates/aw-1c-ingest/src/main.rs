@@ -6,16 +6,19 @@ use std::process::Command;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use calamine::{Data, Reader, open_workbook_auto};
 use chrono::{DateTime, NaiveDateTime, Utc};
 use clap::Parser;
 use filetime::{FileTime, set_file_times};
 use fs2::FileExt;
+use quick_xml::Reader as XmlReader;
+use quick_xml::XmlVersion;
+use quick_xml::events::{BytesStart, Event};
 use regex::Regex;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use sha1::{Digest, Sha1};
+use zip::ZipArchive;
 
 const DATASETS: &[&str] = &[
     "documents",
@@ -1103,15 +1106,14 @@ fn load_registry(
 }
 
 fn parse_registry_xlsx(path: &Path) -> Result<Vec<Value>> {
-    let mut workbook =
-        open_workbook_auto(path).with_context(|| format!("open xlsx {}", path.display()))?;
+    let workbook = read_xlsx_workbook(path)?;
     let now = Utc::now()
         .naive_utc()
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
     let mut tax_map: HashMap<String, (String, String)> = HashMap::new();
-    if let Ok(range) = workbook.worksheet_range("Лист2") {
-        for row in range.rows().skip(2) {
+    if let Some(rows) = workbook.get("Лист2") {
+        for row in rows.iter().skip(2) {
             let company_name = cell_text(row.get(1));
             if company_name.is_empty() {
                 continue;
@@ -1123,10 +1125,10 @@ fn parse_registry_xlsx(path: &Path) -> Result<Vec<Value>> {
         }
     }
     let mut out = Vec::new();
-    let Ok(range) = workbook.worksheet_range("ОСНОВНОЙ") else {
+    let Some(sheet_rows) = workbook.get("ОСНОВНОЙ") else {
         return Ok(out);
     };
-    let rows: Vec<_> = range.rows().collect();
+    let rows: Vec<_> = sheet_rows.iter().collect();
     if rows.len() < 3 {
         return Ok(out);
     }
@@ -1134,7 +1136,8 @@ fn parse_registry_xlsx(path: &Path) -> Result<Vec<Value>> {
     let manager_headers: Vec<String> = rows[1].iter().map(|v| cell_text(Some(v))).collect();
     let mut specs = Vec::<(usize, String, Option<usize>, String, String)>::new();
     let mut current: Option<(usize, String, String)> = None;
-    for idx in 1..manager_headers.len() {
+    let header_len = top_headers.len().max(manager_headers.len());
+    for idx in 1..header_len {
         let manager = manager_headers.get(idx).cloned().unwrap_or_default();
         let top = top_headers.get(idx).cloned().unwrap_or_default();
         if !manager.is_empty() {
@@ -1194,24 +1197,289 @@ fn parse_registry_xlsx(path: &Path) -> Result<Vec<Value>> {
     Ok(out)
 }
 
-fn cell_text(value: Option<&Data>) -> String {
-    match value {
-        Some(Data::String(v)) => v.trim().to_string(),
-        Some(Data::Float(v)) => {
-            if v.fract() == 0.0 {
-                format!("{}", *v as i64)
+type XlsxWorkbook = HashMap<String, Vec<Vec<String>>>;
+
+fn read_xlsx_workbook(path: &Path) -> Result<XlsxWorkbook> {
+    let file = File::open(path).with_context(|| format!("open xlsx {}", path.display()))?;
+    let mut archive =
+        ZipArchive::new(file).with_context(|| format!("read xlsx {}", path.display()))?;
+    let shared_strings = read_xlsx_shared_strings(&mut archive)?;
+    let sheets = read_xlsx_sheet_paths(&mut archive)?;
+    let mut workbook = XlsxWorkbook::new();
+    for (name, sheet_path) in sheets {
+        let xml = read_zip_text(&mut archive, &sheet_path)
+            .with_context(|| format!("read sheet {name} from {}", path.display()))?;
+        let rows = parse_xlsx_sheet(&xml, &shared_strings)
+            .with_context(|| format!("parse sheet {name} from {}", path.display()))?;
+        workbook.insert(name, rows);
+    }
+    Ok(workbook)
+}
+
+fn read_xlsx_shared_strings<R: Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+) -> Result<Vec<String>> {
+    let Some(xml) = read_zip_text_optional(archive, "xl/sharedStrings.xml")? else {
+        return Ok(Vec::new());
+    };
+    let mut reader = XmlReader::from_str(&xml);
+    reader.config_mut().trim_text(false);
+    let mut buf = Vec::new();
+    let mut strings = Vec::new();
+    let mut in_si = false;
+    let mut in_t = false;
+    let mut current = String::new();
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Start(e) => match local_name(e.name().as_ref()) {
+                b"si" => {
+                    in_si = true;
+                    current.clear();
+                }
+                b"t" if in_si => in_t = true,
+                _ => {}
+            },
+            Event::Text(e) if in_si && in_t => current.push_str(e.decode()?.as_ref()),
+            Event::End(e) => match local_name(e.name().as_ref()) {
+                b"t" => in_t = false,
+                b"si" => {
+                    strings.push(current.clone());
+                    in_si = false;
+                }
+                _ => {}
+            },
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(strings)
+}
+
+fn read_xlsx_sheet_paths<R: Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+) -> Result<Vec<(String, String)>> {
+    let workbook_xml = read_zip_text(archive, "xl/workbook.xml")?;
+    let rels_xml = read_zip_text(archive, "xl/_rels/workbook.xml.rels")?;
+    let rels = parse_xlsx_relationships(&rels_xml)?;
+    let mut reader = XmlReader::from_str(&workbook_xml);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut sheets = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Empty(e) | Event::Start(e) if local_name(e.name().as_ref()) == b"sheet" => {
+                let name = xml_attr(&reader, &e, b"name")?.unwrap_or_default();
+                let mut rel_id = xml_attr(&reader, &e, b"r:id")?.unwrap_or_default();
+                if rel_id.is_empty() {
+                    rel_id = xml_attr(&reader, &e, b"id")?.unwrap_or_default();
+                }
+                if !name.is_empty() && !rel_id.is_empty() {
+                    let target = rels
+                        .get(&rel_id)
+                        .with_context(|| format!("missing workbook relationship {rel_id}"))?;
+                    sheets.push((name, normalize_xlsx_target(target)?));
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(sheets)
+}
+
+fn parse_xlsx_relationships(xml: &str) -> Result<HashMap<String, String>> {
+    let mut reader = XmlReader::from_str(xml);
+    reader.config_mut().trim_text(true);
+    let mut buf = Vec::new();
+    let mut rels = HashMap::new();
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Empty(e) | Event::Start(e)
+                if local_name(e.name().as_ref()) == b"Relationship" =>
+            {
+                let id = xml_attr(&reader, &e, b"Id")?.unwrap_or_default();
+                let target = xml_attr(&reader, &e, b"Target")?.unwrap_or_default();
+                if !id.is_empty() && !target.is_empty() {
+                    rels.insert(id, target);
+                }
+            }
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(rels)
+}
+
+fn parse_xlsx_sheet(xml: &str, shared_strings: &[String]) -> Result<Vec<Vec<String>>> {
+    let mut reader = XmlReader::from_str(xml);
+    reader.config_mut().trim_text(false);
+    let mut buf = Vec::new();
+    let mut rows = Vec::<Vec<String>>::new();
+    let mut current_row = Vec::<String>::new();
+    let mut current_cell: Option<(usize, String, String)> = None;
+    let mut in_value = false;
+    let mut in_inline_text = false;
+    loop {
+        match reader.read_event_into(&mut buf)? {
+            Event::Empty(e) => match local_name(e.name().as_ref()) {
+                b"row" => rows.push(Vec::new()),
+                b"c" => {
+                    let cell_ref = xml_attr(&reader, &e, b"r")?.unwrap_or_default();
+                    let column = cell_ref
+                        .chars()
+                        .take_while(|ch| ch.is_ascii_alphabetic())
+                        .collect::<String>();
+                    let col = xlsx_column_index(&column).unwrap_or(current_row.len());
+                    if current_row.len() <= col {
+                        current_row.resize(col + 1, String::new());
+                    }
+                }
+                _ => {}
+            },
+            Event::Start(e) => match local_name(e.name().as_ref()) {
+                b"row" => current_row.clear(),
+                b"c" => {
+                    let cell_ref = xml_attr(&reader, &e, b"r")?.unwrap_or_default();
+                    let cell_type = xml_attr(&reader, &e, b"t")?.unwrap_or_default();
+                    let column = cell_ref
+                        .chars()
+                        .take_while(|ch| ch.is_ascii_alphabetic())
+                        .collect::<String>();
+                    let col = xlsx_column_index(&column).unwrap_or(current_row.len());
+                    current_cell = Some((col, cell_type, String::new()));
+                }
+                b"v" => in_value = true,
+                b"t" if current_cell
+                    .as_ref()
+                    .is_some_and(|(_, kind, _)| kind == "inlineStr") =>
+                {
+                    in_inline_text = true;
+                }
+                _ => {}
+            },
+            Event::Text(e) if in_value || in_inline_text => {
+                if let Some((_, _, value)) = current_cell.as_mut() {
+                    value.push_str(e.decode()?.as_ref());
+                }
+            }
+            Event::End(e) => match local_name(e.name().as_ref()) {
+                b"v" => in_value = false,
+                b"t" => in_inline_text = false,
+                b"c" => {
+                    if let Some((col, cell_type, raw)) = current_cell.take() {
+                        let value = xlsx_cell_value(&cell_type, &raw, shared_strings);
+                        if current_row.len() <= col {
+                            current_row.resize(col + 1, String::new());
+                        }
+                        current_row[col] = value;
+                    }
+                }
+                b"row" => rows.push(current_row.clone()),
+                _ => {}
+            },
+            Event::Eof => break,
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(rows)
+}
+
+fn read_zip_text<R: Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+    path: &str,
+) -> Result<String> {
+    read_zip_text_optional(archive, path)?.with_context(|| format!("missing xlsx entry {path}"))
+}
+
+fn read_zip_text_optional<R: Read + std::io::Seek>(
+    archive: &mut ZipArchive<R>,
+    path: &str,
+) -> Result<Option<String>> {
+    let Ok(mut file) = archive.by_name(path) else {
+        return Ok(None);
+    };
+    let mut text = String::new();
+    file.read_to_string(&mut text)
+        .with_context(|| format!("read xlsx entry {path}"))?;
+    Ok(Some(text))
+}
+
+fn normalize_xlsx_target(target: &str) -> Result<String> {
+    let normalized = target.replace('\\', "/");
+    if normalized.split('/').any(|part| part == "..") {
+        bail!("unsafe xlsx relationship target: {target}");
+    }
+    let path = normalized.trim_start_matches('/');
+    if path.starts_with("xl/") {
+        Ok(path.to_string())
+    } else {
+        Ok(format!("xl/{path}"))
+    }
+}
+
+fn xml_attr(reader: &XmlReader<&[u8]>, e: &BytesStart<'_>, key: &[u8]) -> Result<Option<String>> {
+    for attr in e.attributes() {
+        let attr = attr?;
+        if attr.key.as_ref() == key {
+            return Ok(Some(
+                attr.decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())?
+                    .into_owned(),
+            ));
+        }
+    }
+    Ok(None)
+}
+
+fn local_name(name: &[u8]) -> &[u8] {
+    name.rsplit(|b| *b == b':').next().unwrap_or(name)
+}
+
+fn xlsx_column_index(column: &str) -> Option<usize> {
+    let mut value = 0usize;
+    for byte in column.bytes() {
+        if !byte.is_ascii_alphabetic() {
+            return None;
+        }
+        value = value * 26 + usize::from(byte.to_ascii_uppercase() - b'A' + 1);
+    }
+    value.checked_sub(1)
+}
+
+fn xlsx_cell_value(cell_type: &str, raw: &str, shared_strings: &[String]) -> String {
+    match cell_type {
+        "s" => raw
+            .parse::<usize>()
+            .ok()
+            .and_then(|idx| shared_strings.get(idx))
+            .cloned()
+            .unwrap_or_default(),
+        "b" => {
+            if raw.trim() == "1" {
+                "true".to_string()
             } else {
-                v.to_string()
+                "false".to_string()
             }
         }
-        Some(Data::Int(v)) => v.to_string(),
-        Some(Data::Bool(v)) => v.to_string(),
-        Some(Data::DateTime(v)) => v.to_string(),
-        Some(Data::DateTimeIso(v)) => v.trim().to_string(),
-        Some(Data::DurationIso(v)) => v.trim().to_string(),
-        Some(Data::Empty) | None => String::new(),
-        Some(other) => other.to_string(),
+        _ => raw.to_string(),
     }
+}
+
+fn cell_text(value: Option<&String>) -> String {
+    value
+        .map(|v| {
+            let trimmed = v.trim();
+            if let Ok(number) = trimmed.parse::<f64>() {
+                if number.fract() == 0.0 {
+                    return format!("{}", number as i64);
+                }
+            }
+            trimmed.to_string()
+        })
+        .unwrap_or_default()
 }
 
 fn archive_or_delete(
@@ -1506,5 +1774,82 @@ mod tests {
     #[test]
     fn split_sql_ignores_empty_chunks() {
         assert_eq!(split_sql_statements("SELECT 1; ; SELECT 2;").len(), 2);
+    }
+
+    #[test]
+    fn parses_registry_xlsx_with_inline_strings() -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("registry.xlsx");
+        let file = File::create(&path)?;
+        let mut zip = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Stored);
+        for (name, xml) in [
+            (
+                "xl/workbook.xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Лист2" sheetId="1" r:id="rId1"/>
+    <sheet name="ОСНОВНОЙ" sheetId="2" r:id="rId2"/>
+  </sheets>
+</workbook>"#,
+            ),
+            (
+                "xl/_rels/workbook.xml.rels",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Target="worksheets/sheet2.xml"/>
+</Relationships>"#,
+            ),
+            (
+                "xl/worksheets/sheet1.xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"/>
+    <row r="2"/>
+    <row r="3">
+      <c r="B3" t="inlineStr"><is><t>ООО Ромашка</t></is></c>
+      <c r="C3" t="inlineStr"><is><t>1101000000</t></is></c>
+      <c r="D3" t="inlineStr"><is><t>110101001</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>"#,
+            ),
+            (
+                "xl/worksheets/sheet2.xml",
+                r#"<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1">
+      <c r="C1" t="inlineStr"><is><t>Ключевой контур</t></is></c>
+    </row>
+    <row r="2">
+      <c r="B2" t="inlineStr"><is><t>Иванов И.И.</t></is></c>
+    </row>
+    <row r="3">
+      <c r="B3" t="inlineStr"><is><t>ООО Ромашка</t></is></c>
+      <c r="C3" t="inlineStr"><is><t>ЕСТЬ</t></is></c>
+    </row>
+  </sheetData>
+</worksheet>"#,
+            ),
+        ] {
+            zip.start_file(name, options)?;
+            zip.write_all(xml.as_bytes())?;
+        }
+        zip.finish()?;
+
+        let rows = parse_registry_xlsx(&path)?;
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["company_name"], "ООО Ромашка");
+        assert_eq!(rows[0]["company_key"], "ООО РОМАШКА");
+        assert_eq!(rows[0]["assignee_name"], "Иванов И.И.");
+        assert_eq!(rows[0]["key_contour"], 1);
+        assert_eq!(rows[0]["inn"], "1101000000");
+        assert_eq!(rows[0]["kpp"], "110101001");
+        Ok(())
     }
 }

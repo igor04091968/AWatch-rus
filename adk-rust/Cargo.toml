@@ -71,7 +71,6 @@ publish = false
 adk-rust = { version = "0.9.1", default-features = false }
 anyhow = "1"
 base64 = "0.22"
-calamine = "=0.24.0"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "std"] }
 clap = { version = "4", features = ["derive", "env"] }
 csv = "1"
@@ -81,6 +80,7 @@ detmir-state = { path = "crates/detmir-state" }
 filetime = "0.2"
 fs2 = "0.4"
 notify = "6"
+quick-xml = "0.41"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 regex = "1"
 rusqlite = "0.32"
@@ -93,4 +93,5 @@ tempfile = "3"
 tiny_http = "0.12"
 url = "2"
 urlencoding = "2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 windows-sys = "0.59"
