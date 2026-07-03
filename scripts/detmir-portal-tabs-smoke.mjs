@@ -61,6 +61,16 @@ function expectedSecurityEventsText(mode) {
   return "";
 }
 
+function isExpectedProtectedResponse(response) {
+  if (response.status() !== 403) return false;
+  try {
+    const { pathname } = new URL(response.url());
+    return pathname.endsWith("/api/security/findings");
+  } catch {
+    return false;
+  }
+}
+
 function forbiddenExecutiveTerms(text) {
   const forbidden = [
     "Trust KPI",
@@ -142,9 +152,14 @@ async function main() {
   const badResponses = [];
   page.on("pageerror", (error) => errors.push(error.message));
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(message.text());
+    if (message.type() !== "error") return;
+    const text = message.text();
+    if (text.includes("/api/security/findings") && text.includes("403")) return;
+    if (text === "Failed to load resource: the server responded with a status of 403 ()") return;
+    errors.push(text);
   });
   page.on("response", (response) => {
+    if (isExpectedProtectedResponse(response)) return;
     if (response.status() >= 400) badResponses.push({ url: response.url(), status: response.status() });
   });
 

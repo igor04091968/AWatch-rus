@@ -271,14 +271,21 @@ server {
     location ^~ /portal/api/dlp/evidence {
         proxy_set_header Authorization "";
         proxy_set_header X-Remote-User $remote_user;
-        proxy_pass http://192.0.2.13:8721/api/dlp/evidence;
+        proxy_pass http://127.0.0.1:8720/api/dlp/evidence;
         proxy_redirect off;
     }
 
-    location ^~ /portal/api/readiness {
+    location = /portal/api/readiness {
         proxy_set_header Authorization "";
         proxy_set_header X-Remote-User $remote_user;
         proxy_pass http://127.0.0.1:8720/readyz;
+        proxy_redirect off;
+    }
+
+    location ^~ /portal/api/readiness/ {
+        proxy_set_header Authorization "";
+        proxy_set_header X-Remote-User $remote_user;
+        proxy_pass http://127.0.0.1:8720/api/readiness/;
         proxy_redirect off;
     }
 
