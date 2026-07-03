@@ -163,7 +163,7 @@ Critical означает доказанное нарушение.
 Critical + low confidence = приоритет ручного triage, не подтвержденный incident.
 ```
 
-Некорректно:
+Некорректно трактовать так:
 
 ```text
 Critical UEBA автоматически является DLP/SIEM incident.
@@ -180,10 +180,8 @@ telemetry.
 
 ## Ограничения
 
-- Confidence layer не использует ML или LLM.
 - Confidence layer не меняет score, severity, thresholds или weights.
 - Confidence layer не подтверждает ИБ-инциденты автоматически.
-- pfSense readiness остается `contract_only`, если нет фактического ingestion.
 
 ## Acceptance Interpretation
 
