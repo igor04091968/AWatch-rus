@@ -6,6 +6,10 @@
 использование Pollinations AI для анализа sanitized evidence описаны отдельно:
 [ежедневное обслуживание AWatch-rus](DAILY_MAINTENANCE_RU.md).
 
+Автоматическое восстановление первичного AW API от подтвержденного
+`poisoned datastore lock` описано отдельно:
+[DetMir service reliability runbook](DETMIR_SERVICE_RELIABILITY_RUNBOOK_RU.md).
+
 ## Быстрая проверка
 
 Проверить доступность:
@@ -107,6 +111,20 @@ systemctl --failed --no-pager
 - stale cache usage;
 - coverage;
 - errors in logs.
+
+### ActivityWatch API возвращает `503 poisoned lock`
+
+Проверить, сработал ли primary recovery guard:
+
+```bash
+systemctl status detmir-aw-primary-recovery.timer --no-pager
+journalctl -u detmir-aw-primary-recovery.service -n 80 --no-pager
+sudo jq . /var/lib/detmir-aw-primary-recovery/latest.json
+```
+
+Если guard отключен, использовать manual sequence из
+`DETMIR_SERVICE_RELIABILITY_RUNBOOK_RU.md`. Не удалять SQLite, lock или journal
+файлы ActivityWatch вручную.
 
 ### Нет данных
 

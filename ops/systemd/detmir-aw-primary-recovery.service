@@ -1,0 +1,18 @@
+[Unit]
+Description=DetMir ActivityWatch primary recovery guard
+Documentation=https://github.com/igor04091968/AWatch-rus/blob/main/docs/DETMIR_SERVICE_RELIABILITY_RUNBOOK_RU.md
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/usr/sbin/pct
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/detmir/aw-primary-recovery.env
+ExecStart=/usr/local/bin/detmir-aw-primary-recovery --once
+User=root
+Group=root
+Nice=5
+TimeoutStartSec=5min
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=detmir-aw-primary-recovery

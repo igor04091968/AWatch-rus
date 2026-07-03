@@ -250,6 +250,10 @@ server {
     }
 
 {% for route in proxmox_web_gateway_routes %}
+    location = /go/{{ route.slug }} {
+        return 302 {{ route.target_url }};
+    }
+
 {% if route.proxy_target_url is defined %}
     location = {{ route.proxy_path }} {
         proxy_set_header Authorization "";
@@ -274,7 +278,7 @@ server {
     location ^~ /portal/api/readiness {
         proxy_set_header Authorization "";
         proxy_set_header X-Remote-User $remote_user;
-        proxy_pass http://192.0.2.13:8721/api/readiness;
+        proxy_pass http://127.0.0.1:8720/readyz;
         proxy_redirect off;
     }
 

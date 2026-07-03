@@ -1,0 +1,13 @@
+[Unit]
+Description=Run DetMir ActivityWatch primary recovery guard every 2 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=30s
+RandomizedDelaySec=15s
+Persistent=false
+Unit=detmir-aw-primary-recovery.service
+
+[Install]
+WantedBy=timers.target

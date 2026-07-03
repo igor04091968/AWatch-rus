@@ -1,6 +1,6 @@
 # Ежедневное обслуживание AWatch-rus
 
-Дата актуализации: 2026-07-02
+Дата актуализации: 2026-07-03
 
 Документ описывает ежедневный операторский цикл обслуживания AWatch-rus /
 DetMir и безопасное использование Pollinations AI как вспомогательного
@@ -86,6 +86,22 @@ node scripts/deployment-readiness-smoke.mjs
 
 Критерий: нет новых hard-fail проверок. Warning допустим только при известном
 и задокументированном operational constraint.
+
+### 3.1. Primary recovery guard
+
+Проверить, что автоматический recovery первичного AW API включен и не скрывает
+новые incident:
+
+```bash
+systemctl is-active detmir-aw-primary-recovery.timer
+systemctl status detmir-aw-primary-recovery.timer --no-pager
+sudo /usr/local/bin/detmir-aw-primary-recovery --check-only
+sudo jq . /var/lib/detmir-aw-primary-recovery/latest.json 2>/dev/null || true
+```
+
+Критерий: timer активен, `--check-only` возвращает `status=ok`, новые incident
+не имеют `outcome=failed`. Если latest incident отсутствует, это нормально для
+контура, где recovery еще ни разу не требовался.
 
 ### 4. Очереди, backlog и storage growth
 
@@ -305,6 +321,7 @@ unset ALL_PROXY all_proxy
 
 - [Operations Runbook](OPERATIONS_RUNBOOK_RU.md)
 - [Эксплуатационная проверка контура](OPERATIONS_VALIDATION_RUNBOOK_RU.md)
+- [DetMir service reliability runbook](DETMIR_SERVICE_RELIABILITY_RUNBOOK_RU.md)
 - [Retention and Cleanup Policy](RETENTION_POLICY_RU.md)
 - [Production readiness](PRODUCTION_READINESS_RU.md)
 - [Autonomous validation](AUTONOMOUS_VALIDATION_RU.md)
