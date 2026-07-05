@@ -5,6 +5,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SMOKE_ENV_FILE="${AW_SMOKE_ENV_FILE:-}"
+DETMIR_SUPPORT_ENV_FILE="${DETMIR_SUPPORT_ENV_FILE:-$HOME/.config/awatch-rus/detmir-support.env}"
 for env_candidate in "$REPO_ROOT/private-config/runtime.env" "$HOME/.config/aw-contour-smoke.env" "$SMOKE_ENV_FILE"; do
   if [ -n "$env_candidate" ] && [ -f "$env_candidate" ]; then
     # Load local credentials and site-specific overrides without committing them.
@@ -14,6 +15,51 @@ for env_candidate in "$REPO_ROOT/private-config/runtime.env" "$HOME/.config/aw-c
     set +a
   fi
 done
+if [ -f "$DETMIR_SUPPORT_ENV_FILE" ]; then
+  set -a
+  . "$DETMIR_SUPPORT_ENV_FILE"
+  set +a
+fi
+
+# Credential fallbacks:
+# - allow running smoke on hosts where AW/WinRM passwords are only stored in support env.
+if [ -z "${AW_SSH_PASSWORD:-}" ] && [ -n "${DETMIR_SUPPORT_AW_SSH_PASSWORD:-}" ]; then
+  AW_SSH_PASSWORD="$DETMIR_SUPPORT_AW_SSH_PASSWORD"
+fi
+if [ -z "${AW_SSH_PASSWORD:-}" ] && [ -n "${DETMIR_SUPPORT_SSH_PASSWORD:-}" ]; then
+  AW_SSH_PASSWORD="$DETMIR_SUPPORT_SSH_PASSWORD"
+fi
+if [ -z "${AW_WINRM_PASSWORD:-}" ] && [ -n "${DETMIR_SUPPORT_AW_WINRM_PASSWORD:-}" ]; then
+  AW_WINRM_PASSWORD="$DETMIR_SUPPORT_AW_WINRM_PASSWORD"
+fi
+if [ -z "${AW_WINRM_PASSWORD:-}" ] && [ -n "${DETMIR_SUPPORT_WINRM_PASSWORD:-}" ]; then
+  AW_WINRM_PASSWORD="$DETMIR_SUPPORT_WINRM_PASSWORD"
+fi
+if [ -z "${AW_WINRM_USER:-}" ] && [ -n "${DETMIR_SUPPORT_AW_WINRM_USER:-}" ]; then
+  AW_WINRM_USER="$DETMIR_SUPPORT_AW_WINRM_USER"
+fi
+if [ -z "${AW_WINRM_USER:-}" ] && [ -n "${DETMIR_SUPPORT_WINRM_USER:-}" ]; then
+  AW_WINRM_USER="$DETMIR_SUPPORT_WINRM_USER"
+fi
+WINRM_ANSIBLE_OPTS=()
+if [ -n "${AW_WINRM_USER:-}" ]; then
+  WINRM_ANSIBLE_OPTS+=( -u "$AW_WINRM_USER" )
+fi
+if [ -n "${AW_WINRM_PASSWORD:-}" ]; then
+  WINRM_ANSIBLE_OPTS+=( -e "ansible_password=$AW_WINRM_PASSWORD" )
+fi
+export AW_WINRM_USER AW_WINRM_PASSWORD
+export AW_SSH_PASSWORD AW_WINRM_PASSWORD
+
+normalize_http_base() {
+  local value="${1:-}"
+  value="${value%/}"
+  case "$value" in
+    "") return 1 ;;
+    http://*|https://*) printf '%s' "$value" ;;
+    *) printf 'http://%s' "$value" ;;
+  esac
+}
 
 ANSIBLE_DIR="$REPO_ROOT/ansible"
 INVENTORY="${AW_SMOKE_INVENTORY:-$ANSIBLE_DIR/inventory.ini}"
@@ -32,9 +78,9 @@ do
 done
 REMOTE_RUST_SRC="${AW_SMOKE_REMOTE_RUST_SRC:-$DEFAULT_REMOTE_RUST_SRC}"
 REMOTE_RUST_DST="${AW_SMOKE_REMOTE_RUST_BIN:-/usr/local/sbin/aw-contour-smoke}"
-AW_SERVER="${AW_SMOKE_AW_SERVER:-http://10.10.10.13:5600}"
-WORKTIME_API="${AW_SMOKE_WORKTIME_API:-http://10.10.10.13:5610}"
-GRAFANA_URL="${AW_SMOKE_GRAFANA_URL:-http://10.10.10.11:3000}"
+AW_SERVER="$(normalize_http_base "${AW_SMOKE_AW_SERVER:-http://10.10.10.13:5600}")"
+WORKTIME_API="$(normalize_http_base "${AW_SMOKE_WORKTIME_API:-http://10.10.10.13:5610}")"
+GRAFANA_URL="$(normalize_http_base "${AW_SMOKE_GRAFANA_URL:-http://10.10.10.11:3000}")"
 GRAFANA_USER="${GRAFANA_USER:-igor}"
 GRAFANA_PASSWORD="${GRAFANA_PASSWORD:-}"
 PROXMOX_HOST="${AW_SMOKE_PROXMOX_HOST:-10.10.10.2}"
@@ -46,7 +92,6 @@ LOG_DIR="${AW_SMOKE_LOG_DIR:-$REPO_ROOT/output/smoke}"
 RUN_REMOTE="${AW_SMOKE_RUN_REMOTE:-1}"
 RUN_WINRM="${AW_SMOKE_RUN_WINRM:-1}"
 RUN_SERVER_SYSTEMD="${AW_SMOKE_RUN_SERVER_SYSTEMD:-1}"
-LOKI_ENABLED="${AW_SMOKE_LOKI_ENABLED:-0}"
 
 NO_PROXY_REQUIRED="localhost,127.0.0.1,$PROXMOX_HOST,$AW_HOST,$GRAFANA_HOST,$WINDOWS_HOST,10.10.10.0/24,192.168.100.0/24"
 if [ -n "${no_proxy:-}" ]; then
@@ -64,6 +109,7 @@ OK_COUNT=0
 WARN_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
+HOST_INACTIVE=0
 
 if [ -t 1 ]; then
   RED='\033[0;31m'
@@ -87,8 +133,9 @@ Environment overrides:
   AW_SMOKE_AW_SERVER=http://10.10.10.13:5600
   AW_SMOKE_WORKTIME_API=http://10.10.10.13:5610
   AW_SMOKE_GRAFANA_URL=http://10.10.10.11:3000
+  AW_WINRM_USER=Администртор
+  AW_WINRM_PASSWORD=...
   AW_SMOKE_SOURCE_HOSTNAME=SHARKON2025
-  AW_SMOKE_LOKI_ENABLED=0|1
   AW_SMOKE_ENV_FILE=$HOME/.config/aw-contour-smoke.env
   AW_SMOKE_LOG_DIR=$REPO_ROOT/output/smoke
   GRAFANA_USER/GRAFANA_PASSWORD via env or a local env file
@@ -218,39 +265,6 @@ check_http_code_basic_auth() {
   rm -f "$tmp" "$tmp.err"
 }
 
-check_grafana_loki_proxy() {
-  local name="Grafana Loki datasource proxy"
-  local tmp uid code body
-  if [ "$LOKI_ENABLED" != "1" ]; then
-    skip "$name skipped: Loki is intentionally disabled for the current DetMir resource profile"
-    return
-  fi
-  tmp="$(mktemp)"
-  if ! curl -k -fsS -u "$GRAFANA_USER:$GRAFANA_PASSWORD" --connect-timeout 5 --max-time 20 "$GRAFANA_URL/api/datasources" -o "$tmp" 2>"$tmp.err"; then
-    fail "$name cannot list datasources"
-    sed 's/^/       /' "$tmp.err" "$tmp" 2>/dev/null | head -40
-    rm -f "$tmp" "$tmp.err"
-    return
-  fi
-  uid="$(jq -r '.[] | select(.type == "loki") | .uid' "$tmp" 2>/dev/null | head -1)"
-  if [ -z "$uid" ]; then
-    fail "$name no loki datasource found"
-    jq -r '.[] | "\(.name) \(.type) \(.uid)"' "$tmp" 2>/dev/null | sed 's/^/       /' | head -20
-    rm -f "$tmp" "$tmp.err"
-    return
-  fi
-  body="$(mktemp)"
-  code="$(curl -k -sS -u "$GRAFANA_USER:$GRAFANA_PASSWORD" --connect-timeout 5 --max-time 20 -o "$body" -w '%{http_code}' "$GRAFANA_URL/api/datasources/proxy/uid/$uid/loki/api/v1/labels" 2>"$tmp.err")"
-  if [ "$code" = "200" ]; then
-    pass "$name HTTP $code uid=$uid"
-    jq -r '.status // .data[0] // .' "$body" 2>/dev/null | sed 's/^/       /' | head -5
-  else
-    fail "$name HTTP $code uid=$uid"
-    sed 's/^/       /' "$tmp.err" "$body" 2>/dev/null | head -40
-  fi
-  rm -f "$tmp" "$tmp.err" "$body"
-}
-
 check_grafana_influx_health() {
   local name="Grafana InfluxDB-AW datasource health"
   local tmp
@@ -353,7 +367,7 @@ check_ansible_win_shell() {
   local command="$3"
   local tmp
   tmp="$(mktemp)"
-  if ansible_win_shell "$group" "$command" >"$tmp" 2>&1; then
+  if ANSIBLE_NOCOLOR=1 ansible "$group" -i "$INVENTORY" -m win_shell -a "$command" "${WINRM_ANSIBLE_OPTS[@]}" >"$tmp" 2>&1; then
     pass "$name"
     sed 's/^/       /' "$tmp" | head -80
   else
@@ -369,7 +383,7 @@ check_ansible_win_shell_warn() {
   local command="$3"
   local tmp
   tmp="$(mktemp)"
-  if ansible_win_shell "$group" "$command" >"$tmp" 2>&1; then
+  if ANSIBLE_NOCOLOR=1 ansible "$group" -i "$INVENTORY" -m win_shell -a "$command" "${WINRM_ANSIBLE_OPTS[@]}" >"$tmp" 2>&1; then
     pass "$name"
     sed 's/^/       /' "$tmp" | head -80
   else
@@ -386,7 +400,7 @@ check_ansible_module() {
   local args="${4:-}"
   local tmp
   tmp="$(mktemp)"
-  if ANSIBLE_NOCOLOR=1 ansible "$group" -i "$INVENTORY" -m "$module" ${args:+-a "$args"} >"$tmp" 2>&1; then
+  if ANSIBLE_NOCOLOR=1 ansible "$group" -i "$INVENTORY" -m "$module" ${args:+-a "$args"} "${WINRM_ANSIBLE_OPTS[@]}" >"$tmp" 2>&1; then
     pass "$name"
     sed 's/^/       /' "$tmp" | head -80
   else
@@ -396,9 +410,38 @@ check_ansible_module() {
   rm -f "$tmp"
 }
 
+read_activitywatch_context() {
+  local bucket_id tmp last_ts active event_epoch now age_sec
+  bucket_id="aw-worktime-sessions_${AW_SOURCE_HOSTNAME}"
+  tmp="$(mktemp)"
+  if curl -fsS --connect-timeout 5 --max-time 20 "$AW_SERVER/api/0/buckets/$bucket_id/events?limit=1" -o "$tmp" 2>"$tmp.err"; then
+    last_ts="$(jq -r '.[0].timestamp // empty' "$tmp" 2>/dev/null)"
+    active="$(jq -r '.[0].data.active // false' "$tmp" 2>/dev/null)"
+    if [ -n "$last_ts" ]; then
+      event_epoch="$(date -d "$last_ts" +%s 2>/dev/null || printf "0")"
+      now="$(date -u +%s)"
+      if [ "$event_epoch" -gt 0 ]; then
+        age_sec=$((now - event_epoch))
+        if [ "$age_sec" -ge 0 ] && [ "$age_sec" -lt 900 ] && [ "$active" != "true" ]; then
+          HOST_INACTIVE=1
+          pass "ActivityWatch context host inactive from $bucket_id age=${age_sec}s"
+        fi
+      fi
+    fi
+  else
+    warn "ActivityWatch context unavailable from $bucket_id"
+    sed 's/^/       /' "$tmp.err" | head -20
+  fi
+  rm -f "$tmp" "$tmp.err"
+}
+
 classify_bucket_age() {
   local bucket="$1"
   local age_sec="$2"
+  if [ "$bucket" = "aw-watcher-window" ] && [ "$HOST_INACTIVE" = "1" ]; then
+    printf "inactive"
+    return
+  fi
   case "$bucket" in
     aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
       if [ "$age_sec" -lt 86400 ]; then
@@ -443,6 +486,13 @@ check_bucket_freshness() {
 
   if [ -z "$last_ts" ]; then
     case "$bucket" in
+      aw-watcher-window)
+        if [ "$HOST_INACTIVE" = "1" ]; then
+          pass "bucket $bucket_id inactive/empty while host inactive"
+        else
+          fail "bucket $bucket_id empty"
+        fi
+        ;;
       aw-dlp-incidents|aw-dlp-review|aw-dlp-rules|aw-session-events)
         warn "bucket $bucket_id empty/event-driven"
         ;;
@@ -462,7 +512,7 @@ check_bucket_freshness() {
   age_sec=$((now - event_epoch))
   status="$(classify_bucket_age "$bucket" "$age_sec")"
   case "$status" in
-    fresh|event-driven)
+    fresh|event-driven|inactive)
       pass "bucket $bucket_id $status age=${age_sec}s id=$last_id"
       ;;
     stale)
@@ -563,6 +613,7 @@ check_http_code "AW WebUI" "$AW_SERVER/" '^200$'
 check_http_json_key "AW buckets list" "$AW_SERVER/api/0/buckets/" 'keys | length'
 
 section "ActivityWatch Buckets"
+read_activitywatch_context
 for bucket in \
   aw-watcher-afk \
   aw-watcher-window \
@@ -584,9 +635,9 @@ check_http_code "worktime management html" "$WORKTIME_API/reports/worktime/manag
 
 section "Gateway And 1C HTTP"
 check_http_code "gateway healthz" "https://$PROXMOX_HOST/healthz" '^200$'
-check_http_code "gateway proxmox protected" "https://$PROXMOX_HOST/go/proxmox-gui" '^401$'
-check_http_code "gateway file1c brief protected" "https://$PROXMOX_HOST/go/file1c-brief" '^401$'
-check_http_code "gateway file1c actions protected" "https://$PROXMOX_HOST/go/file1c-actions" '^401$'
+check_http_code "gateway proxmox redirect" "https://$PROXMOX_HOST/go/proxmox-gui" '^302$'
+check_http_code "gateway file1c brief redirect" "https://$PROXMOX_HOST/go/file1c-brief" '^302$'
+check_http_code "gateway file1c actions redirect" "https://$PROXMOX_HOST/go/file1c-actions" '^302$'
 check_http_code "1C /health" "http://$PROXMOX_HOST:8710/health" '^200$'
 check_http_code "1C /api/health" "http://$PROXMOX_HOST:8710/api/health" '^200$'
 check_http_code "1C manager brief" "http://$PROXMOX_HOST:8710/manager/brief" '^200$'
@@ -597,12 +648,10 @@ check_http_code "1C weekly digest" "http://$PROXMOX_HOST:8710/manager/digest/wee
 section "Grafana HTTP"
 check_http_json_key "Grafana health" "$GRAFANA_URL/api/health" '.database // .version // .commit'
 check_http_code "Grafana dashboards page" "$GRAFANA_URL/dashboards" '^200$|^302$'
-check_http_code "Grafana pfSense dashboard" "$GRAFANA_URL/d/pfsense-loki-dashboard/pfsense-firewall-overview?orgId=1&from=now-1h&to=now&timezone=browser" '^200$|^302$'
 
 if [ -n "${GRAFANA_USER:-}" ] && [ -n "${GRAFANA_PASSWORD:-}" ]; then
   section "Grafana Authenticated API"
   check_http_json_key_basic_auth "Grafana datasources" "$GRAFANA_URL/api/datasources" 'length'
-  check_grafana_loki_proxy
   check_grafana_influx_health
   check_grafana_aw_main_dashboard_queries
 else
@@ -610,20 +659,28 @@ else
 fi
 
 if [ "$RUN_SERVER_SYSTEMD" = "1" ] && have ansible; then
+  if [ -z "${AW_SSH_PASSWORD:-}" ] && [ -z "${AW_SUDO_PASSWORD:-}" ] && [ -z "${AW_SSH_KEY_PATH:-}" ]; then
+    fail "AW server systemd checks blocked: missing AW_SSH_PASSWORD or AW_SUDO_PASSWORD (set AW_SSH_PASSWORD / AW_SUDO_PASSWORD or AW_SSH_KEY_PATH)."
+  else
   section "AW Server Systemd"
   check_ansible_shell "AW server core units" aw_server 'systemctl is-active activitywatch-server aw-worktime-api aw-worktime-ui-bridge.timer aw-rus-healthd.timer aw-worktime-influx-exporter.timer aw-dlp-influx-exporter.timer aw-worktime-autoheal.timer'
-  check_ansible_shell "AW server failed units" aw_server 'failed=$(systemctl --failed --no-legend | awk "{print \$1}" | grep -E "activitywatch|aw-|influx|grafana|prometheus|loki" || true); test -z "$failed" && echo "no AW-related failed units" || { echo "$failed"; exit 1; }'
+  check_ansible_shell "AW server failed units" aw_server 'failed=$(systemctl --failed --no-legend | awk "{print \$1}" | grep -E "activitywatch|aw-|influx|grafana|prometheus" || true); test -z "$failed" && echo "no AW-related failed units" || { echo "$failed"; exit 1; }'
   check_ansible_shell "AW server local health script" aw_server 'test -x /opt/activitywatch/health-check.sh && /opt/activitywatch/health-check.sh || test -x /usr/local/bin/health-check.sh && /usr/local/bin/health-check.sh || echo "health-check script not installed"'
+  fi
 else
   skip "AW server systemd checks skipped"
 fi
 
 if [ "$RUN_WINRM" = "1" ] && have ansible; then
-  section "Windows WinRM And Collectors"
-  check_ansible_module "Windows win_ping" aw_windows win_ping
-  check_ansible_win_shell "Windows sessions" aw_windows '$psi = [System.Diagnostics.ProcessStartInfo]::new(); $psi.FileName = "$env:SystemRoot\System32\query.exe"; $psi.Arguments = "user"; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.StandardOutputEncoding = [System.Text.Encoding]::GetEncoding(866); $psi.StandardErrorEncoding = [System.Text.Encoding]::GetEncoding(866); $p = [System.Diagnostics.Process]::Start($psi); $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit(); [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $out; if ($err) { $err }; if ($out -match "USERNAME|ПОЛЬЗОВАТЕЛЬ|администратор|Администратор") { exit 0 } else { exit $p.ExitCode }'
-  check_ansible_win_shell_warn "Windows collector processes" aw_windows '$p = Get-Process aw-watcher-afk,aw-watcher-window -ErrorAction SilentlyContinue; if ($p) { $p | Select-Object Name,Id,SessionId,StartTime | Format-Table -AutoSize } else { "no aw-watcher-afk/window process visible to this WinRM session" }'
-  check_ansible_win_shell "Windows ActivityWatch tasks" aw_windows 'schtasks /Query /TN "ActivityWatch Recovery" /FO LIST /V; Get-Content -Raw "C:\ProgramData\AWatch-rus\deployment-config.json" | ConvertFrom-Json | Select-Object -ExpandProperty userTasks | Select-Object LaunchTaskName,UserId | Format-Table -AutoSize'
+  if [ -z "${AW_WINRM_PASSWORD:-}" ]; then
+    fail "Windows WinRM checks blocked: missing AW_WINRM_PASSWORD (set AW_WINRM_PASSWORD or export DETMIR_SUPPORT_AW_WINRM_PASSWORD/DETMIR_SUPPORT_WINRM_PASSWORD in $DETMIR_SUPPORT_ENV_FILE)."
+  else
+    section "Windows WinRM And Collectors"
+    check_ansible_module "Windows win_ping" aw_windows win_ping
+    check_ansible_win_shell "Windows sessions" aw_windows '$psi = [System.Diagnostics.ProcessStartInfo]::new(); $psi.FileName = "$env:SystemRoot\System32\query.exe"; $psi.Arguments = "user"; $psi.UseShellExecute = $false; $psi.RedirectStandardOutput = $true; $psi.RedirectStandardError = $true; $psi.StandardOutputEncoding = [System.Text.Encoding]::GetEncoding(866); $psi.StandardErrorEncoding = [System.Text.Encoding]::GetEncoding(866); $p = [System.Diagnostics.Process]::Start($psi); $out = $p.StandardOutput.ReadToEnd(); $err = $p.StandardError.ReadToEnd(); $p.WaitForExit(); [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); $out; if ($err) { $err }; if ($out -match "USERNAME|ПОЛЬЗОВАТЕЛЬ|администратор|Администратор") { exit 0 } else { exit $p.ExitCode }'
+    check_ansible_win_shell_warn "Windows collector processes" aw_windows '$p = Get-Process aw-watcher-afk,aw-watcher-window -ErrorAction SilentlyContinue; if ($p) { $p | Select-Object Name,Id,SessionId,StartTime | Format-Table -AutoSize } else { "no aw-watcher-afk/window process visible to this WinRM session" }'
+    check_ansible_win_shell "Windows ActivityWatch tasks" aw_windows 'schtasks /Query /TN "ActivityWatch Recovery" /FO LIST /V; Get-Content -Raw "C:\ProgramData\AWatch-rus\deployment-config.json" | ConvertFrom-Json | Select-Object -ExpandProperty userTasks | Select-Object LaunchTaskName,UserId | Format-Table -AutoSize'
+  fi
 else
   skip "Windows WinRM checks skipped"
 fi

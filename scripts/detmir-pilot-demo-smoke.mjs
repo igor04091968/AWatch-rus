@@ -24,7 +24,9 @@ function authHeaders() {
 }
 
 function normalizeBaseUrl(raw) {
-  const value = raw.endsWith("/") ? raw : `${raw}/`;
+  const trimmed = String(raw || "").trim();
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const value = withScheme.endsWith("/") ? withScheme : `${withScheme}/`;
   return new URL(value);
 }
 

@@ -66,6 +66,81 @@ require_live_value() {
   esac
 }
 
+normalize_http_base() {
+  local value="${1:-}"
+  value="${value%/}"
+  case "${value}" in
+    "") return 1 ;;
+    http://*|https://*) printf '%s' "${value}" ;;
+    *) printf 'http://%s' "${value}" ;;
+  esac
+}
+
+normalize_url_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [[ -n "${value}" ]]; then
+    export "${name}=$(normalize_http_base "${value}")"
+  fi
+}
+
+portal_smoke_url_from_portal_url() {
+  local value="${1%/}"
+  case "${value}" in
+    */portal) printf '%s/\n' "${value}" ;;
+    *) printf '%s/portal/\n' "${value}" ;;
+  esac
+}
+
+configure_smoke_env() {
+  normalize_url_env DETMIR_AW_API
+  normalize_url_env DETMIR_WORKTIME_URL
+  normalize_url_env DETMIR_ONE_C_URL
+  normalize_url_env DETMIR_PORTAL_URL
+
+  export \
+    DETMIR_AW_API \
+    DETMIR_WORKTIME_URL \
+    DETMIR_ONE_C_URL \
+    DETMIR_RDP_HOST \
+    DETMIR_HOSTNAME \
+    DETMIR_GATEWAY_HOST \
+    DETMIR_PORTAL_URL \
+    DETMIR_DLP_ENABLED \
+    DETMIR_DISABLE_PORTAL_CHECK \
+    DETMIR_DISABLE_DLP_HEALTH_CHECK \
+    DETMIR_PCT_BIN \
+    DETMIR_GRAFANA_CHECK_JSON \
+    DETMIR_PORTAL_SMOKE_BASIC_AUTH \
+    DETMIR_BASIC_AUTH \
+    DETMIR_PORTAL_SMOKE_AUTH_HEADER \
+    DETMIR_PORTAL_AUTH_HEADER
+
+  case "${AWATCH_PORTAL_SMOKE_URL:-}" in
+    ""|http://127.0.0.1:8720*)
+      export AWATCH_PORTAL_SMOKE_URL="${DETMIR_PORTAL_URL}"
+      ;;
+  esac
+  case "${DETMIR_PORTAL_SMOKE_URL:-}" in
+    ""|http://127.0.0.1:8720*)
+      DETMIR_PORTAL_SMOKE_URL="$(portal_smoke_url_from_portal_url "${DETMIR_PORTAL_URL}")"
+      ;;
+  esac
+  export AWATCH_PORTAL_SMOKE_URL DETMIR_PORTAL_SMOKE_URL
+  if [[ "${DETMIR_PORTAL_URL}" == https://* && -z "${DETMIR_PORTAL_SMOKE_INSECURE_TLS:-}" ]]; then
+    export DETMIR_PORTAL_SMOKE_INSECURE_TLS=1
+  fi
+  export DETMIR_PORTAL_SMOKE_INSECURE_TLS
+  if [[ -z "${DETMIR_PORTAL_AUTH_HEADER:-}" && -n "${DETMIR_PORTAL_SMOKE_BASIC_AUTH:-}" ]]; then
+    export DETMIR_PORTAL_AUTH_HEADER="Basic ${DETMIR_PORTAL_SMOKE_BASIC_AUTH}"
+  fi
+  case "${DETMIR_DLP_ENABLED,,}" in
+    0|false|no|off)
+      export DETMIR_DISABLE_DLP_HEALTH_CHECK="${DETMIR_DISABLE_DLP_HEALTH_CHECK:-1}"
+      ;;
+  esac
+}
+
 write_summary() {
   {
     printf '# AWatch-rus contour check\n\n'
@@ -89,6 +164,7 @@ write_summary() {
 }
 
 configure_detmir_env
+configure_smoke_env
 
 find_detmir_check() {
   if [[ -n "${DETMIR_CHECK_BIN:-}" ]]; then

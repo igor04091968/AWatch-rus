@@ -3,6 +3,28 @@
 # Сервер: http://10.10.10.13:5600
 # RDP-хост: 192.168.100.19 (logical host id SHARKON2025)
 
+normalize_http_base() {
+  local value="${1:-}"
+  value="${value%/}"
+  case "$value" in
+    "") return 1 ;;
+    http://*|https://*) printf '%s' "$value" ;;
+    *) printf 'http://%s' "$value" ;;
+  esac
+}
+
+normalize_url_env() {
+  local name="$1"
+  local value="${!name:-}"
+  if [ -n "$value" ]; then
+    export "$name=$(normalize_http_base "$value")"
+  fi
+}
+
+normalize_url_env CHECK_AW_FULL_SERVER
+normalize_url_env AW_SMOKE_AW_SERVER
+normalize_url_env AW_SERVER
+
 if [[ "${CHECK_AW_FULL_FORCE_LEGACY:-0}" != "1" ]]; then
   ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   for candidate in \

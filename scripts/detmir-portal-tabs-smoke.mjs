@@ -31,6 +31,12 @@ function env(name, fallback = "") {
   return value && value.trim() ? value.trim() : fallback;
 }
 
+function normalizeBaseUrl(raw) {
+  const trimmed = String(raw || "").trim();
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  return withScheme.endsWith("/") ? withScheme : `${withScheme}/`;
+}
+
 function authHeaders() {
   const explicit = env("DETMIR_PORTAL_SMOKE_AUTH_HEADER");
   if (explicit) return { Authorization: explicit };
@@ -136,7 +142,7 @@ async function main() {
   }
 
   const { chromium } = loadPlaywright();
-  const url = env("DETMIR_PORTAL_SMOKE_URL", "http://127.0.0.1:8720/portal/");
+  const url = normalizeBaseUrl(env("DETMIR_PORTAL_SMOKE_URL", "http://127.0.0.1:8720/portal/"));
   const timeout = Number(env("DETMIR_PORTAL_SMOKE_TIMEOUT_MS", "30000"));
   const browser = await chromium.launch({
     headless: true,

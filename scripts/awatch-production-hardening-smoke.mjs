@@ -1,11 +1,36 @@
 #!/usr/bin/env node
 
-const baseUrl = (process.env.AWATCH_PORTAL_SMOKE_URL || "http://127.0.0.1:8720").replace(/\/+$/, "");
+if (["1", "true", "yes"].includes(String(process.env.DETMIR_PORTAL_SMOKE_INSECURE_TLS || "").toLowerCase())) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+}
+
+function env(name, fallback = "") {
+  const value = process.env[name];
+  return value && value.trim() ? value.trim() : fallback;
+}
+
+function normalizeBaseUrl(raw) {
+  const trimmed = String(raw || "").trim().replace(/\/+$/, "");
+  if (!trimmed) return "http://127.0.0.1:8720";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) return trimmed;
+  return `http://${trimmed}`;
+}
+
+function authHeaders() {
+  const explicit = env("DETMIR_PORTAL_SMOKE_AUTH_HEADER", env("DETMIR_PORTAL_AUTH_HEADER"));
+  if (explicit) return { Authorization: explicit };
+  const basic = env("DETMIR_PORTAL_SMOKE_BASIC_AUTH", env("DETMIR_BASIC_AUTH"));
+  if (basic) return { Authorization: `Basic ${basic}` };
+  return {};
+}
+
+const baseUrl = normalizeBaseUrl(env("AWATCH_PORTAL_SMOKE_URL", env("DETMIR_PORTAL_URL", "http://127.0.0.1:8720")));
 
 async function request(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
     ...options,
     headers: {
+      ...authHeaders(),
       "X-AWatch-Role": "executive",
       "X-Request-Id": "smoke-production-hardening",
       ...(options.headers || {}),
