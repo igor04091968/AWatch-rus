@@ -1,12 +1,16 @@
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result, bail};
+use chrono::Utc;
 use clap::Parser;
 use fs2::FileExt;
 use hayabusa_tools::{guess_host_from_filename, read_json_file};
 use serde_json::{Value, json};
+use zip::ZipArchive;
 
 const LOCK_PATH: &str = "/opt/hayabusa/state/aw-hayabusa-autoprocess.lock";
 const WRAPPER: &str = "/usr/local/bin/aw-hayabusa";
@@ -19,6 +23,9 @@ const LATEST_INTAKE: &str = "/opt/hayabusa/state/latest-intake.json";
 struct Cli {
     #[arg(long, default_value = "/opt/activitywatch/aw-rus-ops/drop")]
     drop_dir: PathBuf,
+
+    #[arg(long, default_value = "/opt/hayabusa/quarantine/drop")]
+    quarantine_dir: PathBuf,
 
     #[arg(long, default_value_t = true)]
     once: bool,
@@ -66,15 +73,29 @@ fn run() -> Result<i32> {
         return Ok(0);
     }
     for zip_path in zips {
-        let result = process_one(&zip_path)?;
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&json!({
-                "processed": zip_path.display().to_string(),
-                "latest_intake": result.latest_intake,
-                "case_alert": result.case_alert,
-            }))?
-        );
+        match process_one(&zip_path) {
+            Ok(result) => {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "processed": zip_path.display().to_string(),
+                        "latest_intake": result.latest_intake,
+                        "case_alert": result.case_alert,
+                    }))?
+                );
+            }
+            Err(err) => {
+                let quarantined = quarantine_drop_package(&cli.quarantine_dir, &zip_path, &err)?;
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "quarantined": zip_path.display().to_string(),
+                        "quarantine_dir": quarantined.display().to_string(),
+                        "reason": err.to_string(),
+                    }))?
+                );
+            }
+        }
     }
     Ok(0)
 }
@@ -97,6 +118,7 @@ fn list_zips(drop_dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn process_one(zip_path: &Path) -> Result<ProcessResult> {
+    wait_for_stable_zip(zip_path)?;
     let sidecars = load_sidecars(zip_path)?;
     let host = guess_host(zip_path, &sidecars);
     let mode = if sidecars.mode.is_empty() {
@@ -174,6 +196,85 @@ fn process_one(zip_path: &Path) -> Result<ProcessResult> {
     })
 }
 
+fn wait_for_stable_zip(zip_path: &Path) -> Result<()> {
+    wait_for_stable_zip_with(
+        zip_path,
+        Duration::from_secs(60),
+        Duration::from_secs(1),
+        Duration::from_secs(2),
+        2,
+    )
+}
+
+fn wait_for_stable_zip_with(
+    zip_path: &Path,
+    max_wait: Duration,
+    interval: Duration,
+    min_modified_age: Duration,
+    required_stable_checks: u32,
+) -> Result<()> {
+    let started = Instant::now();
+    let mut last_len = None;
+    let mut stable_checks = 0;
+    let mut last_zip_error = None;
+
+    loop {
+        let metadata =
+            fs::metadata(zip_path).with_context(|| format!("stat {}", zip_path.display()))?;
+        let len = metadata.len();
+        let modified_age = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| SystemTime::now().duration_since(modified).ok())
+            .unwrap_or_default();
+
+        if len > 0 && last_len == Some(len) && modified_age >= min_modified_age {
+            stable_checks += 1;
+        } else {
+            stable_checks = 0;
+        }
+
+        if stable_checks >= required_stable_checks {
+            match verify_zip_readable(zip_path) {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    last_zip_error = Some(err.to_string());
+                    stable_checks = 0;
+                }
+            }
+        }
+
+        if started.elapsed() >= max_wait {
+            if let Some(err) = last_zip_error {
+                bail!(
+                    "drop zip {} did not become readable: {err}",
+                    zip_path.display()
+                );
+            }
+            bail!(
+                "drop zip {} did not stabilize within {}s",
+                zip_path.display(),
+                max_wait.as_secs()
+            );
+        }
+
+        last_len = Some(len);
+        thread::sleep(interval);
+    }
+}
+
+fn verify_zip_readable(zip_path: &Path) -> Result<()> {
+    let file = File::open(zip_path).with_context(|| format!("open {}", zip_path.display()))?;
+    let mut archive =
+        ZipArchive::new(file).with_context(|| format!("read zip {}", zip_path.display()))?;
+    for idx in 0..archive.len() {
+        let _entry = archive
+            .by_index(idx)
+            .with_context(|| format!("read zip entry {idx}"))?;
+    }
+    Ok(())
+}
+
 fn load_sidecars(zip_path: &Path) -> Result<Sidecars> {
     let base = zip_path.with_extension("");
     let caseid_path = base.with_extension("caseid");
@@ -212,6 +313,49 @@ fn load_sidecars(zip_path: &Path) -> Result<Sidecars> {
         caseid_path,
         meta_path,
     })
+}
+
+fn quarantine_drop_package(
+    quarantine_dir: &Path,
+    zip_path: &Path,
+    err: &anyhow::Error,
+) -> Result<PathBuf> {
+    fs::create_dir_all(quarantine_dir)
+        .with_context(|| format!("create {}", quarantine_dir.display()))?;
+    let timestamp = Utc::now().format("%Y%m%dT%H%M%SZ");
+    let zip_name = zip_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("package.zip");
+    let target_dir = quarantine_dir.join(format!("{timestamp}_{zip_name}"));
+    fs::create_dir_all(&target_dir).with_context(|| format!("create {}", target_dir.display()))?;
+
+    let base = zip_path.with_extension("");
+    for path in [
+        zip_path.to_path_buf(),
+        base.with_extension("caseid"),
+        base.with_extension("meta.json"),
+        zip_path.with_extension("zip.sha256"),
+    ] {
+        if path.is_file() {
+            let target = target_dir.join(path.file_name().context("quarantine file name")?);
+            fs::rename(&path, &target)
+                .with_context(|| format!("move {} to {}", path.display(), target.display()))?;
+        }
+    }
+
+    let reason = json!({
+        "quarantined_at": Utc::now().to_rfc3339(),
+        "package": zip_path.display().to_string(),
+        "reason": err.to_string(),
+        "error_chain": format!("{err:#}"),
+    });
+    fs::write(
+        target_dir.join("reason.json"),
+        serde_json::to_vec_pretty(&reason).context("serialize quarantine reason")?,
+    )
+    .with_context(|| format!("write {}", target_dir.join("reason.json").display()))?;
+    Ok(target_dir)
 }
 
 fn archive_sidecars(report_dir: &Path, sidecars: &Sidecars) -> Result<()> {
@@ -301,4 +445,55 @@ fn run_capture(program: &Path, args: &[String]) -> Result<Captured> {
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
         stderr: String::from_utf8_lossy(&output.stderr).to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::tempdir;
+    use zip::write::SimpleFileOptions;
+
+    #[test]
+    fn wait_for_stable_zip_accepts_complete_archive() {
+        let dir = tempdir().expect("tempdir");
+        let zip_path = dir.path().join("HOST-20260709-000001.zip");
+        write_test_zip(&zip_path);
+
+        wait_for_stable_zip_with(
+            &zip_path,
+            Duration::from_secs(1),
+            Duration::from_millis(1),
+            Duration::from_secs(0),
+            1,
+        )
+        .expect("complete zip should be accepted");
+    }
+
+    #[test]
+    fn wait_for_stable_zip_rejects_unreadable_archive() {
+        let dir = tempdir().expect("tempdir");
+        let zip_path = dir.path().join("HOST-20260709-000001.zip");
+        fs::write(&zip_path, b"not a zip").expect("write partial zip");
+
+        let err = wait_for_stable_zip_with(
+            &zip_path,
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            Duration::from_secs(0),
+            1,
+        )
+        .expect_err("invalid zip should be rejected");
+        assert!(err.to_string().contains("did not become readable"));
+    }
+
+    fn write_test_zip(path: &Path) {
+        let file = File::create(path).expect("create zip");
+        let mut zip = zip::ZipWriter::new(file);
+        zip.start_file("manifest.json", SimpleFileOptions::default())
+            .expect("start manifest");
+        zip.write_all(br#"{"host":"SHARKON2025"}"#)
+            .expect("write manifest");
+        zip.finish().expect("finish zip");
+    }
 }

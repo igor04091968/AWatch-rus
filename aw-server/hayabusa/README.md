@@ -118,4 +118,4 @@ Production scheduled task on `SHARKON2025`:
 
 Do not switch this task back to `SYSTEM` on the current RDP host: Task Scheduler starts `powershell.exe` under `SYSTEM`, but the process exits with `0xC0000142` before the upload script starts.
 
-Server-side processing accepts Windows zip packages with backslash path separators and UTF-8 BOM in sidecar JSON. `aw-hayabusa-autoprocess` processes the full incoming queue after accepting a drop package, so stale incoming files from an earlier failed run are drained before the latest intake is recorded.
+Server-side processing accepts Windows zip packages with backslash path separators and UTF-8 BOM in sidecar JSON. `aw-hayabusa-autoprocess` waits for a dropped ZIP to become size-stable and readable before accepting it, then processes the full incoming queue. This prevents `systemd.path` from quarantining an archive while SCP is still writing it. ZIPs that remain unreadable after the bounded wait are moved to `/opt/hayabusa/quarantine/drop` with `reason.json`.
