@@ -3985,8 +3985,46 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
     let server_port = json_i64(&config, &["server", "port"]).unwrap_or(5600);
     let api_base = format!("{server_scheme}://{server_host}:{server_port}/api/0");
     let mut process_snapshot = collect_process_snapshot();
+    let session_snapshot = collect_session_snapshot();
+    let live_session_ids = live_session_ids(&session_snapshot.sessions);
     let mut problems = Vec::new();
     let mut actions = Vec::new();
+
+    let non_live_stop_plan =
+        non_live_session_collectors(&process_snapshot.processes, &live_session_ids);
+    if !non_live_stop_plan.is_empty() {
+        if args.mode == "enforce" {
+            for process in &non_live_stop_plan {
+                let ok = process.pid.is_some_and(terminate_process);
+                actions.push(json!({
+                    "action": "stop-non-live-session-collector",
+                    "kind": session_scoped_collector_kind(process).unwrap_or("unknown"),
+                    "sessionId": process.session_id,
+                    "pid": process.pid,
+                    "applied": true,
+                    "ok": ok
+                }));
+                if !ok {
+                    problems.push(format!(
+                        "failed to stop collector pid {:?} in non-live session {:?}",
+                        process.pid, process.session_id
+                    ));
+                }
+            }
+            process_snapshot = collect_process_snapshot();
+        } else {
+            for process in &non_live_stop_plan {
+                actions.push(json!({
+                    "action": "stop-non-live-session-collector",
+                    "kind": session_scoped_collector_kind(process).unwrap_or("unknown"),
+                    "sessionId": process.session_id,
+                    "pid": process.pid,
+                    "applied": false,
+                    "mode": "shadow"
+                }));
+            }
+        }
+    }
 
     let duplicate_plan = duplicate_legacy_collectors(&process_snapshot.processes);
     if !duplicate_plan.is_empty() {
@@ -4088,7 +4126,7 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
     }
 
     let task_defs = guard_task_definitions(&config);
-    let missing_fileops_sessions =
+    let mut missing_fileops_sessions =
         if file_ops_enabled && file_ops_mode.eq_ignore_ascii_case("rust_primary") {
             missing_rust_collector_sessions(
                 &process_snapshot.processes,
@@ -4098,10 +4136,13 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
         } else {
             Vec::new()
         };
-    let launch_needed = interactive_stale || !missing_fileops_sessions.is_empty();
+    missing_fileops_sessions.retain(|session_id| live_session_ids.contains(session_id));
+    let has_live_sessions = !live_session_ids.is_empty();
+    let effective_interactive_stale = interactive_stale && has_live_sessions;
+    let launch_needed = effective_interactive_stale || !missing_fileops_sessions.is_empty();
     if launch_needed {
         let active_legacy_collectors = active_legacy_collector_count(&process_snapshot.processes);
-        if interactive_stale
+        if effective_interactive_stale
             && missing_fileops_sessions.is_empty()
             && active_legacy_collectors > 0
             && process_snapshot.command_line_query_ok
@@ -4128,6 +4169,16 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
             for task in &task_defs {
                 if !task.task_name.starts_with("ActivityWatch Launch ") {
                     problems.push(format!("refuse non-allowlisted task {}", task.task_name));
+                    continue;
+                }
+                if !task_has_live_session(&task.user_id, &session_snapshot.sessions) {
+                    actions.push(json!({
+                        "action": "run-task",
+                        "target": task.task_name,
+                        "applied": false,
+                        "reason": "no-live-session-for-user",
+                        "userId": task.user_id
+                    }));
                     continue;
                 }
                 let key = format!("task:{}", task.task_name);
@@ -4168,7 +4219,8 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
         }
     }
 
-    let status = if problems.is_empty() && (args.mode == "enforce" || !interactive_stale) {
+    let status = if problems.is_empty() && (args.mode == "enforce" || !effective_interactive_stale)
+    {
         "ok"
     } else {
         "warn"
@@ -4187,12 +4239,25 @@ fn run_collector_guard_cycle(args: &CollectorGuard, runtime: &mut GuardRuntime) 
             "rustWorktimeAgentRunning": rust_agent_running,
             "powerShellRuntimeByKind": power_shell_by_kind
         },
+        "sessions": {
+            "queryOk": session_snapshot.query_ok,
+            "source": session_snapshot.source,
+            "error": session_snapshot.error,
+            "liveSessionIds": live_session_ids.iter().copied().collect::<Vec<_>>(),
+            "records": session_snapshot.sessions.iter().map(|session| json!({
+                "sessionId": session.session_id,
+                "userName": session.user_name,
+                "state": session.state,
+                "isLive": session.is_live
+            })).collect::<Vec<_>>()
+        },
         "buckets": bucket_checks,
         "tasks": task_defs.iter().map(|task| json!({
             "taskName": task.task_name,
             "userId": task.user_id
         })).collect::<Vec<_>>(),
         "interactiveStale": interactive_stale,
+        "effectiveInteractiveStale": effective_interactive_stale,
         "fileOperationsPresence": {
             "enabled": file_ops_enabled,
             "mode": file_ops_mode,
@@ -4285,6 +4350,51 @@ fn guard_task_definitions(config: &Value) -> Vec<GuardTaskDefinition> {
     out
 }
 
+fn live_session_ids(sessions: &[SessionInfo]) -> HashSet<u32> {
+    sessions
+        .iter()
+        .filter(|session| session.is_live)
+        .map(|session| session.session_id)
+        .collect()
+}
+
+fn task_has_live_session(user_id: &str, sessions: &[SessionInfo]) -> bool {
+    let candidates = user_candidates(user_id);
+    sessions.iter().any(|session| {
+        session.is_live
+            && session
+                .user_name
+                .as_deref()
+                .is_some_and(|user| user_matches_candidates(user, &candidates))
+    })
+}
+
+fn user_candidates(user_id: &str) -> HashSet<String> {
+    let normalized = user_id.trim().to_ascii_lowercase();
+    let mut out = HashSet::new();
+    if normalized.is_empty() {
+        return out;
+    }
+    out.insert(normalized.clone());
+    if let Some((_, leaf)) = normalized.rsplit_once('\\') {
+        out.insert(leaf.to_string());
+    }
+    out
+}
+
+fn user_matches_candidates(user_name: &str, candidates: &HashSet<String>) -> bool {
+    let normalized = user_name.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return false;
+    }
+    if candidates.contains(&normalized) {
+        return true;
+    }
+    normalized
+        .rsplit_once('\\')
+        .is_some_and(|(_, leaf)| candidates.contains(leaf))
+}
+
 fn run_scheduled_task(task_name: &str) -> bool {
     if !task_name.starts_with("ActivityWatch Launch ") {
         return false;
@@ -4294,6 +4404,54 @@ fn run_scheduled_task(task_name: &str) -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+fn non_live_session_collectors<'a>(
+    processes: &'a [ProcessInfo],
+    live_session_ids: &HashSet<u32>,
+) -> Vec<&'a ProcessInfo> {
+    processes
+        .iter()
+        .filter(|process| {
+            let Some(session_id) = process.session_id else {
+                return false;
+            };
+            session_id > 0
+                && !live_session_ids.contains(&session_id)
+                && session_scoped_collector_kind(process).is_some()
+                && process.pid.is_some()
+        })
+        .collect()
+}
+
+fn session_scoped_collector_kind(process: &ProcessInfo) -> Option<&'static str> {
+    if let Some(kind) = legacy_collector_kind(process) {
+        return Some(kind);
+    }
+    let name = process.name.as_deref().unwrap_or_default();
+    if name.eq_ignore_ascii_case("aw-watcher-afk.exe") {
+        return Some("afk");
+    }
+    if name.eq_ignore_ascii_case("aw-watcher-window.exe") {
+        return Some("window");
+    }
+    if name.eq_ignore_ascii_case("aw-windows-telemetry.exe") {
+        let command_line = process
+            .command_line
+            .as_deref()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if command_line.contains("browser-domains-collector") {
+            return Some("browser");
+        }
+        if command_line.contains("dlp-endpoint-collector") {
+            return Some("dlp_endpoint");
+        }
+        if command_line.contains("file-operations-collector") {
+            return Some("fileops");
+        }
+    }
+    None
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -5014,6 +5172,22 @@ struct ProcessInfo {
     command_line: Option<String>,
 }
 
+#[derive(Debug, Default)]
+struct SessionSnapshot {
+    query_ok: bool,
+    source: String,
+    error: Option<String>,
+    sessions: Vec<SessionInfo>,
+}
+
+#[derive(Debug, Clone)]
+struct SessionInfo {
+    session_id: u32,
+    user_name: Option<String>,
+    state: String,
+    is_live: bool,
+}
+
 fn validate_files(paths: &[PathBuf]) -> Value {
     let mut list = Vec::new();
     let mut missing = Vec::new();
@@ -5203,6 +5377,118 @@ fn collect_process_snapshot() -> ProcessSnapshot {
             collect_tasklist_process_snapshot(Some(format!("start {}: {err}", wmic.display())))
         }
     }
+}
+
+fn collect_session_snapshot() -> SessionSnapshot {
+    if let Some(raw) = command_output_utf16le("cmd", &["/U", "/C", "query user"])
+        .or_else(|| command_output_utf16le("cmd", &["/U", "/C", "quser"]))
+    {
+        let sessions = parse_query_user_sessions(&raw);
+        if !sessions.is_empty() {
+            return SessionSnapshot {
+                query_ok: true,
+                source: "quser_utf16".to_string(),
+                error: None,
+                sessions,
+            };
+        }
+    }
+
+    if let Some(raw) = command_output_lossy_combined("cmd", &["/C", "query user"])
+        .or_else(|| command_output_lossy_combined("cmd", &["/C", "quser"]))
+    {
+        let sessions = parse_query_user_sessions(&raw);
+        if !sessions.is_empty() {
+            return SessionSnapshot {
+                query_ok: true,
+                source: "quser_lossy".to_string(),
+                error: None,
+                sessions,
+            };
+        }
+    }
+
+    SessionSnapshot {
+        query_ok: false,
+        source: "unavailable".to_string(),
+        error: Some("query user and quser returned no sessions".to_string()),
+        sessions: Vec::new(),
+    }
+}
+
+fn command_output_utf16le(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let mut bytes = output.stdout;
+    bytes.extend_from_slice(&output.stderr);
+    if bytes.is_empty() {
+        return None;
+    }
+    let words = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .collect::<Vec<_>>();
+    String::from_utf16(&words)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn command_output_lossy_combined(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let mut bytes = output.stdout;
+    bytes.extend_from_slice(&output.stderr);
+    Some(String::from_utf8_lossy(&bytes).trim().to_string()).filter(|value| !value.is_empty())
+}
+
+fn parse_query_user_sessions(raw: &str) -> Vec<SessionInfo> {
+    raw.lines()
+        .filter_map(parse_query_user_line)
+        .collect::<Vec<_>>()
+}
+
+fn parse_query_user_line(line: &str) -> Option<SessionInfo> {
+    let cleaned = line.trim().trim_start_matches('>').trim();
+    if cleaned.is_empty()
+        || cleaned.to_ascii_lowercase().starts_with("username")
+        || cleaned.starts_with("ПОЛЬЗОВАТЕЛЬ")
+    {
+        return None;
+    }
+    let parts = cleaned.split_whitespace().collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return None;
+    }
+    let username = parts.first()?.trim();
+    let (session_id, state, has_session_name) =
+        if parts.get(1)?.chars().all(|ch| ch.is_ascii_digit()) {
+            (*parts.get(1)?, *parts.get(2)?, false)
+        } else {
+            (*parts.get(2)?, *parts.get(3).unwrap_or(&"Unknown"), true)
+        };
+    let session_id = session_id.parse::<u32>().ok()?;
+    Some(SessionInfo {
+        session_id,
+        user_name: (!username.is_empty()).then(|| username.to_string()),
+        state: state.to_string(),
+        is_live: session_state_is_live(state)
+            || (has_session_name && !session_state_is_disconnected(state)),
+    })
+}
+
+fn session_state_is_live(state: &str) -> bool {
+    let lower = state.to_lowercase();
+    lower.contains("active") || lower.contains("conn") || lower.contains("актив")
+}
+
+fn session_state_is_disconnected(state: &str) -> bool {
+    let lower = state.to_lowercase();
+    lower.contains("disc") || lower.contains("диск")
 }
 
 #[cfg(windows)]
@@ -6369,6 +6655,81 @@ SERVICE_NAME: AWatchRusCollectorGuard
             ),
             vec![2]
         );
+    }
+
+    #[test]
+    fn collector_guard_parses_live_and_disconnected_sessions() {
+        let sessions = parse_query_user_sessions(
+            r#"
+ USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME
+ user1                 rdp-tcp#5           5  Active      none   09.07.2026 10:00
+ user2                                      2  Disc         3:14  07.07.2026 8:34
+"#,
+        );
+
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(live_session_ids(&sessions), HashSet::from([5]));
+        assert!(task_has_live_session(r"SHARKON2025\user1", &sessions));
+        assert!(!task_has_live_session(r"SHARKON2025\user2", &sessions));
+    }
+
+    #[test]
+    fn collector_guard_treats_named_rdp_session_as_live_when_state_is_localized() {
+        let sessions = parse_query_user_sessions(
+            r#"
+ USERNAME              SESSIONNAME        ID  STATE   IDLE TIME  LOGON TIME
+ user1                 rdp-tcp#12         12  ?????       none   09.07.2026 10:00
+ user2                                      2  ?????       3:14  07.07.2026 8:34
+"#,
+        );
+
+        assert_eq!(sessions.len(), 2);
+        assert_eq!(live_session_ids(&sessions), HashSet::from([12]));
+        assert!(task_has_live_session(r"SHARKON2025\user1", &sessions));
+        assert!(!task_has_live_session(r"SHARKON2025\user2", &sessions));
+    }
+
+    #[test]
+    fn collector_guard_stops_session_collectors_outside_live_sessions() {
+        let processes = vec![
+            ProcessInfo {
+                name: Some("aw-watcher-afk.exe".to_string()),
+                pid: Some(100),
+                session_id: Some(2),
+                created_unix_seconds: Some(10),
+                command_line: Some("aw-watcher-afk.exe --host 10.10.10.13".to_string()),
+            },
+            ProcessInfo {
+                name: Some("aw-windows-telemetry.exe".to_string()),
+                pid: Some(101),
+                session_id: Some(2),
+                created_unix_seconds: Some(11),
+                command_line: Some(
+                    "aw-windows-telemetry.exe browser-domains-collector --mode enforce".to_string(),
+                ),
+            },
+            ProcessInfo {
+                name: Some("aw-watcher-window.exe".to_string()),
+                pid: Some(200),
+                session_id: Some(5),
+                created_unix_seconds: Some(20),
+                command_line: Some("aw-watcher-window.exe --host 10.10.10.13".to_string()),
+            },
+            ProcessInfo {
+                name: Some("awatch-agent-rs.exe".to_string()),
+                pid: Some(300),
+                session_id: Some(0),
+                created_unix_seconds: Some(30),
+                command_line: Some("awatch-agent-rs.exe --config x".to_string()),
+            },
+        ];
+        let stop_plan = non_live_session_collectors(&processes, &HashSet::from([5]));
+        let pids = stop_plan
+            .iter()
+            .filter_map(|process| process.pid)
+            .collect::<Vec<_>>();
+
+        assert_eq!(pids, vec![100, 101]);
     }
 
     #[test]

@@ -221,15 +221,17 @@ fn run(cli: &Cli) -> Result<Report> {
     let worktime = influx_config(&aw_env, "AW_WORKTIME_INFLUX");
     let dlp = influx_config(&aw_env, "AW_DLP_INFLUX");
     let dlp_enabled = env_bool(&aw_env, "AW_DLP_ENABLED", true);
+    let dlp_profile = env_value(&aw_env, "AW_DLP_PROFILE", "full");
+    let dlp_influx_required = dlp_influx_required_for_profile(dlp_enabled, &dlp_profile);
 
     checks.push(check_influx_env(&worktime, cli.allow_disabled_influx));
-    if dlp_enabled {
+    if dlp_influx_required {
         checks.push(check_influx_env(&dlp, cli.allow_disabled_influx));
     } else {
-        checks.push(warn(
+        checks.push(ok(
             "env:AW_DLP_INFLUX",
-            "DLP Influx runtime disabled by AW_DLP_ENABLED=false",
-            json!({"enabled": false, "mode": "disabled"}),
+            "DLP Influx runtime is not required by the current DLP profile",
+            json!({"enabled": dlp_enabled, "profile": dlp_profile.as_str()}),
         ));
     }
 
@@ -238,7 +240,7 @@ fn run(cli: &Cli) -> Result<Report> {
     } else {
         checks.extend(check_systemd_services(&systemd_services_for_mode(
             &cli.systemd_services,
-            dlp_enabled,
+            dlp_influx_required,
         )));
     }
 
@@ -250,13 +252,13 @@ fn run(cli: &Cli) -> Result<Report> {
         ));
     } else {
         checks.push(check_influx_write(&client, "worktime", &worktime));
-        if dlp_enabled {
+        if dlp_influx_required {
             checks.push(check_influx_write(&client, "dlp", &dlp));
         } else {
-            checks.push(warn(
+            checks.push(ok(
                 "influx:write:dlp",
-                "DLP write probe skipped because DLP is disabled",
-                json!({"enabled": false, "mode": "disabled"}),
+                "DLP write probe skipped because DLP Influx is not required by the current profile",
+                json!({"enabled": dlp_enabled, "profile": dlp_profile.as_str()}),
             ));
         }
     }
@@ -292,7 +294,7 @@ fn run(cli: &Cli) -> Result<Report> {
         git_commit: cli.git_commit.clone(),
         counts,
         checks,
-        limitations: build_limitations(cli, dlp_enabled),
+        limitations: build_limitations(cli, dlp_enabled, dlp_influx_required),
     })
 }
 
@@ -360,9 +362,19 @@ fn split_csv(value: &str) -> Vec<String> {
         .collect()
 }
 
-fn systemd_services_for_mode(csv: &str, dlp_enabled: bool) -> String {
+fn dlp_influx_required_for_profile(dlp_enabled: bool, profile: &str) -> bool {
+    if !dlp_enabled {
+        return false;
+    }
+    !matches!(
+        profile.trim().to_ascii_lowercase().as_str(),
+        "light" | "core_only" | "disabled" | "off" | "on_demand"
+    )
+}
+
+fn systemd_services_for_mode(csv: &str, dlp_influx_required: bool) -> String {
     let mut services = split_csv(csv);
-    if dlp_enabled {
+    if dlp_influx_required {
         for service in split_csv(DEFAULT_DLP_SYSTEMD_SERVICES) {
             if !services.iter().any(|item| item == &service) {
                 services.push(service);
@@ -384,7 +396,7 @@ fn hostname() -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-fn build_limitations(cli: &Cli, dlp_enabled: bool) -> Vec<String> {
+fn build_limitations(cli: &Cli, dlp_enabled: bool, dlp_influx_required: bool) -> Vec<String> {
     let mut limitations = Vec::new();
     limitations.push(
         "Проверка подтверждает состояние runtime на момент формирования акта и не заменяет аудит конфигурации, нагрузочное тестирование или приемочные испытания заказчика.".to_string(),
@@ -416,6 +428,10 @@ fn build_limitations(cli: &Cli, dlp_enabled: bool) -> Vec<String> {
     if !dlp_enabled {
         limitations.push(
             "DLP runtime отключен штатно через AW_DLP_ENABLED=false; readiness не считает DLP services/timers и DLP Influx write обязательными.".to_string(),
+        );
+    } else if !dlp_influx_required {
+        limitations.push(
+            "DLP runtime включен в лёгком профиле; readiness не считает DLP Influx timer и DLP Influx write обязательными.".to_string(),
         );
     }
     limitations
@@ -1346,6 +1362,37 @@ mod tests {
         assert_eq!(counts.ok, 1);
         assert_eq!(counts.warn, 1);
         assert_eq!(counts.fail, 1);
+    }
+
+    #[test]
+    fn dlp_influx_is_required_only_for_full_profile() {
+        for profile in ["full", "enabled", "on"] {
+            assert!(
+                dlp_influx_required_for_profile(true, profile),
+                "{profile} should require DLP Influx"
+            );
+        }
+
+        for profile in ["light", "core_only", "disabled", "off", "on_demand"] {
+            assert!(
+                !dlp_influx_required_for_profile(true, profile),
+                "{profile} should not require DLP Influx"
+            );
+        }
+
+        assert!(!dlp_influx_required_for_profile(false, "full"));
+        assert!(dlp_influx_required_for_profile(true, "unexpected"));
+    }
+
+    #[test]
+    fn light_profile_excludes_dlp_influx_timer() {
+        let services = systemd_services_for_mode(DEFAULT_SYSTEMD_SERVICES, false);
+        assert!(services.contains("activitywatch-server"));
+        assert!(services.contains("aw-worktime-influx-exporter.timer"));
+        assert!(!services.contains("aw-dlp-influx-exporter.timer"));
+
+        let services = systemd_services_for_mode(DEFAULT_SYSTEMD_SERVICES, true);
+        assert!(services.contains("aw-dlp-influx-exporter.timer"));
     }
 
     #[test]

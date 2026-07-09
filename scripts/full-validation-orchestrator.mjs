@@ -183,6 +183,16 @@ function writeText(file, data) {
   fs.writeFileSync(file, data, "utf8");
 }
 
+function copyFileCompat(source, target) {
+  mkdirp(path.dirname(target));
+  try {
+    fs.copyFileSync(source, target);
+  } catch (error) {
+    if (!["EPERM", "ENOSYS", "EXDEV"].includes(error?.code)) throw error;
+    fs.writeFileSync(target, fs.readFileSync(source));
+  }
+}
+
 function runCommand({ id, category, command, args = [], cwd = root, timeoutSeconds, env = {}, optional = false }) {
   const started = Date.now();
   const cmdline = [command, ...args].join(" ");
@@ -335,7 +345,10 @@ async function trackedFiles() {
   }
   const result = await spawnSyncText("git", ["ls-files", "-z"], root, 60);
   if (result.status !== 0) return [];
-  return result.stdout.split("\0").filter(Boolean);
+  return result.stdout
+    .split("\0")
+    .filter(Boolean)
+    .filter((file) => fs.existsSync(path.join(root, file)));
 }
 
 function walk(dir) {
@@ -1347,7 +1360,7 @@ async function executeValidation(args) {
   mkdirp(latestDir);
   for (const [name, file] of Object.entries(outputs)) {
     const latestName = path.basename(file);
-    fs.copyFileSync(file, path.join(latestDir, latestName));
+    copyFileCompat(file, path.join(latestDir, latestName));
     report.outputs[`latest_${name}`] = normalizeRelative(path.join(latestDir, latestName));
   }
   writeJson(outputs.validation_report_json, report);
