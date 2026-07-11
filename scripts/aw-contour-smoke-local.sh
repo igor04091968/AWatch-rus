@@ -92,6 +92,11 @@ LOG_DIR="${AW_SMOKE_LOG_DIR:-$REPO_ROOT/output/smoke}"
 RUN_REMOTE="${AW_SMOKE_RUN_REMOTE:-1}"
 RUN_WINRM="${AW_SMOKE_RUN_WINRM:-1}"
 RUN_SERVER_SYSTEMD="${AW_SMOKE_RUN_SERVER_SYSTEMD:-1}"
+DLP_ENABLED="${DETMIR_DLP_ENABLED:-${AW_DLP_ENABLED:-false}}"
+case "${DLP_ENABLED,,}" in
+  1|true|yes|on) DLP_ENABLED=true ;;
+  *) DLP_ENABLED=false ;;
+esac
 
 NO_PROXY_REQUIRED="localhost,127.0.0.1,$PROXMOX_HOST,$AW_HOST,$GRAFANA_HOST,$WINDOWS_HOST,10.10.10.0/24,192.168.100.0/24"
 if [ -n "${no_proxy:-}" ]; then
@@ -438,6 +443,10 @@ read_activitywatch_context() {
 classify_bucket_age() {
   local bucket="$1"
   local age_sec="$2"
+  if [ "$bucket" = "aw-dlp-endpoint-signals" ] && [ "$DLP_ENABLED" = "false" ]; then
+    printf "inactive"
+    return
+  fi
   if [ "$bucket" = "aw-watcher-window" ] && [ "$HOST_INACTIVE" = "1" ]; then
     printf "inactive"
     return
@@ -486,6 +495,13 @@ check_bucket_freshness() {
 
   if [ -z "$last_ts" ]; then
     case "$bucket" in
+      aw-dlp-endpoint-signals)
+        if [ "$DLP_ENABLED" = "false" ]; then
+          pass "bucket $bucket_id inactive/empty while DLP runtime disabled"
+        else
+          fail "bucket $bucket_id empty"
+        fi
+        ;;
       aw-watcher-window)
         if [ "$HOST_INACTIVE" = "1" ]; then
           pass "bucket $bucket_id inactive/empty while host inactive"
@@ -513,7 +529,11 @@ check_bucket_freshness() {
   status="$(classify_bucket_age "$bucket" "$age_sec")"
   case "$status" in
     fresh|event-driven|inactive)
-      pass "bucket $bucket_id $status age=${age_sec}s id=$last_id"
+      if [ "$bucket" = "aw-dlp-endpoint-signals" ] && [ "$DLP_ENABLED" = "false" ]; then
+        pass "bucket $bucket_id inactive while DLP runtime disabled age=${age_sec}s id=$last_id"
+      else
+        pass "bucket $bucket_id $status age=${age_sec}s id=$last_id"
+      fi
       ;;
     stale)
       warn "bucket $bucket_id stale age=${age_sec}s id=$last_id"
@@ -580,6 +600,7 @@ exec > >(tee "$LOG_FILE") 2>&1
 
 section "Run Context"
 printf "repo=%s\ninventory=%s\nlog=%s\n" "$REPO_ROOT" "$INVENTORY" "$LOG_FILE" | sed 's/^/       /'
+printf "dlp_enabled=%s\n" "$DLP_ENABLED" | sed 's/^/       /'
 date -Is | sed 's/^/       /'
 
 section "Local Prerequisites"
