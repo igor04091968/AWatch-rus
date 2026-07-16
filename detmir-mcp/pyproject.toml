@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Read-only MCP facade for DetMir ActivityWatch-Russian operations."
 requires-python = ">=3.11"
 dependencies = [
-  "mcp>=1.0.0",
+  "mcp>=1.28.1",
 ]
 
 [build-system]
