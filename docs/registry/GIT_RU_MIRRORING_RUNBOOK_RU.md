@@ -10,7 +10,7 @@ Primary registry-readiness remote / Gitea duplicate:
 
 ```text
 ru-origin:
-https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus.git
+https://git.iri1968.ru/awatch-rus/AWatch-rus.git
 ```
 
 GitHub public mirror:
@@ -54,7 +54,7 @@ git remote -v
 Добавить российский remote:
 
 ```bash
-git remote add ru-origin https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus.git
+git remote add ru-origin https://git.iri1968.ru/awatch-rus/AWatch-rus.git
 ```
 
 Запушить основную ветку:
@@ -103,7 +103,7 @@ git push github --tags
 Ожидаемый публичный URL:
 
 ```text
-https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus
+https://git.iri1968.ru/awatch-rus/AWatch-rus
 ```
 
 Gitea должна обслуживаться через Nginx reverse proxy с HTTPS. После проверки

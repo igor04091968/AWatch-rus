@@ -96,7 +96,7 @@ usermod -aG sudo build
 HTTPS clone:
 
 ```bash
-git clone https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus.git
+git clone https://git.iri1968.ru/awatch-rus/AWatch-rus.git
 ```
 
 SSH clone может быть добавлен отдельным шагом после настройки ключей Gitea.

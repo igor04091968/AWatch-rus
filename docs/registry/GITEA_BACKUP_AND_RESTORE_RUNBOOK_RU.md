@@ -73,14 +73,14 @@ chmod 640 /etc/gitea/app.ini
 
 ```bash
 systemctl status gitea --no-pager
-curl -L https://git.iri1968.dpdns.org | head
+curl -L https://git.iri1968.ru | head
 gitea doctor check
 ```
 
 Также открыть в браузере:
 
 ```text
-https://git.iri1968.dpdns.org/awatch-rus/AWatch-rus
+https://git.iri1968.ru/awatch-rus/AWatch-rus
 ```
 
 Если менялся путь установки или сервер переносился, выполнить:
